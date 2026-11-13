@@ -33,12 +33,34 @@ export interface WeeklyPlanFilterChip extends WeeklyPlanRef {
   count: number;
 }
 
+export type WeeklyPlanCardColor =
+  | ""
+  | "indigo"
+  | "emerald"
+  | "amber"
+  | "rose"
+  | "sky"
+  | "purple"
+  | "orange";
+
+export const WEEKLY_PLAN_CARD_COLORS: WeeklyPlanCardColor[] = [
+  "",
+  "indigo",
+  "emerald",
+  "amber",
+  "rose",
+  "sky",
+  "purple",
+  "orange",
+];
+
 export interface WeeklyPlanCard {
   id: string;
   date: string; // YYYY-MM-DD
   content: string;
   position: number;
   completed: boolean;
+  color?: string;
   refs: WeeklyPlanRef[];
   createdBy?: string | null;
   createdAt?: string | null;
@@ -334,6 +356,7 @@ export async function saveWeeklyPlanCard(input: {
   content: string;
   position: number;
   completed?: boolean;
+  color?: string;
   refs?: WeeklyPlanRef[];
 }): Promise<WeeklyPlanCard> {
   const res = await fetch(ENDPOINT, {
@@ -347,6 +370,7 @@ export async function saveWeeklyPlanCard(input: {
       content: input.content,
       position: input.position,
       completed: Boolean(input.completed),
+      color: input.color ?? "",
       refs: input.refs || [],
     }),
   });

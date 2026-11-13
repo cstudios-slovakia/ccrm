@@ -1583,6 +1583,7 @@ export async function installBackendMocks(
         content: body.content,
         position: Number(body.position ?? 0),
         completed: Boolean(body.completed),
+        color: String(body.color || ''),
         refs: Array.isArray(body.refs) ? body.refs : [],
         createdBy: signedIn.id,
       };

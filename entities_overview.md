@@ -789,6 +789,7 @@ Standalone planning cards displayed on the Weekly Plan board (by day date and ve
 * `content` TEXT
 * `position` INT
 * `completed` TINYINT(1)
+* `color` VARCHAR(32) (Card color key: `''`, `'indigo'`, `'emerald'`, `'amber'`, `'rose'`, `'sky'`, `'purple'`, `'orange'`)
 * `refs_json` LONGTEXT [NULLable] (JSON array of `{ kind, id, label }`)
 * `created_by` VARCHAR(64) [NULLable]
 * `created_at` DATETIME

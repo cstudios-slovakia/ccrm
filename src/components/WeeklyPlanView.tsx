@@ -5,7 +5,6 @@ import {
     Calendar as CalendarIcon,
     Filter,
     X,
-    Check,
     Trash2,
     GripVertical,
     Pencil,
@@ -29,6 +28,7 @@ import {
     type WeeklyPlanDayNote,
     type WeeklyPlanRef,
     type WeeklyPlanFilterChip,
+    WEEKLY_PLAN_CARD_COLORS,
     formatIsoDate,
     parseIsoDate,
     addLocalDays,
@@ -60,6 +60,52 @@ interface WeeklyPlanViewProps {
 
 const WEEKEND_STORAGE_KEY = "ccrm_weekly_plan_show_weekends";
 const FILTER_BAR_STORAGE_KEY = "ccrm_weekly_plan_filter_bar_open";
+
+const CARD_COLOR_STYLES: Record<
+    string,
+    { cardBg: string; dotBg: string; label: [string, string, string] }
+> = {
+    "": {
+        cardBg: "bg-white border-slate-200/90 hover:border-indigo-300",
+        dotBg: "bg-white border-slate-300 hover:border-indigo-400",
+        label: ["Default", "Predvolená", "Alapértelmezett"],
+    },
+    indigo: {
+        cardBg: "bg-indigo-50/80 border-indigo-200 hover:border-indigo-300",
+        dotBg: "bg-indigo-500 border-indigo-600",
+        label: ["Indigo", "Indigová", "Indigó"],
+    },
+    emerald: {
+        cardBg: "bg-emerald-50/80 border-emerald-200 hover:border-emerald-300",
+        dotBg: "bg-emerald-500 border-emerald-600",
+        label: ["Green", "Zelená", "Zöld"],
+    },
+    amber: {
+        cardBg: "bg-amber-50/85 border-amber-200 hover:border-amber-300",
+        dotBg: "bg-amber-400 border-amber-500",
+        label: ["Yellow", "Žltá", "Sárga"],
+    },
+    rose: {
+        cardBg: "bg-rose-50/80 border-rose-200 hover:border-rose-300",
+        dotBg: "bg-rose-500 border-rose-600",
+        label: ["Red", "Červená", "Piros"],
+    },
+    sky: {
+        cardBg: "bg-sky-50/80 border-sky-200 hover:border-sky-300",
+        dotBg: "bg-sky-500 border-sky-600",
+        label: ["Blue", "Modrá", "Kék"],
+    },
+    purple: {
+        cardBg: "bg-purple-50/80 border-purple-200 hover:border-purple-300",
+        dotBg: "bg-purple-500 border-purple-600",
+        label: ["Purple", "Fialová", "Lila"],
+    },
+    orange: {
+        cardBg: "bg-orange-50/80 border-orange-200 hover:border-orange-300",
+        dotBg: "bg-orange-500 border-orange-600",
+        label: ["Orange", "Oranžová", "Narancs"],
+    },
+};
 
 export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
     leads,
@@ -108,6 +154,7 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
     const [draftDate, setDraftDate] = useState<string | null>(null);
     const [draftText, setDraftText] = useState<string>("");
     const [draftRefs, setDraftRefs] = useState<WeeklyPlanRef[]>([]);
+    const [draftColor, setDraftColor] = useState<string>("");
     const draftInputElRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
     const draftSubmittingRef = useRef<boolean>(false);
 
@@ -115,7 +162,11 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
     const [editingCardId, setEditingCardId] = useState<string | null>(null);
     const [editText, setEditText] = useState<string>("");
     const [editRefs, setEditRefs] = useState<WeeklyPlanRef[]>([]);
+    const [editColor, setEditColor] = useState<string>("");
     const editSubmittingRef = useRef<boolean>(false);
+
+    // Card color picker popover state
+    const [colorPickerCardId, setColorPickerCardId] = useState<string | null>(null);
 
     // Day note edit state
     const [editingNoteDate, setEditingNoteDate] = useState<string | null>(null);
@@ -277,9 +328,25 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
         setActiveFilterKeys(new Set());
         setDraftDate(null);
         setDraftText("");
+        setDraftColor("");
         setEditingCardId(null);
         setEditingNoteDate(null);
+        setColorPickerCardId(null);
     }, [loadWeek]);
+
+    useEffect(() => {
+        if (!colorPickerCardId) return;
+        const closeOnOutside = () => setColorPickerCardId(null);
+        const closeOnEsc = (e: KeyboardEvent) => {
+            if (e.key === "Escape") setColorPickerCardId(null);
+        };
+        document.addEventListener("mousedown", closeOnOutside);
+        document.addEventListener("keydown", closeOnEsc);
+        return () => {
+            document.removeEventListener("mousedown", closeOnOutside);
+            document.removeEventListener("keydown", closeOnEsc);
+        };
+    }, [colorPickerCardId]);
 
     const toggleWeekends = () => {
         setShowWeekends((prev) => {
@@ -365,9 +432,11 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
     const openDraftForDay = (dateIso: string) => {
         if (!canEdit) return;
         setEditingCardId(null);
+        setColorPickerCardId(null);
         setDraftDate(dateIso);
         setDraftText("");
         setDraftRefs([]);
+        setDraftColor("");
         setTimeout(() => draftInputElRef.current?.focus(), 0);
     };
 
@@ -382,6 +451,7 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                 setDraftDate(null);
                 setDraftText("");
                 setDraftRefs([]);
+                setDraftColor("");
             }
             return;
         }
@@ -394,6 +464,7 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                 : 0;
         const tempId = `wpc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         const refs = extractWeeklyPlanRefs(text, mentionEntities, draftRefs);
+        const chosenColor = draftColor;
 
         const optimistic: WeeklyPlanCard = {
             id: tempId,
@@ -401,6 +472,7 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
             content: text,
             position: nextPos,
             completed: false,
+            color: chosenColor,
             refs,
         };
 
@@ -409,10 +481,12 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
             // Keep composer open & empty right below for rapid entry
             setDraftText("");
             setDraftRefs([]);
+            setDraftColor("");
         } else {
             setDraftDate(null);
             setDraftText("");
             setDraftRefs([]);
+            setDraftColor("");
         }
 
         try {
@@ -422,6 +496,7 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                 content: text,
                 position: nextPos,
                 completed: false,
+                color: chosenColor,
                 refs,
             });
             setCards((prev) => prev.map((c) => (c.id === tempId ? saved : c)));
@@ -444,9 +519,11 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
     const startEditingCard = (card: WeeklyPlanCard) => {
         if (!canEdit) return;
         setDraftDate(null);
+        setColorPickerCardId(null);
         setEditingCardId(card.id);
         setEditText(card.content);
         setEditRefs(card.refs || []);
+        setEditColor(card.color || "");
     };
 
     const commitEditCard = async (card: WeeklyPlanCard) => {
@@ -456,7 +533,8 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
             setEditingCardId(null);
             return;
         }
-        if (trimmed === card.content.trim()) {
+        const nextColor = editColor;
+        if (trimmed === card.content.trim() && nextColor === (card.color || "")) {
             setEditingCardId(null);
             return;
         }
@@ -465,9 +543,10 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
         const refs = extractWeeklyPlanRefs(trimmed, mentionEntities, editRefs);
         const prevContent = card.content;
         const prevRefs = card.refs;
+        const prevColor = card.color || "";
 
         setCards((prev) =>
-            prev.map((c) => (c.id === card.id ? { ...c, content: trimmed, refs } : c)),
+            prev.map((c) => (c.id === card.id ? { ...c, content: trimmed, color: nextColor, refs } : c)),
         );
         setEditingCardId(null);
 
@@ -478,13 +557,16 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                 content: trimmed,
                 position: card.position,
                 completed: card.completed,
+                color: nextColor,
                 refs,
             });
             setCards((prev) => prev.map((c) => (c.id === card.id ? saved : c)));
         } catch (err: any) {
             setCards((prev) =>
                 prev.map((c) =>
-                    c.id === card.id ? { ...c, content: prevContent, refs: prevRefs } : c,
+                    c.id === card.id
+                        ? { ...c, content: prevContent, color: prevColor, refs: prevRefs }
+                        : c,
                 ),
             );
             window.showToast?.(
@@ -497,29 +579,34 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
         }
     };
 
-    const handleToggleCardCompleted = async (card: WeeklyPlanCard) => {
+    const handleChangeCardColor = async (card: WeeklyPlanCard, nextColor: string) => {
         if (!canEdit) return;
-        const nextCompleted = !card.completed;
+        const prevColor = card.color || "";
+        setColorPickerCardId(null);
+        if (nextColor === prevColor) return;
+
         setCards((prev) =>
-            prev.map((c) => (c.id === card.id ? { ...c, completed: nextCompleted } : c)),
+            prev.map((c) => (c.id === card.id ? { ...c, color: nextColor } : c)),
         );
         try {
             const refs = extractWeeklyPlanRefs(card.content, mentionEntities, card.refs);
-            await saveWeeklyPlanCard({
+            const saved = await saveWeeklyPlanCard({
                 id: card.id,
                 date: card.date,
                 content: card.content,
                 position: card.position,
-                completed: nextCompleted,
+                completed: card.completed,
+                color: nextColor,
                 refs,
             });
+            setCards((prev) => prev.map((c) => (c.id === card.id ? saved : c)));
         } catch (err: any) {
             setCards((prev) =>
-                prev.map((c) => (c.id === card.id ? { ...c, completed: card.completed } : c)),
+                prev.map((c) => (c.id === card.id ? { ...c, color: prevColor } : c)),
             );
             window.showToast?.(
                 err?.message ||
-                    t("Failed to update card", "Nepodarilo sa upraviť kartu", "Nem sikerült módosítani a kártyát"),
+                    t("Failed to update card color", "Nepodarilo sa zmeniť farbu karty", "Nem sikerült módosítani a kártya színét"),
                 "error",
             );
         }
@@ -1091,16 +1178,22 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                         const showDropBefore =
                                             dragOverTarget?.date === dateIso &&
                                             dragOverTarget.index === idx;
+                                        const colorStyle =
+                                            CARD_COLOR_STYLES[card.color || ""] ||
+                                            CARD_COLOR_STYLES[""];
+                                        const isColorPopoverOpen = colorPickerCardId === card.id;
 
                                         return (
                                             <div
                                                 key={card.id}
                                                 data-testid={`weekly-plan-card-${card.id}`}
                                                 data-dimmed={isDimmed ? "true" : "false"}
+                                                data-color={card.color || ""}
                                                 draggable={canEdit && !isEditingThis}
                                                 onDragStart={(e) => {
                                                     if (!canEdit || isEditingThis) return;
                                                     setDragCardId(card.id);
+                                                    setColorPickerCardId(null);
                                                     e.dataTransfer.effectAllowed = "move";
                                                     e.dataTransfer.setData("text/plain", card.id);
                                                 }}
@@ -1145,19 +1238,17 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                                 } ${
                                                     dragCardId === card.id
                                                         ? "border-indigo-400 bg-indigo-50/50 shadow-md"
-                                                        : card.completed
-                                                          ? "bg-slate-50/90 border-slate-200/80"
-                                                          : "bg-white border-slate-200/90 hover:border-indigo-300 shadow-2xs hover:shadow-sm"
+                                                        : `${colorStyle.cardBg} shadow-2xs hover:shadow-sm`
                                                 } ${
                                                     showDropBefore
                                                         ? "ring-2 ring-indigo-500 ring-offset-1"
                                                         : ""
-                                                }`}
+                                                } ${isColorPopoverOpen ? "z-20" : ""}`}
                                             >
                                                 {isEditingThis ? (
                                                     <div
                                                         onClick={(e) => e.stopPropagation()}
-                                                        className="space-y-1.5"
+                                                        className="space-y-2"
                                                     >
                                                         <TaskTagMentionInput
                                                             value={editText}
@@ -1187,10 +1278,36 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                                             onBlur={() => commitEditCard(card)}
                                                             className="w-full px-2 py-1.5 rounded-lg border border-indigo-300 bg-white text-ui text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 resize-none select-text"
                                                         />
-                                                        <div className="flex items-center justify-between text-micro text-slate-400">
-                                                            <span>
+                                                        <div className="flex items-center justify-between gap-2 px-0.5">
+                                                            <div className="flex items-center gap-1">
+                                                                {WEEKLY_PLAN_CARD_COLORS.map((cKey) => {
+                                                                    const sw = CARD_COLOR_STYLES[cKey];
+                                                                    const active = editColor === cKey;
+                                                                    return (
+                                                                        <button
+                                                                            key={cKey || "default"}
+                                                                            type="button"
+                                                                            onMouseDown={(e) =>
+                                                                                e.preventDefault()
+                                                                            }
+                                                                            onClick={() =>
+                                                                                setEditColor(cKey)
+                                                                            }
+                                                                            title={t(...sw.label)}
+                                                                            className={`w-3.5 h-3.5 rounded-full border transition-transform cursor-pointer ${
+                                                                                sw.dotBg
+                                                                            } ${
+                                                                                active
+                                                                                    ? "ring-2 ring-slate-800 ring-offset-1 scale-110"
+                                                                                    : "hover:scale-110"
+                                                                            }`}
+                                                                        />
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                            <span className="text-micro text-slate-400">
                                                                 {t(
-                                                                    "Enter to save · Esc cancel",
+                                                                    "Enter save · Esc cancel",
                                                                     "Enter uloží · Esc zruší",
                                                                     "Enter ment · Esc mégse",
                                                                 )}
@@ -1198,78 +1315,26 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="flex items-start gap-2">
+                                                    <>
                                                         {canEdit && (
-                                                            <div
-                                                                className="mt-0.5 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                title={t(
-                                                                    "Drag to move",
-                                                                    "Presunúť ťahaním",
-                                                                    "Húzza az áthelyezéshez",
-                                                                )}
-                                                            >
-                                                                <GripVertical className="h-3.5 w-3.5" />
-                                                            </div>
-                                                        )}
-
-                                                        <button
-                                                            type="button"
-                                                            disabled={!canEdit}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleToggleCardCompleted(card);
-                                                            }}
-                                                            data-testid={`weekly-plan-check-${card.id}`}
-                                                            className={`mt-0.5 w-4 h-4 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
-                                                                card.completed
-                                                                    ? "bg-emerald-500 border-emerald-500 text-white"
-                                                                    : "bg-white border-slate-300 hover:border-indigo-500 text-transparent"
-                                                            } ${canEdit ? "cursor-pointer" : "cursor-default"}`}
-                                                            title={
-                                                                card.completed
-                                                                    ? t(
-                                                                          "Mark incomplete",
-                                                                          "Označiť ako nedokončené",
-                                                                          "Befejezetlennek jelölés",
-                                                                      )
-                                                                    : t(
-                                                                          "Mark done",
-                                                                          "Označiť ako hotové",
-                                                                          "Késznek jelölés",
-                                                                      )
-                                                            }
-                                                        >
-                                                            <Check className="h-2.5 w-2.5 stroke-[3]" />
-                                                        </button>
-
-                                                        <div
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                if (canEdit) startEditingCard(card);
-                                                            }}
-                                                            className={`flex-1 min-w-0 text-ui leading-relaxed break-words select-text ${
-                                                                card.completed
-                                                                    ? "line-through text-slate-400"
-                                                                    : "text-slate-700 font-medium"
-                                                            } ${canEdit ? "cursor-pointer" : ""}`}
-                                                        >
-                                                            <TaskPillText
-                                                                text={card.content}
-                                                                knownEntities={mentionEntities}
-                                                                onTagClick={handleTagPillClick}
-                                                                onMentionClick={handleMentionPillClick}
-                                                            />
-                                                        </div>
-
-                                                        {canEdit && (
-                                                            <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <div className="absolute top-1.5 right-1.5 z-10 flex items-center gap-0.5 bg-white/90 backdrop-blur-xs rounded-lg px-1 py-0.5 shadow-2xs border border-slate-200/80 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <span
+                                                                    className="p-0.5 text-slate-400 hover:text-slate-600 cursor-grab active:cursor-grabbing"
+                                                                    title={t(
+                                                                        "Drag to move",
+                                                                        "Presunúť ťahaním",
+                                                                        "Húzza az áthelyezéshez",
+                                                                    )}
+                                                                >
+                                                                    <GripVertical className="h-3 w-3" />
+                                                                </span>
                                                                 <button
                                                                     type="button"
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
                                                                         startEditingCard(card);
                                                                     }}
-                                                                    className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                                                                    className="p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
                                                                     title={t("Edit", "Upraviť", "Szerkesztés")}
                                                                 >
                                                                     <Pencil className="h-3 w-3" />
@@ -1281,14 +1346,124 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                                                         handleDeleteCard(card);
                                                                     }}
                                                                     data-testid={`weekly-plan-delete-${card.id}`}
-                                                                    className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                                                    className="p-0.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                                                                     title={t("Delete", "Zmazať", "Törlés")}
                                                                 >
                                                                     <Trash2 className="h-3 w-3" />
                                                                 </button>
                                                             </div>
                                                         )}
-                                                    </div>
+
+                                                        <div className="flex items-start gap-2">
+                                                            <div
+                                                                className="relative shrink-0 mt-1"
+                                                                onMouseDown={(e) =>
+                                                                    e.stopPropagation()
+                                                                }
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={!canEdit}
+                                                                    onClick={() =>
+                                                                        setColorPickerCardId(
+                                                                            (prev) =>
+                                                                                prev === card.id
+                                                                                    ? null
+                                                                                    : card.id,
+                                                                        )
+                                                                    }
+                                                                    data-testid={`weekly-plan-color-${card.id}`}
+                                                                    className={`block w-3.5 h-3.5 rounded-full border transition-transform ${
+                                                                        colorStyle.dotBg
+                                                                    } ${
+                                                                        canEdit
+                                                                            ? "cursor-pointer hover:scale-110"
+                                                                            : "cursor-default"
+                                                                    } ${
+                                                                        isColorPopoverOpen
+                                                                            ? "ring-2 ring-indigo-500/40 ring-offset-1"
+                                                                            : ""
+                                                                    }`}
+                                                                    title={
+                                                                        canEdit
+                                                                            ? t(
+                                                                                  "Change card color",
+                                                                                  "Zmeniť farbu karty",
+                                                                                  "Kártya színének módosítása",
+                                                                              )
+                                                                            : undefined
+                                                                    }
+                                                                />
+
+                                                                {isColorPopoverOpen && canEdit && (
+                                                                    <div
+                                                                        data-testid={`weekly-plan-color-popover-${card.id}`}
+                                                                        className="absolute left-0 top-full mt-1.5 z-30 bg-white rounded-xl border border-slate-200 shadow-lg p-1.5 flex items-center gap-1.5"
+                                                                    >
+                                                                        {WEEKLY_PLAN_CARD_COLORS.map(
+                                                                            (cKey) => {
+                                                                                const sw =
+                                                                                    CARD_COLOR_STYLES[
+                                                                                        cKey
+                                                                                    ];
+                                                                                const active =
+                                                                                    (card.color ||
+                                                                                        "") ===
+                                                                                    cKey;
+                                                                                return (
+                                                                                    <button
+                                                                                        key={
+                                                                                            cKey ||
+                                                                                            "default"
+                                                                                        }
+                                                                                        type="button"
+                                                                                        data-testid={`weekly-plan-swatch-${cKey || "default"}`}
+                                                                                        onClick={() =>
+                                                                                            handleChangeCardColor(
+                                                                                                card,
+                                                                                                cKey,
+                                                                                            )
+                                                                                        }
+                                                                                        title={t(
+                                                                                            ...sw.label,
+                                                                                        )}
+                                                                                        className={`w-4 h-4 rounded-full border transition-transform cursor-pointer ${
+                                                                                            sw.dotBg
+                                                                                        } ${
+                                                                                            active
+                                                                                                ? "ring-2 ring-slate-800 ring-offset-1 scale-110"
+                                                                                                : "hover:scale-110"
+                                                                                        }`}
+                                                                                    />
+                                                                                );
+                                                                            },
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            <div
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (canEdit)
+                                                                        startEditingCard(card);
+                                                                }}
+                                                                className={`flex-1 min-w-0 text-ui leading-relaxed break-words select-text text-slate-700 font-medium ${
+                                                                    canEdit ? "cursor-pointer" : ""
+                                                                }`}
+                                                            >
+                                                                <TaskPillText
+                                                                    text={card.content}
+                                                                    knownEntities={mentionEntities}
+                                                                    onTagClick={handleTagPillClick}
+                                                                    onMentionClick={
+                                                                        handleMentionPillClick
+                                                                    }
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </>
                                                 )}
                                             </div>
                                         );
@@ -1299,7 +1474,12 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                         <div
                                             onClick={(e) => e.stopPropagation()}
                                             data-testid={`weekly-plan-draft-${dateIso}`}
-                                            className="rounded-xl border-2 border-indigo-400 bg-white p-2.5 shadow-sm space-y-1.5 animate-in fade-in duration-100"
+                                            className={`rounded-xl border-2 border-indigo-400 p-2.5 shadow-sm space-y-2 animate-in fade-in duration-100 ${
+                                                (
+                                                    CARD_COLOR_STYLES[draftColor] ||
+                                                    CARD_COLOR_STYLES[""]
+                                                ).cardBg
+                                            }`}
                                         >
                                             <TaskTagMentionInput
                                                 value={draftText}
@@ -1329,6 +1509,7 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                                         setDraftDate(null);
                                                         setDraftText("");
                                                         setDraftRefs([]);
+                                                        setDraftColor("");
                                                     }
                                                 }}
                                                 onBlur={() => commitDraft(false)}
@@ -1337,12 +1518,36 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                                     "Napíšte cieľ... (@ pre odkaz, # pre štítok)",
                                                     "Írja be a célt... (@ említés, # címke)",
                                                 )}
-                                                className="w-full px-1.5 py-1 rounded-lg bg-transparent text-ui text-slate-800 placeholder:text-slate-400 focus:outline-none resize-none select-text"
+                                                className="w-full px-1.5 py-1 rounded-lg bg-white/80 text-ui text-slate-800 placeholder:text-slate-400 focus:outline-none resize-none select-text"
                                             />
-                                            <div className="flex items-center justify-between text-micro text-slate-400 px-1">
-                                                <span>
+                                            <div className="flex items-center justify-between gap-2 px-1">
+                                                <div className="flex items-center gap-1">
+                                                    {WEEKLY_PLAN_CARD_COLORS.map((cKey) => {
+                                                        const sw = CARD_COLOR_STYLES[cKey];
+                                                        const active = draftColor === cKey;
+                                                        return (
+                                                            <button
+                                                                key={cKey || "default"}
+                                                                type="button"
+                                                                onMouseDown={(e) =>
+                                                                    e.preventDefault()
+                                                                }
+                                                                onClick={() => setDraftColor(cKey)}
+                                                                title={t(...sw.label)}
+                                                                className={`w-3.5 h-3.5 rounded-full border transition-transform cursor-pointer ${
+                                                                    sw.dotBg
+                                                                } ${
+                                                                    active
+                                                                        ? "ring-2 ring-slate-800 ring-offset-1 scale-110"
+                                                                        : "hover:scale-110"
+                                                                }`}
+                                                            />
+                                                        );
+                                                    })}
+                                                </div>
+                                                <span className="text-micro text-slate-400">
                                                     {t(
-                                                        "Enter: save & next card · Esc: close",
+                                                        "Enter: save & next · Esc: close",
                                                         "Enter: uložiť a ďalšia · Esc: zavrieť",
                                                         "Enter: mentés és következő · Esc: bezárás",
                                                     )}

@@ -90,7 +90,7 @@ if ($method === 'GET') {
     try {
         if ($from !== null && $to !== null) {
             $cardStmt = $pdo->prepare(
-                "SELECT `id`, `date`, `content`, `position`, `completed`, `refs_json`, `created_by`, `created_at`, `updated_at`
+                "SELECT `id`, `date`, `content`, `position`, `completed`, `color`, `refs_json`, `created_by`, `created_at`, `updated_at`
                  FROM `weekly_plan_cards`
                  WHERE `date` BETWEEN ? AND ?
                  ORDER BY `date` ASC, `position` ASC, `created_at` ASC"
@@ -106,7 +106,7 @@ if ($method === 'GET') {
             $noteStmt->execute([$from, $to]);
         } else {
             $cardStmt = $pdo->query(
-                "SELECT `id`, `date`, `content`, `position`, `completed`, `refs_json`, `created_by`, `created_at`, `updated_at`
+                "SELECT `id`, `date`, `content`, `position`, `completed`, `color`, `refs_json`, `created_by`, `created_at`, `updated_at`
                  FROM `weekly_plan_cards`
                  ORDER BY `date` ASC, `position` ASC, `created_at` ASC"
             );
@@ -132,6 +132,7 @@ if ($method === 'GET') {
                 'content'   => (string)$row['content'],
                 'position'  => (int)$row['position'],
                 'completed' => (bool)((int)$row['completed']),
+                'color'     => (string)($row['color'] ?? ''),
                 'refs'      => $refs,
                 'createdBy' => $row['created_by'] !== null ? (string)$row['created_by'] : null,
                 'createdAt' => $row['created_at'] ?? null,
@@ -177,6 +178,7 @@ try {
         $content = trim((string)($body['content'] ?? ''));
         $position = (int)($body['position'] ?? 0);
         $completed = !empty($body['completed']) ? 1 : 0;
+        $color = substr(trim((string)($body['color'] ?? '')), 0, 32);
         $refs = isset($body['refs']) && is_array($body['refs']) ? $body['refs'] : [];
 
         if ($id === '') {
@@ -190,20 +192,21 @@ try {
 
         $refsJson = json_encode(array_values($refs), JSON_UNESCAPED_UNICODE);
         $stmt = $pdo->prepare(
-            "INSERT INTO `weekly_plan_cards` (`id`, `date`, `content`, `position`, `completed`, `refs_json`, `created_by`)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
+            "INSERT INTO `weekly_plan_cards` (`id`, `date`, `content`, `position`, `completed`, `color`, `refs_json`, `created_by`)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE
                `date` = VALUES(`date`),
                `content` = VALUES(`content`),
                `position` = VALUES(`position`),
                `completed` = VALUES(`completed`),
+               `color` = VALUES(`color`),
                `refs_json` = VALUES(`refs_json`),
                `updated_at` = CURRENT_TIMESTAMP"
         );
-        $stmt->execute([$id, $date, $content, $position, $completed, $refsJson, $actorId]);
+        $stmt->execute([$id, $date, $content, $position, $completed, $color, $refsJson, $actorId]);
 
         $sel = $pdo->prepare(
-            "SELECT `id`, `date`, `content`, `position`, `completed`, `refs_json`, `created_by`, `created_at`, `updated_at`
+            "SELECT `id`, `date`, `content`, `position`, `completed`, `color`, `refs_json`, `created_by`, `created_at`, `updated_at`
              FROM `weekly_plan_cards` WHERE `id` = ?"
         );
         $sel->execute([$id]);
@@ -224,6 +227,7 @@ try {
                 'content'   => (string)$row['content'],
                 'position'  => (int)$row['position'],
                 'completed' => (bool)((int)$row['completed']),
+                'color'     => (string)($row['color'] ?? ''),
                 'refs'      => $savedRefs,
                 'createdBy' => $row['created_by'] !== null ? (string)$row['created_by'] : null,
                 'createdAt' => $row['created_at'] ?? null,
@@ -234,6 +238,7 @@ try {
                 'content'   => $content,
                 'position'  => $position,
                 'completed' => (bool)$completed,
+                'color'     => $color,
                 'refs'      => $refs,
                 'createdBy' => $actorId,
             ],

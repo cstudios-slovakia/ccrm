@@ -1413,6 +1413,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `content` TEXT NOT NULL,
               `position` INT NOT NULL DEFAULT 0,
               `completed` TINYINT(1) NOT NULL DEFAULT 0,
+              `color` VARCHAR(32) NOT NULL DEFAULT '',
               `refs_json` LONGTEXT NULL,
               `created_by` VARCHAR(64) NULL,
               `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -2019,6 +2020,7 @@ if (!function_exists('ccrm_schema_statements')) {
                   `content` TEXT NOT NULL,
                   `position` INT NOT NULL DEFAULT 0,
                   `completed` TINYINT(1) NOT NULL DEFAULT 0,
+                  `color` VARCHAR(32) NOT NULL DEFAULT '',
                   `refs_json` LONGTEXT NULL,
                   `created_by` VARCHAR(64) NULL,
                   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -2029,7 +2031,8 @@ if (!function_exists('ccrm_schema_statements')) {
                 $cardCols = [
                     'position'   => "INT NOT NULL DEFAULT 0 AFTER `content`",
                     'completed'  => "TINYINT(1) NOT NULL DEFAULT 0 AFTER `position`",
-                    'refs_json'  => "LONGTEXT NULL AFTER `completed`",
+                    'color'      => "VARCHAR(32) NOT NULL DEFAULT '' AFTER `completed`",
+                    'refs_json'  => "LONGTEXT NULL AFTER `color`",
                     'created_by' => "VARCHAR(64) NULL AFTER `refs_json`",
                 ];
                 foreach ($cardCols as $col => $def) {
