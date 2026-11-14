@@ -282,7 +282,7 @@ export const AgencyPaymentDrawer: React.FC<AgencyPaymentDrawerProps> = ({
             </div>
             <div>
               <div className="text-slate-500">{t("Agency Gross Margin", "Marža agentúry", "Ügynökségi árrés")}</div>
-              <div className="text-body font-extrabold text-teal-700">
+              <div className="text-body font-extrabold text-[#4a5a20]">
                 {totals.marginAmount.toFixed(2)} {payment.currency}
                 {totals.marginPct !== null ? ` (${totals.marginPct}%)` : ""}
               </div>
@@ -347,7 +347,7 @@ export const AgencyPaymentDrawer: React.FC<AgencyPaymentDrawerProps> = ({
               type="submit"
               disabled={saving}
               data-testid="agency-payment-save-btn"
-              className="px-4 py-2 rounded-xl bg-teal-600 text-white text-ui font-semibold hover:bg-teal-700 disabled:opacity-50 cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-[#5c6f28] text-white text-ui font-semibold hover:bg-[#4a5a20] disabled:opacity-50 cursor-pointer"
             >
               {saving ? t("Saving…", "Ukladám…", "Mentés…") : t("Save payment", "Uložiť výplatu", "Mentés")}
             </button>

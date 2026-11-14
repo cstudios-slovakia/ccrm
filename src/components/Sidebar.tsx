@@ -640,7 +640,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "var(--color-blue-900)" },
       { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "var(--color-emerald-500)" },
       { id: "employees", label: getTranslation(systemLanguage, "sidebar.employees"), icon: EmployeeTieIcon, color: "#c29b62" },
-      { id: "agency", label: systemLanguage === "sk" ? "Personálna agentúra" : systemLanguage === "hu" ? "Munkaerő-közvetítés" : "Agency", icon: Icons.UserCheck || Users, color: "#0f766e" },
+      { id: "agency", label: systemLanguage === "sk" ? "Personálna agentúra" : systemLanguage === "hu" ? "Munkaerő-közvetítés" : "Agency", icon: Icons.UserCheck || Users, color: "#5c6f28" },
       { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "var(--color-indigo-600)" },
       ...dynamicUeItems,
       ...dynamicDashItems,

@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Building2, CalendarDays, RefreshCw, Users, UserCheck, Wallet } from "lucide-react";
+import { CalendarDays, ChevronRight, RefreshCw, Users, UserCheck, Wallet } from "lucide-react";
+import { PageHeader, Tabs, type TabItem } from "../layout";
+import { SectionIcon } from "../icons/SectionIcon";
 import type {
   FinancialCategory,
   Lead,
@@ -185,67 +187,79 @@ export const AgencyView: React.FC<AgencyViewProps> = ({
     );
   };
 
-  const subTabs: Array<{ id: AgencySubTab; label: string; Icon: React.FC<{ className?: string }>; visible: boolean }> = [
-    { id: "candidates", label: t("Candidates Pipeline", "Kandidáti", "Jelöltek"), Icon: UserCheck, visible: true },
-    { id: "workers", label: t("Rented Employees", "Prenajatí zamestnanci", "Kölcsönzött dolgozók"), Icon: Users, visible: true },
-    { id: "schedule", label: t("Work Schedule", "Rozpis zmien", "Műszakbeosztás"), Icon: CalendarDays, visible: true },
-    { id: "payments", label: t("Payments & Billing", "Výplaty a fakturácia", "Kifizetések"), Icon: Wallet, visible: rights.payments },
+  const tabItems: TabItem<AgencySubTab>[] = [
+    {
+      key: "candidates",
+      icon: <UserCheck className="w-3.5 h-3.5" />,
+      label: t("Candidates Pipeline", "Kandidáti", "Jelöltek"),
+      testId: "agency-subtab-candidates",
+    },
+    {
+      key: "workers",
+      icon: <Users className="w-3.5 h-3.5" />,
+      label: t("Rented Employees", "Prenajatí zamestnanci", "Kölcsönzött dolgozók"),
+      testId: "agency-subtab-workers",
+    },
+    {
+      key: "schedule",
+      icon: <CalendarDays className="w-3.5 h-3.5" />,
+      label: t("Work Schedule", "Rozpis zmien", "Műszakbeosztás"),
+      testId: "agency-subtab-schedule",
+    },
+    {
+      key: "payments",
+      icon: <Wallet className="w-3.5 h-3.5" />,
+      label: t("Payments & Billing", "Výplaty a fakturácia", "Kifizetések"),
+      hidden: !rights.payments,
+      testId: "agency-subtab-payments",
+    },
   ];
+
+  const selectedWorker = selectedWorkerId
+    ? bootstrap?.workers.find((w) => w.id === selectedWorkerId) || null
+    : null;
 
   void financialCategories;
 
   return (
-    <div className="space-y-4" data-testid="agency-module-view">
-      <div className="glass-panel rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="size-10 rounded-xl bg-teal-600/10 text-teal-700 flex items-center justify-center shrink-0">
-            <Building2 className="size-5" />
-          </div>
-          <div>
-            <h1 className="text-heading font-bold text-slate-900">
-              {t("Agency & Workforce Leasing", "Personálna agentúra a prenájom", "Munkaerő-közvetítés és kölcsönzés")}
-            </h1>
-            <p className="text-caption text-slate-500">
-              {t(
-                "Recruitment pipeline, permanent worker dossiers, client placements, shift schedules & payroll.",
-                "Nábor kandidátov, permanentné profily pracovníkov, umiestnenia u klientov, rozpis zmien a výplaty.",
-                "Jelöltkezelés, dolgozói profilok, céges kihelyezések, műszakbeosztás és bérelszámolás."
-              )}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
-            {subTabs
-              .filter((st) => st.visible)
-              .map(({ id, label, Icon }) => {
-                const isActive = !selectedWorkerId && activeSubTab === id;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => onNavigate(`agency/${id}`)}
-                    data-testid={`agency-subtab-${id}`}
-                    className={`px-3 py-1.5 rounded-lg text-ui font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
-                      isActive ? "bg-white text-slate-900 shadow-2xs" : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    <Icon className="size-4" />
-                    <span>{label}</span>
-                  </button>
-                );
-              })}
-          </div>
+    <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative" data-testid="agency-module-view">
+      <PageHeader
+        icon={<SectionIcon id="agency" />}
+        title={t("Agency & Workforce Leasing", "Personálna agentúra a prenájom", "Munkaerő-közvetítés és kölcsönzés")}
+        subtitle={t(
+          "Recruitment pipeline, permanent worker dossiers, client placements, shift schedules & payroll.",
+          "Nábor kandidátov, permanentné profily pracovníkov, umiestnenia u klientov, rozpis zmien a výplaty.",
+          "Jelöltkezelés, dolgozói profilok, céges kihelyezések, műszakbeosztás és bérelszámolás."
+        )}
+        actions={
           <button
             type="button"
             onClick={loadBootstrap}
             disabled={loading}
-            className="p-2 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-slate-600 cursor-pointer"
+            className="flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white border border-slate-200 hover:border-[#5c6f28]/50 text-slate-600 hover:text-[#4a5a20] text-ui font-semibold shadow-2xs transition-colors cursor-pointer"
             title={t("Refresh", "Obnoviť", "Frissítés")}
           >
             <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+            <span className="hidden sm:inline">{t("Refresh", "Obnoviť", "Frissítés")}</span>
           </button>
+        }
+      />
+
+      <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 border-b border-slate-200/60 pb-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Tabs
+            value={activeSubTab}
+            onChange={(id) => onNavigate(`agency/${id}`)}
+            items={tabItems}
+          />
+          {selectedWorker && (
+            <div className="flex items-center gap-2 pl-2">
+              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+              <span className="text-ui font-heading font-bold text-[#4a5a20]">
+                {selectedWorker.fullName}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

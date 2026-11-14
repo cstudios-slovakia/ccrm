@@ -149,7 +149,7 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
               setShowModal(true);
             }}
             data-testid="agency-place-worker-btn"
-            className="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-ui font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+            className="px-3.5 py-2 rounded-xl bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-semibold inline-flex items-center gap-1.5 cursor-pointer"
           >
             <ArrowRightLeft className="size-4" />
             {placements.some((p) => p.status === "active")
@@ -196,7 +196,7 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
                         : t("Ended", "Ukončené", "Lezárt")}
                     </span>
                     <span className="text-body font-bold text-slate-900 inline-flex items-center gap-1.5">
-                      <Building2 className="size-4 text-teal-600" />
+                      <Building2 className="size-4 text-[#5c6f28]" />
                       {company?.name || pl.companyClientId}
                     </span>
                     {pl.jobRole && (
@@ -442,7 +442,7 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
                 type="submit"
                 disabled={saving || !form.companyClientId}
                 data-testid="agency-placement-submit"
-                className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-ui font-semibold cursor-pointer disabled:opacity-50"
+                className="px-4 py-2 rounded-xl bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-semibold cursor-pointer disabled:opacity-50"
               >
                 {saving ? t("Saving…", "Ukladám…", "Mentés…") : t("Save Placement", "Potvrdiť umiestnenie", "Kihelyezés mentése")}
               </button>

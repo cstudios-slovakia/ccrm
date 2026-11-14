@@ -286,7 +286,7 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
             disabled={busy || calculableWorkerIds.length === 0}
             onClick={handleCalculateAll}
             data-testid="agency-calc-all-btn"
-            className="px-4 py-2 rounded-xl bg-teal-600 text-white text-ui font-semibold inline-flex items-center gap-1.5 hover:bg-teal-700 disabled:opacity-50 cursor-pointer"
+            className="px-4 py-2 rounded-xl bg-[#5c6f28] text-white text-ui font-semibold inline-flex items-center gap-1.5 hover:bg-[#4a5a20] disabled:opacity-50 cursor-pointer"
           >
             <Calculator className="size-4" />
             <span>
@@ -335,7 +335,7 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
             </div>
             <div className="glass-panel rounded-2xl p-3.5">
               <div className="type-overline text-slate-400">{t("Gross Margin", "Hrubá marža", "Bruttó árrés")}</div>
-              <div className="text-title font-bold text-teal-700 mt-1">
+              <div className="text-title font-bold text-[#4a5a20] mt-1">
                 {margin.toFixed(2)} {cur}
               </div>
             </div>
@@ -420,7 +420,7 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
                           <button
                             type="button"
                             onClick={() => onOpenWorker(p.workerId)}
-                            className="hover:text-teal-700 cursor-pointer text-left"
+                            className="hover:text-[#4a5a20] cursor-pointer text-left"
                           >
                             {worker?.fullName || p.workerId}
                           </button>
@@ -456,7 +456,7 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
                           {p.financialRecordId && (
                             <span
                               data-testid={`agency-payment-fr-${p.workerId}`}
-                              className="px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 text-micro font-mono inline-flex items-center gap-1"
+                              className="px-2 py-0.5 rounded-full bg-lime-50 text-lime-800 border border-lime-200 text-micro font-mono inline-flex items-center gap-1"
                             >
                               <Receipt className="size-2.5" />
                               {p.financialRecordId}
@@ -480,7 +480,7 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
                             type="button"
                             onClick={() => setDrawerPayment(p)}
                             data-testid={`agency-payment-edit-${p.workerId}`}
-                            className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-teal-400 text-slate-700 text-micro font-semibold inline-flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-[#5c6f28]/50 text-slate-700 text-micro font-semibold inline-flex items-center gap-1 cursor-pointer"
                           >
                             <Edit3 className="size-3" />
                             <span>{t("Edit", "Upraviť", "Szerkesztés")}</span>

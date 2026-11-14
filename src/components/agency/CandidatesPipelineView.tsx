@@ -275,7 +275,7 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("Search candidate, code, company, nationality…", "Hľadať kandidáta, kód, firmu, štátnu príslušnosť…", "Keresés név, kód, cég, állampolgárság…")}
-              className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 focus:border-indigo-500 focus:outline-none"
+              className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 focus:border-[#5c6f28] focus:outline-none"
             />
           </div>
           <select
@@ -360,7 +360,7 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
               type="button"
               onClick={() => setShowCreate(true)}
               data-testid="agency-add-candidate-btn"
-              className="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-ui font-semibold inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
+              className="px-3.5 py-2 rounded-xl bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-semibold inline-flex items-center gap-1.5 shadow-sm shadow-[#5c6f28]/20 transition-colors cursor-pointer"
             >
               <Plus className="size-4" />
               {t("New Candidate", "Nový kandidát", "Új jelölt")}
@@ -406,8 +406,8 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
                             onClick={() => onOpenWorker(w.id)}
                             className="text-left group cursor-pointer"
                           >
-                            <div className="text-body font-semibold text-slate-900 group-hover:text-teal-700 flex items-center gap-2">
-                              <UserCheck className="size-4 text-teal-600 shrink-0" />
+                            <div className="text-body font-semibold text-slate-900 group-hover:text-[#4a5a20] flex items-center gap-2">
+                              <UserCheck className="size-4 text-[#5c6f28] shrink-0" />
                               <span>{w.fullName}</span>
                               {w.workerCode && (
                                 <span className="text-micro font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
@@ -512,7 +512,7 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
                       <div
                         key={w.id}
                         onClick={() => onOpenWorker(w.id)}
-                        className="p-3 rounded-xl bg-white border border-slate-200 hover:border-teal-300 shadow-2xs cursor-pointer space-y-2 transition-colors"
+                        className="p-3 rounded-xl bg-white border border-slate-200 hover:border-[#5c6f28]/50 shadow-2xs cursor-pointer space-y-2 transition-colors"
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="text-ui font-bold text-slate-900 leading-snug">{w.fullName}</div>
@@ -726,7 +726,7 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
                 type="submit"
                 disabled={submitting}
                 data-testid="agency-create-candidate-submit"
-                className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-ui font-semibold cursor-pointer disabled:opacity-50"
+                className="px-4 py-2 rounded-xl bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-semibold cursor-pointer disabled:opacity-50"
               >
                 {submitting ? t("Saving…", "Ukladám…", "Mentés…") : t("Create Candidate", "Vytvoriť kandidáta", "Jelölt létrehozása")}
               </button>

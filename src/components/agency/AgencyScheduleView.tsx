@@ -566,7 +566,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
               disabled={saving}
               onClick={handleFillMonFri}
               data-testid="agency-schedule-fill-btn"
-              className="px-3 py-1.5 rounded-xl bg-teal-600 text-white text-caption font-semibold inline-flex items-center gap-1.5 hover:bg-teal-700 disabled:opacity-50 cursor-pointer"
+              className="px-3 py-1.5 rounded-xl bg-[#5c6f28] text-white text-caption font-semibold inline-flex items-center gap-1.5 hover:bg-[#4a5a20] disabled:opacity-50 cursor-pointer"
             >
               <Sparkles className="size-3.5" />
               <span>{t("Fill Mon–Fri", "Vyplniť Po–Pi", "H–P kitöltése")}</span>
@@ -668,7 +668,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
                             <button
                               type="button"
                               onClick={() => onOpenWorker(w.id)}
-                              className="font-bold text-slate-900 hover:text-teal-700 text-left truncate cursor-pointer"
+                              className="font-bold text-slate-900 hover:text-[#4a5a20] text-left truncate cursor-pointer"
                             >
                               {w.fullName}
                             </button>
@@ -955,7 +955,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
                   type="submit"
                   disabled={saving}
                   data-testid="agency-shift-save-btn"
-                  className="px-4 py-1.5 rounded-xl bg-teal-600 text-white text-caption font-semibold hover:bg-teal-700 disabled:opacity-50 cursor-pointer"
+                  className="px-4 py-1.5 rounded-xl bg-[#5c6f28] text-white text-caption font-semibold hover:bg-[#4a5a20] disabled:opacity-50 cursor-pointer"
                 >
                   {saving ? t("Saving…", "Ukladám…", "Mentés…") : t("Save shift", "Uložiť zmenu", "Mentés")}
                 </button>

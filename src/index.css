@@ -781,6 +781,13 @@ dialog[open]::backdrop {
 [data-theme="dark"] .text-\[\#0b1329\] {
   color: oklch(94% 0.008 257.4);
 }
+[data-theme="dark"] .text-\[\#4a5a20\],
+[data-theme="dark"] .text-\[\#5c6f28\] {
+  color: oklch(82% 0.12 125);
+}
+[data-theme="dark"] .hover\:text-\[\#4a5a20\]:hover {
+  color: oklch(86% 0.13 125);
+}
 [data-theme="dark"] .bg-\[\#f8fafc\],
 [data-theme="dark"] .bg-\[\#f4f7fe\] {
   background-color: oklch(17% 0.01 257.4);

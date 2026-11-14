@@ -680,10 +680,10 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
             </div>
           )}
 
-          <div className="glass-panel p-6 rounded-[28px] border-2 border-teal-400 bg-white shadow-xl space-y-5">
+          <div className="glass-panel p-6 rounded-[28px] border-2 border-[#5c6f28]/50 bg-white shadow-xl space-y-5">
             <div className="border-b-2 border-slate-100 pb-4 flex items-center justify-between gap-2.5">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-teal-500 to-teal-600 text-white border-2 border-teal-700 flex items-center justify-center font-heading font-bold text-body shadow-md shrink-0">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[#6e8531] to-[#5c6f28] text-white border-2 border-[#4a5a20] flex items-center justify-center font-heading font-bold text-body shadow-md shrink-0">
                   {getInitials(basicDraft.fullName || worker.fullName)}
                 </div>
                 <div className="min-w-0">
@@ -706,7 +706,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                   className={`h-9 w-9 rounded-xl flex items-center justify-center transition-all border-2 shadow-2xs cursor-pointer ${
                     isEditingLeft
                       ? "bg-rose-50 border-rose-300 text-rose-600 hover:bg-rose-100"
-                      : "bg-teal-50 border-teal-300 text-teal-700 hover:bg-teal-100"
+                      : "bg-[#5c6f28]/10 border-[#5c6f28]/40 text-[#4a5a20] hover:bg-[#5c6f28]/20"
                   }`}
                   title={
                     isEditingLeft
@@ -733,7 +733,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                     onChange={(e) => setBasicDraft((p) => ({ ...p, fullName: e.target.value }))}
                     className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
                       isEditingLeft
-                        ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-teal-500 text-slate-800"
+                        ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
                         : "bg-transparent border-0 pl-0 text-slate-900 text-body font-bold cursor-default"
                     }`}
                   />
@@ -750,7 +750,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                     placeholder="—"
                     className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
                       isEditingLeft
-                        ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-teal-500 text-slate-800"
+                        ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
                         : "bg-transparent border-0 pl-0 text-slate-900 text-body font-bold cursor-default"
                     }`}
                   />
@@ -768,7 +768,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                     placeholder="—"
                     className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
                       isEditingLeft
-                        ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-teal-500 text-slate-800"
+                        ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
                         : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default"
                     }`}
                   />
@@ -785,7 +785,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                     placeholder="—"
                     className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
                       isEditingLeft
-                        ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-teal-500 text-slate-800"
+                        ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
                         : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default"
                     }`}
                   />
@@ -809,7 +809,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                       onChange={(e) => setBasicDraft((p) => ({ ...p, dateOfBirth: e.target.value }))}
                       className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all font-mono ${
                         isEditingLeft
-                          ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-teal-500 text-slate-800"
+                          ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
                           : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default"
                       }`}
                     />
@@ -828,7 +828,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                     placeholder="—"
                     className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
                       isEditingLeft
-                        ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-teal-500 text-slate-800"
+                        ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
                         : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default"
                     }`}
                   />
@@ -843,7 +843,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                       value={basicDraft.targetCompanyClientId}
                       onChange={(e) => setBasicDraft((p) => ({ ...p, targetCompanyClientId: e.target.value }))}
                       data-testid="agency-detail-target-company-select"
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-teal-500 text-slate-800"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
                     >
                       <option value="">{t("— Unassigned —", "— Nepriradené —", "— Nincs hozzárendelve —")}</option>
                       {companyLeads.map((comp) => (
@@ -875,7 +875,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                         placeholder="0"
                         className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all font-mono ${
                           isEditingLeft
-                            ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-teal-500 text-slate-800"
+                            ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
                             : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default"
                         }`}
                       />
@@ -893,7 +893,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                         placeholder="0"
                         className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all font-mono ${
                           isEditingLeft
-                            ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-teal-500 text-slate-800"
+                            ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
                             : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default"
                         }`}
                       />
@@ -911,7 +911,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setTab("compliance")}
-                    className="text-micro font-bold text-teal-700 hover:underline cursor-pointer"
+                    className="text-micro font-bold text-[#4a5a20] hover:underline cursor-pointer"
                   >
                     {verifiedDocsCount}/{checklist.length} {t("verified", "overených", "ellenőrizve")}
                   </button>
@@ -957,7 +957,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                 ) : (
                   <div className="text-caption text-amber-700 flex items-center gap-1.5">
                     <Lock className="size-3.5 shrink-0" />
-                    <span>{t("Protected (agency.personal)", "Chránené (agency.personal)", "Védett (agency.personal)")}</span>
+                    <span>{t("Protected personal data", "Chránené osobné údaje", "Védett személyes adatok")}</span>
                   </div>
                 )}
               </div>
@@ -975,7 +975,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                   placeholder={t("Add notes…", "Pridať poznámku…", "Megjegyzés…")}
                   className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all font-normal ${
                     isEditingLeft
-                      ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-teal-500 text-slate-800"
+                      ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
                       : "bg-slate-50/60 border border-slate-200/60 text-slate-700 cursor-default"
                   }`}
                 />
@@ -985,7 +985,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                 <button
                   type="submit"
                   disabled={saving}
-                  className="w-full py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-ui font-bold inline-flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                  className="w-full py-2.5 rounded-xl bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-bold inline-flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
                 >
                   <Save className="size-4" />
                   {saving ? t("Saving…", "Ukladám…", "Mentés…") : t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
@@ -997,7 +997,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
 
         {/* RIGHT PANEL: Tabbed Workspace (Timeline, Details, Compliance, Placements, Schedule, Tasks & Tickets) */}
         <div className="ws-lg:col-span-7">
-          <div className="glass-panel p-6 rounded-[28px] border-2 border-teal-400 bg-white shadow-xl space-y-6">
+          <div className="glass-panel p-6 rounded-[28px] border-2 border-[#5c6f28]/50 bg-white shadow-xl space-y-6">
             <Tabs
               value={tab}
               onChange={setTab}
@@ -1052,8 +1052,8 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                     className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-3"
                     data-testid="agency-log-event-form"
                   >
-                    <h3 className="text-ui font-bold text-teal-700 flex items-center gap-1.5 border-b border-slate-200/80 pb-2">
-                      <PencilLine className="size-4 text-teal-600" />
+                    <h3 className="text-ui font-bold text-[#4a5a20] flex items-center gap-1.5 border-b border-slate-200/80 pb-2">
+                      <PencilLine className="size-4 text-[#5c6f28]" />
                       {t("Log Timeline Event", "Pridať udalosť do histórie", "Esemény rögzítése")}
                     </h3>
                     <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3">
@@ -1218,7 +1218,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                       type="submit"
                       disabled={saving}
                       data-testid="agency-save-profile-btn"
-                      className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-ui font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                      className="px-3.5 py-1.5 rounded-xl bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                     >
                       <Save className="size-4" />
                       {saving ? t("Saving…", "Ukladám…", "Mentés…") : t("Save Details", "Uložiť údaje", "Adatok mentése")}
@@ -1280,7 +1280,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
               <div className="space-y-5">
                 <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-3">
                   <h3 className="type-panel-title text-slate-900 flex items-center gap-2">
-                    <ClipboardList className="size-4 text-teal-600" />
+                    <ClipboardList className="size-4 text-[#5c6f28]" />
                     {t("Compliance Checklist", "Kontrolný zoznam dokladov", "Megfelelőségi lista")}
                   </h3>
                   <div className="space-y-2.5">
@@ -1509,9 +1509,9 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                           <button
                             type="button"
                             onClick={() => setPreviewFile(f)}
-                            className="min-w-0 text-left hover:text-teal-700 cursor-pointer flex-1"
+                            className="min-w-0 text-left hover:text-[#4a5a20] cursor-pointer flex-1"
                           >
-                            <div className="text-ui font-semibold text-slate-800 hover:text-teal-700 underline decoration-slate-300 underline-offset-2 truncate">
+                            <div className="text-ui font-semibold text-slate-800 hover:text-[#4a5a20] underline decoration-slate-300 underline-offset-2 truncate">
                               {f.fileName}
                             </div>
                             <div className="text-micro text-slate-400 uppercase">
@@ -1614,7 +1614,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
           >
             <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-b border-slate-200 bg-slate-50">
               <div className="flex items-center gap-2.5 min-w-0">
-                <FileText className="size-5 text-teal-600 shrink-0" />
+                <FileText className="size-5 text-[#5c6f28] shrink-0" />
                 <div className="min-w-0">
                   <div className="text-body font-bold text-slate-900 truncate">{previewFile.fileName}</div>
                   <div className="text-micro text-slate-500 uppercase">
@@ -1629,7 +1629,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                   target="_blank"
                   rel="noreferrer"
                   data-testid="agency-file-preview-download"
-                  className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-ui font-semibold inline-flex items-center gap-1.5"
+                  className="px-3.5 py-1.5 rounded-xl bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-semibold inline-flex items-center gap-1.5"
                 >
                   <Download className="size-4" />
                   {t(
@@ -1665,7 +1665,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                 />
               ) : (
                 <div className="p-8 text-center space-y-3 bg-white rounded-2xl border border-slate-200 max-w-md">
-                  <FileText className="size-10 text-teal-600 mx-auto" />
+                  <FileText className="size-10 text-[#5c6f28] mx-auto" />
                   <div className="text-body font-bold text-slate-900">{previewFile.fileName}</div>
                   <p className="text-ui text-slate-500">
                     {t(

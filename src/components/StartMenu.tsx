@@ -412,8 +412,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: t("Agency & Leasing", "Personálna agentúra", "Munkaerő-közvetítés"),
         description: t("Candidates pipeline, rented workers, host shifts, sick leave & payouts", "Kandidáti, prenajatí zamestnanci, rozvrh zmien, PN a výplaty", "Jelöltek, kölcsönzött munkavállalók, műszakok, betegszabadság és kifizetések"),
         icon: Icons.UserCheck || Users,
-        color: "#0f766e",
-        bgColor: "rgba(15, 118, 110, 0.12)",
+        color: "#5c6f28",
+        bgColor: "rgba(92, 111, 40, 0.12)",
         defaultSection: "operations"
       },
 

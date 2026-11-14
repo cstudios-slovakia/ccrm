@@ -160,7 +160,7 @@ export const RentedEmployeesView: React.FC<RentedEmployeesViewProps> = ({
         <button
           type="button"
           onClick={onOpenSchedule}
-          className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-ui font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+          className="px-3.5 py-2 rounded-xl bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-semibold inline-flex items-center gap-1.5 shadow-sm shadow-[#5c6f28]/20 transition-colors cursor-pointer"
         >
           <CalendarDays className="size-4" />
           {t("Open Work Schedule", "Otvoriť rozpis zmien", "Műszakbeosztás")}
@@ -199,7 +199,7 @@ export const RentedEmployeesView: React.FC<RentedEmployeesViewProps> = ({
                     >
                       <td className="py-3 px-4">
                         <div className="text-body font-semibold text-slate-900 flex items-center gap-2">
-                          <UserCheck className="size-4 text-emerald-600 shrink-0" />
+                          <UserCheck className="size-4 text-[#5c6f28] shrink-0" />
                           <span>{worker.fullName}</span>
                           {worker.workerCode && (
                             <span className="text-micro font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
