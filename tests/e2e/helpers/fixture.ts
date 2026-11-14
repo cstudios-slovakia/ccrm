@@ -1225,7 +1225,7 @@ export async function installBackendMocks(
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ success: true, data: [], items: [], agents: [], accounts: [], posts: [], client: null, tokens: [], users: [], mailboxes: [], userMailboxes: [] }),
+      body: JSON.stringify({ success: true, data: [], items: [], agents: [], accounts: [], posts: [], client: null, tokens: [], users: [], mailboxes: [], userMailboxes: [], connectors: [] }),
     }),
   );
 

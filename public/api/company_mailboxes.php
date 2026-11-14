@@ -20,6 +20,7 @@
  *   POST ?action=agent_run          Assigned user / Admin: {id, prompt, systemPrompt?}: run prompt via Marveen + CCRM MCP
  */
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
 require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/mail_filing.php';
 require_once __DIR__ . '/botman/botman_lib.php';
@@ -42,6 +43,7 @@ $method = $_SERVER['REQUEST_METHOD'];
 // `my` and `agent_*` workspace actions are accessible to any signed-in CRM user (enforced per-connector via `userIds[]`);
 // all other management actions require an administrator.
 $sessionUser = in_array($action, [
+    'llm_sources',
     'my',
     'agent_run',
     'agent_state',
@@ -300,6 +302,47 @@ $input = $method === 'POST' ? json_decode((string)file_get_contents('php://input
 if (!is_array($input)) $input = [];
 
 try {
+    if ($method === 'GET' && $action === 'llm_sources') {
+        ccrm_require_perm($pdo, $sessionUser, 'ai_config', 'view');
+        $connectors = [];
+        $marveenUrl = trim((string)(getenv('MARVEEN_URL') ?: ''));
+        foreach ($pdo->query("SELECT * FROM `company_mailboxes` ORDER BY `name`")->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $s = ccrm_company_mailbox_settings($r);
+            $connectorType = ccrm_infer_connector_type($s, (string)($r['address'] ?? ''));
+            if (!in_array($connectorType, CCRM_AGENT_CONNECTOR_TYPES, true)) {
+                continue;
+            }
+            $id = (string)$r['id'];
+            $hasToken = trim((string)($s['apiKey'] ?? '')) !== ''
+                || trim((string)($s['subscriptionToken'] ?? '')) !== ''
+                || trim((string)($s['agentEndpoint'] ?? '')) !== ''
+                || (!ccrm_marveen_is_api_key_connector_type($connectorType) && $marveenUrl !== '');
+            if (!$hasToken && !ccrm_marveen_is_api_key_connector_type($connectorType)) {
+                $cDir = ccrm_marveen_connector_dir($id);
+                if (
+                    is_file($cDir . '/.oauth-token')
+                    || is_file($cDir . '/.gemini/oauth_creds.json')
+                    || is_file($cDir . '/.claude-config/.credentials.json')
+                    || is_file($cDir . '/.gemini_api_key')
+                ) {
+                    $hasToken = true;
+                } elseif (function_exists('ccrm_marveen_resolve_gemini_api_key') && $connectorType === 'antigravity') {
+                    $hasToken = ccrm_marveen_resolve_gemini_api_key($id, '') !== null;
+                }
+            }
+            $connectors[] = [
+                'id' => $id,
+                'name' => (string)($r['name'] ?? ''),
+                'connectorType' => $connectorType,
+                'agentModel' => (string)($s['agentModel'] ?? ''),
+                'isActive' => (bool)$r['is_active'],
+                'hasCredentials' => $hasToken,
+            ];
+        }
+        echo json_encode(['success' => true, 'connectors' => $connectors]);
+        exit;
+    }
+
     if ($method === 'GET' && $action === 'my') {
         $uid = (string)($sessionUser['id'] ?? '');
         $isAdmin = strtolower((string)($sessionUser['role'] ?? '')) === 'admin';

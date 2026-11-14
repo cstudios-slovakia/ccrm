@@ -4,6 +4,7 @@
  */
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -57,13 +58,13 @@ $stmt->execute();
 $configJson = $stmt->fetchColumn();
 $integrationsConfig = $configJson ? json_decode($configJson, true) : [];
 $integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys()) : [];
-$openAiKey = $integrationsConfig['openAiKey'] ?? '';
 
-if (empty($openAiKey)) {
+if (!ccrm_ai_is_configured($pdo, $integrationsConfig)) {
     http_response_code(400);
     echo json_encode([
         'success' => false,
-        'message' => 'OpenAI API Key is not configured. Please configure it in Settings.'
+        'code' => 'ai_key_missing',
+        'message' => 'AI provider is not configured. Please configure it in Settings.'
     ]);
     exit;
 }
@@ -157,55 +158,45 @@ OTHER PROFILE DATA:
 $otherText
 ---";
 
-// Call OpenAI Chat Completion API
-$ch = curl_init('https://api.openai.com/v1/chat/completions');
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    'Content-Type: application/json',
-    'Authorization: Bearer ' . $openAiKey
-]);
-
-$leadModel = ccrm_ai_model();
-$payload = [
-    'model' => $leadModel,
-    'messages' => [
-        [
-            'role' => 'user',
-            'content' => $prompt
-        ]
+$leadModel = ccrm_ai_model($integrationsConfig);
+$aiRes = ccrm_ai_chat_completion(
+    $pdo,
+    [
+        'model' => $leadModel,
+        'messages' => [
+            [
+                'role' => 'user',
+                'content' => $prompt
+            ]
+        ],
+        'temperature' => 0.3,
     ],
-];
-if (ccrm_ai_model_supports_temperature($leadModel)) {
-    $payload['temperature'] = 0.3;
-}
+    [
+        'feature' => 'client_summary',
+        'timeout' => 30,
+        'integrationsConfig' => $integrationsConfig,
+    ]
+);
 
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE));
-$response = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$curlErr = curl_error($ch);
-curl_close($ch);
-
-if ($httpCode !== 200 || !$response) {
-    $errData = json_decode($response, true);
-    $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI API request failed');
+if (empty($aiRes['ok'])) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'OpenAI Error: ' . $errMsg]);
+    echo json_encode([
+        'success' => false,
+        'code' => $aiRes['code'] ?: 'ai_error',
+        'message' => 'AI Error: ' . ($aiRes['error'] ?: 'AI API request failed'),
+        'providerMessage' => $aiRes['error'] ?? '',
+    ]);
     exit;
 }
 
-$resData = json_decode($response, true);
-ccrm_ai_capture_usage($pdo, 'client_summary', $resData, $leadModel);
-$aiReply = trim($resData['choices'][0]['message']['content'] ?? '');
+$aiReply = trim((string)($aiRes['content'] ?? ''));
 
 if (empty($aiReply)) {
     http_response_code(500);
     echo json_encode([
         'success' => false,
-        'message' => 'Received empty response from OpenAI API.'
+        'code' => 'ai_empty',
+        'message' => 'Received empty response from AI provider.'
     ]);
     exit;
 }

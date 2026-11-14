@@ -16,6 +16,7 @@ import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import { formatBytes } from "../utils/formatBytes";
 import { nowLocalStamp, localeCodeFor, formatTimestampLocalized, todayLocalPlusDays } from "../utils/localTime";
 import { getTranslation } from "../utils/translations";
+import { hasAiConfigured } from "../utils/aiConfig";
 import { Markdown } from "../utils/markdown";
 import { CustomSelect } from "./ui/CustomSelect";
 import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
@@ -342,7 +343,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   };
 
   const isOpenAiKeySet = useMemo(() => {
-    return !!(integrationsConfig?.openAiKey && integrationsConfig.openAiKey.trim() !== "");
+    return hasAiConfigured(integrationsConfig);
   }, [integrationsConfig]);
 
   // Parse into an INERT document rather than assigning to a live element's

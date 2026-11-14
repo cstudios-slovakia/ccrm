@@ -15,6 +15,7 @@ import {
     resolveLinkedClient,
 } from "../utils/leadClient";
 import { isOutgoingMail, mergeLeadTimeline, withTimelineEvent } from "../utils/mailTimeline";
+import { hasAiConfigured, hasAudioTranscriptionSource } from "../utils/aiConfig";
 import { FiledMailBody, MailAccountBadge } from "./FiledMail";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { archiveLeadsWithUndo, deleteLeadsWithUndo } from "../utils/leadActions";
@@ -1671,10 +1672,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     };
 
     const renderCompactAudioRecorder = () => {
-        const isOpenAiConfigured = !!(
-            integrationsConfig?.openAiKey &&
-            integrationsConfig.openAiKey.trim() !== ""
-        );
+        const isOpenAiConfigured = hasAudioTranscriptionSource(integrationsConfig);
 
         return (
             <VoiceRecorderCard
@@ -2423,10 +2421,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         return `${detailsStr}#${timelineStr}#${tasksStr}`;
     }, [activeLead, activeLeadTasks]);
 
-    const isOpenAiConfigured = !!(
-        integrationsConfig?.openAiKey &&
-        integrationsConfig.openAiKey.trim() !== ""
-    );
+    const isOpenAiConfigured = hasAiConfigured(integrationsConfig);
 
     // Sync local summary state with activeLead's stored summary
     useEffect(() => {

@@ -15,11 +15,12 @@ if (!function_exists('ccrm_int_handle_ai_openai_key')) {
      */
     function ccrm_int_handle_ai_openai_key(\PDO $pdo, array $client, array $req): array {
         require_once __DIR__ . '/auth.php';
+        require_once __DIR__ . '/ai_gateway.php';
         $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'");
         $stmt->execute();
         $config = json_decode((string)$stmt->fetchColumn(), true);
         $config = is_array($config) ? ccrm_decrypt_config_secrets($config, ccrm_integration_secret_keys()) : [];
-        $key = trim((string)($config['openAiKey'] ?? ''));
+        $key = ccrm_ai_resolve_openai_key($pdo, $config);
         return [200, ['key' => $key !== '' && $key !== CCRM_SECRET_MASK ? $key : null]];
     }
 }

@@ -9,6 +9,7 @@ if (php_sapi_name() !== 'cli') {
     ccrm_require_admin();
 }
 require_once __DIR__ . '/agent_utils.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 // Prevent overlapping runs: each agent makes a ~15s OpenAI call, so two runs at
 // once would duplicate agent messages and double the API spend. A non-blocking
@@ -34,7 +35,7 @@ $configJson = $stmt->fetchColumn();
 $integrationsConfig = $configJson ? json_decode($configJson, true) : [];
 $integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys()) : [];
 
-$openAiKey = $integrationsConfig['openAiKey'] ?? '';
+$openAiKey = ccrm_ai_resolve_openai_key($pdo, $integrationsConfig);
 $vectorDb = $integrationsConfig['vectorDb'] ?? 'none';
 
 $ragPdo = get_rag_db_connection($integrationsConfig);

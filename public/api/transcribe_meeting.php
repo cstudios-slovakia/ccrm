@@ -5,6 +5,7 @@
  */
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -105,15 +106,8 @@ $stmt->execute();
 $configJson = $stmt->fetchColumn();
 $integrationsConfig = $configJson ? json_decode($configJson, true) : [];
 $integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys()) : [];
-$openAiKey = $integrationsConfig['openAiKey'] ?? '';
 
-if (empty($openAiKey)) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'OpenAI API Key is not configured.']);
-    exit;
-}
-
-// --- STEP 1: Whisper Transcription ---
+// --- STEP 1: Audio Transcription (OpenAI Whisper or Gemini connector) ---
 $mimeType = 'audio/webm';
 $ext = strtolower(pathinfo($localPath, PATHINFO_EXTENSION));
 if ($ext === 'mp3') $mimeType = 'audio/mp3';
@@ -122,49 +116,39 @@ elseif ($ext === 'm4a') $mimeType = 'audio/m4a';
 elseif ($ext === 'mp4') $mimeType = 'audio/mp4';
 elseif ($ext === 'ogg') $mimeType = 'audio/ogg';
 
-$cFile = new CURLFile($localPath, $mimeType, basename($localPath));
-
-$whisperPayload = [
-    'file' => $cFile,
-    'model' => 'gpt-transcribe'
-];
-
-$ch = curl_init('https://api.openai.com/v1/audio/transcriptions');
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_TIMEOUT, 90); // Audio files can take longer to process
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    'Authorization: Bearer ' . $openAiKey
+$tRes = ccrm_ai_transcribe_audio($pdo, $localPath, $mimeType, [
+    'filename' => basename($localPath),
+    'timeout' => 90,
+    'integrationsConfig' => $integrationsConfig,
 ]);
-curl_setopt($ch, CURLOPT_POSTFIELDS, $whisperPayload);
 
-$whisperResponse = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$curlErr = curl_error($ch);
-curl_close($ch);
-
-if ($httpCode !== 200 || !$whisperResponse) {
-    $errData = json_decode($whisperResponse, true);
-    $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI Whisper API request failed');
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Whisper Transcription Error: ' . $errMsg]);
+if (empty($tRes['ok'])) {
+    $status = (($tRes['code'] ?? '') === 'ai_key_missing') ? 400 : 500;
+    http_response_code($status);
+    echo json_encode([
+        'success' => false,
+        'code' => $tRes['code'] ?: 'ai_error',
+        'message' => 'Transcription Error: ' . ($tRes['error'] ?: 'Audio transcription failed'),
+    ]);
     exit;
 }
 
-$whisperJson = json_decode($whisperResponse, true);
-$transcription = $whisperJson['text'] ?? '';
-$audioSeconds = ccrm_ai_resolve_audio_seconds($whisperJson, $localPath, $data['durationSeconds'] ?? null);
-if ($audioSeconds > 0) {
-    ccrm_ai_record_usage($pdo, $transcribeOnly ? 'voice_note' : 'meeting_transcription', 'gpt-transcribe', 0, 0, 0, 0, 0, $audioSeconds);
-} else {
-    ccrm_ai_capture_usage($pdo, $transcribeOnly ? 'voice_note' : 'meeting_transcription', $whisperJson, 'gpt-transcribe');
+$transcription = trim((string)($tRes['text'] ?? ''));
+if (($tRes['provider'] ?? '') === 'openai') {
+    $whisperJson = is_array($tRes['raw'] ?? null) ? $tRes['raw'] : [];
+    $audioSeconds = ccrm_ai_resolve_audio_seconds($whisperJson, $localPath, $data['durationSeconds'] ?? null);
+    if ($audioSeconds > 0) {
+        ccrm_ai_record_usage($pdo, $transcribeOnly ? 'voice_note' : 'meeting_transcription', 'gpt-transcribe', 0, 0, 0, 0, 0, $audioSeconds);
+    } else {
+        ccrm_ai_capture_usage($pdo, $transcribeOnly ? 'voice_note' : 'meeting_transcription', $whisperJson, 'gpt-transcribe');
+    }
+} elseif (!empty($tRes['raw']) && is_array($tRes['raw'])) {
+    ccrm_ai_capture_usage($pdo, $transcribeOnly ? 'voice_note' : 'meeting_transcription', $tRes['raw'], (string)$tRes['model']);
 }
 
 if (empty($transcription)) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Whisper returned empty transcription text.']);
+    echo json_encode(['success' => false, 'code' => 'ai_empty', 'message' => 'Transcription returned empty text.']);
     exit;
 }
 
@@ -175,7 +159,7 @@ if ($transcribeOnly) {
     exit;
 }
 
-// --- STEP 2: GPT Synthesis ---
+// --- STEP 2: AI Synthesis ---
 $prompt = "You are an expert CRM assistant. You are given a raw audio transcription and the user's manual notes from a meeting.
 Your task is to compile a highly professional, detailed, and structured meeting minutes document in Markdown format, plus a concise summary, sentiment analysis, key topics, and action items.
 
@@ -198,48 +182,38 @@ Transcription:
 Manual Notes:
 " . $manualNotes;
 
-$transcribeModel = ccrm_ai_model();
-$gptPayload = [
-    'model' => $transcribeModel,
-    'messages' => [
-        [
-            'role' => 'user',
-            'content' => $prompt
-        ]
+$transcribeModel = ccrm_ai_model($integrationsConfig);
+$aiRes = ccrm_ai_chat_completion(
+    $pdo,
+    [
+        'model' => $transcribeModel,
+        'messages' => [
+            [
+                'role' => 'user',
+                'content' => $prompt
+            ]
+        ],
+        'temperature' => 0.4,
     ],
-];
-if (ccrm_ai_model_supports_temperature($transcribeModel)) {
-    $gptPayload['temperature'] = 0.4;
-}
+    [
+        'feature' => 'meeting_minutes',
+        'timeout' => 45,
+        'integrationsConfig' => $integrationsConfig,
+    ]
+);
 
-$ch = curl_init('https://api.openai.com/v1/chat/completions');
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    'Content-Type: application/json',
-    'Authorization: Bearer ' . $openAiKey
-]);
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($gptPayload, JSON_INVALID_UTF8_SUBSTITUTE));
-
-$gptResponse = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$curlErr = curl_error($ch);
-curl_close($ch);
-
-if ($httpCode !== 200 || !$gptResponse) {
-    $errData = json_decode($gptResponse, true);
-    $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI Chat Completion API request failed');
+if (empty($aiRes['ok'])) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'AI Synthesis Error: ' . $errMsg]);
+    echo json_encode([
+        'success' => false,
+        'code' => $aiRes['code'] ?: 'ai_error',
+        'message' => 'AI Synthesis Error: ' . ($aiRes['error'] ?: 'AI Chat Completion request failed'),
+        'providerMessage' => $aiRes['error'] ?? '',
+    ]);
     exit;
 }
 
-$gptJson = json_decode($gptResponse, true);
-ccrm_ai_capture_usage($pdo, 'meeting_minutes', $gptJson, $transcribeModel);
-$aiReply = $gptJson['choices'][0]['message']['content'] ?? '';
+$aiReply = (string)($aiRes['content'] ?? '');
 
 // Try parsing AI reply to verify it's valid JSON
 $cleanedReply = trim(preg_replace('/^```json|```$/i', '', trim($aiReply)));

@@ -3,6 +3,7 @@
 $configFile = dirname(__DIR__) . '/config.php';
 require_once $configFile;
 require_once __DIR__ . '/read_scope.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 function get_rag_db_connection($config) {
     $vectorDb = $config['vectorDb'] ?? 'none';
@@ -1483,6 +1484,34 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey, ?array $scope
 
     $userPrompt = "Run an autonomous executive check and generate your domain assessment, alert triggers, or recommendations now based on current CRM data.";
 
+    $payloadMessages = [
+        ['role' => 'system', 'content' => $systemPrompt],
+        ['role' => 'user', 'content' => $userPrompt]
+    ];
+
+    if ($pdo instanceof \PDO && ccrm_ai_is_configured($pdo)) {
+        @set_time_limit(150);
+        $agentModel = ccrm_ai_model();
+        $aiRes = ccrm_ai_chat_completion(
+            $pdo,
+            [
+                'model' => $agentModel,
+                'messages' => $payloadMessages,
+                'temperature' => 0.4,
+            ],
+            [
+                'feature' => 'executive_agent',
+                'timeout' => 120,
+            ]
+        );
+        if (empty($aiRes['ok'])) {
+            return "Autonomous Run failed: AI returned error (" . ($aiRes['code'] ?: 'ai_error') . "): " . ($aiRes['error'] ?: 'Unknown error');
+        }
+        $aiReply = (string)($aiRes['content'] ?? 'No response returned from model.');
+        $reply = restore_text($aiReply, $to_real);
+        return "[Autonomous Run " . date('Y-m-d H:i') . "]\n\n" . $reply;
+    }
+
     if (empty($openAiKey)) {
         require_once __DIR__ . '/marveen/marveen_lib.php';
         $callerId = (string)($scope['sessionUserId'] ?? 'default_user');
@@ -1494,13 +1523,8 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey, ?array $scope
                 return "[Autonomous Run " . date('Y-m-d H:i') . " · " . strtoupper((string)($mRes['provider'] ?? 'Marveen')) . "]\n\n" . $reply;
             }
         }
-        return "[SYSTEM] OpenAI API Key is not configured. Autonomous run skipped.";
+        return "[SYSTEM] AI credentials are not configured. Autonomous run skipped.";
     }
-
-    $payloadMessages = [
-        ['role' => 'system', 'content' => $systemPrompt],
-        ['role' => 'user', 'content' => $userPrompt]
-    ];
 
     $ch = curl_init('https://api.openai.com/v1/chat/completions');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);

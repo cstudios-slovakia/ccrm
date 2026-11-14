@@ -392,9 +392,44 @@ export interface MailboxList {
   environment?: ConnectorEnvironment;
 }
 
+export interface LlmSourceConnector {
+  id: string;
+  name: string;
+  connectorType: ConnectorType;
+  agentModel: string;
+  isActive: boolean;
+  hasCredentials: boolean;
+}
+
+export const getAgentConnectorTypeLabel = (
+  type: string,
+  lang: "en" | "sk" | "hu" = "en",
+): string => {
+  const t = (en: string, sk: string, hu: string) =>
+    lang === "sk" ? sk : lang === "hu" ? hu : en;
+  switch (type) {
+    case "openai_api":
+      return t("OpenAI API", "OpenAI API", "OpenAI API");
+    case "claude_api":
+      return t("Anthropic Claude API", "Anthropic Claude API", "Anthropic Claude API");
+    case "gemini_api":
+      return t("Google Gemini API", "Google Gemini API", "Google Gemini API");
+    case "claude":
+      return t("Claude Subscription", "Predplatné Claude", "Claude előfizetés");
+    case "antigravity":
+      return t("Google Antigravity / Gemini", "Google Antigravity / Gemini", "Google Antigravity / Gemini");
+    case "chatgpt":
+      return t("ChatGPT / Codex", "ChatGPT / Codex", "ChatGPT / Codex");
+    default:
+      return type || "LLM";
+  }
+};
+
 export const listMailboxes = () => call<MailboxList>("list");
 export const listMyConnectors = () =>
   call<{ connectors?: CompanyMailbox[]; mailboxes?: CompanyMailbox[] }>("my");
+export const listLlmSourceConnectors = () =>
+  call<{ connectors: LlmSourceConnector[] }>("llm_sources");
 export const saveMailbox = (draft: MailboxDraft) => call<{ mailbox: CompanyMailbox }>("save", mailboxPayload(draft));
 export const testMailbox = (draft: MailboxDraft) =>
   call<{ success: boolean; detail?: string }> ("test", mailboxPayload(draft));

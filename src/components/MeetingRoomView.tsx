@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Search, Calendar, User, Users, Clock, CheckSquare, Plus, ArrowLeft, Filter, Sparkles, AlertCircle, ChevronDown, X, Archive, Settings, Mic, Play, Pause, Square, Volume2, Trash2, Lock, UserPlus, MicOff } from "lucide-react";
 import type { Lead, UserProfile, Task } from "../types";
 import { cn } from "../utils/cn";
+import { hasAiConfigured, hasAudioTranscriptionSource } from "../utils/aiConfig";
 import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
@@ -21,13 +22,14 @@ import { runUndoable } from "../utils/undoable";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { useListFilter } from "../hooks/useListFilter";
 
-const parseNotesToBlocks = (notes: string): EditorBlock[] => {
-  if (notes.trim().startsWith("[")) {
+const parseNotesToBlocks = (notes?: string): EditorBlock[] => {
+  const safe = typeof notes === "string" ? notes : "";
+  if (safe.trim().startsWith("[")) {
     try {
-      return JSON.parse(notes);
+      return JSON.parse(safe);
     } catch (e) {}
   }
-  return notes.split("\n").map((line, idx) => ({
+  return safe.split("\n").map((line, idx) => ({
     id: `b-init-${idx}`,
     type: "paragraph",
     content: line.trim() || "<br>"
@@ -218,7 +220,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   const [newAiSummary, setNewAiSummary] = useState<any>(null);
   const [newAutomatedTasks, setNewAutomatedTasks] = useState<MeetingTask[]>([]);
 
-  const isOpenAiConfigured = !!(integrationsConfig?.openAiKey && integrationsConfig.openAiKey.trim() !== "");
+  const isOpenAiConfigured = hasAiConfigured(integrationsConfig);
   const transcriptionAvailable = viewState === "new" ? !!newTranscription : !!selectedMeeting?.transcription;
 
   // Visualizer height updater
@@ -917,7 +919,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
             </>
           )}
 
-          {recordingState === "stopped" && isOpenAiConfigured && !transcriptionAvailable && (
+          {recordingState === "stopped" && hasAudioTranscriptionSource(integrationsConfig) && !transcriptionAvailable && (
             <button
               type="button"
               disabled={isTranscribing || isUploadingAudio || !uploadedAudioFile}
@@ -1588,7 +1590,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         ) : (
           <button
             type="button"
-            disabled={isGeneratingDetailSummary || !integrationsConfig?.openAiKey || integrationsConfig.openAiKey.trim() === ""}
+            disabled={isGeneratingDetailSummary || !isOpenAiConfigured}
             onClick={() => handleGenerateSummary(meeting)}
             className="w-full py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:text-slate-400 text-white font-heading font-bold text-ui transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20"
           >
@@ -1607,13 +1609,13 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         )}
 
         {/* API Key Hint if not configured */}
-        {!summaryGenerated && (!integrationsConfig?.openAiKey || integrationsConfig.openAiKey.trim() === "") && (
+        {!summaryGenerated && !isOpenAiConfigured && (
           <div className="p-4 bg-amber-50/50 border border-amber-200/50 rounded-2xl space-y-2 text-center">
             <p className="text-ui text-amber-900 font-extrabold leading-relaxed text-micro">
               {t("AI Assistant Inactive", "AI asistent neaktívny", "AI asszisztens inaktív")}
             </p>
             <p className="text-micro text-amber-700 leading-relaxed font-semibold">
-              {t("Please configure your secret OpenAI API Key in settings to enable summary generation, topic tagging, and automated action plans.", "Nastavte si svoj tajný OpenAI API kľúč v nastaveniach, aby ste umožnili generovanie zhrnutí, označovanie tém a automatizované akčné plány.", "Állítsa be a titkos OpenAI API-kulcsát a beállításokban az összefoglalók generálásának, a témacímkézésnek és az automatizált cselekvési terveknek az engedélyezéséhez.")}
+              {t("Please configure an API key or select an LLM connector in settings to enable summary generation, topic tagging, and automated action plans.", "Nastavte si API kľúč alebo vyberte LLM konektor v nastaveniach, aby ste umožnili generovanie zhrnutí, označovanie tém a automatizované akčné plány.", "Állítson be egy API kulcsot vagy válasszon LLM csatlakozót a beállításokban az összefoglalók generálásának, a témacímkézésnek és az automatizált cselekvési terveknek az engedélyezéséhez.")}
             </p>
           </div>
         )}

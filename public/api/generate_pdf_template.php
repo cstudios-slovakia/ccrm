@@ -200,7 +200,10 @@ try {
     tpl_error(500, 'db_error', 'Database connection failed.');
 }
 
-// OpenAI API key from the integrations config.
+// Keep ai_gateway require below CCRM_PDF_TEMPLATE_LIB guard so CLI unit tests run without DB/runtime helpers.
+require_once __DIR__ . '/ai_gateway.php';
+
+// Integrations config from DB (connector or fallback OpenAI API key).
 $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'");
 $stmt->execute();
 $configJson = $stmt->fetchColumn();
@@ -208,9 +211,8 @@ $integrationsConfig = $configJson ? json_decode($configJson, true) : [];
 if (function_exists('ccrm_decrypt_config_secrets') && function_exists('ccrm_integration_secret_keys')) {
     $integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys()) : [];
 }
-$openAiKey = is_array($integrationsConfig) ? trim((string)($integrationsConfig['openAiKey'] ?? '')) : '';
-if ($openAiKey === '') {
-    tpl_error(422, 'ai_key_missing', 'The OpenAI API key is not configured (Settings → AI integration).');
+if (!ccrm_ai_is_configured($pdo, is_array($integrationsConfig) ? $integrationsConfig : null)) {
+    tpl_error(422, 'ai_key_missing', 'AI provider is not configured (Settings → AI integration).');
 }
 
 // The sample itself, read from the upload — never from a client-supplied path.
@@ -240,44 +242,30 @@ if (ccrm_ai_model_supports_temperature($model)) {
 }
 unset($pdfBytes);
 
-$ch = curl_init('https://api.openai.com/v1/chat/completions');
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_POST, true);
-// Reading page images takes longer than a text-only call.
-curl_setopt($ch, CURLOPT_TIMEOUT, 90);
-curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    'Content-Type: application/json',
-    'Authorization: Bearer ' . $openAiKey
-]);
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE));
+$aiRes = ccrm_ai_chat_completion(
+    $pdo,
+    $payload,
+    [
+        'feature' => 'offer_template',
+        'timeout' => 90,
+        'integrationsConfig' => is_array($integrationsConfig) ? $integrationsConfig : null,
+    ]
+);
 
-$res = curl_exec($ch);
-$httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$curlError = curl_error($ch);
-curl_close($ch);
-
-if ($res === false || $httpCode !== 200) {
-    $errData = is_string($res) ? json_decode($res, true) : null;
-    $providerText = $errData['error']['message'] ?? ($curlError !== '' ? $curlError : 'no response');
+if (empty($aiRes['ok'])) {
+    $providerText = (string)($aiRes['error'] ?: 'no response');
+    $httpCode = (int)($aiRes['httpCode'] ?? 0);
     $providerMessage = mb_substr(($httpCode > 0 ? "HTTP {$httpCode}: " : '') . $providerText, 0, 400);
-    // 401/403: a key exists but OpenAI rejected it. 429: quota or rate limit.
-    $code = ($httpCode === 401 || $httpCode === 403) ? 'ai_key_invalid'
-          : (($httpCode === 429) ? 'ai_rate_limited' : 'ai_error');
-    // The key is never part of what is logged or returned.
-    error_log('[generate_pdf_template] OpenAI call failed (model ' . $model . '): ' . $providerMessage);
-    tpl_error(502, $code, 'OpenAI Error: ' . $providerMessage, ['providerMessage' => $providerMessage]);
+    $code = (string)($aiRes['code'] ?: 'ai_error');
+    error_log('[generate_pdf_template] AI call failed (model ' . ($aiRes['model'] ?: $model) . '): ' . $providerMessage);
+    tpl_error(502, $code, 'AI Error: ' . $providerMessage, ['providerMessage' => $providerMessage]);
 }
 
-$parsedAi = json_decode((string)$res, true);
-ccrm_ai_capture_usage($pdo, 'offer_template', $parsedAi, $model);
-$aiContent = trim((string)($parsedAi['choices'][0]['message']['content'] ?? ''));
+$aiContent = trim((string)($aiRes['content'] ?? ''));
 $blueprint = $aiContent !== '' ? json_decode($aiContent, true) : null;
 if (!is_array($blueprint) || $blueprint === []) {
-    error_log('[generate_pdf_template] OpenAI returned no usable JSON (model ' . $model . ')');
-    tpl_error(502, 'ai_empty', 'OpenAI returned no usable template.');
+    error_log('[generate_pdf_template] AI returned no usable JSON (model ' . ($aiRes['model'] ?: $model) . ')');
+    tpl_error(502, 'ai_empty', 'AI provider returned no usable template.');
 }
 
 $template = ccrm_pdf_tpl_build($blueprint, $pdfName, $pdfUrl);
