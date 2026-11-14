@@ -7,6 +7,7 @@ import {
   ClipboardList,
   Clock,
   Download,
+  Eye,
   FileText,
   HeartPulse,
   Lock,
@@ -34,6 +35,7 @@ import {
   type AgencyWorker,
   type AgencyWorkerChecklistItem,
   type AgencyWorkerDetailPayload,
+  type AgencyWorkerFile,
   type AgencyWorkplace,
 } from "../../types/agency";
 import {
@@ -149,6 +151,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
 
   // Upload form state
   const [uploadCategory, setUploadCategory] = useState<AgencyFileCategory>("other");
+  const [previewFile, setPreviewFile] = useState<AgencyWorkerFile | null>(null);
 
   const syncDraftsFromWorker = (w: AgencyWorker) => {
     setProfileDraft((w.profile || {}) as AgencyProfileData);
@@ -1025,20 +1028,70 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                   <div className="space-y-2.5">
                     {checklist.map((item, idx) => {
                       const expState = getComplianceExpiryState(item.expiresAt);
+                      const tplItem = settings.checklistItems.find((tpl) => tpl.key === item.itemKey);
+                      const isRequired = Boolean(tplItem?.required);
+                      const attachedFile =
+                        (item.fileId ? files.find((f) => f.id === item.fileId) : undefined) ||
+                        files.find((f) => f.checklistItemId === item.id);
+                      const hasDoc = Boolean(attachedFile) || item.status === "submitted" || item.status === "verified";
+                      const isExpiredState = item.status === "expired" || expState === "expired";
+
+                      const rowClasses = isExpiredState
+                        ? "bg-rose-50/80 border-rose-300"
+                        : hasDoc
+                          ? "bg-emerald-50/80 border-emerald-300"
+                          : isRequired
+                            ? "bg-rose-50/80 border-rose-300"
+                            : "bg-amber-50/80 border-amber-300";
+
                       return (
                         <div
                           key={item.id}
-                          className="p-3 rounded-xl bg-white border border-slate-200 space-y-2"
+                          data-testid={`agency-checklist-row-${item.itemKey}`}
+                          className={`p-3 rounded-xl border space-y-2 transition-colors ${rowClasses}`}
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="text-ui font-bold text-slate-900">{item.label}</div>
+                            <div className="flex flex-wrap items-center gap-2 min-w-0">
+                              <span className="text-ui font-bold text-slate-900">
+                                {tplItem ? resolveLocalizedLabel(tplItem.label, lang) : item.label}
+                              </span>
+                              {isRequired ? (
+                                <span
+                                  className={`text-micro font-bold px-2 py-0.5 rounded-full border ${
+                                    hasDoc && !isExpiredState
+                                      ? "bg-emerald-100/80 text-emerald-800 border-emerald-300"
+                                      : "bg-rose-100/80 text-rose-800 border-rose-300"
+                                  }`}
+                                >
+                                  {t("Required", "Povinné", "Kötelező")}
+                                </span>
+                              ) : (
+                                <span
+                                  className={`text-micro font-bold px-2 py-0.5 rounded-full border ${
+                                    hasDoc && !isExpiredState
+                                      ? "bg-emerald-100/80 text-emerald-800 border-emerald-300"
+                                      : "bg-amber-100/80 text-amber-800 border-amber-300"
+                                  }`}
+                                >
+                                  {t("Optional", "Nepovinné", "Opcionális")}
+                                </span>
+                              )}
+                            </div>
                             <select
                               disabled={!rights.edit}
                               value={item.status}
                               onChange={(e) =>
                                 handleChecklistChange(idx, { status: e.target.value as AgencyChecklistStatus })
                               }
-                              className="px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-caption font-semibold"
+                              className={`px-2.5 py-1 rounded-lg border text-caption font-semibold ${
+                                isExpiredState
+                                  ? "bg-white/90 border-rose-300 text-rose-800"
+                                  : hasDoc
+                                    ? "bg-white/90 border-emerald-300 text-emerald-800"
+                                    : isRequired
+                                      ? "bg-white/90 border-rose-300 text-rose-800"
+                                      : "bg-white/90 border-amber-300 text-amber-800"
+                              }`}
                             >
                               <option value="missing">{t("Missing", "Chýba", "Hiányzik")}</option>
                               <option value="submitted">{t("Submitted", "Odovzdané", "Leadva")}</option>
@@ -1047,7 +1100,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                             </select>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <label className="text-micro text-slate-500 flex items-center gap-1">
+                            <label className="text-micro text-slate-600 flex items-center gap-1">
                               <Calendar className="size-3" />
                               {t("Expires:", "Platnosť do:", "Lejárat:")}
                             </label>
@@ -1058,14 +1111,14 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                               onChange={(e) =>
                                 handleChecklistChange(idx, { expiresAt: e.target.value || null })
                               }
-                              className="px-2 py-1 rounded-lg border border-slate-200 text-caption"
+                              className="px-2 py-1 rounded-lg bg-white/90 border border-slate-200 text-caption"
                             />
                             {expState !== "ok" && (
                               <span
                                 className={`text-micro font-bold px-2 py-0.5 rounded-full ${
                                   expState === "expired"
-                                    ? "bg-rose-50 text-rose-700"
-                                    : "bg-amber-50 text-amber-700"
+                                    ? "bg-rose-100 text-rose-800"
+                                    : "bg-amber-100 text-amber-800"
                                 }`}
                               >
                                 {expState === "expired"
@@ -1073,16 +1126,42 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                                   : t("Expiring soon", "Čoskoro expiruje", "Hamarosan lejár")}
                               </span>
                             )}
+                            {attachedFile && (
+                              <button
+                                type="button"
+                                onClick={() => setPreviewFile(attachedFile)}
+                                data-testid={`agency-checklist-file-${item.itemKey}`}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/95 hover:bg-white border border-emerald-300 text-emerald-800 text-caption font-semibold shadow-2xs cursor-pointer max-w-60"
+                                title={attachedFile.fileName}
+                              >
+                                <FileText className="size-3.5 shrink-0 text-emerald-600" />
+                                <span className="truncate underline decoration-emerald-400 underline-offset-2">
+                                  {attachedFile.fileName}
+                                </span>
+                              </button>
+                            )}
                             {rights.edit && (
-                              <label className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-micro font-semibold text-slate-700 cursor-pointer">
+                              <label className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/90 hover:bg-white border border-slate-200/90 text-micro font-semibold text-slate-700 cursor-pointer shadow-2xs">
                                 <Upload className="size-3" />
-                                {t("Attach", "Priložiť", "Csatolás")}
+                                {attachedFile
+                                  ? t("Replace", "Nahradiť", "Csere")
+                                  : t("Attach", "Priložiť", "Csatolás")}
                                 <input
                                   type="file"
                                   className="hidden"
                                   onChange={(e) => {
                                     const file = e.target.files?.[0];
-                                    handleFileUpload(file, "other", item.id);
+                                    const inferredCat: AgencyFileCategory =
+                                      item.itemKey === "passport"
+                                        ? "passport"
+                                        : item.itemKey === "permit"
+                                          ? "permit"
+                                          : item.itemKey === "medical"
+                                            ? "medical"
+                                            : item.itemKey === "contract"
+                                              ? "contract"
+                                              : "other";
+                                    handleFileUpload(file, inferredCat, item.id);
                                     e.target.value = "";
                                   }}
                                 />
@@ -1150,19 +1229,34 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                           key={f.id}
                           className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white border border-slate-200"
                         >
-                          <div className="min-w-0">
-                            <div className="text-ui font-semibold text-slate-800 truncate">{f.fileName}</div>
+                          <button
+                            type="button"
+                            onClick={() => setPreviewFile(f)}
+                            className="min-w-0 text-left hover:text-teal-700 cursor-pointer flex-1"
+                          >
+                            <div className="text-ui font-semibold text-slate-800 hover:text-teal-700 underline decoration-slate-300 underline-offset-2 truncate">
+                              {f.fileName}
+                            </div>
                             <div className="text-micro text-slate-400 uppercase">
                               {f.category} · {Math.round(f.sizeBytes / 1024)} KB
                             </div>
-                          </div>
+                          </button>
                           <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setPreviewFile(f)}
+                              className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer"
+                              title={t("Preview", "Náhľad", "Előnézet")}
+                            >
+                              <Eye className="size-4" />
+                            </button>
                             <a
                               href={agencyFileUrl(f.id, true)}
+                              download={f.fileName}
                               target="_blank"
                               rel="noreferrer"
                               className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100"
-                              title={t("Download", "Stiahnuť", "Letöltés")}
+                              title={t("Download full resolution", "Stiahnuť v plnom rozlíšení", "Letöltés teljes felbontásban")}
                             >
                               <Download className="size-4" />
                             </a>
@@ -1170,6 +1264,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                               <button
                                 type="button"
                                 onClick={async () => {
+                                  if (previewFile?.id === f.id) setPreviewFile(null);
                                   await deleteAgencyFile(f.id);
                                   await loadDetail();
                                 }}
@@ -1229,6 +1324,85 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
           </div>
         </div>
       </div>
+
+      {previewFile && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs"
+          onClick={() => setPreviewFile(null)}
+          data-testid="agency-file-preview-modal"
+        >
+          <div
+            className="w-full max-w-4xl max-h-[90vh] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-b border-slate-200 bg-slate-50">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <FileText className="size-5 text-teal-600 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-body font-bold text-slate-900 truncate">{previewFile.fileName}</div>
+                  <div className="text-micro text-slate-500 uppercase">
+                    {previewFile.category} · {Math.max(1, Math.round(previewFile.sizeBytes / 1024))} KB
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <a
+                  href={agencyFileUrl(previewFile.id, true)}
+                  download={previewFile.fileName}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-testid="agency-file-preview-download"
+                  className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-ui font-semibold inline-flex items-center gap-1.5"
+                >
+                  <Download className="size-4" />
+                  {t(
+                    "Download Full Resolution",
+                    "Stiahnuť v plnom rozlíšení",
+                    "Letöltés teljes felbontásban"
+                  )}
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewFile(null)}
+                  className="p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-200/70 cursor-pointer"
+                  aria-label="Close"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-auto bg-slate-900/5 p-4 flex items-center justify-center min-h-80">
+              {previewFile.mimeType.startsWith("image/") ||
+              /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(previewFile.fileName) ? (
+                <img
+                  src={agencyFileUrl(previewFile.id, false)}
+                  alt={previewFile.fileName}
+                  className="max-w-full max-h-[74vh] object-contain rounded-xl shadow-md bg-white"
+                />
+              ) : previewFile.mimeType === "application/pdf" || /\.pdf$/i.test(previewFile.fileName) ? (
+                <iframe
+                  src={agencyFileUrl(previewFile.id, false)}
+                  title={previewFile.fileName}
+                  className="w-full h-[74vh] rounded-xl border border-slate-200 bg-white"
+                />
+              ) : (
+                <div className="p-8 text-center space-y-3 bg-white rounded-2xl border border-slate-200 max-w-md">
+                  <FileText className="size-10 text-teal-600 mx-auto" />
+                  <div className="text-body font-bold text-slate-900">{previewFile.fileName}</div>
+                  <p className="text-ui text-slate-500">
+                    {t(
+                      "Direct inline preview is not available for this file format. Use the button above to download it in full resolution.",
+                      "Priamy náhľad pre tento formát nie je dostupný. Použite tlačidlo vyššie na stiahnutie v plnom rozlíšení.",
+                      "Ehhez a fájlformátumhoz nem érhető el közvetlen előnézet. A fenti gombbal letöltheti teljes felbontásban."
+                    )}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

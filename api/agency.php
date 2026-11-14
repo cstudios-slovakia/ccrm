@@ -109,12 +109,14 @@ try {
 
             $checklists = [];
             foreach ($pdo->query("SELECT * FROM `agency_worker_checklists` ORDER BY `sort_order` ASC, `id` ASC")->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $stVal = (string)($r['status'] ?? 'missing');
+                if ($stVal === 'pending') $stVal = 'missing';
                 $checklists[] = [
                     'id' => (string)$r['id'],
                     'workerId' => (string)$r['worker_id'],
                     'itemKey' => (string)$r['item_key'],
                     'label' => (string)$r['label'],
-                    'status' => (string)$r['status'],
+                    'status' => $stVal,
                     'expiresAt' => $r['expires_at'] ? (string)$r['expires_at'] : null,
                     'note' => (string)($r['note'] ?? ''),
                     'fileId' => $r['file_id'] ? (string)$r['file_id'] : null,
@@ -188,17 +190,21 @@ try {
 
             $chkStmt = $pdo->prepare("SELECT * FROM `agency_worker_checklists` WHERE `worker_id` = ? ORDER BY `sort_order` ASC, `id` ASC");
             $chkStmt->execute([$workerId]);
-            $checklist = array_map(static fn ($r) => [
-                'id' => (string)$r['id'],
-                'workerId' => (string)$r['worker_id'],
-                'itemKey' => (string)$r['item_key'],
-                'label' => (string)$r['label'],
-                'status' => (string)$r['status'],
-                'expiresAt' => $r['expires_at'] ? (string)$r['expires_at'] : null,
-                'note' => (string)($r['note'] ?? ''),
-                'fileId' => $r['file_id'] ? (string)$r['file_id'] : null,
-                'sortOrder' => intval($r['sort_order'] ?? 0),
-            ], $chkStmt->fetchAll(PDO::FETCH_ASSOC));
+            $checklist = array_map(static function ($r) {
+                $stVal = (string)($r['status'] ?? 'missing');
+                if ($stVal === 'pending') $stVal = 'missing';
+                return [
+                    'id' => (string)$r['id'],
+                    'workerId' => (string)$r['worker_id'],
+                    'itemKey' => (string)$r['item_key'],
+                    'label' => (string)$r['label'],
+                    'status' => $stVal,
+                    'expiresAt' => $r['expires_at'] ? (string)$r['expires_at'] : null,
+                    'note' => (string)($r['note'] ?? ''),
+                    'fileId' => $r['file_id'] ? (string)$r['file_id'] : null,
+                    'sortOrder' => intval($r['sort_order'] ?? 0),
+                ];
+            }, $chkStmt->fetchAll(PDO::FETCH_ASSOC));
 
             $fStmt = $pdo->prepare("SELECT * FROM `agency_worker_files` WHERE `worker_id` = ? ORDER BY `created_at` DESC");
             $fStmt->execute([$workerId]);
@@ -454,9 +460,11 @@ try {
             foreach ($items as $it) {
                 if (!is_array($it)) continue;
                 $cid = trim((string)($it['id'] ?? '')) ?: ccrm_agency_uid('agchk');
-                $status = in_array($it['status'] ?? 'pending', ['pending', 'submitted', 'verified', 'expired'], true)
-                    ? (string)$it['status']
-                    : 'pending';
+                $rawStatus = (string)($it['status'] ?? 'missing');
+                if ($rawStatus === 'pending') $rawStatus = 'missing';
+                $status = in_array($rawStatus, ['missing', 'submitted', 'verified', 'expired'], true)
+                    ? $rawStatus
+                    : 'missing';
                 $exp = !empty($it['expiresAt']) ? substr((string)$it['expiresAt'], 0, 10) : null;
                 $ins->execute([
                     $cid,
@@ -474,17 +482,21 @@ try {
             ccrm_agency_log_timeline($pdo, $workerId, 'compliance', 'Checklist updated', '', [], null, $userName);
             $chkStmt = $pdo->prepare("SELECT * FROM `agency_worker_checklists` WHERE `worker_id` = ? ORDER BY `sort_order` ASC, `id` ASC");
             $chkStmt->execute([$workerId]);
-            $rows = array_map(static fn ($r) => [
-                'id' => (string)$r['id'],
-                'workerId' => (string)$r['worker_id'],
-                'itemKey' => (string)$r['item_key'],
-                'label' => (string)$r['label'],
-                'status' => (string)$r['status'],
-                'expiresAt' => $r['expires_at'] ? (string)$r['expires_at'] : null,
-                'note' => (string)($r['note'] ?? ''),
-                'fileId' => $r['file_id'] ? (string)$r['file_id'] : null,
-                'sortOrder' => intval($r['sort_order'] ?? 0),
-            ], $chkStmt->fetchAll(PDO::FETCH_ASSOC));
+            $rows = array_map(static function ($r) {
+                $stVal = (string)($r['status'] ?? 'missing');
+                if ($stVal === 'pending') $stVal = 'missing';
+                return [
+                    'id' => (string)$r['id'],
+                    'workerId' => (string)$r['worker_id'],
+                    'itemKey' => (string)$r['item_key'],
+                    'label' => (string)$r['label'],
+                    'status' => $stVal,
+                    'expiresAt' => $r['expires_at'] ? (string)$r['expires_at'] : null,
+                    'note' => (string)($r['note'] ?? ''),
+                    'fileId' => $r['file_id'] ? (string)$r['file_id'] : null,
+                    'sortOrder' => intval($r['sort_order'] ?? 0),
+                ];
+            }, $chkStmt->fetchAll(PDO::FETCH_ASSOC));
             ccrm_agency_json(['success' => true, 'checklist' => $rows]);
             break;
         }

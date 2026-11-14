@@ -152,7 +152,7 @@ if (php_sapi_name() !== 'cli') {
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 )->execute([$fileId, $workerId, $category, $checklistItemId, $fileName, $mimeType, $sizeBytes, $storageName, $uploader]);
                 if ($checklistItemId !== null) {
-                    $pdo->prepare("UPDATE `agency_worker_checklists` SET `file_id` = ?, `status` = CASE WHEN `status` = 'pending' THEN 'submitted' ELSE `status` END WHERE `id` = ?")
+                    $pdo->prepare("UPDATE `agency_worker_checklists` SET `file_id` = ?, `status` = CASE WHEN `status` IN ('pending', 'missing') THEN 'submitted' ELSE `status` END WHERE `id` = ?")
                         ->execute([$fileId, $checklistItemId]);
                 }
                 ccrm_agency_log_timeline($pdo, $workerId, 'compliance', "Document uploaded: {$fileName}", '', ['fileId' => $fileId, 'category' => $category], null, $uploader);
