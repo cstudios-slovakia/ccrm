@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { AlertTriangle, Building2, CalendarDays, CheckCircle2, MapPin, Search, UserCheck } from "lucide-react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
+import { AlertTriangle, Brain, Building2, CalendarDays, CheckCircle2, MapPin, RefreshCw, Search, UserCheck } from "lucide-react";
 import type { Lead } from "../../types";
 import type { Language } from "../../utils/translations";
 import type {
@@ -11,6 +11,8 @@ import type {
 import { summarizeWorkerCompliance } from "../../utils/agencyCalculations";
 import type { AgencyRights } from "../../utils/agencyRights";
 import { formatDateLocalized } from "../../utils/localTime";
+import { hasAiConfigured } from "../../utils/aiConfig";
+import { fetchWithTimeout } from "../../utils/fetchWithTimeout";
 
 interface RentedEmployeesViewProps {
   lang: Language;
@@ -20,6 +22,7 @@ interface RentedEmployeesViewProps {
   workplaces: AgencyWorkplace[];
   checklists: AgencyWorkerChecklistItem[];
   clients: Lead[];
+  integrationsConfig?: any;
   onOpenWorker: (workerId: string) => void;
   onOpenSchedule: () => void;
 }
@@ -32,6 +35,7 @@ export const RentedEmployeesView: React.FC<RentedEmployeesViewProps> = ({
   workplaces,
   checklists,
   clients,
+  integrationsConfig,
   onOpenWorker,
   onOpenSchedule,
 }) => {
@@ -121,8 +125,241 @@ export const RentedEmployeesView: React.FC<RentedEmployeesViewProps> = ({
       });
   }, [workers, activePlacementByWorker, showInactive, companyFilter, search, clientMap]);
 
+  // Fleet-wide deterministic compliance & placement problems for Rented Employees
+  const rentedFleetProblems = useMemo(() => {
+    const probs: string[] = [];
+    const expiredWorkers: string[] = [];
+    const missingWorkers: string[] = [];
+    const expiringWorkers: string[] = [];
+    const unplacedWorkers: string[] = [];
+
+    for (const { worker, placement, effectiveCompanyId } of rows) {
+      const sum = summarizeWorkerCompliance(complianceByWorker.get(worker.id) || []);
+      if (sum.expired > 0) expiredWorkers.push(worker.fullName);
+      else if (sum.missingRequired > 0 || sum.missing > 0) missingWorkers.push(worker.fullName);
+      if (sum.expiringSoon > 0) expiringWorkers.push(worker.fullName);
+      if (!effectiveCompanyId && !placement) unplacedWorkers.push(worker.fullName);
+    }
+
+    if (expiredWorkers.length > 0) {
+      probs.push(
+        t(
+          `${expiredWorkers.length} rented employee(s) with expired documents (${expiredWorkers.slice(0, 3).join(", ")}${expiredWorkers.length > 3 ? "…" : ""})`,
+          `${expiredWorkers.length} prenajatý zamestnanec s expirovanými dokladmi (${expiredWorkers.slice(0, 3).join(", ")}${expiredWorkers.length > 3 ? "…" : ""})`,
+          `${expiredWorkers.length} kölcsönzött dolgozó lejárt dokumentummal (${expiredWorkers.slice(0, 3).join(", ")}${expiredWorkers.length > 3 ? "…" : ""})`
+        )
+      );
+    }
+    if (missingWorkers.length > 0) {
+      probs.push(
+        t(
+          `${missingWorkers.length} rented employee(s) missing required documents (${missingWorkers.slice(0, 3).join(", ")}${missingWorkers.length > 3 ? "…" : ""})`,
+          `${missingWorkers.length} prenajatý zamestnanec s chýbajúcimi dokladmi (${missingWorkers.slice(0, 3).join(", ")}${missingWorkers.length > 3 ? "…" : ""})`,
+          `${missingWorkers.length} kölcsönzött dolgozó hiányzó dokumentummal (${missingWorkers.slice(0, 3).join(", ")}${missingWorkers.length > 3 ? "…" : ""})`
+        )
+      );
+    }
+    if (expiringWorkers.length > 0) {
+      probs.push(
+        t(
+          `${expiringWorkers.length} rented employee(s) with documents expiring within 30 days`,
+          `${expiringWorkers.length} prenajatý zamestnanec s dokladmi exspirujúcimi do 30 dní`,
+          `${expiringWorkers.length} kölcsönzött dolgozó 30 napon belül lejáró dokumentummal`
+        )
+      );
+    }
+    if (unplacedWorkers.length > 0) {
+      probs.push(
+        t(
+          `${unplacedWorkers.length} rented employee(s) without an assigned host company`,
+          `${unplacedWorkers.length} prenajatý zamestnanec bez pridelenej klientskej firmy`,
+          `${unplacedWorkers.length} kölcsönzött dolgozó hozzárendelt fogadó cég nélkül`
+        )
+      );
+    }
+    return probs;
+  }, [rows, complianceByWorker, lang]);
+
+  const rentedFleetFp = useMemo(() => {
+    return `${rows.length}|${rentedFleetProblems.join(";")}|${lang}`;
+  }, [rows.length, rentedFleetProblems, lang]);
+
+  const [fleetAiSummary, setFleetAiSummary] = useState<string>("");
+  const [fleetAiProblems, setFleetAiProblems] = useState<string[]>([]);
+  const [isGeneratingFleetSummary, setIsGeneratingFleetSummary] = useState<boolean>(false);
+
+  const generateFleetSummary = useCallback(
+    async (force = false) => {
+      if (rows.length === 0) return;
+      const storageKey = "ccrm_ai_sum_agw_fleet";
+      if (!force && typeof window !== "undefined") {
+        try {
+          const raw = localStorage.getItem(storageKey);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && parsed.fp === rentedFleetFp && parsed.summary) {
+              setFleetAiSummary(parsed.summary);
+              setFleetAiProblems(Array.isArray(parsed.problems) ? parsed.problems : []);
+              return;
+            }
+          }
+        } catch {}
+      }
+      if (!hasAiConfigured(integrationsConfig)) return;
+      setIsGeneratingFleetSummary(true);
+      try {
+        const res = await fetchWithTimeout(
+          "/api/summarize_client_lead.php",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: "Rented Employees Roster",
+              type: "rented employees workforce",
+              systemLanguage: lang,
+              tasks: [],
+              events: [],
+              priceOffers: [],
+              otherData: {
+                totalRentedEmployees: rows.length,
+                hostCompaniesCount: companyOptions.length,
+                detectedProblems: rentedFleetProblems,
+                workersOverview: rows.slice(0, 15).map(({ worker, placement, effectiveCompanyId }) => {
+                  const sum = summarizeWorkerCompliance(complianceByWorker.get(worker.id) || []);
+                  return {
+                    name: worker.fullName,
+                    company: effectiveCompanyId ? clientMap.get(effectiveCompanyId)?.name || effectiveCompanyId : "None",
+                    role: placement?.jobRole || resolveWorkerJobTitle(worker),
+                    expiredDocs: sum.expired,
+                    missingDocs: sum.missing,
+                    expiringSoonDocs: sum.expiringSoon,
+                  };
+                }),
+              },
+            }),
+          },
+          25_000
+        );
+        const data = await res.json();
+        if (data.success && data.summary) {
+          const probs = Array.isArray(data.problems) ? data.problems.filter(Boolean) : [];
+          setFleetAiSummary(data.summary);
+          setFleetAiProblems(probs);
+          try {
+            localStorage.setItem(storageKey, JSON.stringify({ fp: rentedFleetFp, summary: data.summary, problems: probs }));
+          } catch {}
+        }
+      } catch (err) {
+        console.error("Failed to generate rented employees fleet AI summary:", err);
+      } finally {
+        setIsGeneratingFleetSummary(false);
+      }
+    },
+    [rows, companyOptions.length, rentedFleetProblems, rentedFleetFp, complianceByWorker, clientMap, integrationsConfig, lang]
+  );
+
+  useEffect(() => {
+    generateFleetSummary(false);
+  }, [generateFleetSummary]);
+
+  const combinedFleetProblems = useMemo(() => {
+    const merged = [...fleetAiProblems];
+    for (const p of rentedFleetProblems) {
+      if (!merged.some((e) => e.toLowerCase().includes(p.slice(0, 18).toLowerCase()))) {
+        merged.push(p);
+      }
+    }
+    return merged;
+  }, [fleetAiProblems, rentedFleetProblems]);
+
   return (
     <div className="space-y-4" data-testid="agency-rented-workers-view">
+      {/* AI Rented Workforce Summary & Problem Highlighting Banner */}
+      {rows.length > 0 && (
+        <div
+          data-testid="agency-rented-list-ai-summary"
+          className={`rounded-2xl border px-4 py-3 shadow-xs transition-colors ${
+            combinedFleetProblems.length > 0
+              ? "bg-rose-50/75 border-rose-200/80"
+              : "bg-[#f3f6ea]/70 border-[#5c6f28]/30"
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Brain
+                className={`size-4 shrink-0 ${
+                  combinedFleetProblems.length > 0 ? "text-rose-600" : "text-[#4a5a20]"
+                } ${isGeneratingFleetSummary ? "animate-pulse" : ""}`}
+              />
+              <span
+                className={`text-micro font-bold uppercase tracking-wider ${
+                  combinedFleetProblems.length > 0 ? "text-rose-700" : "text-[#4a5a20]"
+                }`}
+              >
+                {t(
+                  "AI Rented Workforce Summary & Problem Highlights",
+                  "AI Zhrnutie prenajatých zamestnancov a zistené problémy",
+                  "AI Kölcsönzött Munkaerő Összefoglaló és Problémák"
+                )}
+              </span>
+              {combinedFleetProblems.length > 0 && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-rose-100 text-rose-700 border border-rose-200">
+                  ⚠️ {combinedFleetProblems.length} {t("problem(s)", "problém(y)", "probléma")}
+                </span>
+              )}
+            </div>
+            {hasAiConfigured(integrationsConfig) && (
+              <button
+                type="button"
+                onClick={() => generateFleetSummary(true)}
+                disabled={isGeneratingFleetSummary}
+                className="p-1 rounded-lg hover:bg-white/80 text-slate-500 hover:text-slate-700 transition-colors disabled:opacity-50"
+                title={t("Regenerate AI Summary", "Pregenerovať AI zhrnutie", "AI összefoglaló újragenerálása")}
+              >
+                <RefreshCw className={`size-3.5 ${isGeneratingFleetSummary ? "animate-spin text-[#4a5a20]" : ""}`} />
+              </button>
+            )}
+          </div>
+          {combinedFleetProblems.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {combinedFleetProblems.map((prob, idx) => (
+                <span
+                  key={idx}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-white/90 border border-rose-200 text-rose-800 text-caption font-semibold"
+                >
+                  <span className="size-1.5 rounded-full bg-rose-500 shrink-0" />
+                  {prob}
+                </span>
+              ))}
+            </div>
+          )}
+          <p className="mt-1.5 text-caption text-slate-700 leading-relaxed">
+            {isGeneratingFleetSummary && !fleetAiSummary ? (
+              <span className="italic text-slate-400">
+                {t(
+                  "Generating AI summary for rented employees...",
+                  "Generujem AI prehľad prenajatých zamestnancov...",
+                  "AI összefoglaló generálása a kölcsönzött dolgozókról..."
+                )}
+              </span>
+            ) : fleetAiSummary ? (
+              fleetAiSummary
+            ) : combinedFleetProblems.length > 0 ? (
+              t(
+                `${rows.length} rented employee(s) across ${companyOptions.length} client company(ies). Review the compliance problems highlighted above.`,
+                `${rows.length} prenajatých zamestnancov v ${companyOptions.length} klientskych firmách. Skontrolujte vyššie zvýraznené problémy s dokladmi.`,
+                `${rows.length} kölcsönzött dolgozó ${companyOptions.length} partnercégnél. Ellenőrizze a fent kiemelt dokumentációs problémákat.`
+              )
+            ) : (
+              t(
+                `${rows.length} rented employee(s) across ${companyOptions.length} client company(ies). All compliance documents are valid.`,
+                `${rows.length} prenajatých zamestnancov v ${companyOptions.length} klientskych firmách. Všetky doklady sú platné.`,
+                `${rows.length} kölcsönzött dolgozó ${companyOptions.length} partnercégnél. Minden dokumentum érvényes.`
+              )
+            )}
+          </p>
+        </div>
+      )}
       <div className="glass-panel rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-56">
           <div className="relative flex-1 min-w-48 max-w-md">

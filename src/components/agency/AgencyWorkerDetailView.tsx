@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
+  Brain,
   Building2,
   Calendar,
   CheckSquare,
@@ -15,6 +16,7 @@ import {
   MessageSquare,
   PencilLine,
   Plus,
+  RefreshCw,
   Save,
   ShieldAlert,
   Trash2,
@@ -22,7 +24,9 @@ import {
   UserCheck,
   X,
 } from "lucide-react";
-import type { Lead } from "../../types";
+import type { Lead, Task } from "../../types";
+import { hasAiConfigured } from "../../utils/aiConfig";
+import { fetchWithTimeout } from "../../utils/fetchWithTimeout";
 import type { Language } from "../../utils/translations";
 import {
   resolveLocalizedLabel,
@@ -65,6 +69,8 @@ interface AgencyWorkerDetailViewProps {
   settings: AgencySettings;
   clients: Lead[];
   workplaces: AgencyWorkplace[];
+  tasks?: Task[];
+  integrationsConfig?: any;
   onBack: () => void;
   onWorkerUpdated: (worker: AgencyWorker) => void;
   onWorkerDeleted: (workerId: string) => void;
@@ -111,6 +117,8 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
   settings,
   clients,
   workplaces,
+  tasks = [],
+  integrationsConfig,
   onBack,
   onWorkerUpdated,
   onWorkerDeleted,
@@ -194,6 +202,212 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
   useEffect(() => {
     loadDetail();
   }, [workerId]);
+
+  const workerDetectedProblems = useMemo(() => {
+    if (!detail) return [];
+    const probs: string[] = [];
+    const { worker: w, checklist: cl, placements: pl, shifts = [], payments = [] } = detail;
+    const comp = summarizeWorkerCompliance(cl, undefined, 30, settings.checklistItems);
+
+    if (comp.expired > 0) {
+      const expiredNames = cl
+        .filter((item) => item.status === "expired" || getComplianceExpiryState(item.expiresAt) === "expired")
+        .map((item) => item.label || item.itemKey);
+      probs.push(
+        t(
+          `${comp.expired} expired document(s)${expiredNames.length ? `: ${expiredNames.join(", ")}` : ""}`,
+          `${comp.expired} expirovaný doklad${expiredNames.length ? `: ${expiredNames.join(", ")}` : ""}`,
+          `${comp.expired} lejárt dokumentum${expiredNames.length ? `: ${expiredNames.join(", ")}` : ""}`
+        )
+      );
+    }
+    if (comp.missingRequired > 0 || comp.missing > 0) {
+      const missingCount = comp.missingRequired > 0 ? comp.missingRequired : comp.missing;
+      const missingNames = cl
+        .filter((item) => item.status === "missing")
+        .map((item) => item.label || item.itemKey);
+      probs.push(
+        t(
+          `${missingCount} missing required document(s)${missingNames.length ? `: ${missingNames.slice(0, 3).join(", ")}` : ""}`,
+          `${missingCount} chýbajúci povinný doklad${missingNames.length ? `: ${missingNames.slice(0, 3).join(", ")}` : ""}`,
+          `${missingCount} hiányzó kötelező dokumentum${missingNames.length ? `: ${missingNames.slice(0, 3).join(", ")}` : ""}`
+        )
+      );
+    }
+    if (comp.expiringSoon > 0) {
+      probs.push(
+        t(
+          `${comp.expiringSoon} document(s) expiring within 30 days`,
+          `${comp.expiringSoon} doklad exspiruje do 30 dní`,
+          `${comp.expiringSoon} dokumentum 30 napon belül lejár`
+        )
+      );
+    }
+    const activePl = pl.find((p) => p.status === "active");
+    if (w.workerStatus === "rented" && !activePl) {
+      probs.push(
+        t(
+          "Rented employee has no active host company placement",
+          "Prenajatý zamestnanec nemá aktívne pridelenie ku klientskej firme",
+          "A kölcsönzött dolgozónak nincs aktív fogadó céges kihelyezése"
+        )
+      );
+    }
+    const sickShifts = shifts.filter((s) => s.status === "sick");
+    if (sickShifts.length > 0) {
+      probs.push(
+        t(
+          `${sickShifts.length} sick-leave shift(s) recorded`,
+          `${sickShifts.length} zaznamenaná PN zmena`,
+          `${sickShifts.length} betegszabadságos műszak rögzítve`
+        )
+      );
+    }
+    const unpaidPayments = payments.filter((p) => p.status !== "paid");
+    if (unpaidPayments.length > 0) {
+      probs.push(
+        t(
+          `${unpaidPayments.length} unpaid payout record(s)`,
+          `${unpaidPayments.length} neuhradená výplata`,
+          `${unpaidPayments.length} kifizetetlen elszámolás`
+        )
+      );
+    }
+    const workerTasks = tasks.filter((tk) => tk.relatedAgencyWorkerId === w.id && tk.status !== "Done" && tk.status !== "Hotovo");
+    const today = new Date().toISOString().slice(0, 10);
+    const overdueTasks = workerTasks.filter((tk) => tk.deadline && tk.deadline < today);
+    if (overdueTasks.length > 0) {
+      probs.push(
+        t(
+          `${overdueTasks.length} overdue task(s) linked to worker`,
+          `${overdueTasks.length} omeškaná úloha priradená pracovníkovi`,
+          `${overdueTasks.length} lejárt határidejű feladat a dolgozónál`
+        )
+      );
+    }
+    return probs;
+  }, [detail, settings.checklistItems, tasks, lang]);
+
+  const workerAiFingerprint = useMemo(() => {
+    if (!detail) return "";
+    const { worker: w, checklist: cl, placements: pl, shifts = [], payments = [] } = detail;
+    const clFp = cl.map((c) => `${c.itemKey}:${c.status}:${c.expiresAt || ""}`).join(",");
+    const plFp = pl.map((p) => `${p.id}:${p.status}:${p.companyClientId}`).join(",");
+    return `${w.id}|${w.workerStatus}|${w.stageId}|${clFp}|${plFp}|${shifts.length}|${payments.length}|${lang}`;
+  }, [detail, lang]);
+
+  const [workerAiSummary, setWorkerAiSummary] = useState<string>("");
+  const [workerAiProblems, setWorkerAiProblems] = useState<string[]>([]);
+  const [isGeneratingWorkerSummary, setIsGeneratingWorkerSummary] = useState<boolean>(false);
+
+  const generateWorkerAiSummary = useCallback(
+    async (force = false) => {
+      if (!detail || !workerAiFingerprint) return;
+      const { worker: w, checklist: cl, placements: pl, shifts = [], payments = [], timeline: tl = [] } = detail;
+      const storageKey = `ccrm_ai_sum_agw_${w.id}`;
+      if (!force && typeof window !== "undefined") {
+        try {
+          const raw = localStorage.getItem(storageKey);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && parsed.fp === workerAiFingerprint && parsed.summary) {
+              setWorkerAiSummary(parsed.summary);
+              setWorkerAiProblems(Array.isArray(parsed.problems) ? parsed.problems : []);
+              return;
+            }
+          }
+        } catch {}
+      }
+
+      if (!hasAiConfigured(integrationsConfig)) return;
+
+      setIsGeneratingWorkerSummary(true);
+      try {
+        const activePl = pl.find((p) => p.status === "active");
+        const hostCompany = activePl
+          ? clients.find((c) => c.id === activePl.companyClientId)?.name || activePl.companyClientId
+          : null;
+        const workerTasks = tasks.filter((tk) => tk.relatedAgencyWorkerId === w.id);
+
+        const res = await fetchWithTimeout(
+          "/api/summarize_client_lead.php",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: w.fullName,
+              type: w.workerStatus === "rented" ? "rented employee" : "agency candidate / worker",
+              systemLanguage: lang,
+              tasks: workerTasks.slice(0, 10).map((tk) => ({
+                title: tk.title,
+                status: tk.status,
+                deadline: tk.deadline,
+                priority: tk.priority,
+              })),
+              events: tl.slice(0, 10).map((ev) => ({
+                title: ev.title,
+                date: ev.occurredAt,
+                notes: ev.description,
+              })),
+              priceOffers: [],
+              otherData: {
+                workerCode: w.workerCode,
+                workerStatus: w.workerStatus,
+                stageId: w.stageId,
+                nationality: w.nationality,
+                activeHostCompany: hostCompany,
+                activePosition: activePl?.jobRole || null,
+                payRate: activePl?.payRate ?? w.defaultPayRate,
+                billRate: activePl?.billRate ?? w.defaultBillRate,
+                checklist: cl.map((c) => ({
+                  label: c.label || c.itemKey,
+                  status: c.status,
+                  expiresAt: c.expiresAt,
+                })),
+                shiftsLogged: shifts.length,
+                sickShiftsCount: shifts.filter((s) => s.status === "sick").length,
+                unpaidPaymentsCount: payments.filter((p) => p.status !== "paid").length,
+                detectedProblems: workerDetectedProblems,
+                notes: w.notes || "",
+              },
+            }),
+          },
+          25_000
+        );
+        const data = await res.json();
+        if (data.success && data.summary) {
+          const probs = Array.isArray(data.problems) ? data.problems.filter(Boolean) : [];
+          setWorkerAiSummary(data.summary);
+          setWorkerAiProblems(probs);
+          try {
+            localStorage.setItem(
+              storageKey,
+              JSON.stringify({ fp: workerAiFingerprint, summary: data.summary, problems: probs })
+            );
+          } catch {}
+        }
+      } catch (err) {
+        console.error("Failed to generate rented employee AI summary:", err);
+      } finally {
+        setIsGeneratingWorkerSummary(false);
+      }
+    },
+    [detail, workerAiFingerprint, workerDetectedProblems, clients, tasks, integrationsConfig, lang]
+  );
+
+  useEffect(() => {
+    generateWorkerAiSummary(false);
+  }, [generateWorkerAiSummary]);
+
+  const combinedWorkerProblems = useMemo(() => {
+    const merged = [...workerAiProblems];
+    for (const p of workerDetectedProblems) {
+      if (!merged.some((e) => e.toLowerCase().includes(p.slice(0, 18).toLowerCase()))) {
+        merged.push(p);
+      }
+    }
+    return merged;
+  }, [workerAiProblems, workerDetectedProblems]);
 
   if (loading && !detail) {
     return (
@@ -628,6 +842,94 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
             </button>
           )}
         </div>
+      </div>
+
+      {/* AI Summary & Problem Highlighting Banner */}
+      <div
+        data-testid="agency-worker-ai-summary"
+        className={`rounded-2xl border p-4 shadow-sm transition-colors ${
+          combinedWorkerProblems.length > 0
+            ? "bg-rose-50/75 border-rose-200/80"
+            : "bg-[#f3f6ea]/70 border-[#5c6f28]/30"
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Brain
+              className={`size-4 shrink-0 ${
+                combinedWorkerProblems.length > 0 ? "text-rose-600" : "text-[#4a5a20]"
+              } ${isGeneratingWorkerSummary ? "animate-pulse" : ""}`}
+            />
+            <span
+              className={`text-micro font-bold uppercase tracking-wider ${
+                combinedWorkerProblems.length > 0 ? "text-rose-700" : "text-[#4a5a20]"
+              }`}
+            >
+              {t(
+                "AI Worker Summary & Compliance Problems",
+                "AI Zhrnutie pracovníka a upozornenia na problémy",
+                "AI Dolgozói Összefoglaló és Problémák"
+              )}
+            </span>
+            {combinedWorkerProblems.length > 0 && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-rose-100 text-rose-700 border border-rose-200">
+                ⚠️ {combinedWorkerProblems.length}{" "}
+                {t("problem(s)", "problém(y)", "probléma")}
+              </span>
+            )}
+          </div>
+          {hasAiConfigured(integrationsConfig) && (
+            <button
+              type="button"
+              onClick={() => generateWorkerAiSummary(true)}
+              disabled={isGeneratingWorkerSummary}
+              className="p-1 rounded-lg hover:bg-white/80 text-slate-500 hover:text-slate-700 transition-colors disabled:opacity-50"
+              title={t("Regenerate AI Summary", "Pregenerovať AI zhrnutie", "AI összefoglaló újragenerálása")}
+            >
+              <RefreshCw className={`size-3.5 ${isGeneratingWorkerSummary ? "animate-spin text-[#4a5a20]" : ""}`} />
+            </button>
+          )}
+        </div>
+
+        {combinedWorkerProblems.length > 0 && (
+          <div className="mt-2.5 flex flex-wrap gap-1.5" data-testid="agency-worker-ai-problems">
+            {combinedWorkerProblems.map((prob, idx) => (
+              <span
+                key={idx}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/90 border border-rose-200 text-rose-800 text-caption font-semibold shadow-2xs"
+              >
+                <span className="size-1.5 rounded-full bg-rose-500 shrink-0" />
+                {prob}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <p className="mt-2 text-caption text-slate-700 leading-relaxed">
+          {isGeneratingWorkerSummary && !workerAiSummary ? (
+            <span className="italic text-slate-400">
+              {t(
+                "Analyzing worker dossier, compliance checklist, placements, and shifts...",
+                "Analyzujem profil pracovníka, kontrolný zoznam dokladov, umiestnenia a zmeny...",
+                "Dolgozói profil, dokumentumok, kihelyezések és műszakok elemzése..."
+              )}
+            </span>
+          ) : workerAiSummary ? (
+            workerAiSummary
+          ) : combinedWorkerProblems.length > 0 ? (
+            t(
+              `Attention required: ${combinedWorkerProblems.join("; ")}.`,
+              `Vyžaduje pozornosť: ${combinedWorkerProblems.join("; ")}.`,
+              `Figyelmet igényel: ${combinedWorkerProblems.join("; ")}.`
+            )
+          ) : (
+            t(
+              "All required documents, host company placements, and shift records are in good standing.",
+              "Všetky povinné doklady, pridelenie k firme a záznamy zmien sú v poriadku.",
+              "Minden kötelező dokumentum, céges kihelyezés és műszaknyilvántartás rendben van."
+            )
+          )}
+        </p>
       </div>
 
       {/* Master Dual-Panel Dashboard Grid (matches Leads & Clients Detail Layout) */}

@@ -187,6 +187,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   // AI Email & Flow Summary States
   const [summaries, setSummaries] = useState<Record<string, string>>({});
   const [loadingSummaries, setLoadingSummaries] = useState<Record<string, boolean>>({});
+  const [problemsMap, setProblemsMap] = useState<Record<string, string[]>>({});
   const [actionItemsMap, setActionItemsMap] = useState<Record<string, string[]>>({});
   const [assigningActionItem, setAssigningActionItem] = useState<{ item: string; emailUid: string } | null>(null);
   const [isLargeFont, setIsLargeFont] = useState(false);
@@ -363,8 +364,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
     }
   };
 
-  const fetchSummary = async (emailUid: string, folder: string, subject: string, body: string, isThread: boolean = false) => {
-    if (summaries[emailUid] || loadingSummaries[emailUid]) return;
+  const fetchSummary = async (emailUid: string, folder: string, subject: string, body: string, isThread: boolean = false, force: boolean = false) => {
+    if ((!force && summaries[emailUid]) || loadingSummaries[emailUid]) return;
     setLoadingSummaries(prev => ({ ...prev, [emailUid]: true }));
     try {
       const res = await fetchWithTimeout("/api/summarize_email.php", {
@@ -378,12 +379,16 @@ export const EmailView: React.FC<EmailViewProps> = ({
           folder,
           subject,
           body,
-          is_thread: isThread
+          is_thread: isThread,
+          force
         })
       });
       const data = await res.json();
       if (data.success && data.summary) {
         setSummaries(prev => ({ ...prev, [emailUid]: data.summary }));
+        if (Array.isArray(data.problems)) {
+          setProblemsMap(prev => ({ ...prev, [emailUid]: data.problems }));
+        }
         if (data.actionItems) {
           setActionItemsMap(prev => ({ ...prev, [emailUid]: data.actionItems }));
         }
@@ -2101,6 +2106,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   // Sync initial summaries from fetched emails list payload
   useEffect(() => {
     const initialSummaries: Record<string, string> = {};
+    const initialProblems: Record<string, string[]> = {};
     const initialActionItems: Record<string, string[]> = {};
     emails.forEach(e => {
       if (e.summary) {
@@ -2108,6 +2114,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
           if (e.summary.trim().startsWith('{')) {
             const parsed = JSON.parse(e.summary);
             initialSummaries[e.uid] = parsed.summary || '';
+            if (Array.isArray(parsed.problems)) {
+              initialProblems[e.uid] = parsed.problems;
+            }
             initialActionItems[e.uid] = parsed.actionItems || [];
           } else {
             initialSummaries[e.uid] = e.summary;
@@ -2118,6 +2127,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       }
     });
     setSummaries(prev => ({ ...initialSummaries, ...prev }));
+    setProblemsMap(prev => ({ ...initialProblems, ...prev }));
     setActionItemsMap(prev => ({ ...initialActionItems, ...prev }));
   }, [emails]);
 
@@ -2399,6 +2409,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     if (!isOpenAiKeySet) return null;
     const key = String(rawKey);
     const isActive = digest?.key === key;
+    const hasProblems = (problemsMap[key] || []).length > 0;
     const iconSize = size === "sm" ? 15 : 17;
     return (
       <button
@@ -2425,12 +2436,192 @@ export const EmailView: React.FC<EmailViewProps> = ({
         title={t("AI summary", "AI súhrn", "AI összefoglaló")}
         aria-label={t("AI summary", "AI súhrn", "AI összefoglaló")}
         aria-expanded={isActive}
-        className={`${size === "sm" ? "h-8 w-8" : "h-9 w-9"} shrink-0 rounded-xl flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
-          isActive ? "bg-purple-100 text-purple-700" : "text-purple-500 hover:bg-purple-50 hover:text-purple-700"
+        className={`relative ${size === "sm" ? "h-8 w-8" : "h-9 w-9"} shrink-0 rounded-xl flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
+          isActive
+            ? hasProblems
+              ? "bg-rose-100 text-rose-700"
+              : "bg-purple-100 text-purple-700"
+            : hasProblems
+              ? "text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+              : "text-purple-500 hover:bg-purple-50 hover:text-purple-700"
         }`}
       >
         {loadingSummaries[key] ? <Loader2 size={iconSize} className="animate-spin" /> : <Brain size={iconSize} />}
+        {hasProblems && !loadingSummaries[key] && (
+          <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-rose-600 ring-2 ring-white" />
+        )}
       </button>
+    );
+  };
+
+  const renderInlineAiSummaryBanner = (
+    rawKey: string | number,
+    lead: Lead | null,
+    onRefresh?: () => void
+  ) => {
+    const key = String(rawKey);
+    const summaryText = summaries[key];
+    const problems = problemsMap[key] || [];
+    const items = actionItemsMap[key] || [];
+    const isLoading = Boolean(loadingSummaries[key]);
+
+    if (!isOpenAiKeySet && !summaryText) {
+      return (
+        <div
+          data-testid="comm-ai-summary-banner"
+          className="mx-6 mt-3 flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-purple-50/50 border border-purple-100 text-caption font-medium italic text-purple-600 shrink-0"
+        >
+          <Brain className="h-4 w-4 text-purple-400 shrink-0" />
+          {t(
+            "AI summary unavailable. Configure AI provider in Settings.",
+            "AI zhrnutie nie je k dispozícii. Nastavte AI poskytovateľa v nastaveniach.",
+            "Az AI összefoglaló nem érhető el. Állítsa be az AI szolgáltatót a beállításokban."
+          )}
+        </div>
+      );
+    }
+
+    if (!summaryText && !isLoading) {
+      return (
+        <div
+          data-testid="comm-ai-summary-banner"
+          className="mx-6 mt-3 flex items-center justify-between gap-2.5 px-4 py-2.5 rounded-xl bg-purple-50/50 border border-purple-200/70 text-purple-900 shrink-0"
+        >
+          <div className="flex items-center gap-2 text-caption font-semibold">
+            <Brain className="h-4 w-4 text-purple-600 shrink-0" />
+            <span>
+              {t(
+                "Generate AI summary & problem detection for this conversation",
+                "Vygenerovať AI zhrnutie a detekciu problémov pre túto konverzáciu",
+                "AI összefoglaló és problémaészlelés generálása ehhez a beszélgetéshez"
+              )}
+            </span>
+          </div>
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              data-testid="comm-ai-summary-generate-btn"
+              className="px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-micro font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
+            >
+              <Sparkles size={12} />
+              {t("Summarize", "Zhrnúť", "Összefoglalás")}
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    const hasProblems = problems.length > 0;
+    return (
+      <div
+        data-testid="comm-ai-summary-banner"
+        className={`mx-6 mt-3 px-4 py-3 rounded-2xl border transition-all animate-fade-in shrink-0 text-left space-y-2 ${
+          hasProblems
+            ? "bg-rose-50/75 border-rose-200 text-rose-950"
+            : "bg-purple-50/70 border-purple-200 text-purple-950"
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2.5 min-w-0 flex-1">
+            <Brain
+              className={`h-4.5 w-4.5 mt-0.5 shrink-0 ${
+                hasProblems ? "text-rose-600" : "text-purple-600"
+              } ${isLoading ? "animate-pulse" : ""}`}
+            />
+            <div className="min-w-0 flex-1">
+              {isLoading && !summaryText ? (
+                <span className="text-caption text-purple-600 italic animate-pulse flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-600" />
+                  {t(
+                    "Generating AI summary & checking for problems...",
+                    "Generuje sa AI zhrnutie a kontrola problémov...",
+                    "AI összefoglaló generálása és problémák keresése..."
+                  )}
+                </span>
+              ) : (
+                <p className="text-caption leading-relaxed font-semibold">
+                  {summaryText}
+                  {isLoading && (
+                    <span className="ml-1.5 text-micro text-purple-500 animate-pulse">
+                      ({t("Updating...", "Aktualizuje sa...", "Frissítés...")})
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={isLoading}
+              title={t("Regenerate AI summary", "Prepočítať AI zhrnutie", "AI összefoglaló újragenerálása")}
+              className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-500 hover:bg-white/80 hover:text-slate-800 cursor-pointer shrink-0 disabled:opacity-40"
+            >
+              <RefreshCw size={13} className={isLoading ? "animate-spin" : ""} />
+            </button>
+          )}
+        </div>
+
+        {hasProblems && (
+          <div
+            data-testid="comm-ai-summary-problems"
+            className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-rose-200/70"
+          >
+            <span className="inline-flex items-center gap-1 text-micro font-extrabold uppercase tracking-wider text-rose-700 mr-1">
+              <CircleAlert size={13} className="shrink-0" />
+              {t("Problems highlighted:", "Zistené problémy:", "Kiemelt problémák:")}
+            </span>
+            {problems.map((prob, idx) => (
+              <span
+                key={idx}
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-white/90 border border-rose-300 text-rose-800 text-micro font-bold shadow-2xs"
+              >
+                ⚠️ {prob}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {items.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-purple-200/50">
+            <span className="text-micro font-bold text-purple-800 mr-1">
+              {t("Suggested actions:", "Navrhované kroky:", "Javasolt lépések:")}
+            </span>
+            {items.slice(0, 3).map((item, idx) => {
+              const matchingTask = tasks.find((task) => task.title === item);
+              return (
+                <span
+                  key={idx}
+                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-white/80 border border-purple-200 text-slate-800 text-micro font-semibold"
+                >
+                  <span>{item}</span>
+                  {matchingTask ? (
+                    <span className="text-emerald-700 font-bold">✓</span>
+                  ) : canEdit && users[0] ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleAddEmailActionItemAsTask(
+                          item,
+                          key,
+                          lead,
+                          currentUser?.name || users[0].name
+                        )
+                      }
+                      className="text-purple-700 hover:text-purple-950 font-bold cursor-pointer"
+                      title={t("Create task", "Vytvoriť úlohu", "Feladat létrehozása")}
+                    >
+                      + {t("Task", "Úloha", "Feladat")}
+                    </button>
+                  ) : null}
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -2443,7 +2634,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
     const position: React.CSSProperties = openUp
       ? { left, width, bottom: window.innerHeight - rect.top + 6 }
       : { left, width, top: rect.bottom + 6 };
-    const isThread = key.startsWith("thread-");
+    const isThread = key.startsWith("thread-") || key.startsWith("wa-");
+    const problems = problemsMap[key] || [];
     const items = actionItemsMap[key] || [];
 
     return (
@@ -2492,6 +2684,25 @@ export const EmailView: React.FC<EmailViewProps> = ({
               <p className="text-body text-slate-400 italic">{t("No summary available.", "Súhrn nie je k dispozícii.", "Nincs elérhető összefoglaló.")}</p>
             )}
           </div>
+
+          {problems.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-rose-100 space-y-1.5">
+              <div className="text-ui font-bold text-rose-800 flex items-center gap-1.5">
+                <CircleAlert size={14} className="text-rose-600" />
+                {t("Problems Highlighted", "Zistené problémy", "Kiemelt problémák")}
+              </div>
+              <ul className="space-y-1">
+                {problems.map((prob, idx) => (
+                  <li
+                    key={idx}
+                    className="rounded-xl bg-rose-50/80 border border-rose-200 px-3 py-1.5 text-caption font-bold text-rose-900"
+                  >
+                    ⚠️ {prob}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {items.length > 0 && (
             <div className="mt-4 pt-3 border-t border-purple-100 space-y-2">
@@ -3766,6 +3977,31 @@ export const EmailView: React.FC<EmailViewProps> = ({
                           ) : null}
                         </div>
                       </div>
+
+                      {(liveMessages.length > 0 || crmWaEvents.length > 0) &&
+                        renderInlineAiSummaryBanner(`wa-${activeChat.id}`, matchedLead, () => {
+                          const combinedWaText =
+                            liveMessages.length > 0
+                              ? liveMessages
+                                  .slice(-30)
+                                  .map(
+                                    (m) =>
+                                      `${m.fromMe ? "Me" : m.senderName || activeChat.name} (${m.timestamp || ""}): ${m.text || ""}`
+                                  )
+                                  .join("\n")
+                              : crmWaEvents
+                                  .slice(-20)
+                                  .map((ev: any) => `${ev.author || ""}: ${ev.content || ""}`)
+                                  .join("\n");
+                          void fetchSummary(
+                            `wa-${activeChat.id}`,
+                            "thread",
+                            `${channelDisplayName}: ${activeChat.name}`,
+                            combinedWaText,
+                            true,
+                            Boolean(summaries[`wa-${activeChat.id}`])
+                          );
+                        })}
 
                       <div
                         ref={waMessagesScrollRef}
@@ -6205,6 +6441,19 @@ export const EmailView: React.FC<EmailViewProps> = ({
                   </div>
                 </div>
 
+                {renderInlineAiSummaryBanner(threadKey, threadLead, () => {
+                  const combinedText = activeThread.emails
+                    .map((e) => {
+                      const sender = e.isSent ? "Me" : e.from.name || e.from.address;
+                      const bodyText = threadBodies[e.uid]
+                        ? stripHtml(threadBodies[e.uid].html || threadBodies[e.uid].text || "")
+                        : e.preview || "";
+                      return `From: ${sender}\nDate: ${e.date}\nSubject: ${e.subject}\nContent: ${bodyText}`;
+                    })
+                    .join("\n\n---\n\n");
+                  void fetchSummary(threadKey, "thread", activeThread.subject, combinedText, true, true);
+                })}
+
                 {/* Messages, oldest first */}
                 <div
                   ref={emailThreadScrollRef}
@@ -6363,6 +6612,18 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     )}
                   </div>
                 </div>
+
+                {renderInlineAiSummaryBanner(selectedEmail.uid, lead, () => {
+                  const rawBody = bodyObj ? bodyObj.html || bodyObj.text || "" : selectedEmail.preview || "";
+                  void fetchSummary(
+                    selectedEmail.uid,
+                    selectedEmail.isSent ? "Sent" : activeFolder,
+                    selectedEmail.subject,
+                    rawBody,
+                    false,
+                    true
+                  );
+                })}
 
                 {/* Body + attachments */}
                 <div className="flex-1 min-h-0 flex flex-col gap-5 px-6 py-5">

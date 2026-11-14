@@ -48,6 +48,7 @@ interface AgencyViewProps {
   ticketStatuses?: TicketStatusDef[];
   financialCategories: FinancialCategory[];
   mailConfigured?: boolean;
+  integrationsConfig?: any;
 }
 
 export const AgencyView: React.FC<AgencyViewProps> = ({
@@ -70,6 +71,7 @@ export const AgencyView: React.FC<AgencyViewProps> = ({
   ticketStatuses,
   financialCategories,
   mailConfigured,
+  integrationsConfig,
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     lang === "sk" ? sk : lang === "hu" ? hu : en;
@@ -281,6 +283,8 @@ export const AgencyView: React.FC<AgencyViewProps> = ({
           settings={bootstrap.settings}
           clients={leads}
           workplaces={bootstrap.workplaces}
+          tasks={tasks}
+          integrationsConfig={integrationsConfig}
           onBack={() => onNavigate(`agency/${activeSubTab}`)}
           onWorkerUpdated={handleWorkerUpdated}
           onWorkerDeleted={handleWorkerDeleted}
@@ -357,6 +361,7 @@ export const AgencyView: React.FC<AgencyViewProps> = ({
           workplaces={bootstrap.workplaces}
           checklists={bootstrap.checklists}
           clients={leads}
+          integrationsConfig={integrationsConfig}
           onOpenWorker={(id) => onNavigate(`agency/worker/${encodeURIComponent(id)}`)}
           onOpenSchedule={() => onNavigate("agency/schedule")}
         />

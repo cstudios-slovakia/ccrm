@@ -1,7 +1,7 @@
 import { StatGrid } from "../layout";
 import { SectionIcon } from "../icons/SectionIcon";
 import { SECTION_VISUALS } from "../../utils/sectionVisuals";
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
   Search,
   Plus,
@@ -20,8 +20,12 @@ import {
   FileText,
   Mail,
   Phone,
-  Sparkles
+  Sparkles,
+  Brain,
+  RefreshCw
 } from "lucide-react";
+import { hasAiConfigured } from "../../utils/aiConfig";
+import { fetchWithTimeout } from "../../utils/fetchWithTimeout";
 import type {
   Employee,
   EmployeeSalary,
@@ -59,11 +63,12 @@ interface EmployeeListViewProps {
   systemCurrency?: string;
   /** What this person may see and change; the server sends nothing beyond it. */
   rights?: EmployeeRights;
+  integrationsConfig?: any;
 }
 
 export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
   employees,
-  salaries: _salaries,
+  salaries,
   vacations,
   settings,
   onSelectEmployee,
@@ -75,7 +80,8 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
   reseedHref,
   systemLanguage = "sk",
   systemCurrency = "€",
-  rights = FULL_EMPLOYEE_RIGHTS
+  rights = FULL_EMPLOYEE_RIGHTS,
+  integrationsConfig
 }) => {
   const [tableWrapRef, tableWrapEl] = useStickyTableHead();
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -121,6 +127,140 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
 
     return { total, active, totalMonthlyPayroll, onLeaveToday };
   }, [employees, vacations]);
+
+  // Roster-wide deterministic problems & AI summary
+  const rosterProblems = useMemo(() => {
+    const probs: string[] = [];
+    const activeEmps = employees.filter((e) => e.isActive !== false && employeeKind(e) === "employee");
+    const unpaidSalCount = salaries.filter((s) => s.status !== "paid").length;
+    if (unpaidSalCount > 0) {
+      probs.push(
+        t(
+          `${unpaidSalCount} unpaid salary record(s) across the team`,
+          `${unpaidSalCount} neuhradená mzda / záznam v tíme`,
+          `${unpaidSalCount} kifizetetlen bérrekord a csapatban`
+        )
+      );
+    }
+    const missingContracts = activeEmps.filter((e) => (e.files || []).length === 0);
+    if (missingContracts.length > 0) {
+      probs.push(
+        t(
+          `${missingContracts.length} active employee(s) missing uploaded contract (${missingContracts.slice(0, 3).map((e) => e.name).join(", ")}${missingContracts.length > 3 ? "…" : ""})`,
+          `${missingContracts.length} aktívny zamestnanec bez nahranej zmluvy (${missingContracts.slice(0, 3).map((e) => e.name).join(", ")}${missingContracts.length > 3 ? "…" : ""})`,
+          `${missingContracts.length} aktív alkalmazott feltöltött szerződés nélkül (${missingContracts.slice(0, 3).map((e) => e.name).join(", ")}${missingContracts.length > 3 ? "…" : ""})`
+        )
+      );
+    }
+    const pendingVacs = vacations.filter((v) => v.status === "pending");
+    if (pendingVacs.length > 0) {
+      probs.push(
+        t(
+          `${pendingVacs.length} pending vacation/absence request(s) awaiting approval`,
+          `${pendingVacs.length} čakajúca žiadosť o dovolenku/absenciu`,
+          `${pendingVacs.length} jóváhagyásra váró szabadságkérelem`
+        )
+      );
+    }
+    const missingContacts = activeEmps.filter((e) => !e.email && !e.phone);
+    if (missingContacts.length > 0) {
+      probs.push(
+        t(
+          `${missingContacts.length} active employee(s) missing email & phone`,
+          `${missingContacts.length} aktívny zamestnanec bez e-mailu a telefónu`,
+          `${missingContacts.length} aktív alkalmazott e-mail és telefon nélkül`
+        )
+      );
+    }
+    return probs;
+  }, [employees, salaries, vacations, systemLanguage]);
+
+  const rosterFp = useMemo(() => {
+    const unpaidSalCount = salaries.filter((s) => s.status !== "paid").length;
+    const pendingVacs = vacations.filter((v) => v.status === "pending").length;
+    return `${employees.length}|${stats.active}|${unpaidSalCount}|${pendingVacs}|${rosterProblems.join(";")}|${systemLanguage}`;
+  }, [employees.length, stats.active, salaries, vacations, rosterProblems, systemLanguage]);
+
+  const [rosterAiSummary, setRosterAiSummary] = useState<string>("");
+  const [rosterAiProblems, setRosterAiProblems] = useState<string[]>([]);
+  const [isGeneratingRosterSummary, setIsGeneratingRosterSummary] = useState<boolean>(false);
+
+  const generateRosterSummary = React.useCallback(
+    async (force = false) => {
+      if (employees.length === 0) return;
+      const storageKey = "ccrm_ai_sum_emp_roster";
+      if (!force && typeof window !== "undefined") {
+        try {
+          const raw = localStorage.getItem(storageKey);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && parsed.fp === rosterFp && parsed.summary) {
+              setRosterAiSummary(parsed.summary);
+              setRosterAiProblems(Array.isArray(parsed.problems) ? parsed.problems : []);
+              return;
+            }
+          }
+        } catch {}
+      }
+      if (!hasAiConfigured(integrationsConfig)) return;
+      setIsGeneratingRosterSummary(true);
+      try {
+        const res = await fetchWithTimeout(
+          "/api/summarize_client_lead.php",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: "Employees Roster",
+              type: "employees team",
+              systemLanguage,
+              tasks: [],
+              events: [],
+              priceOffers: [],
+              otherData: {
+                totalEmployees: stats.total,
+                activeEmployees: stats.active,
+                monthlyPayroll: stats.totalMonthlyPayroll,
+                onLeaveToday: stats.onLeaveToday,
+                unpaidSalariesCount: salaries.filter((s) => s.status !== "paid").length,
+                pendingVacationsCount: vacations.filter((v) => v.status === "pending").length,
+                detectedProblems: rosterProblems,
+              },
+            }),
+          },
+          25_000
+        );
+        const data = await res.json();
+        if (data.success && data.summary) {
+          const probs = Array.isArray(data.problems) ? data.problems.filter(Boolean) : [];
+          setRosterAiSummary(data.summary);
+          setRosterAiProblems(probs);
+          try {
+            localStorage.setItem(storageKey, JSON.stringify({ fp: rosterFp, summary: data.summary, problems: probs }));
+          } catch {}
+        }
+      } catch (err) {
+        console.error("Failed to generate employees roster AI summary:", err);
+      } finally {
+        setIsGeneratingRosterSummary(false);
+      }
+    },
+    [employees.length, stats, salaries, vacations, rosterProblems, rosterFp, integrationsConfig, systemLanguage]
+  );
+
+  useEffect(() => {
+    generateRosterSummary(false);
+  }, [generateRosterSummary]);
+
+  const combinedRosterProblems = useMemo(() => {
+    const merged = [...rosterAiProblems];
+    for (const p of rosterProblems) {
+      if (!merged.some((e) => e.toLowerCase().includes(p.slice(0, 18).toLowerCase()))) {
+        merged.push(p);
+      }
+    }
+    return merged;
+  }, [rosterAiProblems, rosterProblems]);
 
   const kindLabels: Record<EmployeeKind, string> = {
     employee: t("Employees", "Zamestnanci", "Alkalmazottak"),
@@ -263,6 +403,85 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
         </div>
         )}
       </StatGrid>
+
+      {/* AI Roster Summary & Problem Highlighting Banner */}
+      {employees.length > 0 && (
+        <div
+          data-testid="employees-list-ai-summary"
+          className={`rounded-2xl border px-4 py-3 shadow-xs transition-colors ${
+            combinedRosterProblems.length > 0
+              ? "bg-rose-50/70 border-rose-200/80"
+              : "bg-amber-50/40 border-[#c29b62]/30"
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Brain
+                className={`size-4 shrink-0 ${
+                  combinedRosterProblems.length > 0 ? "text-rose-600" : "text-[#9e7638]"
+                } ${isGeneratingRosterSummary ? "animate-pulse" : ""}`}
+              />
+              <span
+                className={`text-micro font-bold uppercase tracking-wider ${
+                  combinedRosterProblems.length > 0 ? "text-rose-700" : "text-[#9e7638]"
+                }`}
+              >
+                {t("AI Team Summary & Problem Highlights", "AI Zhrnutie tímu a zistené problémy", "AI Csapatösszefoglaló és Problémák")}
+              </span>
+              {combinedRosterProblems.length > 0 && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-rose-100 text-rose-700 border border-rose-200">
+                  ⚠️ {combinedRosterProblems.length} {t("problem(s)", "problém(y)", "probléma")}
+                </span>
+              )}
+            </div>
+            {hasAiConfigured(integrationsConfig) && (
+              <button
+                type="button"
+                onClick={() => generateRosterSummary(true)}
+                disabled={isGeneratingRosterSummary}
+                className="p-1 rounded-lg hover:bg-white/80 text-slate-500 hover:text-slate-700 transition-colors disabled:opacity-50"
+                title={t("Regenerate AI Summary", "Pregenerovať AI zhrnutie", "AI összefoglaló újragenerálása")}
+              >
+                <RefreshCw className={`size-3.5 ${isGeneratingRosterSummary ? "animate-spin text-[#9e7638]" : ""}`} />
+              </button>
+            )}
+          </div>
+          {combinedRosterProblems.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {combinedRosterProblems.map((prob, idx) => (
+                <span
+                  key={idx}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-white/90 border border-rose-200 text-rose-800 text-caption font-semibold"
+                >
+                  <span className="size-1.5 rounded-full bg-rose-500 shrink-0" />
+                  {prob}
+                </span>
+              ))}
+            </div>
+          )}
+          <p className="mt-1.5 text-caption text-slate-700 leading-relaxed">
+            {isGeneratingRosterSummary && !rosterAiSummary ? (
+              <span className="italic text-slate-400">
+                {t("Generating AI team overview...", "Generujem AI prehľad tímu...", "AI csapatáttekintés generálása...")}
+              </span>
+            ) : rosterAiSummary ? (
+              rosterAiSummary
+            ) : combinedRosterProblems.length > 0 ? (
+              t(
+                `Team overview: ${stats.active}/${stats.total} active employees. Issues highlighted above require attention.`,
+                `Prehľad tímu: ${stats.active}/${stats.total} aktívnych zamestnancov. Vyššie uvedené problémy vyžadujú pozornosť.`,
+                `Csapat áttekintés: ${stats.active}/${stats.total} aktív alkalmazott. A fenti problémák figyelmet igényelnek.`
+              )
+            ) : (
+              t(
+                `Team overview: ${stats.active}/${stats.total} active employees. All contracts, contacts, and payroll records are up to date.`,
+                `Prehľad tímu: ${stats.active}/${stats.total} aktívnych zamestnancov. Všetky zmluvy, kontakty a mzdy sú v poriadku.`,
+                `Csapat áttekintés: ${stats.active}/${stats.total} aktív alkalmazott. Minden szerződés, elérhetőség és bér rendben van.`
+              )
+            )}
+          </p>
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="glass-panel rounded-2xl border border-white/60 bg-white/95 shadow-glass p-3 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">

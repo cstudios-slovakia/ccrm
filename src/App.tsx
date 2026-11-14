@@ -3672,6 +3672,7 @@ ${log.payload || ''}
           setEmployeeSettings={updateEmployeeSettingsAndSync}
           financialCategories={financialCategories}
           isDemoMode={isDemoMode}
+          integrationsConfig={integrationsConfig}
         />
       );
     }
@@ -4476,6 +4477,7 @@ ${log.payload || ''}
             setEmployeeSettings={updateEmployeeSettingsAndSync}
             financialCategories={financialCategories}
             isDemoMode={isDemoMode}
+            integrationsConfig={integrationsConfig}
           />
         );
       case "agency":
@@ -4503,6 +4505,7 @@ ${log.payload || ''}
             ticketStatuses={ticketStatuses}
             financialCategories={financialCategories}
             mailConfigured={isSystemMailConfigured(integrationsConfig)}
+            integrationsConfig={integrationsConfig}
           />
         ) : (
           <AccessDeniedView

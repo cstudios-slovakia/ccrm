@@ -15,9 +15,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// SECURITY: Authenticated users only, and only with a view of leads or clients.
+// SECURITY: Authenticated users only, and only with a view of leads, clients, employees, or agency.
 $sessionUser = ccrm_require_auth();
-ccrm_gate_any($sessionUser, ['leads', 'clients']);
+ccrm_gate_any($sessionUser, ['leads', 'clients', 'employees', 'agency']);
 
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
@@ -130,18 +130,23 @@ if ($systemLanguage === 'sk') {
 }
 
 $prompt = "You are a highly efficient CRM AI Assistant.
-Create a concise status summary (2-3 sentences max) for a $type named \"$name\".
+Create a concise status summary (2-3 sentences max) for a $type named \"$name\", explicitly highlighting any problems, risks, missing/expired documents, unpaid items, absences, or overdue tasks first.
 
 You MUST prioritize information in this exact order:
-1. Tasks: Highlight any pending, overdue, or upcoming tasks first.
-2. Events: Summarize key recent timeline events and interactions.
-3. Price Offers: Mention recent proposals, quotes, or active financial offers and their values.
-4. Other data: Mention categories of interest, location, owner (project manager), or total value.
+1. Problems & Risks: Immediately call out any problems, expired or expiring documents, missing required files, unpaid/overdue salaries or payments, sick leave/absences, or overdue tasks.
+2. Tasks & Compliance: Highlight any pending or upcoming tasks and compliance checklist status.
+3. Events & Activity: Summarize key recent timeline events, shifts, placements, or interactions.
+4. Other data: Mention role/position, host company/department, rates/offers, or key profile details.
 
 Constraints:
-- Output ONLY the raw summarized paragraph. Do not write a list, do not use bullet points, do not include any headers/labels, and do not use markdown bold/italic formatting.
-- Keep it concise, natural, cohesive, and dense with information.
-- Write the summary in the requested language: $langName. If the input data is in a different language, translate the summarized points into $langName.
+- Output ONLY a valid JSON object with the structure:
+{
+  \"summary\": \"Concise 2-3 sentence paragraph in $langName highlighting any problems first.\",
+  \"problems\": [\"Short problem 1 in $langName\", \"Short problem 2 in $langName\"]
+}
+- If there are no problems or risks, set \"problems\" to an empty array [] and state in the summary that everything is in order.
+- Do not wrap the JSON in markdown code blocks.
+- Write both \"summary\" and \"problems\" in the requested language: $langName.
 
 Data:
 ---
@@ -201,7 +206,19 @@ if (empty($aiReply)) {
     exit;
 }
 
+$cleanedReply = trim(preg_replace('/^```json|```$/i', '', trim($aiReply)));
+$parsedJson = json_decode($cleanedReply, true);
+$summaryOut = $aiReply;
+$problemsOut = [];
+if (is_array($parsedJson) && !empty($parsedJson['summary'])) {
+    $summaryOut = trim((string)$parsedJson['summary']);
+    if (is_array($parsedJson['problems'] ?? null)) {
+        $problemsOut = array_values(array_filter(array_map('strval', $parsedJson['problems'])));
+    }
+}
+
 echo json_encode([
     'success' => true,
-    'summary' => $aiReply
+    'summary' => $summaryOut,
+    'problems' => $problemsOut
 ]);

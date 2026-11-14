@@ -106,30 +106,34 @@ if (empty($body) && $folder !== 'thread') {
     }
 }
 
-// 1. Check if summary already exists in database
-try {
-    $checkStmt = $pdo->prepare("SELECT `summary` FROM `email_summaries` WHERE `user_email` = ? AND `folder` = ? AND `email_uid` = ?");
-    $checkStmt->execute([$userEmail, $folder, $emailUid]);
-    $existingSummary = $checkStmt->fetchColumn();
-    if ($existingSummary !== false) {
-        $decoded = json_decode($existingSummary, true);
-        if (is_array($decoded) && isset($decoded['summary'])) {
-            echo json_encode([
-                'success' => true,
-                'summary' => $decoded['summary'],
-                'actionItems' => $decoded['actionItems'] ?? []
-            ]);
-        } else {
-            echo json_encode([
-                'success' => true,
-                'summary' => $existingSummary,
-                'actionItems' => []
-            ]);
+$existingSummary = false;
+if (empty($data['force'])) {
+    try {
+        $checkStmt = $pdo->prepare("SELECT `summary` FROM `email_summaries` WHERE `user_email` = ? AND `folder` = ? AND `email_uid` = ?");
+        $checkStmt->execute([$userEmail, $folder, $emailUid]);
+        $existingSummary = $checkStmt->fetchColumn();
+        if ($existingSummary !== false) {
+            $decoded = json_decode($existingSummary, true);
+            if (is_array($decoded) && isset($decoded['summary'])) {
+                echo json_encode([
+                    'success' => true,
+                    'summary' => $decoded['summary'],
+                    'problems' => is_array($decoded['problems'] ?? null) ? $decoded['problems'] : [],
+                    'actionItems' => $decoded['actionItems'] ?? []
+                ]);
+            } else {
+                echo json_encode([
+                    'success' => true,
+                    'summary' => $existingSummary,
+                    'problems' => [],
+                    'actionItems' => []
+                ]);
+            }
+            exit;
         }
-        exit;
+    } catch (\Exception $e) {
+        // If table not updated/created yet, proceed, but it should be auto-created by schema.php
     }
-} catch (\Exception $e) {
-    // If table not updated/created yet, proceed, but it should be auto-created by schema.php
 }
 
 // 2. Fetch integrations config to get OpenAI API key
@@ -155,18 +159,22 @@ if (strlen($plainTextBody) > 4000) {
     $plainTextBody = substr($plainTextBody, 0, 4000) . '... [TRUNCATED]';
 }
 
-$prompt = "You are an expert CRM assistant. Analyze the following email details or conversation flow and output a JSON response containing a concise summary (1-2 sentences) and a list of action items / suggested tasks (up to 4 items).
-   
-You MUST detect the language in which the provided email is written and write the \"summary\" and all \"actionItems\" in that same language (e.g. Slovak if Slovak, English if English).
+$prompt = "You are an expert CRM assistant. Analyze the following communication message or conversation flow and output a JSON response containing:
+1. \"summary\": A concise summary (1-2 sentences) highlighting the core status and any problems or blockers first.
+2. \"problems\": An array of specific problems, complaints, delays, risks, unanswered questions, or urgent blockers found in the communication (up to 4 items; empty array [] if everything is fine).
+3. \"actionItems\": A list of concrete action items / suggested follow-up tasks (up to 4 items).
+
+You MUST detect the language in which the provided communication is written and write the \"summary\", \"problems\", and \"actionItems\" in that same language (e.g. Slovak if Slovak, Hungarian if Hungarian, English if English).
 
 You MUST respond ONLY with a valid JSON object. Do not wrap it in markdown code blocks.
 Output structure:
 {
-  \"summary\": \"Concise 1-2 sentence summary of the email.\",
-  \"actionItems\": [\"action1\", \"action2\", ...]
+  \"summary\": \"Concise 1-2 sentence summary highlighting any problems.\",
+  \"problems\": [\"problem1\", \"problem2\"],
+  \"actionItems\": [\"action1\", \"action2\"]
 }
 
-Email Subject: " . $subject . "\n\nEmail Content:\n" . $plainTextBody;
+Subject / Thread: " . $subject . "\n\nContent:\n" . $plainTextBody;
 
 $emailModel = ccrm_ai_model($integrationsConfig);
 $aiRes = ccrm_ai_chat_completion(
@@ -218,8 +226,12 @@ $aiJson = json_decode($cleanedReply, true);
 if (!is_array($aiJson) || empty($aiJson['summary'])) {
     $aiJson = [
         'summary' => $aiReply,
+        'problems' => [],
         'actionItems' => []
     ];
+} else {
+    $aiJson['problems'] = is_array($aiJson['problems'] ?? null) ? array_values($aiJson['problems']) : [];
+    $aiJson['actionItems'] = is_array($aiJson['actionItems'] ?? null) ? array_values($aiJson['actionItems']) : [];
 }
 
 $dbSaveValue = json_encode($aiJson, JSON_UNESCAPED_UNICODE);
@@ -235,5 +247,6 @@ try {
 echo json_encode([
     'success' => true,
     'summary' => $aiJson['summary'],
-    'actionItems' => $aiJson['actionItems'] ?? []
+    'problems' => $aiJson['problems'],
+    'actionItems' => $aiJson['actionItems']
 ]);
