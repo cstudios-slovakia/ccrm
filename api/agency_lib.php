@@ -84,6 +84,8 @@ HTACCESS
                 'label' => ['en' => 'Applicant Identity', 'sk' => 'Identita uchádzača', 'hu' => 'Jelölt adatai'],
                 'enabled' => true,
                 'sensitive' => false,
+                'icon' => 'user',
+                'color' => '#0d9488',
                 'fields' => [
                     $f('surname', ['en' => 'Surname', 'sk' => 'Priezvisko', 'hu' => 'Vezetéknév'], 'text', true),
                     $f('givenNames', ['en' => 'Given Names', 'sk' => 'Meno', 'hu' => 'Keresztnév'], 'text', true),
@@ -104,6 +106,8 @@ HTACCESS
                 'label' => ['en' => 'Travel Document / Passport', 'sk' => 'Cestovný doklad / Pas', 'hu' => 'Úti okmány / Útlevél'],
                 'enabled' => true,
                 'sensitive' => true,
+                'icon' => 'passport',
+                'color' => '#0284c7',
                 'fields' => [
                     $f('number', ['en' => 'Passport Number', 'sk' => 'Číslo pasu', 'hu' => 'Útlevél száma'], 'text', true),
                     $f('issuedByCountry', ['en' => 'Issued By Country', 'sk' => 'Vydávajúca krajina', 'hu' => 'Kiállító ország'], 'text', false),
@@ -118,6 +122,8 @@ HTACCESS
                 'label' => ['en' => 'Residence / Work Permit', 'sk' => 'Povolenie na pobyt / prácu', 'hu' => 'Tartózkodási / Munkavállalási engedély'],
                 'enabled' => true,
                 'sensitive' => true,
+                'icon' => 'shield',
+                'color' => '#6366f1',
                 'fields' => [
                     $f('applicationType', ['en' => 'Application Type', 'sk' => 'Typ žiadosti', 'hu' => 'Kérelem típusa'], 'text', false),
                     $f('residencePermitType', ['en' => 'Residence Permit Type', 'sk' => 'Typ pobytu', 'hu' => 'Tartózkodási engedély típusa'], 'text', false),
@@ -133,6 +139,8 @@ HTACCESS
                 'label' => ['en' => 'Stay & Employment Readiness', 'sk' => 'Pobyt a zamestnanie', 'hu' => 'Tartózkodás és munkavégzés'],
                 'enabled' => true,
                 'sensitive' => false,
+                'icon' => 'briefcase',
+                'color' => '#10b981',
                 'fields' => [
                     $f('plannedEntryDate', ['en' => 'Planned Entry Date', 'sk' => 'Plánovaný vstup na územie', 'hu' => 'Tervezett belépés'], 'date', false),
                     $f('stayDurationRequested', ['en' => 'Stay Duration Requested', 'sk' => 'Požadovaná dĺžka pobytu', 'hu' => 'Igényelt tartózkodás hossza'], 'text', false),
@@ -149,6 +157,8 @@ HTACCESS
                 'label' => ['en' => 'Home & SK Addresses', 'sk' => 'Adresy (domov a SR)', 'hu' => 'Lakcímek'],
                 'enabled' => true,
                 'sensitive' => true,
+                'icon' => 'mapPin',
+                'color' => '#f59e0b',
                 'fields' => [
                     $f('homeStreet', ['en' => 'Home Street', 'sk' => 'Domáca ulica', 'hu' => 'Állandó utca'], 'text', false),
                     $f('homeCity', ['en' => 'Home City', 'sk' => 'Domáce mesto', 'hu' => 'Állandó város'], 'text', false),
@@ -166,6 +176,8 @@ HTACCESS
                 'label' => ['en' => 'Family & Emergency Data', 'sk' => 'Rodinné a núdzové údaje', 'hu' => 'Családi és sürgősségi adatok'],
                 'enabled' => true,
                 'sensitive' => true,
+                'icon' => 'users',
+                'color' => '#ec4899',
                 'fields' => [
                     $f('fatherFullName', ['en' => "Father's Full Name", 'sk' => 'Meno a priezvisko otca', 'hu' => 'Apa neve'], 'text', false),
                     $f('fatherNationality', ['en' => "Father's Nationality", 'sk' => 'Štátna príslušnosť otca', 'hu' => 'Apa állampolgársága'], 'text', false),

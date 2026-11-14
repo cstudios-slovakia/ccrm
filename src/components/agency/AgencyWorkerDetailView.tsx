@@ -54,6 +54,7 @@ import { getComplianceExpiryState, summarizeWorkerCompliance } from "../../utils
 import { formatDateLocalized, formatTimestampLocalized } from "../../utils/localTime";
 import type { AgencyRights } from "../../utils/agencyRights";
 import { Tabs } from "../layout/Tabs";
+import { resolveSectionIconAndColor } from "./agencySectionIcons";
 
 export type AgencyDetailTab = "overview" | "profile" | "compliance" | "placements" | "schedule" | "tasks_tickets";
 
@@ -1238,25 +1239,40 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
 
                 {settings.profileSchema
                   .filter((sec) => sec.enabled && (!sec.sensitive || rights.personal))
-                  .map((sec) => (
-                    <div key={sec.id} className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h4 className="type-panel-title text-slate-900">
-                          {resolveLocalizedLabel(sec.label, lang)}
-                        </h4>
-                        {sec.sensitive && (
-                          <span className="inline-flex items-center gap-1 text-micro font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                            <Lock className="size-3" />
-                            {t("Protected", "Chránené", "Védett")}
-                          </span>
-                        )}
+                  .map((sec) => {
+                    const { color: secColor, Icon: SecIcon } = resolveSectionIconAndColor(sec);
+                    return (
+                      <div key={sec.id} className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2.5">
+                            <span
+                              className="size-8 rounded-xl flex items-center justify-center shrink-0 border"
+                              style={{
+                                backgroundColor: `${secColor}18`,
+                                borderColor: `${secColor}40`,
+                                color: secColor,
+                              }}
+                            >
+                              <SecIcon className="size-4" />
+                            </span>
+                            <h4 className="type-panel-title text-slate-900">
+                              {resolveLocalizedLabel(sec.label, lang)}
+                            </h4>
+                          </div>
+                          {sec.sensitive && (
+                            <span className="inline-flex items-center gap-1 text-micro font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                              <Lock className="size-3" />
+                              {t("Protected", "Chránené", "Védett")}
+                            </span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-1 ws-sm:grid-cols-2 ws-md:grid-cols-3 gap-3">
+                          {sec.fields.map((field) => renderSchemaField(sec.id, field))}
+                          {(sec.customFields || []).map((field) => renderSchemaField(sec.id, field))}
+                        </div>
                       </div>
-                      <div className="grid grid-cols-1 ws-sm:grid-cols-2 ws-md:grid-cols-3 gap-3">
-                        {sec.fields.map((field) => renderSchemaField(sec.id, field))}
-                        {(sec.customFields || []).map((field) => renderSchemaField(sec.id, field))}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
               </form>
             )}
 

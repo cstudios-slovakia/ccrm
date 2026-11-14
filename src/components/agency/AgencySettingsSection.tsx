@@ -9,11 +9,17 @@ import {
   type AgencyChecklistTemplateItem,
   type AgencyProfileSchemaField,
   type AgencySchemaFieldType,
+  type AgencySectionIconKey,
   type AgencySettings,
   type AgencyShiftTemplate,
   type AgencyStage,
   type AgencyStageGroup,
 } from "../../types/agency";
+import {
+  AGENCY_SECTION_ICON_OPTIONS,
+  getSectionIconOptionLabel,
+  resolveSectionIconAndColor,
+} from "./agencySectionIcons";
 import { fetchAgencyBootstrap, saveAgencySettings } from "../../utils/agencyApi";
 import { SectionCard, SaveStatus } from "../settings/SectionCard";
 import type { AutosaveStatus } from "../settings/useAutosave";
@@ -48,7 +54,12 @@ export const AgencySettingsSection: React.FC<AgencySettingsSectionProps> = ({
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState<AutosaveStatus>("idle");
   const [newFieldDraft, setNewFieldDraft] = useState<Record<string, { label: string; type: AgencySchemaFieldType; required: boolean; options: string }>>({});
-  const [newSectionDraft, setNewSectionDraft] = useState<{ label: string; sensitive: boolean }>({ label: "", sensitive: false });
+  const [newSectionDraft, setNewSectionDraft] = useState<{
+    label: string;
+    sensitive: boolean;
+    icon: AgencySectionIconKey;
+    color: string;
+  }>({ label: "", sensitive: false, icon: "folder", color: "#0d9488" });
 
   useEffect(() => {
     let active = true;
@@ -380,6 +391,14 @@ export const AgencySettingsSection: React.FC<AgencySettingsSectionProps> = ({
 
     const BUILTIN_SECTION_IDS = new Set(["applicant", "passport", "permit", "stayWork", "addresses", "family"]);
 
+    const updateSectionIconOrColor = (
+      secId: string,
+      patch: { icon?: AgencySectionIconKey; color?: string }
+    ) => {
+      const nextSchema = schema.map((sec) => (sec.id === secId ? { ...sec, ...patch } : sec));
+      persist({ ...settings, profileSchema: nextSchema });
+    };
+
     const addCustomSection = () => {
       const title = newSectionDraft.label.trim();
       if (!title) return;
@@ -388,11 +407,13 @@ export const AgencySettingsSection: React.FC<AgencySettingsSectionProps> = ({
         label: { en: title, sk: title, hu: title },
         enabled: true,
         sensitive: newSectionDraft.sensitive,
+        icon: newSectionDraft.icon,
+        color: newSectionDraft.color,
         system: false,
         fields: [],
         customFields: [],
       };
-      setNewSectionDraft({ label: "", sensitive: false });
+      setNewSectionDraft({ label: "", sensitive: false, icon: "folder", color: "#0d9488" });
       persist({ ...settings, profileSchema: [...schema, newSec] });
     };
 
@@ -442,6 +463,7 @@ export const AgencySettingsSection: React.FC<AgencySettingsSectionProps> = ({
           {schema.map((sec) => {
             const draft = newFieldDraft[sec.id] || { label: "", type: "text" as AgencySchemaFieldType, required: false, options: "" };
             const isCustomSec = !BUILTIN_SECTION_IDS.has(sec.id) && sec.system === false;
+            const { iconKey, color: secColor, Icon: SecIcon } = resolveSectionIconAndColor(sec);
             return (
               <div
                 key={sec.id}
@@ -449,26 +471,67 @@ export const AgencySettingsSection: React.FC<AgencySettingsSectionProps> = ({
                 className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-3"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    {isCustomSec && canEdit ? (
-                      <input
-                        type="text"
-                        value={resolveLocalizedLabel(sec.label, lang)}
-                        onChange={(e) => renameCustomSection(sec.id, e.target.value)}
-                        onBlur={() => persist(settings)}
-                        className="text-body font-bold text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200 focus:border-teal-500 focus:outline-none"
-                      />
-                    ) : (
-                      <div className="text-body font-bold text-slate-900">
-                        {resolveLocalizedLabel(sec.label, lang)}
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div
+                      className="size-9 rounded-xl flex items-center justify-center shrink-0 border"
+                      style={{
+                        backgroundColor: `${secColor}18`,
+                        borderColor: `${secColor}40`,
+                        color: secColor,
+                      }}
+                    >
+                      <SecIcon className="size-4.5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      {isCustomSec && canEdit ? (
+                        <input
+                          type="text"
+                          value={resolveLocalizedLabel(sec.label, lang)}
+                          onChange={(e) => renameCustomSection(sec.id, e.target.value)}
+                          onBlur={() => persist(settings)}
+                          className="text-body font-bold text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200 focus:border-teal-500 focus:outline-none"
+                        />
+                      ) : (
+                        <div className="text-body font-bold text-slate-900">
+                          {resolveLocalizedLabel(sec.label, lang)}
+                        </div>
+                      )}
+                      <div className="text-micro text-slate-500">
+                        {sec.fields.length + (sec.customFields?.length || 0)}{" "}
+                        {t("fields", "polí", "mező")}
                       </div>
-                    )}
-                    <div className="text-micro text-slate-500">
-                      {sec.fields.length + (sec.customFields?.length || 0)}{" "}
-                      {t("fields", "polí", "mező")}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <div className="inline-flex items-center gap-1.5 bg-white px-2 py-1 rounded-xl border border-slate-200">
+                      <input
+                        type="color"
+                        disabled={!canEdit}
+                        value={secColor}
+                        data-testid={`agency-section-color-${sec.id}`}
+                        title={t("Icon color", "Farba ikony", "Ikon színe")}
+                        onChange={(e) => updateSectionIconOrColor(sec.id, { color: e.target.value })}
+                        className="size-6 rounded border border-slate-200 bg-white cursor-pointer shrink-0"
+                      />
+                      <select
+                        disabled={!canEdit}
+                        value={iconKey}
+                        data-testid={`agency-section-icon-${sec.id}`}
+                        title={t("Block icon", "Ikona bloku", "Blokk ikonja")}
+                        onChange={(e) =>
+                          updateSectionIconOrColor(sec.id, {
+                            icon: e.target.value as AgencySectionIconKey,
+                          })
+                        }
+                        className="text-caption font-medium text-slate-700 bg-transparent focus:outline-none cursor-pointer"
+                      >
+                        {AGENCY_SECTION_ICON_OPTIONS.map((opt) => (
+                          <option key={opt.key} value={opt.key}>
+                            {getSectionIconOptionLabel(opt, lang)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     <label className="inline-flex items-center gap-1.5 text-caption font-medium text-slate-700 cursor-pointer">
                       <input
                         type="checkbox"
@@ -629,6 +692,25 @@ export const AgencySettingsSection: React.FC<AgencySettingsSectionProps> = ({
           {canEdit && (
             <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-white p-4 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-3 flex-1 min-w-56">
+                {(() => {
+                  const { Icon: DraftIcon } = resolveSectionIconAndColor({
+                    id: "custom_draft",
+                    icon: newSectionDraft.icon,
+                    color: newSectionDraft.color,
+                  });
+                  return (
+                    <div
+                      className="size-9 rounded-xl flex items-center justify-center shrink-0 border"
+                      style={{
+                        backgroundColor: `${newSectionDraft.color}18`,
+                        borderColor: `${newSectionDraft.color}40`,
+                        color: newSectionDraft.color,
+                      }}
+                    >
+                      <DraftIcon className="size-4.5" />
+                    </div>
+                  );
+                })()}
                 <input
                   type="text"
                   value={newSectionDraft.label}
@@ -647,6 +729,34 @@ export const AgencySettingsSection: React.FC<AgencySettingsSectionProps> = ({
                   )}
                   className="flex-1 min-w-48 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 focus:bg-white focus:border-teal-500 focus:outline-none"
                 />
+                <div className="inline-flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200">
+                  <input
+                    type="color"
+                    value={newSectionDraft.color}
+                    data-testid="agency-new-section-color"
+                    title={t("Icon color", "Farba ikony", "Ikon színe")}
+                    onChange={(e) => setNewSectionDraft((prev) => ({ ...prev, color: e.target.value }))}
+                    className="size-6 rounded border border-slate-200 bg-white cursor-pointer shrink-0"
+                  />
+                  <select
+                    value={newSectionDraft.icon}
+                    data-testid="agency-new-section-icon"
+                    title={t("Block icon", "Ikona bloku", "Blokk ikonja")}
+                    onChange={(e) =>
+                      setNewSectionDraft((prev) => ({
+                        ...prev,
+                        icon: e.target.value as AgencySectionIconKey,
+                      }))
+                    }
+                    className="text-caption font-medium text-slate-700 bg-transparent focus:outline-none cursor-pointer"
+                  >
+                    {AGENCY_SECTION_ICON_OPTIONS.map((opt) => (
+                      <option key={opt.key} value={opt.key}>
+                        {getSectionIconOptionLabel(opt, lang)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <label className="inline-flex items-center gap-1.5 text-caption font-medium text-slate-700 cursor-pointer shrink-0">
                   <input
                     type="checkbox"

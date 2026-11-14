@@ -53,11 +53,32 @@ export interface AgencyProfileSchemaField {
   options?: string[];
 }
 
+export type AgencySectionIconKey =
+  | "user"
+  | "passport"
+  | "shield"
+  | "briefcase"
+  | "mapPin"
+  | "users"
+  | "graduationCap"
+  | "creditCard"
+  | "heartPulse"
+  | "car"
+  | "wrench"
+  | "fileText"
+  | "building"
+  | "phone"
+  | "award"
+  | "shirt"
+  | "folder";
+
 export interface AgencyProfileSchemaSection {
   id: string;
   label: LocalizedLabel;
   enabled: boolean;
   sensitive: boolean;
+  icon?: AgencySectionIconKey | string;
+  color?: string;
   system?: boolean;
   fields: AgencyProfileSchemaField[];
   customFields: AgencyProfileSchemaField[];
@@ -287,6 +308,8 @@ export const DEFAULT_AGENCY_PROFILE_SCHEMA: AgencyProfileSchemaSection[] = [
     label: { en: "Applicant Identity", sk: "Identita uchádzača", hu: "Jelölt adatai" },
     enabled: true,
     sensitive: false,
+    icon: "user",
+    color: "#0d9488",
     fields: [
       { key: "surname", label: { en: "Surname", sk: "Priezvisko", hu: "Vezetéknév" }, type: "text", required: true, system: true },
       { key: "givenNames", label: { en: "Given Names", sk: "Meno", hu: "Keresztnév" }, type: "text", required: true, system: true },
@@ -307,6 +330,8 @@ export const DEFAULT_AGENCY_PROFILE_SCHEMA: AgencyProfileSchemaSection[] = [
     label: { en: "Travel Document / Passport", sk: "Cestovný doklad / Pas", hu: "Úti okmány / Útlevél" },
     enabled: true,
     sensitive: true,
+    icon: "passport",
+    color: "#0284c7",
     fields: [
       { key: "number", label: { en: "Passport Number", sk: "Číslo pasu", hu: "Útlevél száma" }, type: "text", required: true, system: true },
       { key: "issuedByCountry", label: { en: "Issued By Country", sk: "Vydávajúca krajina", hu: "Kiállító ország" }, type: "text", required: false, system: true },
@@ -321,6 +346,8 @@ export const DEFAULT_AGENCY_PROFILE_SCHEMA: AgencyProfileSchemaSection[] = [
     label: { en: "Residence / Work Permit", sk: "Povolenie na pobyt / prácu", hu: "Tartózkodási / Munkavállalási engedély" },
     enabled: true,
     sensitive: true,
+    icon: "shield",
+    color: "#6366f1",
     fields: [
       { key: "applicationType", label: { en: "Application Type", sk: "Typ žiadosti", hu: "Kérelem típusa" }, type: "text", required: false, system: true },
       { key: "residencePermitType", label: { en: "Residence Permit Type", sk: "Typ pobytu", hu: "Tartózkodási engedély típusa" }, type: "text", required: false, system: true },
@@ -336,6 +363,8 @@ export const DEFAULT_AGENCY_PROFILE_SCHEMA: AgencyProfileSchemaSection[] = [
     label: { en: "Stay & Employment Readiness", sk: "Pobyt a zamestnanie", hu: "Tartózkodás és munkavégzés" },
     enabled: true,
     sensitive: false,
+    icon: "briefcase",
+    color: "#10b981",
     fields: [
       { key: "plannedEntryDate", label: { en: "Planned Entry Date", sk: "Plánovaný vstup na územie", hu: "Tervezett belépés" }, type: "date", required: false, system: true },
       { key: "stayDurationRequested", label: { en: "Stay Duration Requested", sk: "Požadovaná dĺžka pobytu", hu: "Igényelt tartózkodás hossza" }, type: "text", required: false, system: true },
@@ -352,6 +381,8 @@ export const DEFAULT_AGENCY_PROFILE_SCHEMA: AgencyProfileSchemaSection[] = [
     label: { en: "Home & SK Addresses", sk: "Adresy (domov a SR)", hu: "Lakcímek" },
     enabled: true,
     sensitive: true,
+    icon: "mapPin",
+    color: "#f59e0b",
     fields: [
       { key: "homeStreet", label: { en: "Home Street", sk: "Domáca ulica", hu: "Állandó utca" }, type: "text", required: false, system: true },
       { key: "homeCity", label: { en: "Home City", sk: "Domáce mesto", hu: "Állandó város" }, type: "text", required: false, system: true },
@@ -369,6 +400,8 @@ export const DEFAULT_AGENCY_PROFILE_SCHEMA: AgencyProfileSchemaSection[] = [
     label: { en: "Family & Emergency Data", sk: "Rodinné a núdzové údaje", hu: "Családi és sürgősségi adatok" },
     enabled: true,
     sensitive: true,
+    icon: "users",
+    color: "#ec4899",
     fields: [
       { key: "fatherFullName", label: { en: "Father's Full Name", sk: "Meno a priezvisko otca", hu: "Apa neve" }, type: "text", required: false, system: true },
       { key: "fatherNationality", label: { en: "Father's Nationality", sk: "Štátna príslušnosť otca", hu: "Apa állampolgársága" }, type: "text", required: false, system: true },
