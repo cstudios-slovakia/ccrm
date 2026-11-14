@@ -58,6 +58,7 @@ export interface AgencyProfileSchemaSection {
   label: LocalizedLabel;
   enabled: boolean;
   sensitive: boolean;
+  system?: boolean;
   fields: AgencyProfileSchemaField[];
   customFields: AgencyProfileSchemaField[];
 }

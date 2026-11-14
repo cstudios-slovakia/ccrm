@@ -48,6 +48,7 @@ export const AgencySettingsSection: React.FC<AgencySettingsSectionProps> = ({
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState<AutosaveStatus>("idle");
   const [newFieldDraft, setNewFieldDraft] = useState<Record<string, { label: string; type: AgencySchemaFieldType; required: boolean; options: string }>>({});
+  const [newSectionDraft, setNewSectionDraft] = useState<{ label: string; sensitive: boolean }>({ label: "", sensitive: false });
 
   useEffect(() => {
     let active = true;
@@ -377,6 +378,38 @@ export const AgencySettingsSection: React.FC<AgencySettingsSectionProps> = ({
       persist({ ...settings, profileSchema: nextSchema });
     };
 
+    const BUILTIN_SECTION_IDS = new Set(["applicant", "passport", "permit", "stayWork", "addresses", "family"]);
+
+    const addCustomSection = () => {
+      const title = newSectionDraft.label.trim();
+      if (!title) return;
+      const newSec = {
+        id: `section_${Date.now()}`,
+        label: { en: title, sk: title, hu: title },
+        enabled: true,
+        sensitive: newSectionDraft.sensitive,
+        system: false,
+        fields: [],
+        customFields: [],
+      };
+      setNewSectionDraft({ label: "", sensitive: false });
+      persist({ ...settings, profileSchema: [...schema, newSec] });
+    };
+
+    const renameCustomSection = (secId: string, nextTitle: string) => {
+      const nextSchema = schema.map((sec) =>
+        sec.id === secId
+          ? { ...sec, label: { en: nextTitle, sk: nextTitle, hu: nextTitle } }
+          : sec
+      );
+      setSettings((prev) => ({ ...prev, profileSchema: nextSchema }));
+    };
+
+    const removeCustomSection = (secId: string) => {
+      if (BUILTIN_SECTION_IDS.has(secId)) return;
+      persist({ ...settings, profileSchema: schema.filter((sec) => sec.id !== secId) });
+    };
+
     const resetSchemaToDefault = () => {
       persist({ ...settings, profileSchema: DEFAULT_AGENCY_PROFILE_SCHEMA });
     };
@@ -408,13 +441,28 @@ export const AgencySettingsSection: React.FC<AgencySettingsSectionProps> = ({
         <div className="space-y-4">
           {schema.map((sec) => {
             const draft = newFieldDraft[sec.id] || { label: "", type: "text" as AgencySchemaFieldType, required: false, options: "" };
+            const isCustomSec = !BUILTIN_SECTION_IDS.has(sec.id) && sec.system === false;
             return (
-              <div key={sec.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+              <div
+                key={sec.id}
+                data-testid={`agency-schema-section-${sec.id}`}
+                className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-3"
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <div className="text-body font-bold text-slate-900">
-                      {resolveLocalizedLabel(sec.label, lang)}
-                    </div>
+                  <div className="min-w-0 flex-1">
+                    {isCustomSec && canEdit ? (
+                      <input
+                        type="text"
+                        value={resolveLocalizedLabel(sec.label, lang)}
+                        onChange={(e) => renameCustomSection(sec.id, e.target.value)}
+                        onBlur={() => persist(settings)}
+                        className="text-body font-bold text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200 focus:border-teal-500 focus:outline-none"
+                      />
+                    ) : (
+                      <div className="text-body font-bold text-slate-900">
+                        {resolveLocalizedLabel(sec.label, lang)}
+                      </div>
+                    )}
                     <div className="text-micro text-slate-500">
                       {sec.fields.length + (sec.customFields?.length || 0)}{" "}
                       {t("fields", "polí", "mező")}
@@ -440,6 +488,17 @@ export const AgencySettingsSection: React.FC<AgencySettingsSectionProps> = ({
                       />
                       {t("Enabled", "Aktívna", "Aktív")}
                     </label>
+                    {!BUILTIN_SECTION_IDS.has(sec.id) && canEdit && (
+                      <button
+                        type="button"
+                        data-testid={`agency-remove-section-${sec.id}`}
+                        onClick={() => removeCustomSection(sec.id)}
+                        title={t("Delete Block", "Odstrániť blok", "Blokk törlése")}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -566,6 +625,49 @@ export const AgencySettingsSection: React.FC<AgencySettingsSectionProps> = ({
               </div>
             );
           })}
+
+          {canEdit && (
+            <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-white p-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3 flex-1 min-w-56">
+                <input
+                  type="text"
+                  value={newSectionDraft.label}
+                  data-testid="agency-new-section-label"
+                  onChange={(e) => setNewSectionDraft((prev) => ({ ...prev, label: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addCustomSection();
+                    }
+                  }}
+                  placeholder={t(
+                    "New custom block name (e.g. Education, Bank Account, Uniform & Sizes…)",
+                    "Názov nového bloku údajov (napr. Vzdelanie, Bankový účet, Konfekčné veľkosti…)",
+                    "Új adatblokk neve (pl. Végzettség, Bankszámla, Munkaruha méretek…)"
+                  )}
+                  className="flex-1 min-w-48 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 focus:bg-white focus:border-teal-500 focus:outline-none"
+                />
+                <label className="inline-flex items-center gap-1.5 text-caption font-medium text-slate-700 cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={newSectionDraft.sensitive}
+                    onChange={(e) => setNewSectionDraft((prev) => ({ ...prev, sensitive: e.target.checked }))}
+                  />
+                  <Lock className="size-3.5 text-amber-600" />
+                  {t("Personal / Restricted", "Citlivé údaje", "Személyes / Korlátozott")}
+                </label>
+              </div>
+              <button
+                type="button"
+                data-testid="agency-add-section-btn"
+                onClick={addCustomSection}
+                className="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-ui font-semibold inline-flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              >
+                <Plus className="size-4" />
+                {t("Add Block", "Pridať blok", "Blokk hozzáadása")}
+              </button>
+            </div>
+          )}
         </div>
       </SectionCard>
     );

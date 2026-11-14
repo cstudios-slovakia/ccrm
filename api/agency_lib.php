@@ -297,14 +297,27 @@ HTACCESS
         return $prefix . '-' . bin2hex(random_bytes(8));
     }
 
-    function ccrm_agency_project_worker(array $row, array $scope): array {
+    function ccrm_agency_sensitive_section_ids(?array $settings = null): array {
+        $ids = ['passport', 'permit', 'addresses', 'family'];
+        if (is_array($settings) && !empty($settings['profileSchema']) && is_array($settings['profileSchema'])) {
+            $ids = [];
+            foreach ($settings['profileSchema'] as $sec) {
+                if (is_array($sec) && !empty($sec['id']) && !empty($sec['sensitive'])) {
+                    $ids[] = (string)$sec['id'];
+                }
+            }
+        }
+        return array_values(array_unique($ids));
+    }
+
+    function ccrm_agency_project_worker(array $row, array $scope, ?array $settings = null): array {
         $canPersonal = ccrm_can($scope, 'agency.personal');
         $canPayments = ccrm_can($scope, 'agency.payments');
         $profile = is_array($row['profile_json'] ?? null)
             ? $row['profile_json']
             : (json_decode((string)($row['profile_json'] ?? '{}'), true) ?: []);
         if (!$canPersonal) {
-            foreach (['passport', 'permit', 'addresses', 'family'] as $sec) {
+            foreach (ccrm_agency_sensitive_section_ids($settings) as $sec) {
                 unset($profile[$sec]);
             }
         }

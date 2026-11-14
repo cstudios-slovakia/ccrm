@@ -85,7 +85,7 @@ try {
 
             $workers = [];
             foreach ($pdo->query("SELECT * FROM `agency_workers` ORDER BY `updated_at` DESC, `full_name` ASC")->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $workers[] = ccrm_agency_project_worker($r, $scope);
+                $workers[] = ccrm_agency_project_worker($r, $scope, $settings);
             }
 
             $workplaces = [];
@@ -267,9 +267,10 @@ try {
                 $payments = array_map(static fn ($r) => ccrm_agency_project_payment($r), $pStmt->fetchAll(PDO::FETCH_ASSOC));
             }
 
+            $settings = ccrm_agency_load_settings($pdo);
             ccrm_agency_json([
                 'success' => true,
-                'worker' => ccrm_agency_project_worker($wRow, $scope),
+                'worker' => ccrm_agency_project_worker($wRow, $scope, $settings),
                 'placements' => $placements,
                 'checklist' => $checklist,
                 'files' => $files,
@@ -319,9 +320,10 @@ try {
                 }
                 $incomingProfile['stayWork']['targetCompanyClientId'] = (string)$existingProfile['stayWork']['targetCompanyClientId'];
             }
+            $settings = ccrm_agency_load_settings($pdo);
             if (!$canPersonal) {
                 // Preserve hidden sensitive sections when caller lacks agency.personal.
-                foreach (['passport', 'permit', 'addresses', 'family'] as $sec) {
+                foreach (ccrm_agency_sensitive_section_ids($settings) as $sec) {
                     if (isset($existingProfile[$sec])) {
                         $incomingProfile[$sec] = $existingProfile[$sec];
                     } else {
@@ -340,7 +342,6 @@ try {
                 ? floatval($w['defaultBillRate'] ?? ($existing['default_bill_rate'] ?? 0))
                 : floatval($existing['default_bill_rate'] ?? 0);
 
-            $settings = ccrm_agency_load_settings($pdo);
             $stageGroupMap = [];
             foreach ($settings['stages'] ?? [] as $stDef) {
                 if (is_array($stDef) && !empty($stDef['id'])) {
@@ -441,7 +442,7 @@ try {
 
             $fresh = $pdo->prepare("SELECT * FROM `agency_workers` WHERE `id` = ? LIMIT 1");
             $fresh->execute([$id]);
-            ccrm_agency_json(['success' => true, 'worker' => ccrm_agency_project_worker($fresh->fetch(PDO::FETCH_ASSOC), $scope)]);
+            ccrm_agency_json(['success' => true, 'worker' => ccrm_agency_project_worker($fresh->fetch(PDO::FETCH_ASSOC), $scope, $settings)]);
             break;
         }
 
