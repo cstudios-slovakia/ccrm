@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
+  AlertTriangle,
   ArrowLeft,
   Building2,
   Calendar,
@@ -36,6 +37,7 @@ import {
   type AgencyWorkerChecklistItem,
   type AgencyWorkerDetailPayload,
   type AgencyWorkerFile,
+  type AgencyWorkerStatus,
   type AgencyWorkplace,
 } from "../../types/agency";
 import {
@@ -48,7 +50,8 @@ import {
   saveAgencyWorker,
   uploadAgencyWorkerFile,
 } from "../../utils/agencyApi";
-import { getComplianceExpiryState } from "../../utils/agencyCalculations";
+import { getComplianceExpiryState, summarizeWorkerCompliance } from "../../utils/agencyCalculations";
+import { formatDateLocalized, formatTimestampLocalized } from "../../utils/localTime";
 import type { AgencyRights } from "../../utils/agencyRights";
 import { Tabs } from "../layout/Tabs";
 
@@ -240,8 +243,32 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
 
   const handleStageChange = async (nextStageId: string) => {
     if (!rights.edit) return;
+    const nextSt = settings.stages.find((s) => s.id === nextStageId);
+    const nextWorkerStatus: AgencyWorkerStatus =
+      nextSt?.group === "placed" || nextStageId === "placed"
+        ? "rented"
+        : worker.workerStatus === "rented" && !activePlacement
+          ? "candidate"
+          : worker.workerStatus;
     const saved = await saveAgencyWorker({
       ...worker,
+      stageId: nextStageId,
+      workerStatus: nextWorkerStatus,
+    });
+    onWorkerUpdated(saved);
+    await loadDetail();
+  };
+
+  const handleWorkerStatusChange = async (nextStatus: AgencyWorkerStatus) => {
+    if (!rights.edit) return;
+    const placedStage = settings.stages.find((s) => s.group === "placed" || s.id === "placed");
+    const nextStageId =
+      nextStatus === "rented" && placedStage
+        ? placedStage.id
+        : worker.stageId;
+    const saved = await saveAgencyWorker({
+      ...worker,
+      workerStatus: nextStatus,
       stageId: nextStageId,
     });
     onWorkerUpdated(saved);
@@ -413,9 +440,79 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
   };
 
   const verifiedDocsCount = checklist.filter((c) => c.status === "verified").length;
+  const complianceSum = summarizeWorkerCompliance(checklist, undefined, 30, settings.checklistItems);
   const passportNum = String(profileDraft.passport?.number || "");
   const passportValid = String(profileDraft.passport?.validUntil || "");
   const permitNum = String(profileDraft.permit?.permitNumber || "");
+
+  const resolveStageLabelById = (stageId: string): string => {
+    const st = settings.stages.find((s) => s.id === stageId);
+    return st ? resolveLocalizedLabel(st.label, lang) || stageId : stageId;
+  };
+
+  const formatTimelineText = (ev: {
+    eventType: AgencyTimelineEventType;
+    title: string;
+    description: string;
+    meta?: Record<string, unknown>;
+  }): { title: string; description: string } => {
+    let title = ev.title || "";
+    let description = ev.description || "";
+    const meta = ev.meta || {};
+
+    if (title === "Profile Created") {
+      title = t("Profile created", "Profil vytvorený", "Profil létrehozva");
+    } else if (title === "Checklist updated") {
+      title = t("Checklist updated", "Kontrolný zoznam aktualizovaný", "Ellenőrzőlista frissítve");
+    } else if (typeof meta.fromStage === "string" && typeof meta.toStage === "string") {
+      title = `${t("Stage", "Fáza", "Fázis")}: ${resolveStageLabelById(meta.fromStage)} → ${resolveStageLabelById(meta.toStage)}`;
+    } else {
+      const stageMatch = title.match(/^Stage:\s*(.+?)\s*(?:→|->)\s*(.+)$/i);
+      if (stageMatch) {
+        title = `${t("Stage", "Fáza", "Fázis")}: ${resolveStageLabelById(stageMatch[1].trim())} → ${resolveStageLabelById(stageMatch[2].trim())}`;
+      } else if (title.startsWith("Document uploaded:")) {
+        const fname = title.slice("Document uploaded:".length).trim();
+        title = `${t("Document uploaded:", "Nahraný dokument:", "Dokumentum feltöltve:")} ${fname}`;
+      } else {
+        const sickMatch = title.match(/^Sick leave logged\s*\(([^)]+)\)$/i);
+        if (sickMatch) {
+          const dStr = formatDateLocalized(sickMatch[1].trim(), lang) || sickMatch[1].trim();
+          title = `${t("Sick leave logged", "Zaznamenaná PN", "Betegszabadság rögzítve")} (${dStr})`;
+        } else if (title.startsWith("Placed at ")) {
+          const rest = title.slice("Placed at ".length).trim();
+          title = `${t("Placed at", "Pridelený do firmy:", "Kihelyezve ide:")} ${rest}`;
+        } else {
+          const plStatusMatch = title.match(/^Placement\s+(active|paused|ended|completed|terminated|planned)(?::\s*(.*))?$/i);
+          if (plStatusMatch) {
+            const rawSt = plStatusMatch[1].toLowerCase();
+            const compPart = plStatusMatch[2] ? `: ${plStatusMatch[2]}` : "";
+            const stLabel =
+              rawSt === "active"
+                ? t("active", "aktívne", "aktív")
+                : rawSt === "paused"
+                  ? t("paused", "pozastavené", "szüneteltetve")
+                  : t("ended", "ukončené", "lezárva");
+            title = `${t("Placement", "Umiestnenie", "Kihelyezés")} (${stLabel})${compPart}`;
+          } else if (ev.eventType === "work_log") {
+            const wlMatch = title.match(/^(\d{4}-\d{2}-\d{2}):\s*(.*)$/);
+            if (wlMatch) {
+              title = `${formatDateLocalized(wlMatch[1], lang)}: ${wlMatch[2]}`;
+            }
+          }
+        }
+      }
+    }
+
+    if (description.startsWith("Initial stage:")) {
+      const initStageId =
+        typeof meta.toStage === "string"
+          ? meta.toStage
+          : description.slice("Initial stage:".length).trim();
+      description = `${t("Initial stage:", "Počiatočná fáza:", "Kezdő fázis:")} ${resolveStageLabelById(initStageId)}`;
+    }
+
+    return { title, description };
+  };
 
   const visibleTimeline = showWorkLogs
     ? timeline
@@ -442,17 +539,64 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                   {worker.workerCode}
                 </span>
               )}
-              <span
-                className={`text-micro font-bold uppercase px-2 py-0.5 rounded-full border ${
-                  worker.workerStatus === "rented"
-                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                    : "bg-sky-50 text-sky-700 border-sky-200"
-                }`}
-              >
-                {worker.workerStatus === "rented"
-                  ? t("Rented Employee", "Prenajatý zamestnanec", "Kölcsönzött dolgozó")
-                  : t("Candidate", "Kandidát", "Jelölt")}
-              </span>
+              {rights.edit ? (
+                <select
+                  value={worker.workerStatus}
+                  onChange={(e) => handleWorkerStatusChange(e.target.value as AgencyWorkerStatus)}
+                  data-testid="agency-worker-status-select"
+                  aria-label={t("Employee Status", "Stav pracovníka", "Dolgozói státusz")}
+                  className={`text-micro font-bold uppercase px-2.5 py-1 rounded-full border cursor-pointer focus:outline-none ${
+                    worker.workerStatus === "rented"
+                      ? "bg-emerald-600 text-white border-emerald-700"
+                      : worker.workerStatus === "inactive"
+                        ? "bg-amber-500 text-white border-amber-600"
+                        : "bg-sky-600 text-white border-sky-700"
+                  }`}
+                >
+                  <option value="candidate" className="bg-white text-slate-900">
+                    {t("Candidate", "Kandidát", "Jelölt")}
+                  </option>
+                  <option value="rented" className="bg-white text-slate-900">
+                    {t("Rented Out Employee", "Prenajatý zamestnanec", "Kölcsönzött dolgozó")}
+                  </option>
+                  <option value="inactive" className="bg-white text-slate-900">
+                    {t("Ended / Inactive", "Ukončený / Neaktívny", "Lezárt / Inaktív")}
+                  </option>
+                </select>
+              ) : (
+                <span
+                  className={`text-micro font-bold uppercase px-2.5 py-0.5 rounded-full border ${
+                    worker.workerStatus === "rented"
+                      ? "bg-emerald-600 text-white border-emerald-700"
+                      : "bg-sky-600 text-white border-sky-700"
+                  }`}
+                >
+                  {worker.workerStatus === "rented"
+                    ? t("Rented Out Employee", "Prenajatý zamestnanec", "Kölcsönzött dolgozó")
+                    : t("Candidate", "Kandidát", "Jelölt")}
+                </span>
+              )}
+              {(complianceSum.expired > 0 || complianceSum.missingRequired > 0 || complianceSum.missing > 0) && (
+                <button
+                  type="button"
+                  onClick={() => setTab("compliance")}
+                  data-testid="agency-worker-compliance-warning"
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-600 text-white text-micro font-bold shadow-2xs cursor-pointer"
+                >
+                  <AlertTriangle className="size-3" />
+                  {complianceSum.expired > 0
+                    ? t(
+                        `${complianceSum.expired} expired doc(s)`,
+                        `${complianceSum.expired} expirovaný doklad`,
+                        `${complianceSum.expired} lejárt dokumentum`
+                      )
+                    : t(
+                        `${complianceSum.missing} missing doc(s)`,
+                        `${complianceSum.missing} chýbajúci doklad`,
+                        `${complianceSum.missing} hiányzó dokumentum`
+                      )}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -519,7 +663,9 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
               <div className="grid grid-cols-2 gap-2 pt-2 border-t border-emerald-200/60 text-caption">
                 <div>
                   <span className="type-overline text-emerald-700/80 block">{t("Since", "Od", "Kezdés")}</span>
-                  <span className="font-mono font-bold text-slate-900">{activePlacement.startDate}</span>
+                  <span className="font-mono font-bold text-slate-900">
+                    {formatDateLocalized(activePlacement.startDate, lang)}
+                  </span>
                 </div>
                 {rights.payments && (
                   <div>
@@ -652,7 +798,13 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                     <input
                       type={isEditingLeft ? "date" : "text"}
                       readOnly={!isEditingLeft}
-                      value={basicDraft.dateOfBirth || (isEditingLeft ? "" : "—")}
+                      value={
+                        isEditingLeft
+                          ? basicDraft.dateOfBirth || ""
+                          : basicDraft.dateOfBirth
+                            ? formatDateLocalized(basicDraft.dateOfBirth, lang)
+                            : "—"
+                      }
                       onChange={(e) => setBasicDraft((p) => ({ ...p, dateOfBirth: e.target.value }))}
                       className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all font-mono ${
                         isEditingLeft
@@ -763,12 +915,38 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                     {verifiedDocsCount}/{checklist.length} {t("verified", "overených", "ellenőrizve")}
                   </button>
                 </div>
+                {(complianceSum.expired > 0 || complianceSum.missingRequired > 0 || complianceSum.missing > 0) && (
+                  <button
+                    type="button"
+                    onClick={() => setTab("compliance")}
+                    className="w-full p-2.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 text-caption font-bold flex items-center gap-2 text-left cursor-pointer hover:bg-rose-100/80"
+                  >
+                    <AlertTriangle className="size-4 text-rose-600 shrink-0" />
+                    <span>
+                      {complianceSum.expired > 0
+                        ? t(
+                            `Warning: ${complianceSum.expired} document(s) expired!`,
+                            `Upozornenie: ${complianceSum.expired} doklad(y) po platnosti!`,
+                            `Figyelem: ${complianceSum.expired} dokumentum lejárt!`
+                          )
+                        : t(
+                            `Warning: ${complianceSum.missing} document(s) missing!`,
+                            `Upozornenie: chýba ${complianceSum.missing} doklad(ov)!`,
+                            `Figyelem: ${complianceSum.missing} dokumentum hiányzik!`
+                          )}
+                    </span>
+                  </button>
+                )}
                 {rights.personal ? (
                   <div className="grid grid-cols-2 gap-2 text-caption">
                     <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
                       <span className="type-overline text-slate-400 block">{t("Passport", "Pas", "Útlevél")}</span>
                       <span className="font-mono font-bold text-slate-800">{passportNum || "—"}</span>
-                      {passportValid && <span className="text-micro text-slate-500 block">{passportValid}</span>}
+                      {passportValid && (
+                        <span className="text-micro text-slate-500 block">
+                          {formatDateLocalized(passportValid, lang)}
+                        </span>
+                      )}
                     </div>
                     <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
                       <span className="type-overline text-slate-400 block">{t("Permit", "Povolenie", "Engedély")}</span>
@@ -972,6 +1150,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                       {visibleTimeline.map((ev) => {
                         const meta = TIMELINE_EVENT_META[ev.eventType] || TIMELINE_EVENT_META.note;
                         const Icon = meta.Icon;
+                        const localized = formatTimelineText(ev);
                         if (ev.eventType === "work_log") {
                           return (
                             <div
@@ -982,10 +1161,14 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                             >
                               <div className="flex items-center gap-1.5 min-w-0">
                                 <Clock className="size-3 text-slate-400 shrink-0" />
-                                <span className="truncate font-medium">{ev.title}</span>
-                                {ev.description && <span className="text-slate-400 truncate">· {ev.description}</span>}
+                                <span className="truncate font-medium">{localized.title}</span>
+                                {localized.description && (
+                                  <span className="text-slate-400 truncate">· {localized.description}</span>
+                                )}
                               </div>
-                              <span className="font-mono text-slate-400 shrink-0">{ev.occurredAt.slice(0, 10)}</span>
+                              <span className="font-mono text-slate-400 shrink-0">
+                                {formatDateLocalized(ev.occurredAt.slice(0, 10), lang)}
+                              </span>
                             </div>
                           );
                         }
@@ -1002,12 +1185,14 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                                   <Icon className="size-3.5" />
                                   {t(meta.en, meta.sk, meta.hu)}
                                 </span>
-                                <span className="text-body font-bold text-slate-900">{ev.title}</span>
+                                <span className="text-body font-bold text-slate-900">{localized.title}</span>
                               </div>
-                              <span className="text-caption font-mono text-slate-400">{ev.occurredAt.slice(0, 16)}</span>
+                              <span className="text-caption font-mono text-slate-400">
+                                {formatTimestampLocalized(ev.occurredAt.slice(0, 16), lang)}
+                              </span>
                             </div>
-                            {ev.description && (
-                              <p className="text-ui text-slate-600 leading-relaxed">{ev.description}</p>
+                            {localized.description && (
+                              <p className="text-ui text-slate-600 leading-relaxed">{localized.description}</p>
                             )}
                             {ev.createdBy && (
                               <div className="text-micro text-slate-400">{ev.createdBy}</div>

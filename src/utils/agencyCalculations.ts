@@ -1,4 +1,5 @@
 import type {
+  AgencyChecklistTemplateItem,
   AgencyPaymentLineItem,
   AgencyPlacement,
   AgencySettings,
@@ -30,37 +31,57 @@ export interface WorkerComplianceSummary {
   expired: number;
   expiringSoon: number;
   missing: number;
+  missingRequired: number;
+  missingExpiry: number;
   worstState: ComplianceExpiryState;
 }
 
 export function summarizeWorkerCompliance(
   items: AgencyWorkerChecklistItem[],
   referenceDateIso: string = new Date().toISOString().slice(0, 10),
-  warningDays = 30
+  warningDays = 30,
+  templates?: AgencyChecklistTemplateItem[]
 ): WorkerComplianceSummary {
   let verified = 0;
   let expired = 0;
   let expiringSoon = 0;
   let missing = 0;
+  let missingRequired = 0;
+  let missingExpiry = 0;
+  const tplMap = templates ? new Map(templates.map((t) => [t.key, t])) : null;
   for (const item of items) {
+    const tpl = tplMap?.get(item.itemKey);
+    const hasExpiry = tpl ? Boolean(tpl.hasExpiry) : true;
+    const isRequired = tpl ? Boolean(tpl.required) : true;
     if (item.status === "verified") verified += 1;
-    if (item.status === "missing") missing += 1;
+    if (item.status === "missing") {
+      missing += 1;
+      if (isRequired) missingRequired += 1;
+    }
     if (item.status === "expired") {
       expired += 1;
       continue;
     }
-    const expState = getComplianceExpiryState(item.expiresAt, referenceDateIso, warningDays);
-    if (expState === "expired") expired += 1;
-    else if (expState === "expiring") expiringSoon += 1;
+    if (hasExpiry) {
+      if (!item.expiresAt || !item.expiresAt.trim()) {
+        missingExpiry += 1;
+      } else {
+        const expState = getComplianceExpiryState(item.expiresAt, referenceDateIso, warningDays);
+        if (expState === "expired") expired += 1;
+        else if (expState === "expiring") expiringSoon += 1;
+      }
+    }
   }
   const worstState: ComplianceExpiryState =
-    expired > 0 ? "expired" : expiringSoon > 0 ? "expiring" : missing > 0 ? "missing" : "ok";
+    expired > 0 ? "expired" : expiringSoon > 0 ? "expiring" : missing > 0 || missingExpiry > 0 ? "missing" : "ok";
   return {
     total: items.length,
     verified,
     expired,
     expiringSoon,
     missing,
+    missingRequired,
+    missingExpiry,
     worstState,
   };
 }

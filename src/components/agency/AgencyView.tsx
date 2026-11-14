@@ -114,7 +114,14 @@ export const AgencyView: React.FC<AgencyViewProps> = ({
   };
 
   const handleMoveStage = async (worker: AgencyWorker, stageId: string) => {
-    await saveAgencyWorker({ ...worker, stageId });
+    const targetStage = bootstrap?.settings.stages.find((s) => s.id === stageId);
+    const isPlacedStage = targetStage?.group === "placed" || stageId === "placed";
+    const nextWorkerStatus = isPlacedStage
+      ? "rented"
+      : worker.workerStatus === "rented" && worker.stageId === "placed"
+      ? "candidate"
+      : worker.workerStatus;
+    await saveAgencyWorker({ ...worker, stageId, workerStatus: nextWorkerStatus });
     await loadBootstrap();
   };
 

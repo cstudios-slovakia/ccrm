@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Building2, CalendarDays, MapPin, Search, UserCheck } from "lucide-react";
+import { AlertTriangle, Building2, CalendarDays, CheckCircle2, MapPin, Search, UserCheck } from "lucide-react";
 import type { Lead } from "../../types";
 import type { Language } from "../../utils/translations";
 import type {
@@ -10,6 +10,7 @@ import type {
 } from "../../types/agency";
 import { summarizeWorkerCompliance } from "../../utils/agencyCalculations";
 import type { AgencyRights } from "../../utils/agencyRights";
+import { formatDateLocalized } from "../../utils/localTime";
 
 interface RentedEmployeesViewProps {
   lang: Language;
@@ -65,32 +66,57 @@ export const RentedEmployeesView: React.FC<RentedEmployeesViewProps> = ({
     return grouped;
   }, [checklists]);
 
+  const resolveWorkerCompanyId = (w: AgencyWorker): string => {
+    if (w.targetCompanyClientId) return w.targetCompanyClientId;
+    const raw = w.profile?.stayWork?.targetCompanyClientId;
+    return typeof raw === "string" ? raw : "";
+  };
+
+  const resolveWorkerJobTitle = (w: AgencyWorker): string => {
+    const raw = w.profile?.stayWork?.jobTitle;
+    return typeof raw === "string" ? raw : "";
+  };
+
   const companyOptions = useMemo(() => {
-    const ids = new Set(placements.map((p) => p.companyClientId));
+    const ids = new Set<string>();
+    for (const p of placements) {
+      if (p.companyClientId) ids.add(p.companyClientId);
+    }
+    for (const w of workers) {
+      const targetId = resolveWorkerCompanyId(w);
+      if (targetId && (w.workerStatus === "rented" || w.stageId === "placed")) {
+        ids.add(targetId);
+      }
+    }
     return Array.from(ids)
       .map((id) => ({ id, name: clientMap.get(id)?.name || id }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [placements, clientMap]);
+  }, [placements, workers, clientMap]);
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return workers
       .map((w) => {
         const pl = activePlacementByWorker.get(w.id);
-        return { worker: w, placement: pl };
+        const effectiveCompanyId = pl?.companyClientId || resolveWorkerCompanyId(w);
+        return { worker: w, placement: pl, effectiveCompanyId };
       })
-      .filter(({ worker, placement }) => {
-        const isRented = worker.workerStatus === "rented" || placement?.status === "active";
+      .filter(({ worker, placement, effectiveCompanyId }) => {
+        const isRented =
+          worker.workerStatus === "rented" ||
+          placement?.status === "active" ||
+          worker.stageId === "placed";
+        const isPastRented = Boolean(placement) || worker.workerStatus === "inactive";
         if (!showInactive && !isRented) return false;
-        if (!placement && !isRented) return false;
-        if (companyFilter !== "all" && placement?.companyClientId !== companyFilter) return false;
+        if (showInactive && !isRented && !isPastRented) return false;
+        if (companyFilter !== "all" && effectiveCompanyId !== companyFilter) return false;
         if (!q) return true;
-        const compName = placement ? clientMap.get(placement.companyClientId)?.name || "" : "";
+        const compName = effectiveCompanyId ? clientMap.get(effectiveCompanyId)?.name || "" : "";
         return (
           worker.fullName.toLowerCase().includes(q) ||
           worker.workerCode.toLowerCase().includes(q) ||
           compName.toLowerCase().includes(q) ||
-          (placement?.jobRole || "").toLowerCase().includes(q)
+          (placement?.jobRole || resolveWorkerJobTitle(worker)).toLowerCase().includes(q)
         );
       });
   }, [workers, activePlacementByWorker, showInactive, companyFilter, search, clientMap]);
@@ -159,10 +185,11 @@ export const RentedEmployeesView: React.FC<RentedEmployeesViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {rows.map(({ worker, placement }) => {
-                  const comp = placement ? clientMap.get(placement.companyClientId) : undefined;
+                {rows.map(({ worker, placement, effectiveCompanyId }) => {
+                  const comp = effectiveCompanyId ? clientMap.get(effectiveCompanyId) : undefined;
                   const wp = placement?.workplaceId ? workplaceMap.get(placement.workplaceId) : undefined;
                   const sum = summarizeWorkerCompliance(complianceByWorker.get(worker.id) || []);
+                  const jobRole = placement?.jobRole || resolveWorkerJobTitle(worker);
                   return (
                     <tr
                       key={worker.id}
@@ -185,7 +212,7 @@ export const RentedEmployeesView: React.FC<RentedEmployeesViewProps> = ({
                       <td className="py-3 px-4">
                         <div className="text-ui font-semibold text-slate-800 inline-flex items-center gap-1">
                           <Building2 className="size-3.5 text-slate-400" />
-                          {comp?.name || placement?.companyClientId || "—"}
+                          {comp?.name || effectiveCompanyId || "—"}
                         </div>
                         {wp && (
                           <div className="text-micro text-slate-500 flex items-center gap-1">
@@ -195,21 +222,50 @@ export const RentedEmployeesView: React.FC<RentedEmployeesViewProps> = ({
                         )}
                       </td>
                       <td className="py-3 px-4">
-                        <div className="text-ui text-slate-800">{placement?.jobRole || "—"}</div>
-                        <div className="text-micro text-slate-500 font-mono">{placement?.startDate || ""}</div>
+                        <div className="text-ui text-slate-800">{jobRole || "—"}</div>
+                        <div className="text-micro text-slate-500 font-mono">
+                          {placement?.startDate ? formatDateLocalized(placement.startDate, lang) : ""}
+                        </div>
                       </td>
                       <td className="py-3 px-4">
-                        <span
-                          className={`inline-flex px-2 py-0.5 rounded-full text-micro font-semibold border ${
-                            sum.worstState === "expired"
-                              ? "bg-rose-50 text-rose-700 border-rose-200"
-                              : sum.worstState === "expiring"
-                              ? "bg-amber-50 text-amber-700 border-amber-200"
-                              : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                          }`}
-                        >
-                          {sum.verified}/{sum.total}
-                        </span>
+                        {sum.expired > 0 ? (
+                          <span
+                            data-testid={`agency-rented-compliance-warning-${worker.id}`}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-rose-50 text-rose-700 border border-rose-200"
+                          >
+                            <AlertTriangle className="size-3 shrink-0" />
+                            {t("Expired", "Expirované", "Lejárt")} ({sum.expired}) · {sum.verified}/{sum.total}
+                          </span>
+                        ) : sum.missingRequired > 0 || sum.missingExpiry > 0 ? (
+                          <span
+                            data-testid={`agency-rented-compliance-warning-${worker.id}`}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-rose-50 text-rose-700 border border-rose-200"
+                          >
+                            <AlertTriangle className="size-3 shrink-0" />
+                            {t("Missing doc", "Chýba doklad", "Hiányzó irat")} ({sum.verified}/{sum.total})
+                          </span>
+                        ) : sum.missing > 0 ? (
+                          <span
+                            data-testid={`agency-rented-compliance-warning-${worker.id}`}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-amber-50 text-amber-800 border border-amber-200"
+                          >
+                            <AlertTriangle className="size-3 shrink-0" />
+                            {t("Missing doc", "Chýba doklad", "Hiányzó irat")} ({sum.verified}/{sum.total})
+                          </span>
+                        ) : sum.expiringSoon > 0 ? (
+                          <span
+                            data-testid={`agency-rented-compliance-warning-${worker.id}`}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-amber-50 text-amber-800 border border-amber-200"
+                          >
+                            <AlertTriangle className="size-3 shrink-0" />
+                            {t("Expiring", "Končí platnosť", "Lejáró")} ({sum.verified}/{sum.total})
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <CheckCircle2 className="size-3 shrink-0" />
+                            {sum.verified}/{sum.total}
+                          </span>
+                        )}
                       </td>
                       {rights.payments && (
                         <td className="py-3 px-4 text-caption font-mono text-slate-700">

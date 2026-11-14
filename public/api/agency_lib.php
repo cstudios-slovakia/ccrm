@@ -317,6 +317,11 @@ HTACCESS
             $targetCompanyClientId = trim($profile['stayWork']['targetCompanyClientId']);
         }
 
+        $rawWorkerStatus = (string)($row['worker_status'] ?? 'candidate');
+        if ($rawWorkerStatus === 'bench') {
+            $rawWorkerStatus = 'inactive';
+        }
+
         return [
             'id' => (string)$row['id'],
             'workerCode' => (string)($row['worker_code'] ?? ''),
@@ -325,7 +330,7 @@ HTACCESS
             'email' => (string)($row['email'] ?? ''),
             'phone' => (string)($row['phone'] ?? ''),
             'stageId' => (string)($row['stage_id'] ?? 'sourced'),
-            'workerStatus' => (string)($row['worker_status'] ?? 'candidate'),
+            'workerStatus' => $rawWorkerStatus,
             'nationality' => (string)($row['nationality'] ?? ''),
             'dateOfBirth' => $canPersonal ? (string)($row['date_of_birth'] ?? '') : '',
             'targetCompanyClientId' => $targetCompanyClientId,

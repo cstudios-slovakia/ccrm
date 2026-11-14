@@ -11,6 +11,7 @@ import type {
 } from "../../types/agency";
 import { saveAgencyPlacement, saveAgencyWorkplace } from "../../utils/agencyApi";
 import type { AgencyRights } from "../../utils/agencyRights";
+import { formatDateLocalized } from "../../utils/localTime";
 
 interface PlacementsPanelProps {
   worker: AgencyWorker;
@@ -188,7 +189,11 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
                           : "bg-slate-100 text-slate-600 border-slate-200"
                       }`}
                     >
-                      {pl.status}
+                      {isActive
+                        ? t("Active", "Aktívne", "Aktív")
+                        : pl.status === "paused"
+                        ? t("Paused", "Pozastavené", "Szüneteltetve")
+                        : t("Ended", "Ukončené", "Lezárt")}
                     </span>
                     <span className="text-body font-bold text-slate-900 inline-flex items-center gap-1.5">
                       <Building2 className="size-4 text-teal-600" />
@@ -202,7 +207,8 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
                   <div className="flex flex-wrap items-center gap-3 text-caption text-slate-600">
                     <span className="inline-flex items-center gap-1">
                       <Calendar className="size-3.5 text-slate-400" />
-                      {pl.startDate} → {pl.endDate || t("Ongoing", "Trvá", "Folyamatban")}
+                      {formatDateLocalized(pl.startDate, lang)} →{" "}
+                      {pl.endDate ? formatDateLocalized(pl.endDate, lang) : t("Ongoing", "Trvá", "Folyamatban")}
                     </span>
                     {wp && (
                       <span className="inline-flex items-center gap-1">

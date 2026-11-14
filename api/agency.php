@@ -340,10 +340,34 @@ try {
                 ? floatval($w['defaultBillRate'] ?? ($existing['default_bill_rate'] ?? 0))
                 : floatval($existing['default_bill_rate'] ?? 0);
 
+            $settings = ccrm_agency_load_settings($pdo);
+            $stageGroupMap = [];
+            foreach ($settings['stages'] ?? [] as $stDef) {
+                if (is_array($stDef) && !empty($stDef['id'])) {
+                    $stageGroupMap[(string)$stDef['id']] = (string)($stDef['group'] ?? '');
+                }
+            }
             $stageId = trim((string)($w['stageId'] ?? ($existing['stage_id'] ?? 'sourced'))) ?: 'sourced';
+            $hasExplicitStatus = array_key_exists('workerStatus', $w);
             $workerStatus = trim((string)($w['workerStatus'] ?? ($existing['worker_status'] ?? 'candidate')));
+            if ($workerStatus === 'inactive') {
+                $workerStatus = 'bench';
+            }
             if (!in_array($workerStatus, ['candidate', 'rented', 'bench', 'archived'], true)) {
                 $workerStatus = 'candidate';
+            }
+            if ($existing && (string)$existing['stage_id'] !== $stageId && !$hasExplicitStatus) {
+                $stGroup = $stageGroupMap[$stageId] ?? ($stageId === 'placed' ? 'placed' : '');
+                if ($stGroup === 'placed' || $stageId === 'placed') {
+                    $workerStatus = 'rented';
+                } elseif ($workerStatus === 'rented') {
+                    $workerStatus = 'candidate';
+                }
+            } elseif (!$existing && !$hasExplicitStatus) {
+                $stGroup = $stageGroupMap[$stageId] ?? ($stageId === 'placed' ? 'placed' : '');
+                if ($stGroup === 'placed' || $stageId === 'placed') {
+                    $workerStatus = 'rented';
+                }
             }
             $workerCode = trim((string)($w['workerCode'] ?? ($existing['worker_code'] ?? '')));
             if ($workerCode === '') {
@@ -394,7 +418,6 @@ try {
                 $userName,
             ]);
 
-            $settings = ccrm_agency_load_settings($pdo);
             if ($isNew) {
                 $chkCount = (int)$pdo->query("SELECT COUNT(*) FROM `agency_worker_checklists` WHERE `worker_id` = " . $pdo->quote($id))->fetchColumn();
                 if ($chkCount === 0) {

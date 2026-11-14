@@ -212,25 +212,53 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
     if (sum.total === 0) {
       return <span className="text-micro text-slate-400">—</span>;
     }
-    if (sum.worstState === "expired") {
+    if (sum.expired > 0) {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-semibold bg-rose-50 text-rose-700 border border-rose-200">
-          <AlertTriangle className="size-3" />
-          {t("Expired", "Expirované", "Lejárt")} ({sum.verified}/{sum.total})
+        <span
+          data-testid={`agency-compliance-warning-${workerId}`}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-rose-50 text-rose-700 border border-rose-200"
+        >
+          <AlertTriangle className="size-3 shrink-0" />
+          {t("Expired", "Expirované", "Lejárt")} ({sum.expired}) · {sum.verified}/{sum.total}
         </span>
       );
     }
-    if (sum.worstState === "expiring") {
+    if (sum.missingRequired > 0 || sum.missingExpiry > 0) {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-          <AlertTriangle className="size-3" />
-          {t("Expiring", "Končí", "Lejáró")} ({sum.verified}/{sum.total})
+        <span
+          data-testid={`agency-compliance-warning-${workerId}`}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-rose-50 text-rose-700 border border-rose-200"
+        >
+          <AlertTriangle className="size-3 shrink-0" />
+          {t("Missing doc", "Chýba doklad", "Hiányzó irat")} ({sum.verified}/{sum.total})
+        </span>
+      );
+    }
+    if (sum.missing > 0) {
+      return (
+        <span
+          data-testid={`agency-compliance-warning-${workerId}`}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-amber-50 text-amber-800 border border-amber-200"
+        >
+          <AlertTriangle className="size-3 shrink-0" />
+          {t("Missing doc", "Chýba doklad", "Hiányzó irat")} ({sum.verified}/{sum.total})
+        </span>
+      );
+    }
+    if (sum.expiringSoon > 0) {
+      return (
+        <span
+          data-testid={`agency-compliance-warning-${workerId}`}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-amber-50 text-amber-800 border border-amber-200"
+        >
+          <AlertTriangle className="size-3 shrink-0" />
+          {t("Expiring", "Končí platnosť", "Lejáró")} ({sum.verified}/{sum.total})
         </span>
       );
     }
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-        <CheckCircle2 className="size-3" />
+        <CheckCircle2 className="size-3 shrink-0" />
         {sum.verified}/{sum.total}
       </span>
     );
