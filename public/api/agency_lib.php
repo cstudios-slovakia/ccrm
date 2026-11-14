@@ -312,6 +312,11 @@ HTACCESS
             ? $row['skills_json']
             : (json_decode((string)($row['skills_json'] ?? '[]'), true) ?: []);
 
+        $targetCompanyClientId = '';
+        if (isset($profile['stayWork']['targetCompanyClientId']) && is_string($profile['stayWork']['targetCompanyClientId'])) {
+            $targetCompanyClientId = trim($profile['stayWork']['targetCompanyClientId']);
+        }
+
         return [
             'id' => (string)$row['id'],
             'workerCode' => (string)($row['worker_code'] ?? ''),
@@ -323,6 +328,7 @@ HTACCESS
             'workerStatus' => (string)($row['worker_status'] ?? 'candidate'),
             'nationality' => (string)($row['nationality'] ?? ''),
             'dateOfBirth' => $canPersonal ? (string)($row['date_of_birth'] ?? '') : '',
+            'targetCompanyClientId' => $targetCompanyClientId,
             'profile' => (object)$profile,
             'skills' => array_values($skills),
             'notes' => (string)($row['notes'] ?? ''),

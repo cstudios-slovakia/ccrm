@@ -320,6 +320,8 @@ export const AgencyView: React.FC<AgencyViewProps> = ({
           rights={rights}
           settings={bootstrap.settings}
           workers={bootstrap.workers}
+          placements={bootstrap.placements}
+          clients={leads}
           checklists={bootstrap.checklists}
           onOpenWorker={(id) => onNavigate(`agency/worker/${encodeURIComponent(id)}`)}
           onCreateWorker={handleCreateWorker}

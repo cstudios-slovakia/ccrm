@@ -90,6 +90,7 @@ export interface AgencyWorker {
   workerStatus: AgencyWorkerStatus;
   nationality: string;
   dateOfBirth: string;
+  targetCompanyClientId?: string;
   profile: AgencyProfileData;
   skills: string[];
   notes: string;

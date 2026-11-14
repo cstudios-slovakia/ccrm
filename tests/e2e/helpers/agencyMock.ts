@@ -61,8 +61,14 @@ export async function installAgencyMocks(page: Page, options: AgencyMockOptions 
       if (!canPersonal && (SENSITIVE_SECTIONS as readonly string[]).includes(k)) continue;
       profileCopy[k] = { ...v };
     }
+    const targetCompanyClientId =
+      w.targetCompanyClientId ??
+      (typeof w.profile?.stayWork?.targetCompanyClientId === 'string'
+        ? w.profile.stayWork.targetCompanyClientId
+        : '');
     return {
       ...w,
+      targetCompanyClientId,
       dateOfBirth: canPersonal ? w.dateOfBirth : '',
       profile: profileCopy,
       defaultPayRate: canPayments ? w.defaultPayRate : null,
@@ -230,6 +236,23 @@ export async function installAgencyMocks(page: Page, options: AgencyMockOptions 
       const existing = idx >= 0 ? workers[idx] : null;
       const id = existing ? existing.id : wIn.id || nextId('agw');
       const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+      const targetCompanyClientId =
+        wIn.targetCompanyClientId !== undefined
+          ? wIn.targetCompanyClientId
+          : existing?.targetCompanyClientId ||
+            (typeof wIn.profile?.stayWork?.targetCompanyClientId === 'string'
+              ? wIn.profile.stayWork.targetCompanyClientId
+              : '');
+      const mergedProfile: Record<string, Record<string, unknown>> = {
+        ...(existing?.profile || {}),
+        ...(wIn.profile || {}),
+      };
+      if (targetCompanyClientId !== undefined) {
+        mergedProfile.stayWork = {
+          ...(mergedProfile.stayWork || {}),
+          targetCompanyClientId: targetCompanyClientId || '',
+        };
+      }
       const saved: AgencyWorker = {
         id,
         workerCode: wIn.workerCode || existing?.workerCode || `AGW-00${seq}`,
@@ -241,7 +264,8 @@ export async function installAgencyMocks(page: Page, options: AgencyMockOptions 
         workerStatus: wIn.workerStatus || existing?.workerStatus || 'candidate',
         nationality: wIn.nationality ?? existing?.nationality ?? '',
         dateOfBirth: canPersonal ? wIn.dateOfBirth ?? existing?.dateOfBirth ?? '' : existing?.dateOfBirth ?? '',
-        profile: wIn.profile ?? existing?.profile ?? {},
+        targetCompanyClientId: targetCompanyClientId || '',
+        profile: mergedProfile,
         skills: wIn.skills ?? existing?.skills ?? [],
         notes: wIn.notes ?? existing?.notes ?? '',
         defaultPayRate: canPayments ? (wIn.defaultPayRate ?? existing?.defaultPayRate ?? null) : existing?.defaultPayRate ?? null,

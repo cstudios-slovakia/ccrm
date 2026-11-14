@@ -143,6 +143,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
     phone: "",
     nationality: "",
     dateOfBirth: "",
+    targetCompanyClientId: "",
     assignedRecruiter: "",
     notes: "",
     defaultPayRate: "",
@@ -155,6 +156,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
 
   const syncDraftsFromWorker = (w: AgencyWorker) => {
     setProfileDraft((w.profile || {}) as AgencyProfileData);
+    const fromProfileCompany = w.profile?.stayWork?.targetCompanyClientId;
     setBasicDraft({
       fullName: w.fullName || "",
       preferredName: w.preferredName || "",
@@ -162,6 +164,8 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
       phone: w.phone || "",
       nationality: w.nationality || "",
       dateOfBirth: w.dateOfBirth || "",
+      targetCompanyClientId:
+        w.targetCompanyClientId || (typeof fromProfileCompany === "string" ? fromProfileCompany : ""),
       assignedRecruiter: w.assignedRecruiter || "",
       notes: w.notes || "",
       defaultPayRate: w.defaultPayRate !== null && w.defaultPayRate !== undefined ? String(w.defaultPayRate) : "",
@@ -212,10 +216,24 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
   }
 
   const { worker, placements, checklist, files, timeline } = detail;
+  const companyLeads = clients.filter(
+    (c) => c.status === "accepted" && !c.archived && c.clientType !== "person"
+  );
+  const currentStage = settings.stages.find((st) => st.id === worker.stageId);
+  const currentStageColor = currentStage?.color || "#64748b";
   const activePlacement: AgencyPlacement | undefined = placements.find((p) => p.status === "active");
   const activeCompanyName = activePlacement
     ? clients.find((c) => c.id === activePlacement.companyClientId)?.name || activePlacement.companyClientId
     : null;
+  const targetCompanyId =
+    basicDraft.targetCompanyClientId ||
+    worker.targetCompanyClientId ||
+    (typeof worker.profile?.stayWork?.targetCompanyClientId === "string"
+      ? worker.profile.stayWork.targetCompanyClientId
+      : "");
+  const targetCompanyName = targetCompanyId
+    ? clients.find((c) => c.id === targetCompanyId)?.name || targetCompanyId
+    : "";
   const activeWorkplaceName = activePlacement?.workplaceId
     ? workplaces.find((w) => w.id === activePlacement.workplaceId)?.name || null
     : null;
@@ -254,6 +272,17 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
     if (!rights.edit) return;
     setSaving(true);
     try {
+      const selectedTargetCompanyName = basicDraft.targetCompanyClientId
+        ? clients.find((c) => c.id === basicDraft.targetCompanyClientId)?.name || ""
+        : "";
+      const nextProfile: AgencyProfileData = {
+        ...profileDraft,
+        stayWork: {
+          ...(profileDraft.stayWork || {}),
+          targetCompanyClientId: basicDraft.targetCompanyClientId || "",
+          ...(selectedTargetCompanyName ? { employerName: selectedTargetCompanyName } : {}),
+        },
+      };
       const saved = await saveAgencyWorker({
         id: worker.id,
         fullName: basicDraft.fullName.trim() || worker.fullName,
@@ -262,11 +291,12 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
         phone: basicDraft.phone.trim(),
         nationality: basicDraft.nationality.trim(),
         dateOfBirth: basicDraft.dateOfBirth.trim(),
+        targetCompanyClientId: basicDraft.targetCompanyClientId || "",
         assignedRecruiter: basicDraft.assignedRecruiter.trim(),
         notes: basicDraft.notes,
         stageId: worker.stageId,
         workerStatus: worker.workerStatus,
-        profile: profileDraft,
+        profile: nextProfile,
         ...(rights.payments
           ? {
                defaultPayRate: basicDraft.defaultPayRate !== "" ? Number(basicDraft.defaultPayRate) : 0,
@@ -433,10 +463,11 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
             value={worker.stageId}
             onChange={(e) => handleStageChange(e.target.value)}
             aria-label={t("Stage", "Fáza", "Fázis")}
-            className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-ui font-semibold text-slate-800"
+            className="px-3.5 py-1.5 rounded-full text-ui font-bold text-white border-0 shadow-sm cursor-pointer focus:outline-none"
+            style={{ backgroundColor: currentStageColor, color: "#ffffff" }}
           >
             {settings.stages.map((st) => (
-              <option key={st.id} value={st.id}>
+              <option key={st.id} value={st.id} className="bg-white text-slate-900">
                 {resolveLocalizedLabel(st.label, lang)}
               </option>
             ))}
@@ -648,6 +679,32 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                         : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default"
                     }`}
                   />
+                </div>
+
+                <div className="space-y-1 ws-sm:col-span-2">
+                  <label className="type-overline text-slate-500 block">
+                    {t("Recruited For (Target Company)", "Nábor pre firmu", "Célcég")}
+                  </label>
+                  {isEditingLeft ? (
+                    <select
+                      value={basicDraft.targetCompanyClientId}
+                      onChange={(e) => setBasicDraft((p) => ({ ...p, targetCompanyClientId: e.target.value }))}
+                      data-testid="agency-detail-target-company-select"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-teal-500 text-slate-800"
+                    >
+                      <option value="">{t("— Unassigned —", "— Nepriradené —", "— Nincs hozzárendelve —")}</option>
+                      {companyLeads.map((comp) => (
+                        <option key={comp.id} value={comp.id}>
+                          {comp.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="py-1.5 flex items-center gap-1.5 text-slate-900 font-bold">
+                      <Building2 className="size-4 text-indigo-600 shrink-0" />
+                      <span>{activeCompanyName || targetCompanyName || "—"}</span>
+                    </div>
+                  )}
                 </div>
 
                 {rights.payments && (
@@ -1027,20 +1084,23 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                   </h3>
                   <div className="space-y-2.5">
                     {checklist.map((item, idx) => {
-                      const expState = getComplianceExpiryState(item.expiresAt);
                       const tplItem = settings.checklistItems.find((tpl) => tpl.key === item.itemKey);
+                      const hasExpiry = tplItem ? Boolean(tplItem.hasExpiry) : true;
                       const isRequired = Boolean(tplItem?.required);
+                      const expState = hasExpiry ? getComplianceExpiryState(item.expiresAt) : "ok";
                       const attachedFile =
                         (item.fileId ? files.find((f) => f.id === item.fileId) : undefined) ||
                         files.find((f) => f.checklistItemId === item.id);
                       const hasDoc = Boolean(attachedFile) || item.status === "submitted" || item.status === "verified";
-                      const isExpiredState = item.status === "expired" || expState === "expired";
+                      const isMissingExpiry = hasExpiry && (!item.expiresAt || !item.expiresAt.trim());
+                      const isExpiredState = item.status === "expired" || (hasExpiry && expState === "expired");
+                      const isExpiryRed = hasExpiry && (isMissingExpiry || isExpiredState);
 
                       const rowClasses = isExpiredState
                         ? "bg-rose-50/80 border-rose-300"
-                        : hasDoc
+                        : hasDoc && !isExpiryRed
                           ? "bg-emerald-50/80 border-emerald-300"
-                          : isRequired
+                          : isRequired || isExpiryRed
                             ? "bg-rose-50/80 border-rose-300"
                             : "bg-amber-50/80 border-amber-300";
 
@@ -1058,7 +1118,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                               {isRequired ? (
                                 <span
                                   className={`text-micro font-bold px-2 py-0.5 rounded-full border ${
-                                    hasDoc && !isExpiredState
+                                    hasDoc && !isExpiryRed
                                       ? "bg-emerald-100/80 text-emerald-800 border-emerald-300"
                                       : "bg-rose-100/80 text-rose-800 border-rose-300"
                                   }`}
@@ -1068,7 +1128,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                               ) : (
                                 <span
                                   className={`text-micro font-bold px-2 py-0.5 rounded-full border ${
-                                    hasDoc && !isExpiredState
+                                    hasDoc && !isExpiryRed
                                       ? "bg-emerald-100/80 text-emerald-800 border-emerald-300"
                                       : "bg-amber-100/80 text-amber-800 border-amber-300"
                                   }`}
@@ -1086,9 +1146,9 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                               className={`px-2.5 py-1 rounded-lg border text-caption font-semibold ${
                                 isExpiredState
                                   ? "bg-white/90 border-rose-300 text-rose-800"
-                                  : hasDoc
+                                  : hasDoc && !isExpiryRed
                                     ? "bg-white/90 border-emerald-300 text-emerald-800"
-                                    : isRequired
+                                    : isRequired || isExpiryRed
                                       ? "bg-white/90 border-rose-300 text-rose-800"
                                       : "bg-white/90 border-amber-300 text-amber-800"
                               }`}
@@ -1100,31 +1160,47 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                             </select>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <label className="text-micro text-slate-600 flex items-center gap-1">
-                              <Calendar className="size-3" />
-                              {t("Expires:", "Platnosť do:", "Lejárat:")}
-                            </label>
-                            <input
-                              type="date"
-                              disabled={!rights.edit}
-                              value={item.expiresAt || ""}
-                              onChange={(e) =>
-                                handleChecklistChange(idx, { expiresAt: e.target.value || null })
-                              }
-                              className="px-2 py-1 rounded-lg bg-white/90 border border-slate-200 text-caption"
-                            />
-                            {expState !== "ok" && (
-                              <span
-                                className={`text-micro font-bold px-2 py-0.5 rounded-full ${
-                                  expState === "expired"
-                                    ? "bg-rose-100 text-rose-800"
-                                    : "bg-amber-100 text-amber-800"
-                                }`}
-                              >
-                                {expState === "expired"
-                                  ? t("Expired", "Expirované", "Lejárt")
-                                  : t("Expiring soon", "Čoskoro expiruje", "Hamarosan lejár")}
-                              </span>
+                            {hasExpiry && (
+                              <>
+                                <label
+                                  className={`text-micro flex items-center gap-1 font-semibold ${
+                                    isExpiryRed ? "text-rose-700" : "text-slate-600"
+                                  }`}
+                                >
+                                  <Calendar className="size-3" />
+                                  {t("Expires:", "Platnosť do:", "Lejárat:")}
+                                </label>
+                                <input
+                                  type="date"
+                                  disabled={!rights.edit}
+                                  value={item.expiresAt || ""}
+                                  onChange={(e) =>
+                                    handleChecklistChange(idx, { expiresAt: e.target.value || null })
+                                  }
+                                  className={`px-2 py-1 rounded-lg border text-caption font-semibold ${
+                                    isExpiryRed
+                                      ? "bg-rose-50 border-rose-400 text-rose-800 ring-1 ring-rose-300"
+                                      : "bg-white/90 border-slate-200 text-slate-800"
+                                  }`}
+                                />
+                                {isMissingExpiry ? (
+                                  <span className="text-micro font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300">
+                                    {t("Expiration required", "Chýba dátum platnosti", "Lejárat kötelező")}
+                                  </span>
+                                ) : expState !== "ok" ? (
+                                  <span
+                                    className={`text-micro font-bold px-2 py-0.5 rounded-full ${
+                                      expState === "expired"
+                                        ? "bg-rose-100 text-rose-800 border border-rose-300"
+                                        : "bg-amber-100 text-amber-800 border border-amber-300"
+                                    }`}
+                                  >
+                                    {expState === "expired"
+                                      ? t("Expired", "Expirované", "Lejárt")
+                                      : t("Expiring soon", "Čoskoro expiruje", "Hamarosan lejár")}
+                                  </span>
+                                ) : null}
+                              </>
                             )}
                             {attachedFile && (
                               <button
@@ -1167,7 +1243,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                                 />
                               </label>
                             )}
-                            {onQuickRenewTask && (expState === "expired" || expState === "expiring") && (
+                            {onQuickRenewTask && hasExpiry && (expState === "expired" || expState === "expiring") && (
                               <button
                                 type="button"
                                 onClick={() => onQuickRenewTask(worker, item)}

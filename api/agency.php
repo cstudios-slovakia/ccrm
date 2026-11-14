@@ -308,6 +308,17 @@ try {
             $existingProfile = $existing && !empty($existing['profile_json'])
                 ? (json_decode((string)$existing['profile_json'], true) ?: [])
                 : [];
+            if (array_key_exists('targetCompanyClientId', $w)) {
+                if (!isset($incomingProfile['stayWork']) || !is_array($incomingProfile['stayWork'])) {
+                    $incomingProfile['stayWork'] = is_array($existingProfile['stayWork'] ?? null) ? $existingProfile['stayWork'] : [];
+                }
+                $incomingProfile['stayWork']['targetCompanyClientId'] = trim((string)($w['targetCompanyClientId'] ?? ''));
+            } elseif (isset($existingProfile['stayWork']['targetCompanyClientId']) && !isset($incomingProfile['stayWork']['targetCompanyClientId'])) {
+                if (!isset($incomingProfile['stayWork']) || !is_array($incomingProfile['stayWork'])) {
+                    $incomingProfile['stayWork'] = [];
+                }
+                $incomingProfile['stayWork']['targetCompanyClientId'] = (string)$existingProfile['stayWork']['targetCompanyClientId'];
+            }
             if (!$canPersonal) {
                 // Preserve hidden sensitive sections when caller lacks agency.personal.
                 foreach (['passport', 'permit', 'addresses', 'family'] as $sec) {

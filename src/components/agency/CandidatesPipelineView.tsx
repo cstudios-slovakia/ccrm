@@ -1,8 +1,10 @@
 import React, { useMemo, useState } from "react";
-import { LayoutGrid, List, Plus, Search, UserCheck, AlertTriangle, CheckCircle2, Phone, Mail, Globe } from "lucide-react";
+import { LayoutGrid, List, Plus, Search, UserCheck, AlertTriangle, CheckCircle2, Phone, Mail, Globe, Building2 } from "lucide-react";
+import type { Lead } from "../../types";
 import type { Language } from "../../utils/translations";
 import {
   resolveLocalizedLabel,
+  type AgencyPlacement,
   type AgencySettings,
   type AgencyStage,
   type AgencyWorker,
@@ -16,6 +18,8 @@ interface CandidatesPipelineViewProps {
   rights: AgencyRights;
   settings: AgencySettings;
   workers: AgencyWorker[];
+  placements?: AgencyPlacement[];
+  clients?: Lead[];
   checklists: AgencyWorkerChecklistItem[];
   onOpenWorker: (workerId: string) => void;
   onCreateWorker: (draft: Partial<AgencyWorker> & { fullName: string }) => Promise<AgencyWorker>;
@@ -27,6 +31,8 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
   rights,
   settings,
   workers,
+  placements = [],
+  clients = [],
   checklists,
   onOpenWorker,
   onCreateWorker,
@@ -38,6 +44,8 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
   const [viewMode, setViewMode] = useState<"table" | "kanban">("table");
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");
+  const [companyFilter, setCompanyFilter] = useState<string>("all");
+  const [nationalityFilter, setNationalityFilter] = useState<string>("all");
   const [includeRented, setIncludeRented] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -45,6 +53,7 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
     surname: "",
     givenNames: "",
     nationality: "",
+    targetCompanyClientId: "",
     email: "",
     phone: "",
     stageId: settings.stages[0]?.id || "sourced",
@@ -53,6 +62,50 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
     defaultPayRate: "",
     defaultBillRate: "",
   });
+
+  const companyLeads = useMemo(
+    () =>
+      clients
+        .filter((c) => c.status === "accepted" && !c.archived && c.clientType !== "person")
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [clients]
+  );
+
+  const clientMap = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
+
+  const activePlacementByWorker = useMemo(() => {
+    const map = new Map<string, AgencyPlacement>();
+    for (const pl of placements) {
+      const existing = map.get(pl.workerId);
+      if (!existing || (pl.status === "active" && existing.status !== "active")) {
+        map.set(pl.workerId, pl);
+      }
+    }
+    return map;
+  }, [placements]);
+
+  const getWorkerCompanyId = (w: AgencyWorker): string => {
+    const activePl = activePlacementByWorker.get(w.id);
+    if (activePl?.companyClientId) return activePl.companyClientId;
+    if (w.targetCompanyClientId) return w.targetCompanyClientId;
+    const fromProfile = w.profile?.stayWork?.targetCompanyClientId;
+    return typeof fromProfile === "string" ? fromProfile : "";
+  };
+
+  const getWorkerCompanyName = (w: AgencyWorker): string => {
+    const cid = getWorkerCompanyId(w);
+    if (cid) return clientMap.get(cid)?.name || cid;
+    const fromEmployer = w.profile?.stayWork?.employerName;
+    return typeof fromEmployer === "string" && fromEmployer.trim() ? fromEmployer.trim() : "";
+  };
+
+  const nationalityOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const w of workers) {
+      if (w.nationality?.trim()) set.add(w.nationality.trim());
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [workers]);
 
   const checklistByWorker = useMemo(() => {
     const map = new Map<string, AgencyWorkerChecklistItem[]>();
@@ -75,16 +128,27 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
     return workers.filter((w) => {
       if (!includeRented && w.workerStatus !== "candidate") return false;
       if (stageFilter !== "all" && w.stageId !== stageFilter) return false;
+      if (nationalityFilter !== "all" && w.nationality.trim() !== nationalityFilter) return false;
+      const cid = getWorkerCompanyId(w);
+      if (companyFilter !== "all") {
+        if (companyFilter === "__unassigned__") {
+          if (cid) return false;
+        } else if (cid !== companyFilter) {
+          return false;
+        }
+      }
       if (!q) return true;
+      const compName = getWorkerCompanyName(w).toLowerCase();
       return (
         w.fullName.toLowerCase().includes(q) ||
         w.workerCode.toLowerCase().includes(q) ||
         w.nationality.toLowerCase().includes(q) ||
         w.email.toLowerCase().includes(q) ||
-        w.phone.toLowerCase().includes(q)
+        w.phone.toLowerCase().includes(q) ||
+        compName.includes(q)
       );
     });
-  }, [workers, includeRented, stageFilter, search]);
+  }, [workers, includeRented, stageFilter, nationalityFilter, companyFilter, search, activePlacementByWorker, clientMap]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,9 +156,13 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
     if (!fullName) return;
     setSubmitting(true);
     try {
+      const selectedCompanyName = form.targetCompanyClientId
+        ? clientMap.get(form.targetCompanyClientId)?.name || ""
+        : "";
       const created = await onCreateWorker({
         fullName,
         nationality: form.nationality.trim(),
+        targetCompanyClientId: form.targetCompanyClientId || "",
         email: form.email.trim(),
         phone: form.phone.trim(),
         stageId: form.stageId || settings.stages[0]?.id || "sourced",
@@ -113,6 +181,10 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
             givenNames: form.givenNames.trim(),
             nationality: form.nationality.trim(),
           },
+          stayWork: {
+            targetCompanyClientId: form.targetCompanyClientId || "",
+            ...(selectedCompanyName ? { employerName: selectedCompanyName } : {}),
+          },
         },
       });
       setShowCreate(false);
@@ -120,6 +192,7 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
         surname: "",
         givenNames: "",
         nationality: "",
+        targetCompanyClientId: "",
         email: "",
         phone: "",
         stageId: settings.stages[0]?.id || "sourced",
@@ -173,13 +246,14 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("Search candidate, code, nationality…", "Hľadať kandidáta, kód, štátnu príslušnosť…", "Keresés név, kód, állampolgárság…")}
+              placeholder={t("Search candidate, code, company, nationality…", "Hľadať kandidáta, kód, firmu, štátnu príslušnosť…", "Keresés név, kód, cég, állampolgárság…")}
               className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 focus:border-indigo-500 focus:outline-none"
             />
           </div>
           <select
             value={stageFilter}
             onChange={(e) => setStageFilter(e.target.value)}
+            data-testid="agency-candidates-stage-filter"
             className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-700"
           >
             <option value="all">{t("All stages", "Všetky fázy", "Minden fázis")}</option>
@@ -189,6 +263,35 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
               </option>
             ))}
           </select>
+          <select
+            value={companyFilter}
+            onChange={(e) => setCompanyFilter(e.target.value)}
+            data-testid="agency-candidates-company-filter"
+            className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-700"
+          >
+            <option value="all">{t("All companies", "Všetky firmy", "Minden cég")}</option>
+            <option value="__unassigned__">{t("Unassigned company", "Bez firmy", "Cég nélkül")}</option>
+            {companyLeads.map((comp) => (
+              <option key={comp.id} value={comp.id}>
+                {comp.name}
+              </option>
+            ))}
+          </select>
+          {nationalityOptions.length > 0 && (
+            <select
+              value={nationalityFilter}
+              onChange={(e) => setNationalityFilter(e.target.value)}
+              data-testid="agency-candidates-nationality-filter"
+              className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-700"
+            >
+              <option value="all">{t("All nationalities", "Všetky príslušnosti", "Minden állampolgárság")}</option>
+              {nationalityOptions.map((nat) => (
+                <option key={nat} value={nat}>
+                  {nat}
+                </option>
+              ))}
+            </select>
+          )}
           <label className="inline-flex items-center gap-1.5 text-caption font-medium text-slate-600 px-2 cursor-pointer">
             <input
               type="checkbox"
@@ -250,6 +353,7 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50/80 text-micro font-bold uppercase tracking-wider text-slate-500">
                     <th className="py-3 px-4">{t("Candidate", "Kandidát", "Jelölt")}</th>
+                    <th className="py-3 px-4">{t("Recruited For (Company)", "Firma", "Célcég")}</th>
                     <th className="py-3 px-4">{t("Nationality", "Príslušnosť", "Állampolgárság")}</th>
                     <th className="py-3 px-4">{t("Contact", "Kontakt", "Elérhetőség")}</th>
                     <th className="py-3 px-4">{t("Stage", "Fáza", "Fázis")}</th>
@@ -259,6 +363,9 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
                 <tbody className="divide-y divide-slate-100">
                   {filteredWorkers.map((w) => {
                     const st = stageById.get(w.stageId);
+                    const stageColor = st?.color || "#64748b";
+                    const companyName = getWorkerCompanyName(w);
+                    const isPlaced = activePlacementByWorker.get(w.id)?.status === "active";
                     return (
                       <tr
                         key={w.id}
@@ -281,6 +388,22 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
                               )}
                             </div>
                           </button>
+                        </td>
+                        <td className="py-3 px-4 text-ui">
+                          {companyName ? (
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-caption font-semibold border ${
+                                isPlaced
+                                  ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                  : "bg-indigo-50/80 text-indigo-800 border-indigo-200"
+                              }`}
+                            >
+                              <Building2 className="size-3.5 shrink-0" />
+                              <span className="truncate max-w-44">{companyName}</span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-ui text-slate-700">
                           <span className="inline-flex items-center gap-1">
@@ -307,17 +430,20 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
                             <select
                               value={w.stageId}
                               onChange={(e) => onMoveStage(w, e.target.value)}
-                              className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-caption font-semibold text-slate-800"
-                              style={{ borderLeftColor: st?.color || "#64748b", borderLeftWidth: 3 }}
+                              className="px-3 py-1.5 rounded-full text-caption font-bold text-white border-0 shadow-2xs cursor-pointer focus:outline-none"
+                              style={{ backgroundColor: stageColor, color: "#ffffff" }}
                             >
                               {settings.stages.map((opt) => (
-                                <option key={opt.id} value={opt.id}>
+                                <option key={opt.id} value={opt.id} className="bg-white text-slate-900">
                                   {resolveLocalizedLabel(opt.label, lang)}
                                 </option>
                               ))}
                             </select>
                           ) : (
-                            <span className="px-2.5 py-1 rounded-full text-caption font-semibold bg-slate-100 text-slate-700">
+                            <span
+                              className="inline-flex items-center px-3 py-1 rounded-full text-caption font-bold text-white shadow-2xs"
+                              style={{ backgroundColor: stageColor }}
+                            >
                               {resolveLocalizedLabel(st?.label, lang) || w.stageId}
                             </span>
                           )}
@@ -341,52 +467,62 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
                 className="w-72 shrink-0 glass-panel rounded-2xl p-3 flex flex-col gap-2.5"
               >
                 <div className="flex items-center justify-between px-1">
-                  <div className="flex items-center gap-2">
-                    <span className="size-2.5 rounded-full" style={{ backgroundColor: st.color }} />
-                    <span className="text-ui font-bold text-slate-800">
-                      {resolveLocalizedLabel(st.label, lang)}
-                    </span>
-                  </div>
+                  <span
+                    className="inline-flex items-center px-2.5 py-0.5 rounded-full text-caption font-bold text-white shadow-2xs"
+                    style={{ backgroundColor: st.color }}
+                  >
+                    {resolveLocalizedLabel(st.label, lang)}
+                  </span>
                   <span className="text-micro font-mono px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
                     {colWorkers.length}
                   </span>
                 </div>
                 <div className="space-y-2">
-                  {colWorkers.map((w) => (
-                    <div
-                      key={w.id}
-                      onClick={() => onOpenWorker(w.id)}
-                      className="p-3 rounded-xl bg-white border border-slate-200 hover:border-teal-300 shadow-2xs cursor-pointer space-y-2 transition-colors"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="text-ui font-bold text-slate-900 leading-snug">{w.fullName}</div>
-                        {w.workerCode && (
-                          <span className="text-micro font-mono text-slate-400">{w.workerCode}</span>
+                  {colWorkers.map((w) => {
+                    const companyName = getWorkerCompanyName(w);
+                    return (
+                      <div
+                        key={w.id}
+                        onClick={() => onOpenWorker(w.id)}
+                        className="p-3 rounded-xl bg-white border border-slate-200 hover:border-teal-300 shadow-2xs cursor-pointer space-y-2 transition-colors"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="text-ui font-bold text-slate-900 leading-snug">{w.fullName}</div>
+                          {w.workerCode && (
+                            <span className="text-micro font-mono text-slate-400">{w.workerCode}</span>
+                          )}
+                        </div>
+                        {companyName && (
+                          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-200 text-micro font-semibold max-w-full">
+                            <Building2 className="size-3 shrink-0" />
+                            <span className="truncate">{companyName}</span>
+                          </div>
+                        )}
+                        <div className="text-caption text-slate-500">
+                          {w.nationality || t("Nationality unset", "Bez príslušnosti", "Állampolgárság nélkül")}
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          {renderCompliancePill(w.id)}
+                        </div>
+                        {rights.edit && (
+                          <div onClick={(e) => e.stopPropagation()}>
+                            <select
+                              value={w.stageId}
+                              onChange={(e) => onMoveStage(w, e.target.value)}
+                              className="w-full px-2.5 py-1 rounded-full text-micro font-bold text-white border-0 shadow-2xs cursor-pointer"
+                              style={{ backgroundColor: st.color, color: "#ffffff" }}
+                            >
+                              {settings.stages.map((opt) => (
+                                <option key={opt.id} value={opt.id} className="bg-white text-slate-900">
+                                  {resolveLocalizedLabel(opt.label, lang)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                         )}
                       </div>
-                      <div className="text-caption text-slate-500">
-                        {w.nationality || t("Nationality unset", "Bez príslušnosti", "Állampolgárság nélkül")}
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        {renderCompliancePill(w.id)}
-                      </div>
-                      {rights.edit && (
-                        <div onClick={(e) => e.stopPropagation()}>
-                          <select
-                            value={w.stageId}
-                            onChange={(e) => onMoveStage(w, e.target.value)}
-                            className="w-full px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 text-micro font-medium text-slate-700"
-                          >
-                            {settings.stages.map((opt) => (
-                              <option key={opt.id} value={opt.id}>
-                                {resolveLocalizedLabel(opt.label, lang)}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -441,6 +577,24 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
                   placeholder={t("Given Names", "Krstné mená", "Keresztnév")}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui"
                 />
+              </div>
+              <div className="ws-sm:col-span-2">
+                <label className="type-overline text-slate-500 block mb-1">
+                  {t("Recruited For (Target Company)", "Nábor pre firmu", "Célcég (akinek toborozzuk)")}
+                </label>
+                <select
+                  value={form.targetCompanyClientId}
+                  onChange={(e) => setForm((p) => ({ ...p, targetCompanyClientId: e.target.value }))}
+                  data-testid="agency-new-worker-company"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui"
+                >
+                  <option value="">{t("— Select company (optional) —", "— Vybrať firmu (voliteľné) —", "— Válasszon céget (opcionális) —")}</option>
+                  {companyLeads.map((comp) => (
+                    <option key={comp.id} value={comp.id}>
+                      {comp.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="type-overline text-slate-500 block mb-1">
