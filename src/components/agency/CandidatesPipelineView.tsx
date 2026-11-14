@@ -424,7 +424,7 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
                   data-testid="agency-new-worker-surname"
                   value={form.surname}
                   onChange={(e) => setForm((p) => ({ ...p, surname: e.target.value }))}
-                  placeholder="REYES"
+                  placeholder={t("Surname", "Priezvisko", "Vezetéknév")}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui"
                 />
               </div>
@@ -438,7 +438,7 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
                   data-testid="agency-new-worker-given"
                   value={form.givenNames}
                   onChange={(e) => setForm((p) => ({ ...p, givenNames: e.target.value }))}
-                  placeholder="Angela Dela Cruz"
+                  placeholder={t("Given Names", "Krstné mená", "Keresztnév")}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui"
                 />
               </div>

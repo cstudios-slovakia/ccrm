@@ -1,7 +1,7 @@
 <?php
 /**
  * Shared library for the opt-in Agency & Workforce Leasing module (`agency`).
- * Keeps private file helpers, REYES_ANGELA_DELA_CRUZ default customizable
+ * Keeps private file helpers, default customizable worker profile
  * schema & settings, RBAC projectors, timeline logging, shift-to-payroll math,
  * and deterministic financial_records expense sync in one place.
  */

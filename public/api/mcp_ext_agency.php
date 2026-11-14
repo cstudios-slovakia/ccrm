@@ -126,7 +126,7 @@ function mcp_get_agency_tool_definitions(): array {
         ],
         [
             'name' => 'get_agency_settings',
-            'description' => 'Read the customizable Agency configuration: recruitment stages, REYES_ANGELA_DELA_CRUZ profile schema & custom fields, checklist template, shift presets, and holiday country.',
+            'description' => 'Read the customizable Agency configuration: recruitment stages, worker profile schema & custom fields, checklist template, shift presets, and holiday country.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => new \stdClass(),

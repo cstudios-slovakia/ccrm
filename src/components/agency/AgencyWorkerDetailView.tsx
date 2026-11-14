@@ -350,7 +350,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
 
   const tabs: Array<{ id: AgencyDetailTab; label: string }> = [
     { id: "overview", label: t("Overview & Timeline", "Prehľad a história", "Áttekintés és idővonal") },
-    { id: "profile", label: t("Structured Profile", "Údaje (REYES schéma)", "Adatlap") },
+    { id: "profile", label: t("Details", "Údaje", "Adatok") },
     { id: "compliance", label: t("Checklist & Private Files", "Doklady a súbory", "Dokumentumok") },
     { id: "placements", label: t("Placements", "Umiestnenia", "Kihelyezések") },
     { id: "schedule", label: t("Schedule", "Rozpis zmien", "Műszakok") },

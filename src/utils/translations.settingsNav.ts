@@ -129,7 +129,7 @@ export const settingsNavEn: Record<string, string> = {
   "settings.nav.sec.access.users.kw": "user, account, password, project manager, pm, invite, employee, login",
   "settings.nav.sec.access.users.title": "Users",
   "settings.nav.sec.agency.schema.hint": "Enable sections, toggle required fields and add custom attributes to worker profiles",
-  "settings.nav.sec.agency.schema.kw": "agency, worker, candidate, schema, custom fields, passport, permit, identity, family, reyes",
+  "settings.nav.sec.agency.schema.kw": "agency, worker, candidate, schema, custom fields, passport, permit, identity, family, details",
   "settings.nav.sec.agency.schema.title": "Worker profile schema",
   "settings.nav.sec.agency.shifts.hint": "Shift presets, national holiday calendar, overtime multipliers and payroll defaults",
   "settings.nav.sec.agency.shifts.kw": "agency, shift, template, preset, holiday, overtime, multiplier, payroll, currency, expense",

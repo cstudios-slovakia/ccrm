@@ -385,9 +385,9 @@ export const AgencySettingsSection: React.FC<AgencySettingsSectionProps> = ({
       <SectionCard
         title={t("Candidate & Worker Data Schema", "Schéma údajov kandidáta a zamestnanca", "Jelölt és dolgozó adatsablon")}
         description={t(
-          "Default template matches REYES_ANGELA_DELA_CRUZ. Customize visible sections, required fields, and extra agency fields.",
-          "Predvolená šablóna vychádza zo štruktúry REYES_ANGELA_DELA_CRUZ. Upravte sekcie, povinné polia alebo pridajte vlastné.",
-          "Az alapértelmezett sablon a REYES_ANGELA_DELA_CRUZ szerkezetén alapul. Testreszabhatja a szekciókat és mezőket."
+          "Customize visible sections, required fields, and extra agency fields.",
+          "Upravte sekcie, povinné polia alebo pridajte vlastné.",
+          "Testreszabhatja a szekciókat és mezőket."
         )}
         action={
           <div className="flex items-center gap-2">
