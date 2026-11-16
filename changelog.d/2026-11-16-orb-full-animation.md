@@ -1,0 +1,1 @@
+- **The copilot orb's eyes glance around all the time again** (`src/components/executive/FloatingCopilotOrb.tsx`): the pause of the eye animations added in 1.13.98 is removed. It never took effect in the built app, and the stutter it was meant to prevent on long lists is now handled by not painting far-off-screen rows.
