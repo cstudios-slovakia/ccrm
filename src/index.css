@@ -1971,3 +1971,15 @@ dialog[open]::backdrop {
   .nt-dot { animation: none !important; }
   .nt-press { transition: none; }
 }
+
+/* Rows of a long list table that are far off screen are not painted
+   (hooks/useHideOffscreenRows.ts sets the attribute). They keep their size, so
+   the layout and the scroll position are untouched. Printed in full. */
+tr[data-offscreen-row] {
+  visibility: hidden;
+}
+@media print {
+  tr[data-offscreen-row] {
+    visibility: visible;
+  }
+}
