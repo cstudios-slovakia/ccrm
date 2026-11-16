@@ -11,6 +11,7 @@ ccrm_send_cors('GET, POST, OPTIONS');
 $sessionUser = ccrm_require_auth();
 
 require_once __DIR__ . '/agent_utils.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 try {
     $pdo = get_db_connection();
@@ -42,7 +43,8 @@ $configJson = $stmt->fetchColumn();
 $integrationsConfig = $configJson ? json_decode($configJson, true) : [];
 $integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys()) : [];
 
-$openAiKey = $integrationsConfig['openAiKey'] ?? '';
+$openAiKey = ccrm_ai_resolve_openai_key($pdo, $integrationsConfig);
+$aiConfigured = ccrm_ai_is_configured($pdo, $integrationsConfig);
 $vectorDb = $integrationsConfig['vectorDb'] ?? 'none';
 
 // Initialize DB connection and ensure schemas exist (uses vector DB if configured, falls back to main DB)
@@ -312,10 +314,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
     
-    if (empty($openAiKey)) {
+    if (!$aiConfigured) {
         echo json_encode([
             'success' => true,
-            'reply' => "I am ready to help, but the **OpenAI API Key** is not configured. Please add your key in Settings."
+            'reply' => "I am ready to help, but no AI API key or active LLM connector is configured. Please configure one in Settings → AI integration."
         ]);
         exit;
     }
@@ -352,10 +354,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
-        if (empty($openAiKey)) {
+        if (!$aiConfigured) {
             echo json_encode([
                 'success' => true,
-                'reply' => "The **Executive Council** is assembled, but the **OpenAI API Key** is not configured. Please add your key in Settings."
+                'reply' => "The **Executive Council** is assembled, but no AI API key or active LLM connector is configured. Please configure one in Settings → AI integration."
             ]);
             exit;
         }
@@ -429,39 +431,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $councilPayloadMessages[] = ['role' => 'user', 'content' => $sanitized_council_query];
 
-        $ch = curl_init('https://api.openai.com/v1/chat/completions');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            'Content-Type: application/json',
-            'Authorization: Bearer ' . $openAiKey
-        ]);
-        $chatModel = ccrm_ai_model();
-        $chatPayload = [
-            'model' => $chatModel,
-            'messages' => $councilPayloadMessages,
-        ];
-        if (ccrm_ai_model_supports_temperature($chatModel)) {
-            $chatPayload['temperature'] = 0.3;
-        }
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($chatPayload, JSON_INVALID_UTF8_SUBSTITUTE));
+        $chatModel = ccrm_ai_model($integrationsConfig);
+        $aiRes = ccrm_ai_chat_completion(
+            $pdo,
+            [
+                'model' => $chatModel,
+                'messages' => $councilPayloadMessages,
+                'temperature' => 0.3,
+            ],
+            [
+                'feature' => 'executive_council',
+                'timeout' => 45,
+                'integrationsConfig' => $integrationsConfig,
+            ]
+        );
 
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlErr = curl_error($ch);
-        curl_close($ch);
-
-        if ($httpCode !== 200) {
-            $errData = json_decode($response, true);
-            $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI API endpoint error');
-            $reply = "Failed to convene Executive Council. API returned code " . $httpCode . ": " . $errMsg;
+        if (empty($aiRes['ok'])) {
+            $errMsg = (string)($aiRes['error'] ?: 'AI API endpoint error');
+            $reply = "Failed to convene Executive Council. AI returned code " . (int)($aiRes['httpCode'] ?? 0) . ": " . $errMsg;
         } else {
-            $resData = json_decode($response, true);
-            ccrm_ai_capture_usage($pdo, 'executive_council', $resData, $chatModel);
-            $aiReply = $resData['choices'][0]['message']['content'] ?? 'No response returned from model.';
+            $aiReply = $aiRes['content'] ?? 'No response returned from model.';
             $reply = restore_text($aiReply, $to_real);
         }
 
@@ -592,44 +581,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     $payloadMessages[] = ['role' => 'user', 'content' => $sanitized_query];
 
-    // Call OpenAI
-    $ch = curl_init('https://api.openai.com/v1/chat/completions');
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    // Reasoning models (gpt-5*, o*) answer in 5-60 s depending on how much CRM context is in the
-    // prompt; a 20 s limit turned slow-but-fine answers into "Operation timed out ... 0 bytes".
+    // Call configured AI provider
     @set_time_limit(150);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 120);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Content-Type: application/json',
-        'Authorization: Bearer ' . $openAiKey
-    ]);
-    $chatModel = ccrm_ai_model();
-    $chatPayload = [
-        'model' => $chatModel,
-        'messages' => $payloadMessages,
-    ];
-    if (ccrm_ai_model_supports_temperature($chatModel)) {
-        $chatPayload['temperature'] = 0.4;
-    }
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($chatPayload, JSON_INVALID_UTF8_SUBSTITUTE));
+    $chatModel = ccrm_ai_model($integrationsConfig);
+    $aiRes = ccrm_ai_chat_completion(
+        $pdo,
+        [
+            'model' => $chatModel,
+            'messages' => $payloadMessages,
+            'temperature' => 0.4,
+        ],
+        [
+            'feature' => 'executive_assistant',
+            'timeout' => 120,
+            'integrationsConfig' => $integrationsConfig,
+        ]
+    );
 
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlErr = curl_error($ch);
-    curl_close($ch);
-
-    if ($httpCode !== 200) {
-        $errData = json_decode($response, true);
-        $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI API endpoint error');
-        $reply = "Failed to fetch response from OpenAI. API returned code " . $httpCode . ": " . $errMsg;
+    if (empty($aiRes['ok'])) {
+        $errMsg = (string)($aiRes['error'] ?: 'AI API endpoint error');
+        $reply = "Failed to fetch response from AI provider. API returned code " . (int)($aiRes['httpCode'] ?? 0) . ": " . $errMsg;
     } else {
-        $resData = json_decode($response, true);
-        ccrm_ai_capture_usage($pdo, 'executive_assistant', $resData, $chatModel);
-        $aiReply = $resData['choices'][0]['message']['content'] ?? 'No response returned from model.';
+        $aiReply = $aiRes['content'] ?? 'No response returned from model.';
         $reply = restore_text($aiReply, $to_real);
     }
     

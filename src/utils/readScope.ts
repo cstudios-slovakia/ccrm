@@ -14,13 +14,14 @@ export type ReadScope = {
   referenceNames: {
     leads: Record<string, string>;
     projects: Record<string, string>;
+    agencyWorkers: Record<string, string>;
   };
 };
 
 export const EMPTY_READ_SCOPE: ReadScope = {
   restricted: [],
   rowScoped: [],
-  referenceNames: { leads: {}, projects: {} },
+  referenceNames: { leads: {}, projects: {}, agencyWorkers: {} },
 };
 
 const asStringMap = (value: unknown): Record<string, string> => {
@@ -41,7 +42,11 @@ export const parseReadScope = (raw: unknown): ReadScope => {
   return {
     restricted: Array.isArray(r.restricted) ? r.restricted.filter((k: unknown) => typeof k === "string") : [],
     rowScoped: Array.isArray(r.rowScoped) ? r.rowScoped.filter((k: unknown) => typeof k === "string") : [],
-    referenceNames: { leads: asStringMap(names.leads), projects: asStringMap(names.projects) },
+    referenceNames: {
+      leads: asStringMap(names.leads),
+      projects: asStringMap(names.projects),
+      agencyWorkers: asStringMap(names.agencyWorkers),
+    },
   };
 };
 
@@ -53,6 +58,9 @@ export const referenceLeadName = (scope: ReadScope, leadId: string | number | nu
 
 export const referenceProjectName = (scope: ReadScope, projectId: string | number | null | undefined): string | undefined =>
   projectId == null || projectId === "" ? undefined : scope.referenceNames.projects[String(projectId)];
+
+export const referenceAgencyWorkerName = (scope: ReadScope, workerId: string | number | null | undefined): string | undefined =>
+  workerId == null || workerId === "" ? undefined : scope.referenceNames.agencyWorkers[String(workerId)];
 
 /** Keep React from re-rendering every consumer when a poll returns an identical scope. */
 export const sameReadScope = (a: ReadScope, b: ReadScope): boolean => JSON.stringify(a) === JSON.stringify(b);

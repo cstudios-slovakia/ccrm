@@ -26,6 +26,10 @@ The order when finishing a change: **test -> collect changelog (bumps the versio
 
 - Planned in phases in ONE file: [`docs/DEMO-MODE.md`](docs/DEMO-MODE.md). When asked to "make demo phase N", follow its Part A.
 
+### 0d. Agency & Workforce Leasing Module
+
+- Master spec and per-phase checklists live in ONE file: [`docs/AGENCY-MODULE.md`](docs/AGENCY-MODULE.md). Rented employees (`agency_workers`) are a separate permanent entity from Contacts (`leads`).
+
 ### 1. Commit & Version Bumping Protocol
 
 - **Commit After Every Significant Change**: Make atomic, clean git commits after completing each feature, fix, or significant modification.

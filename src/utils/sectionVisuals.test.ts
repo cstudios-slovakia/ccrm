@@ -17,6 +17,7 @@ test("related sections share one group", () => {
   pair("tasks", "time-tracking");
   pair("leads", "clients");
   pair("clients", "employees");
+  pair("clients", "agency");
   pair("projects", "tickets");
   pair("email", "social_media");
   pair("files", "updates");

@@ -569,13 +569,13 @@ function ccrm_process_recurring_tasks(PDO $pdo, ?string $onlyTemplateId = null):
                 "INSERT IGNORE INTO `tasks` (
                     `id`, `title`, `description`, `priority`, `start_date`, `deadline`,
                     `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`,
-                    `related_project_id`, `is_locking`, `archived`, `email_reminders_json`,
+                    `related_project_id`, `related_agency_worker_id`, `is_locking`, `archived`, `email_reminders_json`,
                     `requires_conclusion`, `estimate_minutes`, `recurring_source_id`,
                     `recurring_occurrence_date`, `task_kind`
                 ) VALUES (
                     ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?,
-                    ?, ?, 0, ?,
+                    ?, ?, ?, 0, ?,
                     ?, ?, ?,
                     ?, NULL
                 )" /* recurring-template: generator inserts occurrence */
@@ -594,6 +594,7 @@ function ccrm_process_recurring_tasks(PDO $pdo, ?string $onlyTemplateId = null):
                 $tmpl['created_by'] ?? 'System',
                 $tmpl['related_lead_id'] ?? null,
                 $tmpl['related_project_id'] ?? null,
+                $tmpl['related_agency_worker_id'] ?? null,
                 intval($tmpl['is_locking'] ?? 0),
                 $tmpl['email_reminders_json'] ?? null,
                 intval($tmpl['requires_conclusion'] ?? 0),
@@ -657,6 +658,7 @@ function ccrm_process_recurring_tasks(PDO $pdo, ?string $onlyTemplateId = null):
                         'owner' => $tmpl['owner'] ?? '',
                         'relatedLeadId' => $tmpl['related_lead_id'] ?? null,
                         'relatedProjectId' => $tmpl['related_project_id'] ?? null,
+                        'relatedAgencyWorkerId' => $tmpl['related_agency_worker_id'] ?? null,
                         'isLocking' => intval($tmpl['is_locking'] ?? 0) === 1,
                         'requiresConclusion' => intval($tmpl['requires_conclusion'] ?? 0) === 1,
                         'recurringSourceId' => $tmplId,

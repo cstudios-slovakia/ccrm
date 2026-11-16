@@ -3,6 +3,7 @@ require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/mail_broker.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 /**
  * Load and decrypt TICKET_SETTINGS from system_settings.
@@ -181,11 +182,12 @@ function ccrm_resolve_ticket_openai_key(PDO $pdo, array $ticketSettings): string
 }
 
 /**
- * Use OpenAI gpt-6-luna to select which project an incoming support email belongs to,
+ * Use configured AI source (ticket-specific OpenAI key, or CRM AI gateway connector/key)
+ * to select which project an incoming support email belongs to,
  * plus classify its priority and ticket type.
  */
 function ccrm_route_ticket_via_openai(string $apiKey, string $subject, string $body, string $senderEmail, array $candidateProjects, ?\PDO $usagePdo = null): ?array {
-    if ($apiKey === '' || empty($candidateProjects) || !function_exists('curl_init')) {
+    if (empty($candidateProjects)) {
         return null;
     }
 
@@ -214,9 +216,27 @@ function ccrm_route_ticket_via_openai(string $apiKey, string $subject, string $b
             ['role' => 'system', 'content' => $systemPrompt],
             ['role' => 'user', 'content' => $userPrompt],
         ],
+        'temperature' => 0.1,
     ];
-    if (ccrm_ai_model_supports_temperature($routeModel)) {
-        $routePayload['temperature'] = 0.1;
+
+    if ($usagePdo instanceof \PDO && ccrm_ai_is_configured($usagePdo)) {
+        $res = ccrm_ai_chat_completion($usagePdo, $routePayload, [
+            'feature' => 'ticket_routing',
+            'timeout' => 15,
+            'retries' => 1,
+        ]);
+        if (empty($res['ok']) || empty($res['content'])) {
+            return null;
+        }
+        $parsed = json_decode((string)$res['content'], true);
+        return is_array($parsed) ? $parsed : null;
+    }
+
+    if ($apiKey === '' || !function_exists('curl_init')) {
+        return null;
+    }
+    if (!ccrm_ai_model_supports_temperature($routeModel)) {
+        unset($routePayload['temperature']);
     }
     $payload = json_encode($routePayload);
 
@@ -456,7 +476,7 @@ function ccrm_poll_ticket_imap(PDO $pdo, bool $force = false): array {
             $ticketProjects = array_values($projects);
         }
 
-        if ($openAiKey !== '' && !empty($ticketProjects)) {
+        if (!empty($settings['aiRoutingEnabled']) && ($openAiKey !== '' || ccrm_ai_is_configured($pdo)) && !empty($ticketProjects)) {
             $aiResult = ccrm_route_ticket_via_openai($openAiKey, $subject, $bodyText, $fromEmail, $ticketProjects, $pdo);
             if (is_array($aiResult)) {
                 if (!$matchedProjectId && !empty($aiResult['projectId']) && isset($projects[$aiResult['projectId']])) {

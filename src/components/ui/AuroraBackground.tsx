@@ -76,6 +76,11 @@ const TAB_COLOR_MAP: Record<string, ThemeColors> = {
     secondary: "rgba(245, 158, 11, 0.22)", // Warm Amber / Honey
     accent: "rgba(16, 185, 129, 0.18)", // Emerald
   },
+  agency: {
+    primary: "rgba(92, 111, 40, 0.28)", // Olive (#5c6f28)
+    secondary: "rgba(132, 155, 62, 0.22)", // Warm Olive / Moss
+    accent: "rgba(163, 177, 107, 0.18)", // Sage Olive
+  },
   employee: {
     primary: "rgba(194, 155, 98, 0.28)", // Sand / Warm Bronze (#c29b62)
     secondary: "rgba(245, 158, 11, 0.22)", // Warm Amber / Honey

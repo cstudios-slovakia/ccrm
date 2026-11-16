@@ -1,13 +1,14 @@
 import { PageHeader } from "./layout";
 import { SectionIcon } from "./icons/SectionIcon";
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import {
   Send, Trash2, Search, Mail, Plus, X, Loader2,
   Reply, CheckCircle2, CircleAlert, Clock, Phone, FileText, Calendar, TrendingUp,
   CornerDownLeft, CornerLeftDown, ChevronDown, ChevronUp, Brain, RefreshCw, Lock, MailOpen,
   Type, MessagesSquare, Inbox, Paperclip, UserPlus, ExternalLink, History, Download, FolderPlus,
-  FileSpreadsheet, FileImage, ArrowUpRight, ArrowDownLeft
+  FileSpreadsheet, FileImage, ArrowUpRight, ArrowDownLeft, Bot, MessageCircle, QrCode, Settings, Sparkles, Terminal, Users,
+  Zap, Activity, Play
 } from "lucide-react";
 import type { Lead, Task, UserProfile } from "../types";
 import type { ModuleAccess } from "../utils/permissions";
@@ -15,6 +16,8 @@ import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import { formatBytes } from "../utils/formatBytes";
 import { nowLocalStamp, localeCodeFor, formatTimestampLocalized, todayLocalPlusDays } from "../utils/localTime";
 import { getTranslation } from "../utils/translations";
+import { hasAiConfigured } from "../utils/aiConfig";
+import { Markdown } from "../utils/markdown";
 import { CustomSelect } from "./ui/CustomSelect";
 import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
 import { TimelineCollapsible } from "./TimelineCollapsible";
@@ -25,6 +28,44 @@ import { reinsertAt } from "../utils/undoableList";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { useListFilter } from "../hooks/useListFilter";
 import { PRODUCT_NAME } from "../utils/brand";
+import { PROVIDERS, ProviderLogo } from "./CompanyMailboxSettings";
+import {
+  cancelAgentFollowup,
+  clearAgentChatHistory,
+  deleteAgentArtifact,
+  deleteAgentSubagent,
+  deleteAgentTask,
+  deleteAgentTrigger,
+  getAgentConnectorState,
+  getWhatsAppChats,
+  inferConnectorType,
+  isAgentConnector,
+  isEmailConnector,
+  isMessagingConnector,
+  listMyConnectors,
+  pollWhatsAppDirectQr,
+  resyncWhatsAppChats,
+  runAgentTaskNow,
+  runSubscriptionAgent,
+  saveAgentArtifact,
+  saveAgentAutonomousConfig,
+  saveAgentMemory,
+  saveAgentSubagent,
+  saveAgentTask,
+  saveAgentTrigger,
+  sendWhatsAppChatMessage,
+  setWhatsAppChatAgentTakeover,
+  startWhatsAppDirectQr,
+  testAgentTrigger,
+  type AgentChatMessage,
+  type AgentConnectorState,
+  type AgentEventTrigger,
+  type AgentSubagent,
+  type CompanyMailbox,
+  type ConnectorType,
+  type WhatsAppChatSummary,
+  type WhatsAppConnectorState,
+} from "../utils/companyMailboxes";
 
 interface EmailViewProps {
   currentUser: any;
@@ -94,8 +135,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const [selectedEmail, setSelectedEmail] = useState<any | null>(null);
   const [threadBodies, setThreadBodies] = useState<Record<string, any>>({});
   
-  // Thread mode configurations
-  const [isThreadedMode, setIsThreadedMode] = useState(false);
+  // Thread mode configurations (enabled by default so incoming & sent emails stay grouped in conversation threads)
+  const [isThreadedMode, setIsThreadedMode] = useState(true);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [expandedEmailUids, setExpandedEmailUids] = useState<Record<string, boolean>>({});
 
@@ -147,6 +188,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   // AI Email & Flow Summary States
   const [summaries, setSummaries] = useState<Record<string, string>>({});
   const [loadingSummaries, setLoadingSummaries] = useState<Record<string, boolean>>({});
+  const [problemsMap, setProblemsMap] = useState<Record<string, string[]>>({});
   const [actionItemsMap, setActionItemsMap] = useState<Record<string, string[]>>({});
   const [assigningActionItem, setAssigningActionItem] = useState<{ item: string; emailUid: string } | null>(null);
   const [isLargeFont, setIsLargeFont] = useState(false);
@@ -183,12 +225,34 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const [clientFormCity, setClientFormCity] = useState("");
   const [clientFormPhone, setClientFormPhone] = useState("");
   const [clientFormType, setClientFormType] = useState<"person" | "business" | "partner">("person");
+  const [pendingChatLinkKey, setPendingChatLinkKey] = useState("");
+  const [chatClientLinks, setChatClientLinks] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("ccrm_chat_client_links") || "{}");
+    } catch {
+      return {};
+    }
+  });
+
+  const saveChatClientLink = (chatKey: string, leadId: string) => {
+    setChatClientLinks((prev) => {
+      const next = { ...prev };
+      if (leadId) next[chatKey] = leadId;
+      else delete next[chatKey];
+      try {
+        localStorage.setItem("ccrm_chat_client_links", JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   // formatBytes is imported from ../utils/formatBytes
 
   const handleDownloadAttachment = async (uid: string, folder: string, att: any) => {
     try {
-      const res = await fetch(`/api/mail_broker.php?action=get_attachment&folder=${encodeURIComponent(folder)}&uid=${uid}&part=${att.part_num}&name=${encodeURIComponent(att.name)}`, {
+      const res = await fetch(`/api/mail_broker.php?action=get_attachment&folder=${encodeURIComponent(folder)}&uid=${uid}&part=${att.part_num}&name=${encodeURIComponent(att.name)}${mbParam}`, {
         headers: {
           "X-User-Email": currentUser.email
         }
@@ -217,7 +281,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       if (typeof (window as any).showToast === "function") {
         (window as any).showToast(t("Adding attachment to documents database...", "Pridáva sa príloha do databázy dokumentov...", "Melléklet hozzáadása a dokumentum-adatbázishoz..."));
       }
-      const res = await fetch(`/api/mail_broker.php?action=save_attachment&folder=${encodeURIComponent(folder)}&uid=${uid}&part=${att.part_num}&name=${encodeURIComponent(att.name)}&eventId=${eventId}`, {
+      const res = await fetch(`/api/mail_broker.php?action=save_attachment&folder=${encodeURIComponent(folder)}&uid=${uid}&part=${att.part_num}&name=${encodeURIComponent(att.name)}&eventId=${eventId}${mbParam}`, {
         method: "POST",
         headers: {
           "X-User-Email": currentUser.email
@@ -281,7 +345,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   };
 
   const isOpenAiKeySet = useMemo(() => {
-    return !!(integrationsConfig?.openAiKey && integrationsConfig.openAiKey.trim() !== "");
+    return hasAiConfigured(integrationsConfig);
   }, [integrationsConfig]);
 
   // Parse into an INERT document rather than assigning to a live element's
@@ -301,8 +365,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
     }
   };
 
-  const fetchSummary = async (emailUid: string, folder: string, subject: string, body: string, isThread: boolean = false) => {
-    if (summaries[emailUid] || loadingSummaries[emailUid]) return;
+  const fetchSummary = async (emailUid: string, folder: string, subject: string, body: string, isThread: boolean = false, force: boolean = false) => {
+    if ((!force && summaries[emailUid]) || loadingSummaries[emailUid]) return;
     setLoadingSummaries(prev => ({ ...prev, [emailUid]: true }));
     try {
       const res = await fetchWithTimeout("/api/summarize_email.php", {
@@ -316,12 +380,16 @@ export const EmailView: React.FC<EmailViewProps> = ({
           folder,
           subject,
           body,
-          is_thread: isThread
+          is_thread: isThread,
+          force
         })
       });
       const data = await res.json();
       if (data.success && data.summary) {
         setSummaries(prev => ({ ...prev, [emailUid]: data.summary }));
+        if (Array.isArray(data.problems)) {
+          setProblemsMap(prev => ({ ...prev, [emailUid]: data.problems }));
+        }
         if (data.actionItems) {
           setActionItemsMap(prev => ({ ...prev, [emailUid]: data.actionItems }));
         }
@@ -360,17 +428,18 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const handleCreateClientSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canEdit) return;
-    if (!clientFormName.trim() || !clientFormEmail.trim() || !clientFormCity.trim()) return;
+    if (!clientFormName.trim()) return;
     
+    const newLeadId = `client-${Date.now()}`;
     const newLead: Lead = {
-      id: `client-${Date.now()}`,
-      name: clientFormName,
-      email: clientFormEmail,
-      phone: clientFormPhone,
-      city: clientFormCity,
+      id: newLeadId,
+      name: clientFormName.trim(),
+      email: clientFormEmail.trim(),
+      phone: clientFormPhone.trim(),
+      city: clientFormCity.trim(),
       clientType: clientFormType,
       status: "accepted",
-      source: "email",
+      source: isMessagingConnector(selectedChannelType) ? selectedChannelType : "email",
       owner: currentUser?.name || "",
       value: 0,
       createdAt: new Date().toISOString().split("T")[0],
@@ -378,6 +447,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
     };
     
     setLeads((prev: any) => [...prev, newLead]);
+    if (pendingChatLinkKey) {
+      saveChatClientLink(pendingChatLinkKey, newLeadId);
+      setPendingChatLinkKey("");
+    }
     closeClientSlideout();
     
     if (typeof (window as any).showToast === "function") {
@@ -409,9 +482,195 @@ export const EmailView: React.FC<EmailViewProps> = ({
     return null;
   }, [currentUser]);
 
+  const [availableAccounts, setAvailableAccounts] = useState<
+    Array<{
+      id: string;
+      name: string;
+      address: string;
+      connectorType: ConnectorType;
+      isPersonal?: boolean;
+      settings?: CompanyMailbox["settings"];
+      subagents?: AgentSubagent[];
+      triggers?: AgentEventTrigger[];
+    }>
+  >([]);
+  const [selectedMailboxId, setSelectedMailboxId] = useState<string>("");
+
+  // WhatsApp & Subscription AI Agent workspace state
+  const [waSelectedLeadId, setWaSelectedLeadId] = useState<string>("");
+  const [waSearchQuery, setWaSearchQuery] = useState<string>("");
+  const [waDraftMessage, setWaDraftMessage] = useState<string>("");
+  const [waState, setWaState] = useState<WhatsAppConnectorState | null>(null);
+  const [waLoading, setWaLoading] = useState<boolean>(false);
+  const [waSending, setWaSending] = useState<boolean>(false);
+  const [waInlineQrOpen, setWaInlineQrOpen] = useState<boolean>(false);
+  const [waInlineQrUrl, setWaInlineQrUrl] = useState<string | null>(null);
+  const [waFilterType, setWaFilterType] = useState<"all" | "groups" | "contacts">("all");
+  const waMessagesScrollRef = useRef<HTMLDivElement | null>(null);
+  const agentChatScrollRef = useRef<HTMLDivElement | null>(null);
+  const emailThreadScrollRef = useRef<HTMLDivElement | null>(null);
+  const [agentChats, setAgentChats] = useState<Record<string, AgentChatMessage[]>>({});
+  const [agentStates, setAgentStates] = useState<Record<string, AgentConnectorState>>({});
+  const [agentPrompt, setAgentPrompt] = useState<string>("");
+  const [isAgentRunning, setIsAgentRunning] = useState<boolean>(false);
+  const [activeChatSubagentId, setActiveChatSubagentId] = useState<string>("");
+  // Right-sidebar selected artifact key: null = full-width chat; "memory:main" | "artifact:<id>" | "subagent:<id>" | "task:<id>" = 50/50 split with Content Editor
+  const [selectedArtifactKey, setSelectedArtifactKey] = useState<string | null>(null);
+  const [memoryDraft, setMemoryDraft] = useState<string>("");
+  const [artifactTitleDraft, setArtifactTitleDraft] = useState<string>("");
+  const [subPromptDraft, setSubPromptDraft] = useState<string>("");
+  const [isMemoryDirty, setIsMemoryDirty] = useState<boolean>(false);
+  const [isSavingMemory, setIsSavingMemory] = useState<boolean>(false);
+  const [newArtifactOpen, setNewArtifactOpen] = useState<boolean>(false);
+  const [newArtifactName, setNewArtifactName] = useState<string>("");
+  const [newSubagentOpen, setNewSubagentOpen] = useState<boolean>(false);
+  const [newSubName, setNewSubName] = useState<string>("");
+  const [newSubRole, setNewSubRole] = useState<string>("");
+  const [newSubPrompt, setNewSubPrompt] = useState<string>("");
+  const [newSubHeartbeat, setNewSubHeartbeat] = useState<boolean>(false);
+  const [newTaskOpen, setNewTaskOpen] = useState<boolean>(false);
+  const [newTaskTitle, setNewTaskTitle] = useState<string>("");
+  const [newTaskPrompt, setNewTaskPrompt] = useState<string>("");
+  const [newTaskInterval, setNewTaskInterval] = useState<string>("60");
+  const [newTaskSubagentId, setNewTaskSubagentId] = useState<string>("");
+
+  // Visual Trigger Studio & Event-Driven Routing State
+  const [visualTriggersOpen, setVisualTriggersOpen] = useState<boolean>(false);
+  const [triggerModalOpen, setTriggerModalOpen] = useState<boolean>(false);
+  const [triggerDraftId, setTriggerDraftId] = useState<string>("");
+  const [triggerDraftName, setTriggerDraftName] = useState<string>("");
+  const [triggerDraftSourceType, setTriggerDraftSourceType] = useState<"whatsapp" | "email" | "crm_event">("whatsapp");
+  const [triggerDraftSourceConnectorId, setTriggerDraftSourceConnectorId] = useState<string>("");
+  const [triggerDraftTargetSubagentId, setTriggerDraftTargetSubagentId] = useState<string>("");
+  const [triggerDraftChatMatch, setTriggerDraftChatMatch] = useState<string>("");
+  const [triggerDraftOnlyGroup, setTriggerDraftOnlyGroup] = useState<boolean>(false);
+  const [triggerDraftOnlyDirect, setTriggerDraftOnlyDirect] = useState<boolean>(false);
+  const [triggerDraftSubjectContains, setTriggerDraftSubjectContains] = useState<string>("");
+  const [triggerDraftFromContains, setTriggerDraftFromContains] = useState<string>("");
+  const [triggerDraftKeywordContains, setTriggerDraftKeywordContains] = useState<string>("");
+  const [triggerDraftEventType, setTriggerDraftEventType] = useState<string>("lead_created");
+  const [triggerDraftInstructions, setTriggerDraftInstructions] = useState<string>("");
+  const [triggerDraftAutoReply, setTriggerDraftAutoReply] = useState<boolean>(true);
+  const [triggerDraftProactiveEnabled, setTriggerDraftProactiveEnabled] = useState<boolean>(false);
+  const [triggerDraftProactiveAfterMinutes, setTriggerDraftProactiveAfterMinutes] = useState<number>(120);
+  const [triggerDraftProactiveMaxAttempts, setTriggerDraftProactiveMaxAttempts] = useState<number>(1);
+  const [triggerDraftProactiveInstructions, setTriggerDraftProactiveInstructions] = useState<string>("");
+  const [triggerDraftEnabled, setTriggerDraftEnabled] = useState<boolean>(true);
+  const [isTestingTriggerId, setIsTestingTriggerId] = useState<string | null>(null);
+  const [waTakeoverBusyChatId, setWaTakeoverBusyChatId] = useState<string | null>(null);
+
+  const loadAuthorizedAccounts = useCallback(async () => {
+    const mergedMap = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        address: string;
+        connectorType: ConnectorType;
+        isPersonal?: boolean;
+        settings?: CompanyMailbox["settings"];
+        subagents?: AgentSubagent[];
+        triggers?: AgentEventTrigger[];
+      }
+    >();
+
+    // 1. Personal mailbox from user metadata if configured
+    if (userEmailSettings?.imapHost || userEmailSettings?.smtpHost) {
+      mergedMap.set("personal", {
+        id: "personal",
+        name: currentUser?.name ? `${currentUser.name} (Personal)` : "Personal Mailbox",
+        address: currentUser?.email || "",
+        connectorType: inferConnectorType(userEmailSettings, currentUser?.email || "", "smtp"),
+        isPersonal: true,
+      });
+    }
+
+    // 2. Shared connectors authorized for this user (email, whatsapp, claude, antigravity, chatgpt)
+    try {
+      const my = await listMyConnectors();
+      for (const box of my.mailboxes ?? my.connectors ?? []) {
+        const cType = inferConnectorType(box.settings, box.address, box.connectorType);
+        mergedMap.set(box.id, {
+          id: box.id,
+          name: box.name || box.address,
+          address: box.address,
+          connectorType: cType,
+          isPersonal: box.id === "personal",
+          settings: box.settings,
+          subagents: box.subagents,
+          triggers: box.triggers,
+        });
+      }
+    } catch {
+      /* ignore if offline or mocked */
+    }
+
+    // 3. Fallback / merge from mail_broker accounts
+    if (currentUser?.email) {
+      try {
+        const res = await fetch("/api/mail_broker.php?action=accounts", {
+          headers: { "X-User-Email": currentUser.email },
+        });
+        const data = await res.json();
+        if (data?.success && Array.isArray(data.accounts)) {
+          for (const acc of data.accounts) {
+            if (!mergedMap.has(acc.id)) {
+              mergedMap.set(acc.id, {
+                id: acc.id,
+                name: acc.name || acc.address,
+                address: acc.address,
+                connectorType: inferConnectorType(undefined, acc.address, acc.connectorType),
+                isPersonal: Boolean(acc.isPersonal),
+              });
+            }
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const list = Array.from(mergedMap.values());
+    setAvailableAccounts(list);
+    const hashParams = new URLSearchParams((window.location.hash.split("?")[1] || ""));
+    const reqChannel = hashParams.get("channel") || "";
+    const reqChat = hashParams.get("chat") || "";
+    if (reqChat) {
+      setWaSelectedLeadId(reqChat);
+    }
+    setSelectedMailboxId((prev) => {
+      if (reqChannel && list.some((a) => a.id === reqChannel)) return reqChannel;
+      if (prev && list.some((a) => a.id === prev)) return prev;
+      return list[0]?.id || "";
+    });
+  }, [currentUser?.email, currentUser?.name, userEmailSettings]);
+
+  useEffect(() => {
+    void loadAuthorizedAccounts();
+    const onUpdated = () => {
+      void loadAuthorizedAccounts();
+    };
+    window.addEventListener("ccrm:connectors-updated", onUpdated);
+    return () => window.removeEventListener("ccrm:connectors-updated", onUpdated);
+  }, [loadAuthorizedAccounts]);
+
+  const selectedAccount = useMemo(
+    () => availableAccounts.find((a) => a.id === selectedMailboxId) ?? availableAccounts[0] ?? null,
+    [availableAccounts, selectedMailboxId],
+  );
+  const selectedChannelType: ConnectorType = selectedAccount?.connectorType ?? "smtp";
+  const isSelectedEmailChannel = isEmailConnector(selectedChannelType);
+
+  const hasMailAccount =
+    Boolean(userEmailSettings) || availableAccounts.some((a) => isEmailConnector(a.connectorType));
+  const mbParam =
+    selectedMailboxId && selectedMailboxId !== "personal" && isSelectedEmailChannel
+      ? `&mailbox_id=${encodeURIComponent(selectedMailboxId)}`
+      : "";
+
   // Load timeline emails for the slideout lead
   useEffect(() => {
-    if (!slideoutLead || !slideoutLead.email || !userEmailSettings || !userEmailSettings.isValidated) {
+    if (!slideoutLead || !slideoutLead.email || !hasMailAccount) {
       setSlideoutEmails([]);
       return;
     }
@@ -420,7 +679,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       setIsLoadingSlideoutEmails(true);
       try {
         const inboxRes = await fetch(
-          `/api/mail_broker.php?action=get_emails&folder=INBOX&email=${encodeURIComponent(slideoutLead.email || "")}`,
+          `/api/mail_broker.php?action=get_emails&folder=INBOX&email=${encodeURIComponent(slideoutLead.email || "")}${mbParam}`,
           { headers: { "X-User-Email": currentUser.email } }
         );
         const inboxData = await inboxRes.json();
@@ -428,7 +687,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
         let sentEmails: any[] = [];
         try {
           const sentRes = await fetch(
-            `/api/mail_broker.php?action=get_emails&folder=Sent&email=${encodeURIComponent(slideoutLead.email || "")}`,
+            `/api/mail_broker.php?action=get_emails&folder=Sent&email=${encodeURIComponent(slideoutLead.email || "")}${mbParam}`,
             { headers: { "X-User-Email": currentUser.email } }
           );
           const sentData = await sentRes.json();
@@ -470,7 +729,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     };
 
     fetchLeadMails();
-  }, [slideoutLead, userEmailSettings, currentUser]);
+  }, [slideoutLead, hasMailAccount, mbParam, currentUser]);
 
   const slideoutTimelineEvents = useMemo(() => {
     if (!slideoutLead) return [];
@@ -491,12 +750,47 @@ export const EmailView: React.FC<EmailViewProps> = ({
   // Load Emails headers list
   // silent = background refresh: keep the current list visible instead of swapping it for the spinner
   const loadEmails = async (currPage = 1, currFilter = filter, silent = false) => {
-    if (!userEmailSettings) return;
-    if (!silent) setIsLoadingEmails(true);
+    if (!hasMailAccount) return;
+    let showedCached = false;
+    if (!silent) {
+      try {
+        const [cachedInboxRes, cachedSentRes] = await Promise.all([
+          fetch(`/api/mail_broker.php?action=get_emails&folder=INBOX&page=${currPage}&filter=${currFilter}&cached_only=1${mbParam}`, {
+            headers: { "X-User-Email": currentUser.email }
+          }),
+          fetch(`/api/mail_broker.php?action=get_emails&folder=Sent&page=${currPage}&filter=${currFilter}&cached_only=1${mbParam}`, {
+            headers: { "X-User-Email": currentUser.email }
+          })
+        ]);
+        const [cachedInbox, cachedSent] = await Promise.all([
+          cachedInboxRes.json().catch(() => ({})),
+          cachedSentRes.json().catch(() => ({}))
+        ]);
+        const cInboxMails = cachedInbox?.success && Array.isArray(cachedInbox.emails)
+          ? cachedInbox.emails.map((m: any) => ({ ...m, isSent: false }))
+          : [];
+        const cSentMails = cachedSent?.success && Array.isArray(cachedSent.emails)
+          ? cachedSent.emails.map((m: any) => ({ ...m, isSent: true }))
+          : [];
+        const cachedCombined = [...cInboxMails, ...cSentMails].sort((a: any, b: any) => {
+          return new Date(b.date).getTime() - new Date(a.date).getTime();
+        });
+        if (cachedCombined.length > 0) {
+          setEmails(hiddenEmailKeysRef.current.size ? cachedCombined.filter((m: any) => !hiddenEmailKeysRef.current.has(emailKey(m))) : cachedCombined);
+          setIsLoadingEmails(false);
+          showedCached = true;
+        }
+      } catch {
+        // Ignore cache probe error and fall back to live IMAP fetch
+      }
+      if (!showedCached) {
+        setIsLoadingEmails(true);
+      }
+    }
     setIsSyncingEmails(true);
     try {
       // Fetch Inbox folder emails
-      const resInbox = await fetch(`/api/mail_broker.php?action=get_emails&folder=INBOX&page=${currPage}&filter=${currFilter}`, {
+      const resInbox = await fetch(`/api/mail_broker.php?action=get_emails&folder=INBOX&page=${currPage}&filter=${currFilter}${mbParam}`, {
         headers: { "X-User-Email": currentUser.email }
       });
       const dataInbox = await resInbox.json();
@@ -509,7 +803,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       // Fetch Sent folder emails
       let sentMails: any[] = [];
       try {
-        const resSent = await fetch(`/api/mail_broker.php?action=get_emails&folder=Sent&page=${currPage}&filter=${currFilter}`, {
+        const resSent = await fetch(`/api/mail_broker.php?action=get_emails&folder=Sent&page=${currPage}&filter=${currFilter}${mbParam}`, {
           headers: { "X-User-Email": currentUser.email }
         });
         const dataSent = await resSent.json();
@@ -525,10 +819,14 @@ export const EmailView: React.FC<EmailViewProps> = ({
         return new Date(b.date).getTime() - new Date(a.date).getTime();
       });
 
-      setEmails(hiddenEmailKeysRef.current.size ? combined.filter((m: any) => !hiddenEmailKeysRef.current.has(emailKey(m))) : combined);
+      if (combined.length > 0 || !showedCached) {
+        setEmails(hiddenEmailKeysRef.current.size ? combined.filter((m: any) => !hiddenEmailKeysRef.current.has(emailKey(m))) : combined);
+      }
       setLastSyncAt(new Date());
     } catch (err) {
-      notify(t("Mail server unreachable", "Poštový server je nedostupný", "A levelezőszerver nem elérhető"), "error");
+      if (!showedCached) {
+        notify(t("Mail server unreachable", "Poštový server je nedostupný", "A levelezőszerver nem elérhető"), "error");
+      }
     } finally {
       setIsLoadingEmails(false);
       setIsSyncingEmails(false);
@@ -548,7 +846,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const setSeenFlag = async (email: any, seen: boolean): Promise<boolean> => {
     const folderToUse = email.isSent ? "Sent" : activeFolder;
     try {
-      const res = await fetch("/api/mail_broker.php?action=set_seen", {
+      const res = await fetch(`/api/mail_broker.php?action=set_seen${mbParam}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-User-Email": currentUser.email },
         body: JSON.stringify({ uid: email.uid, folder: folderToUse, seen })
@@ -586,7 +884,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     setIsLoadingDetail(true);
     const folderToUse = email.isSent ? "Sent" : activeFolder;
     try {
-      const res = await fetch(`/api/mail_broker.php?action=get_email_detail&uid=${email.uid}&folder=${encodeURIComponent(folderToUse)}`, {
+      const res = await fetch(`/api/mail_broker.php?action=get_email_detail&uid=${email.uid}&folder=${encodeURIComponent(folderToUse)}${mbParam}`, {
         headers: { "X-User-Email": currentUser.email }
       });
       const data = await res.json();
@@ -609,7 +907,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
   // Initial loads
   useEffect(() => {
-    if (!userEmailSettings) return;
+    if (!hasMailAccount || !isSelectedEmailChannel) return;
 
     loadEmails(1, filter);
 
@@ -618,7 +916,902 @@ export const EmailView: React.FC<EmailViewProps> = ({
     }, 60000); // UI updates every 60 seconds
 
     return () => clearInterval(interval);
-  }, [userEmailSettings, filter]);
+  }, [hasMailAccount, isSelectedEmailChannel, selectedMailboxId, filter]);
+
+  const syncSelectedArtifactDraft = useCallback(
+    (state: AgentConnectorState, key: string | null) => {
+      if (!key) return;
+      if (key === "memory:main") {
+        setMemoryDraft(state.memoryMd ?? "");
+        setArtifactTitleDraft("memory.md");
+      } else if (key === "cron:main") {
+        setMemoryDraft(
+          state.autonomousMode?.instructions ??
+            "Review your memory.md, artifacts, and CCRM state via MCP. Execute any pending autonomous goals, follow-ups, or subagent delegations recorded in memory.md. Update memory.md with your progress. If no autonomous actions are needed right now, reply with [IDLE].",
+        );
+        setArtifactTitleDraft("Autonomous Cron (cron.php)");
+      } else if (key.startsWith("artifact:")) {
+        const artId = key.slice("artifact:".length);
+        const found = (state.artifacts ?? []).find((a) => a.id === artId);
+        if (found) {
+          setMemoryDraft(found.content ?? "");
+          setArtifactTitleDraft(found.title || found.id);
+        }
+      } else if (key.startsWith("subagent:")) {
+        const subId = key.slice("subagent:".length);
+        const found = (state.subagents ?? []).find((s) => s.id === subId);
+        if (found) {
+          setMemoryDraft(found.memoryMd ?? "");
+          setSubPromptDraft(found.systemPrompt ?? "");
+          setArtifactTitleDraft(`${found.name} (${found.id})`);
+        }
+      } else if (key.startsWith("task:")) {
+        const taskId = key.slice("task:".length);
+        const found = (state.tasks ?? []).find((tk) => tk.id === taskId);
+        if (found) {
+          setMemoryDraft(found.prompt ?? "");
+          setArtifactTitleDraft(found.title || found.id);
+        }
+      }
+    },
+    [],
+  );
+
+  const applyAgentState = useCallback(
+    (accId: string, state: AgentConnectorState, overrideKey?: string | null, subIdOverride?: string) => {
+      setAgentStates((prev) => ({ ...prev, [accId]: state }));
+      const effectiveSubId = subIdOverride !== undefined ? subIdOverride : (state.activeAgentId && state.activeAgentId !== "main" ? state.activeAgentId : activeChatSubagentId);
+      const chatKey = effectiveSubId ? `${accId}:${effectiveSubId}` : accId;
+      if (Array.isArray(state.chatHistory)) {
+        setAgentChats((prev) => ({ ...prev, [chatKey]: state.chatHistory }));
+      }
+      // Keep sidebar subagents & triggers in sync
+      setAvailableAccounts((prev) =>
+        prev.map((a) =>
+          a.id === accId
+            ? {
+                ...a,
+                subagents: state.subagents ?? a.subagents,
+                triggers: state.triggers ?? a.triggers,
+              }
+            : a,
+        ),
+      );
+      const keyToUse = overrideKey !== undefined ? overrideKey : selectedArtifactKey;
+      if (!isMemoryDirty && keyToUse) {
+        syncSelectedArtifactDraft(state, keyToUse);
+      }
+    },
+    [activeChatSubagentId, isMemoryDirty, selectedArtifactKey, syncSelectedArtifactDraft],
+  );
+
+  // Load persistent agent state (memory.md, artifacts, subagents, triggers, autonomous tasks, scoped chat history)
+  // & poll read-only state every 15s to display work executed by the server cronjob (`cron.php`) or reactive triggers.
+  useEffect(() => {
+    if (!selectedAccount || !isAgentConnector(selectedChannelType)) return;
+    const accId = selectedAccount.id;
+    const subId = activeChatSubagentId || undefined;
+    const chatKey = subId ? `${accId}:${subId}` : accId;
+    let cancelled = false;
+
+    setIsMemoryDirty(false);
+
+    void getAgentConnectorState(accId, subId)
+      .then((st) => {
+        if (cancelled) return;
+        setAgentStates((prev) => ({ ...prev, [accId]: st }));
+        if (Array.isArray(st.chatHistory)) {
+          setAgentChats((prev) => ({ ...prev, [chatKey]: st.chatHistory }));
+        }
+        setAvailableAccounts((prev) =>
+          prev.map((a) =>
+            a.id === accId
+              ? {
+                  ...a,
+                  subagents: st.subagents ?? a.subagents,
+                  triggers: st.triggers ?? a.triggers,
+                }
+              : a,
+          ),
+        );
+        if (!selectedArtifactKey) {
+          setMemoryDraft(subId ? (st.subagentMemoryMd ?? "") : (st.memoryMd ?? ""));
+        } else {
+          syncSelectedArtifactDraft(st, selectedArtifactKey);
+        }
+      })
+      .catch(() => {
+        /* ignore offline/mock */
+      });
+
+    const syncInterval = setInterval(() => {
+      void getAgentConnectorState(accId, subId)
+        .then((st) => {
+          if (!cancelled) applyAgentState(accId, st, undefined, subId || "");
+        })
+        .catch(() => {
+          /* ignore */
+        });
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(syncInterval);
+    };
+  }, [selectedAccount?.id, selectedChannelType, activeChatSubagentId]);
+
+  // Preload sibling WhatsApp / BotMan chats when in Agent Workspace so the Trigger Studio dropdown has live groups/chats
+  useEffect(() => {
+    if (!isAgentConnector(selectedChannelType)) return;
+    const waAcc = availableAccounts.find((a) => isMessagingConnector(a.connectorType));
+    if (!waAcc || waState) return;
+    void getWhatsAppChats(waAcc.id)
+      .then((st) => setWaState(st))
+      .catch(() => {
+        /* ignore */
+      });
+  }, [selectedChannelType, availableAccounts, waState]);
+
+  const handleSelectArtifact = (key: string | null) => {
+    if (!selectedAccount) return;
+    if (key === null || key === selectedArtifactKey) {
+      setSelectedArtifactKey(null);
+      setIsMemoryDirty(false);
+      return;
+    }
+    setSelectedArtifactKey(key);
+    setIsMemoryDirty(false);
+    const st = agentStates[selectedAccount.id];
+    if (st) {
+      syncSelectedArtifactDraft(st, key);
+    }
+  };
+
+  const handleSaveSelectedArtifact = async () => {
+    if (!selectedAccount || !selectedArtifactKey || isSavingMemory) return;
+    setIsSavingMemory(true);
+    try {
+      let st: AgentConnectorState;
+      if (selectedArtifactKey === "memory:main") {
+        st = await saveAgentMemory({
+          id: selectedAccount.id,
+          memoryMd: memoryDraft,
+        });
+      } else if (selectedArtifactKey === "cron:main") {
+        const autoCfg = agentStates[selectedAccount.id]?.autonomousMode;
+        st = await saveAgentAutonomousConfig({
+          id: selectedAccount.id,
+          enabled: autoCfg?.enabled ?? false,
+          intervalMinutes: autoCfg?.intervalMinutes ?? 15,
+          instructions: memoryDraft,
+        });
+      } else if (selectedArtifactKey.startsWith("artifact:")) {
+        const artId = selectedArtifactKey.slice("artifact:".length);
+        st = await saveAgentArtifact({
+          id: selectedAccount.id,
+          name: artId,
+          title: artifactTitleDraft || artId,
+          content: memoryDraft,
+        });
+      } else if (selectedArtifactKey.startsWith("subagent:")) {
+        const subId = selectedArtifactKey.slice("subagent:".length);
+        const existingSub = (agentStates[selectedAccount.id]?.subagents ?? []).find((s) => s.id === subId);
+        st = await saveAgentSubagent({
+          id: selectedAccount.id,
+          subagentId: subId,
+          name: existingSub?.name || subId,
+          role: existingSub?.role || "Subagent",
+          systemPrompt: subPromptDraft || existingSub?.systemPrompt || "",
+          memoryMd: memoryDraft,
+          heartbeatEnabled: existingSub?.heartbeatEnabled ?? false,
+          heartbeatIntervalMinutes: existingSub?.heartbeatIntervalMinutes ?? 15,
+          heartbeatInstructions: existingSub?.heartbeatInstructions ?? "",
+          reactiveEnabled: existingSub?.reactiveEnabled ?? true,
+        });
+      } else if (selectedArtifactKey.startsWith("task:")) {
+        const taskId = selectedArtifactKey.slice("task:".length);
+        const existingTask = (agentStates[selectedAccount.id]?.tasks ?? []).find((tk) => tk.id === taskId);
+        st = await saveAgentTask({
+          id: selectedAccount.id,
+          title: artifactTitleDraft || existingTask?.title || taskId,
+          prompt: memoryDraft,
+          intervalMinutes: existingTask?.intervalMinutes || 60,
+          subagentId: existingTask?.subagentId || undefined,
+          enabled: existingTask?.enabled ?? true,
+        });
+      } else {
+        return;
+      }
+      setIsMemoryDirty(false);
+      applyAgentState(selectedAccount.id, st, selectedArtifactKey);
+      notify(
+        t(
+          "Artifact saved — the agent will use the updated content immediately.",
+          "Artefakt uložený — agent okamžite použije aktualizovaný obsah.",
+          "Artefaktum mentve — az ügynök azonnal használja a frissített tartalmat.",
+        ),
+      );
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setIsSavingMemory(false);
+    }
+  };
+
+  const handleUpdateAutonomousCron = async (patch: { enabled?: boolean; intervalMinutes?: number }) => {
+    if (!selectedAccount) return;
+    try {
+      const autoCfg = agentStates[selectedAccount.id]?.autonomousMode;
+      const st = await saveAgentAutonomousConfig({
+        id: selectedAccount.id,
+        enabled: patch.enabled ?? autoCfg?.enabled ?? false,
+        intervalMinutes: patch.intervalMinutes ?? autoCfg?.intervalMinutes ?? 15,
+        instructions: selectedArtifactKey === "cron:main" ? memoryDraft : autoCfg?.instructions,
+      });
+      applyAgentState(selectedAccount.id, st, selectedArtifactKey);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleToggleSubagentHeartbeat = async (sub: AgentSubagent, patch: { heartbeatEnabled?: boolean; heartbeatIntervalMinutes?: number }) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await saveAgentSubagent({
+        id: selectedAccount.id,
+        subagentId: sub.id,
+        name: sub.name,
+        role: sub.role,
+        systemPrompt: sub.systemPrompt,
+        memoryMd: sub.memoryMd,
+        heartbeatEnabled: patch.heartbeatEnabled ?? !(sub.heartbeatEnabled ?? false),
+        heartbeatIntervalMinutes: patch.heartbeatIntervalMinutes ?? (sub.heartbeatIntervalMinutes ?? 15),
+        heartbeatInstructions: sub.heartbeatInstructions,
+        reactiveEnabled: sub.reactiveEnabled ?? true,
+      });
+      applyAgentState(selectedAccount.id, st, selectedArtifactKey);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleCreateArtifact = async () => {
+    if (!selectedAccount || !newArtifactName.trim()) return;
+    const raw = newArtifactName.trim();
+    const fileName = raw.includes(".") ? raw : `${raw.toLowerCase().replace(/[^a-z0-9_-]/g, "-")}.md`;
+    try {
+      const initialContent = `# ${raw}\n\n`;
+      const st = await saveAgentArtifact({
+        id: selectedAccount.id,
+        name: fileName,
+        title: raw,
+        content: initialContent,
+      });
+      const newKey = `artifact:${fileName}`;
+      setSelectedArtifactKey(newKey);
+      setIsMemoryDirty(false);
+      applyAgentState(selectedAccount.id, st, newKey);
+      setNewArtifactName("");
+      setNewArtifactOpen(false);
+      notify(t("Artifact created!", "Artefakt vytvorený!", "Artefaktum létrehozva!"));
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleDeleteArtifact = async (artId: string) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await deleteAgentArtifact(selectedAccount.id, artId);
+      const nextKey = selectedArtifactKey === `artifact:${artId}` ? null : selectedArtifactKey;
+      setSelectedArtifactKey(nextKey);
+      applyAgentState(selectedAccount.id, st, nextKey);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleCreateSubagent = async () => {
+    if (!selectedAccount || !newSubName.trim() || !newSubRole.trim()) return;
+    try {
+      const st = await saveAgentSubagent({
+        id: selectedAccount.id,
+        name: newSubName.trim(),
+        role: newSubRole.trim(),
+        systemPrompt:
+          newSubPrompt.trim() ||
+          `You are ${newSubName.trim()} (${newSubRole.trim()}), a specialized CCRM agent.`,
+        heartbeatEnabled: newSubHeartbeat,
+        heartbeatIntervalMinutes: 15,
+        reactiveEnabled: true,
+      });
+      const createdSub = st.subagent ?? (st.subagents ?? [])[st.subagents.length - 1];
+      if (createdSub) {
+        setActiveChatSubagentId(createdSub.id);
+      }
+      const nextKey = createdSub ? `subagent:${createdSub.id}` : selectedArtifactKey;
+      setSelectedArtifactKey(nextKey);
+      applyAgentState(selectedAccount.id, st, nextKey, createdSub?.id || "");
+      setNewSubName("");
+      setNewSubRole("");
+      setNewSubPrompt("");
+      setNewSubHeartbeat(false);
+      setNewSubagentOpen(false);
+      notify(t("Agent created!", "Agent vytvorený!", "Ügynök létrehozva!"));
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleDeleteSubagent = async (subagentId: string) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await deleteAgentSubagent(selectedAccount.id, subagentId);
+      if (activeChatSubagentId === subagentId) setActiveChatSubagentId("");
+      const nextKey = selectedArtifactKey === `subagent:${subagentId}` ? null : selectedArtifactKey;
+      setSelectedArtifactKey(nextKey);
+      applyAgentState(selectedAccount.id, st, nextKey, "");
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const openNewTriggerModal = (opts?: {
+    sourceType?: "whatsapp" | "email" | "crm_event";
+    sourceConnectorId?: string;
+    targetSubagentId?: string;
+  }) => {
+    const defaultWa = availableAccounts.find((a) => isMessagingConnector(a.connectorType));
+    const defaultEmail = availableAccounts.find((a) => isEmailConnector(a.connectorType));
+    const sType = opts?.sourceType ?? (defaultWa ? "whatsapp" : defaultEmail ? "email" : "crm_event");
+    const sConnId =
+      opts?.sourceConnectorId ??
+      (sType === "whatsapp" ? defaultWa?.id || "" : sType === "email" ? defaultEmail?.id || "" : "");
+
+    setTriggerDraftId("");
+    setTriggerDraftName("");
+    setTriggerDraftSourceType(sType);
+    setTriggerDraftSourceConnectorId(sConnId);
+    setTriggerDraftTargetSubagentId(opts?.targetSubagentId ?? activeChatSubagentId ?? "");
+    setTriggerDraftChatMatch("");
+    setTriggerDraftOnlyGroup(false);
+    setTriggerDraftOnlyDirect(false);
+    setTriggerDraftSubjectContains("");
+    setTriggerDraftFromContains("");
+    setTriggerDraftKeywordContains("");
+    setTriggerDraftEventType("lead_created");
+    setTriggerDraftInstructions("");
+    setTriggerDraftAutoReply(true);
+    setTriggerDraftProactiveEnabled(false);
+    setTriggerDraftProactiveAfterMinutes(120);
+    setTriggerDraftProactiveMaxAttempts(1);
+    setTriggerDraftProactiveInstructions("");
+    setTriggerDraftEnabled(true);
+    setTriggerModalOpen(true);
+  };
+
+  const openEditTriggerModal = (trig: AgentEventTrigger) => {
+    setTriggerDraftId(trig.id);
+    setTriggerDraftName(trig.name || "");
+    setTriggerDraftSourceType(trig.sourceType || "whatsapp");
+    setTriggerDraftSourceConnectorId(trig.sourceConnectorId || "");
+    setTriggerDraftTargetSubagentId(trig.targetSubagentId || "");
+    setTriggerDraftChatMatch(trig.filter?.chatMatch || "");
+    setTriggerDraftOnlyGroup(Boolean(trig.filter?.onlyGroup));
+    setTriggerDraftOnlyDirect(Boolean(trig.filter?.onlyDirect));
+    setTriggerDraftSubjectContains(trig.filter?.subjectContains || "");
+    setTriggerDraftFromContains(trig.filter?.fromContains || "");
+    setTriggerDraftKeywordContains(trig.filter?.keywordContains || "");
+    setTriggerDraftEventType(trig.filter?.eventType || "lead_created");
+    setTriggerDraftInstructions(trig.instructions || "");
+    setTriggerDraftAutoReply(trig.autoReply ?? true);
+    setTriggerDraftProactiveEnabled(Boolean(trig.proactiveEnabled));
+    setTriggerDraftProactiveAfterMinutes(trig.proactiveAfterMinutes ?? 120);
+    setTriggerDraftProactiveMaxAttempts(trig.proactiveMaxAttempts ?? 1);
+    setTriggerDraftProactiveInstructions(trig.proactiveInstructions || "");
+    setTriggerDraftEnabled(trig.enabled ?? true);
+    setTriggerModalOpen(true);
+  };
+
+  const handleSaveTriggerDraft = async () => {
+    if (!selectedAccount) return;
+    const selectedSourceAcc = availableAccounts.find((a) => a.id === triggerDraftSourceConnectorId);
+    const sourceDisplayName =
+      selectedSourceAcc?.name ||
+      (triggerDraftSourceType === "whatsapp" ? "Messaging" : triggerDraftSourceType === "email" ? "Email" : "CRM Event");
+    const autoName =
+      triggerDraftName.trim() ||
+      (triggerDraftSourceType === "whatsapp"
+        ? `${sourceDisplayName} ${triggerDraftChatMatch ? `(${triggerDraftChatMatch})` : "Auto-Responder"}`
+        : triggerDraftSourceType === "email"
+          ? `${sourceDisplayName} ${triggerDraftSubjectContains || triggerDraftFromContains || "Auto-Responder"}`
+          : `CRM Event (${triggerDraftEventType})`);
+    try {
+      const st = await saveAgentTrigger({
+        id: selectedAccount.id,
+        triggerId: triggerDraftId || undefined,
+        name: autoName,
+        sourceType: triggerDraftSourceType,
+        sourceConnectorId: triggerDraftSourceConnectorId,
+        targetSubagentId: triggerDraftTargetSubagentId || null,
+        filter: {
+          chatMatch: triggerDraftChatMatch.trim(),
+          onlyGroup: triggerDraftOnlyGroup,
+          onlyDirect: triggerDraftOnlyDirect,
+          subjectContains: triggerDraftSubjectContains.trim(),
+          fromContains: triggerDraftFromContains.trim(),
+          keywordContains: triggerDraftKeywordContains.trim(),
+          eventType: triggerDraftEventType,
+        },
+        instructions: triggerDraftInstructions.trim(),
+        autoReply: triggerDraftAutoReply,
+        proactiveEnabled: triggerDraftProactiveEnabled,
+        proactiveAfterMinutes: triggerDraftProactiveAfterMinutes,
+        proactiveMaxAttempts: triggerDraftProactiveMaxAttempts,
+        proactiveInstructions: triggerDraftProactiveInstructions.trim(),
+        enabled: triggerDraftEnabled,
+      });
+      applyAgentState(selectedAccount.id, st);
+      setTriggerModalOpen(false);
+      notify(
+        t(
+          "Reactive event trigger saved! Zero-cost idle mode is active.",
+          "Reaktívny spúšťač uložený! Režim nulových nákladov v nečinnosti je aktívny.",
+          "Reaktív eseményindító mentve! Nulla költségű üresjárati mód aktív.",
+        ),
+      );
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleToggleTriggerEnabled = async (trig: AgentEventTrigger) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await saveAgentTrigger({
+        id: selectedAccount.id,
+        triggerId: trig.id,
+        name: trig.name,
+        sourceType: trig.sourceType,
+        sourceConnectorId: trig.sourceConnectorId,
+        targetSubagentId: trig.targetSubagentId,
+        filter: trig.filter,
+        instructions: trig.instructions,
+        autoReply: trig.autoReply,
+        proactiveEnabled: trig.proactiveEnabled,
+        proactiveAfterMinutes: trig.proactiveAfterMinutes,
+        proactiveMaxAttempts: trig.proactiveMaxAttempts,
+        proactiveInstructions: trig.proactiveInstructions,
+        enabled: !trig.enabled,
+      });
+      applyAgentState(selectedAccount.id, st);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleCancelFollowup = async (followupId: string) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await cancelAgentFollowup(selectedAccount.id, followupId);
+      applyAgentState(selectedAccount.id, st);
+      notify(t("Scheduled follow-up cancelled.", "Naplánovaný follow-up zrušený.", "Ütemezett utánkövetés törölve."));
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleDeleteTrigger = async (triggerId: string) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await deleteAgentTrigger(selectedAccount.id, triggerId);
+      applyAgentState(selectedAccount.id, st);
+      notify(t("Trigger removed.", "Spúšťač odstránený.", "Indító eltávolítva."));
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleTestTrigger = async (triggerId: string) => {
+    if (!selectedAccount || isTestingTriggerId) return;
+    setIsTestingTriggerId(triggerId);
+    try {
+      const res = await testAgentTrigger(selectedAccount.id, triggerId);
+      applyAgentState(selectedAccount.id, res);
+      if (res.testResult?.ok) {
+        const alreadyMsg = (res.testResult as { alreadyReplied?: boolean; text?: string }).alreadyReplied
+          ? (res.testResult as { text?: string }).text
+          : null;
+        notify(
+          alreadyMsg ||
+            t(
+              "Trigger test executed with 50-msg / 5-day context!",
+              "Test spúšťača vykonaný s kontextom 50 správ / 5 dní!",
+              "Indító teszt végrehajtva 50 üzenet / 5 nap kontextussal!",
+            ),
+        );
+      } else {
+        notify(res.testResult?.error || t("Trigger test failed.", "Test spúšťača zlyhal.", "Indító teszt sikertelen."), "error");
+      }
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setIsTestingTriggerId(null);
+    }
+  };
+
+  const handleCreateTask = async () => {
+    if (!selectedAccount || !newTaskTitle.trim() || !newTaskPrompt.trim()) return;
+    try {
+      const st = await saveAgentTask({
+        id: selectedAccount.id,
+        title: newTaskTitle.trim(),
+        prompt: newTaskPrompt.trim(),
+        intervalMinutes: Math.max(1, parseInt(newTaskInterval, 10) || 60),
+        subagentId: newTaskSubagentId || undefined,
+        enabled: true,
+      });
+      const createdTask = (st.tasks ?? [])[st.tasks.length - 1];
+      const nextKey = createdTask ? `task:${createdTask.id}` : selectedArtifactKey;
+      setSelectedArtifactKey(nextKey);
+      applyAgentState(selectedAccount.id, st, nextKey);
+      setNewTaskTitle("");
+      setNewTaskPrompt("");
+      setNewTaskInterval("60");
+      setNewTaskSubagentId("");
+      setNewTaskOpen(false);
+      notify(t("Autonomous task scheduled!", "Autonómna úloha naplánovaná!", "Autonóm feladat ütemezve!"));
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleToggleTask = async (task: {
+    id: string;
+    title: string;
+    prompt: string;
+    intervalMinutes: number;
+    subagentId?: string | null;
+    enabled: boolean;
+  }) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await saveAgentTask({
+        id: selectedAccount.id,
+        title: task.title,
+        prompt: task.prompt,
+        intervalMinutes: task.intervalMinutes,
+        subagentId: task.subagentId || undefined,
+        enabled: !task.enabled,
+      });
+      applyAgentState(selectedAccount.id, st);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!selectedAccount) return;
+    try {
+      const st = await deleteAgentTask(selectedAccount.id, taskId);
+      const nextKey = selectedArtifactKey === `task:${taskId}` ? null : selectedArtifactKey;
+      setSelectedArtifactKey(nextKey);
+      applyAgentState(selectedAccount.id, st, nextKey);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleRunTaskNow = async (taskId?: string) => {
+    if (!selectedAccount || isAgentRunning) return;
+    setIsAgentRunning(true);
+    try {
+      const st = await runAgentTaskNow(selectedAccount.id, taskId);
+      applyAgentState(selectedAccount.id, st);
+      notify(t("Autonomous task executed!", "Autonómna úloha vykonaná!", "Autonóm feladat végrehajtva!"));
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setIsAgentRunning(false);
+    }
+  };
+
+  const handleClearAgentChat = async () => {
+    if (!selectedAccount) return;
+    try {
+      const st = await clearAgentChatHistory(selectedAccount.id, activeChatSubagentId || undefined);
+      applyAgentState(selectedAccount.id, st);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleSendAgentMessage = async (promptText?: string) => {
+    const text = (promptText ?? agentPrompt).trim();
+    if (!text || !selectedAccount || isAgentRunning) return;
+    const accId = selectedAccount.id;
+    const subId = activeChatSubagentId || "";
+    const chatKey = subId ? `${accId}:${subId}` : accId;
+    const userMsg: AgentChatMessage = {
+      id: `u-${Date.now()}`,
+      role: "user",
+      subagentId: subId || null,
+      text,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
+    setAgentChats((prev) => ({
+      ...prev,
+      [chatKey]: [...(prev[chatKey] ?? []), userMsg],
+    }));
+    if (!promptText) setAgentPrompt("");
+    setIsAgentRunning(true);
+    try {
+      const res = await runSubscriptionAgent({
+        id: accId,
+        prompt: text,
+        subagentId: subId || undefined,
+      });
+      if (res.memoryMd !== undefined) {
+        applyAgentState(accId, res, undefined, subId);
+      } else {
+        const botMsg: AgentChatMessage = {
+          id: `a-${Date.now()}`,
+          role: "assistant",
+          subagentId: subId || null,
+          text: res.text || "Completed via CCRM MCP.",
+          steps: res.steps ?? [],
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        };
+        setAgentChats((prev) => ({
+          ...prev,
+          [chatKey]: [...(prev[chatKey] ?? []), botMsg],
+        }));
+      }
+    } catch (e: unknown) {
+      const errMsg: AgentChatMessage = {
+        id: `e-${Date.now()}`,
+        role: "assistant",
+        text: `⚠️ ${e instanceof Error ? e.message : String(e)}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setAgentChats((prev) => ({
+        ...prev,
+        [chatKey]: [...(prev[chatKey] ?? []), errMsg],
+      }));
+    } finally {
+      setIsAgentRunning(false);
+    }
+  };
+
+  // Load & poll live WhatsApp / BotMan chats/groups/messages when a Messaging connector is active
+  useEffect(() => {
+    if (!selectedAccount || !isMessagingConnector(selectedChannelType)) return;
+    let cancelled = false;
+    setWaLoading(true);
+
+    const fetchChats = () => {
+      void getWhatsAppChats(selectedAccount.id)
+        .then((st) => {
+          if (cancelled) return;
+          setWaState(st);
+          if (st.qr && st.status === "pending_qr") {
+            setWaInlineQrUrl(st.qr);
+            setWaInlineQrOpen(true);
+          } else if (st.status === "connected") {
+            setWaInlineQrOpen(false);
+            setWaInlineQrUrl(null);
+          }
+        })
+        .catch(() => {
+          /* ignore */
+        })
+        .finally(() => {
+          if (!cancelled) setWaLoading(false);
+        });
+    };
+
+    fetchChats();
+    const timer = setInterval(fetchChats, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [selectedAccount?.id, selectedChannelType]);
+
+  // Auto-scroll WhatsApp / BotMan conversation pane to the newest message at the bottom
+  const activeWaChatId = waSelectedLeadId || waState?.chats?.[0]?.id || "";
+  const activeWaMsgCount = activeWaChatId ? (waState?.messages?.[activeWaChatId]?.length ?? 0) : 0;
+  useEffect(() => {
+    if (!isMessagingConnector(selectedChannelType)) return;
+    const scrollToBottom = () => {
+      const el = waMessagesScrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    };
+    scrollToBottom();
+    const raf = requestAnimationFrame(scrollToBottom);
+    const timer = setTimeout(scrollToBottom, 60);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
+  }, [selectedAccount?.id, selectedChannelType, activeWaChatId, activeWaMsgCount]);
+
+  // Auto-scroll AI Agent chat pane to the newest message at the bottom by default
+  const activeAgentChatKey = selectedAccount
+    ? activeChatSubagentId
+      ? `${selectedAccount.id}:${activeChatSubagentId}`
+      : selectedAccount.id
+    : "";
+  const activeAgentMsgCount = activeAgentChatKey ? (agentChats[activeAgentChatKey]?.length ?? 0) : 0;
+  useEffect(() => {
+    if (!isAgentConnector(selectedChannelType) || visualTriggersOpen) return;
+    const scrollToBottom = () => {
+      const el = agentChatScrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    };
+    scrollToBottom();
+    const raf = requestAnimationFrame(scrollToBottom);
+    const timer = setTimeout(scrollToBottom, 60);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
+  }, [selectedAccount?.id, selectedChannelType, activeChatSubagentId, visualTriggersOpen, activeAgentMsgCount, isAgentRunning]);
+
+  const handleToggleWaChatAgentTakeover = async (
+    chat: WhatsAppChatSummary,
+    nextMode: "active" | "paused" | "auto",
+    preferredAgentId?: string,
+    preferredSubagentId?: string | null,
+  ) => {
+    if (!selectedAccount || waTakeoverBusyChatId === chat.id) return;
+    setWaTakeoverBusyChatId(chat.id);
+    try {
+      const st = await setWhatsAppChatAgentTakeover({
+        id: selectedAccount.id,
+        chatId: chat.id,
+        chatName: chat.name,
+        mode: nextMode,
+        agentConnectorId: preferredAgentId,
+        subagentId: preferredSubagentId,
+      });
+      setWaState(st);
+      if (nextMode === "auto") {
+        notify(
+          t(
+            `Visual Trigger automation resumed for "${chat.name}".`,
+            `Automatizácia vizuálneho spúšťača obnovená pre „${chat.name}“.`,
+            `Vizuális trigger automatizáció visszaállítva a(z) „${chat.name}” beszélgetéshez.`,
+          ),
+        );
+      } else if (nextMode === "active") {
+        notify(
+          t(
+            `AI Agent took over "${chat.name}" for this session.`,
+            `AI Agent prevzal konverzáciu „${chat.name}“ pre túto reláciu.`,
+            `Az AI ügynök átvette a(z) „${chat.name}” beszélgetést erre a munkamenetre.`,
+          ),
+        );
+      } else {
+        notify(
+          t(
+            `AI Agent turned off for "${chat.name}" in this session.`,
+            `AI Agent bol pre konverzáciu „${chat.name}“ v tejto relácii vypnutý.`,
+            `Az AI ügynök kikapcsolva a(z) „${chat.name}” beszélgetésben erre a munkamenetre.`,
+          ),
+        );
+      }
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setWaTakeoverBusyChatId(null);
+    }
+  };
+
+  const handleResyncWhatsApp = async (chatId?: string) => {
+    if (!selectedAccount || waLoading) return;
+    setWaLoading(true);
+    try {
+      const st = await resyncWhatsAppChats(selectedAccount.id, chatId);
+      setWaState(st);
+      notify(
+        t(
+          `Synced ${st.chats?.length ?? 0} WhatsApp chats & groups.`,
+          `Synchronizovaných ${st.chats?.length ?? 0} WhatsApp konverzácií a skupín.`,
+          `${st.chats?.length ?? 0} WhatsApp beszélgetés és csoport szinkronizálva.`,
+        ),
+      );
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setWaLoading(false);
+    }
+  };
+
+  const handleStartInlineWaQr = async () => {
+    if (!selectedAccount) return;
+    setWaInlineQrOpen(true);
+    setWaInlineQrUrl(null);
+    try {
+      const started = await startWhatsAppDirectQr({
+        id: selectedAccount.id,
+        accountId: selectedAccount.settings?.waAccountId || waState?.accountId || `wa-${selectedAccount.id}`,
+        reset: true,
+      });
+      if (started.qr) {
+        setWaInlineQrUrl(started.qr);
+      }
+      const accId = started.accountId;
+      const pollTimer = setInterval(async () => {
+        try {
+          const p = await pollWhatsAppDirectQr({ id: selectedAccount.id, accountId: accId });
+          if (p.qr) setWaInlineQrUrl(p.qr);
+          if (p.status === "connected") {
+            clearInterval(pollTimer);
+            setWaInlineQrOpen(false);
+            setWaInlineQrUrl(null);
+            notify(
+              t(
+                "WhatsApp linked! Syncing chats & groups…",
+                "WhatsApp prepojený! Synchronizujem konverzácie a skupiny…",
+                "WhatsApp összekapcsolva! Beszélgetések szinkronizálása…",
+              ),
+            );
+            void handleResyncWhatsApp();
+          }
+        } catch {
+          clearInterval(pollTimer);
+        }
+      }, 1800);
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    }
+  };
+
+  const handleSendWhatsAppMessage = async (
+    targetChat: WhatsAppChatSummary,
+    matchedLead: Lead | null,
+  ) => {
+    const text = waDraftMessage.trim();
+    if (!text || !selectedAccount || waSending) return;
+    setWaDraftMessage("");
+    setWaSending(true);
+
+    // Log to CRM lead timeline if matched
+    if (matchedLead && canEdit) {
+      const newEvent = {
+        id: `wa-${Date.now()}`,
+        type: "note" as const,
+        timestamp: nowLocalStamp(),
+        title: `WhatsApp (${selectedAccount?.name || "WhatsApp"})`,
+        content: `📤 WhatsApp → ${matchedLead.phone || matchedLead.name}:\n${text}`,
+        author: currentUser?.name || "",
+      };
+      setLeads((prev: Lead[]) =>
+        prev.map((l) => (l.id === matchedLead.id ? { ...l, timeline: [newEvent, ...(l.timeline || [])] } : l)),
+      );
+    }
+
+    try {
+      const nextState = await sendWhatsAppChatMessage({
+        id: selectedAccount.id,
+        chatId: targetChat.id,
+        text,
+      });
+      setWaState(nextState);
+      notify(
+        t(
+          "WhatsApp message sent!",
+          "WhatsApp správa odoslaná!",
+          "WhatsApp üzenet elküldve!",
+        ),
+      );
+    } catch (e: unknown) {
+      notify(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setWaSending(false);
+    }
+  };
 
   // Compose a new email
   const openNewComposer = (defaultTo = "", defaultSubject = "", defaultBody = "") => {
@@ -637,7 +1830,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     if (!canEdit) return;
     setIsSending(true);
     try {
-      const res = await fetch("/api/mail_broker.php?action=send_email", {
+      const res = await fetch(`/api/mail_broker.php?action=send_email${mbParam}`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -701,7 +1894,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       },
       failureMessage: t("Failed to remove email", "Nepodarilo sa odstrániť e-mail", "Az e-mail eltávolítása nem sikerült"),
       onCommit: async () => {
-        const res = await fetch(`/api/mail_broker.php?action=delete_email&uid=${uid}&folder=${encodeURIComponent(folder)}`, {
+        const res = await fetch(`/api/mail_broker.php?action=delete_email&uid=${uid}&folder=${encodeURIComponent(folder)}${mbParam}`, {
           method: "DELETE",
           headers: { "X-User-Email": currentUser.email }
         });
@@ -730,20 +1923,51 @@ export const EmailView: React.FC<EmailViewProps> = ({
     });
 
     const threadsMap: Record<string, any[]> = {};
-    
-    filtered.forEach(email => {
-      // Strips Re:, Fwd:, etc.
-      let normSubject = (email.subject || "")
-        .replace(/^(re|fwd|fw|odp|odpověď|rehg|ref|odpověd|odp):\s*/i, "")
-        .trim();
-      if (!normSubject) {
-        normSubject = t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)");
+    const msgIdToThreadKey: Record<string, string> = {};
+
+    const normalizeSubject = (raw: string) => {
+      let s = (raw || "").trim();
+      const prefixRe = /^(?:(?:re|fwd|fw|odp|odpověď|rehg|ref|odpověd|válasz|aw|wg|sv|vs)(?:\[\d+\])?:\s*)+/i;
+      while (prefixRe.test(s)) {
+        s = s.replace(prefixRe, "").trim();
       }
-      
-      if (!threadsMap[normSubject]) {
-        threadsMap[normSubject] = [];
+      return s || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)");
+    };
+
+    // Sort oldest to newest first so `in_reply_to` / `references` can link to earlier messages' `message_id`
+    const chronological = [...filtered].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    );
+
+    chronological.forEach((email) => {
+      const normSubj = normalizeSubject(email.subject || "");
+      let threadKey = "";
+
+      const inReplyTo = (email.in_reply_to || "").trim();
+      if (inReplyTo && msgIdToThreadKey[inReplyTo]) {
+        threadKey = msgIdToThreadKey[inReplyTo];
       }
-      threadsMap[normSubject].push(email);
+      if (!threadKey && email.references) {
+        const refs = String(email.references).split(/\s+/).filter(Boolean);
+        for (let i = refs.length - 1; i >= 0; i--) {
+          if (msgIdToThreadKey[refs[i]]) {
+            threadKey = msgIdToThreadKey[refs[i]];
+            break;
+          }
+        }
+      }
+      if (!threadKey) {
+        threadKey = normSubj;
+      }
+
+      if (email.message_id) {
+        msgIdToThreadKey[String(email.message_id).trim()] = threadKey;
+      }
+
+      if (!threadsMap[threadKey]) {
+        threadsMap[threadKey] = [];
+      }
+      threadsMap[threadKey].push(email);
     });
     
     const threadsList = Object.keys(threadsMap).map(subject => {
@@ -780,6 +2004,25 @@ export const EmailView: React.FC<EmailViewProps> = ({
     return threadedEmails.find(t => t.id === selectedThreadId) || null;
   }, [isThreadedMode, selectedThreadId, threadedEmails]);
 
+  // Auto-scroll Email Thread conversation pane to the newest message at the bottom by default
+  const activeThreadEmailCount = activeThread?.emails?.length ?? 0;
+  const latestThreadUid = activeThread?.latestEmail?.uid;
+  const latestThreadBodyLoaded = Boolean(latestThreadUid && threadBodies[latestThreadUid]);
+  useEffect(() => {
+    if (!isSelectedEmailChannel || !isThreadedMode || !activeThread) return;
+    const scrollToBottom = () => {
+      const el = emailThreadScrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    };
+    scrollToBottom();
+    const raf = requestAnimationFrame(scrollToBottom);
+    const timer = setTimeout(scrollToBottom, 60);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
+  }, [isSelectedEmailChannel, isThreadedMode, activeThread?.id, activeThreadEmailCount, latestThreadBodyLoaded]);
+
   // Toggle expand/collapse inside conversation flow and load detail inline lazily
   const toggleEmailExpand = async (email: any) => {
     const isExpanded = !expandedEmailUids[email.uid];
@@ -789,7 +2032,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       setIsLoadingDetail(true);
       const folderToUse = email.isSent ? "Sent" : activeFolder;
       try {
-        const res = await fetch(`/api/mail_broker.php?action=get_email_detail&uid=${email.uid}&folder=${encodeURIComponent(folderToUse)}`, {
+        const res = await fetch(`/api/mail_broker.php?action=get_email_detail&uid=${email.uid}&folder=${encodeURIComponent(folderToUse)}${mbParam}`, {
           headers: { "X-User-Email": currentUser.email }
         });
         const data = await res.json();
@@ -864,6 +2107,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   // Sync initial summaries from fetched emails list payload
   useEffect(() => {
     const initialSummaries: Record<string, string> = {};
+    const initialProblems: Record<string, string[]> = {};
     const initialActionItems: Record<string, string[]> = {};
     emails.forEach(e => {
       if (e.summary) {
@@ -871,6 +2115,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
           if (e.summary.trim().startsWith('{')) {
             const parsed = JSON.parse(e.summary);
             initialSummaries[e.uid] = parsed.summary || '';
+            if (Array.isArray(parsed.problems)) {
+              initialProblems[e.uid] = parsed.problems;
+            }
             initialActionItems[e.uid] = parsed.actionItems || [];
           } else {
             initialSummaries[e.uid] = e.summary;
@@ -881,6 +2128,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       }
     });
     setSummaries(prev => ({ ...initialSummaries, ...prev }));
+    setProblemsMap(prev => ({ ...initialProblems, ...prev }));
     setActionItemsMap(prev => ({ ...initialActionItems, ...prev }));
   }, [emails]);
 
@@ -1162,6 +2410,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     if (!isOpenAiKeySet) return null;
     const key = String(rawKey);
     const isActive = digest?.key === key;
+    const hasProblems = (problemsMap[key] || []).length > 0;
     const iconSize = size === "sm" ? 15 : 17;
     return (
       <button
@@ -1188,12 +2437,192 @@ export const EmailView: React.FC<EmailViewProps> = ({
         title={t("AI summary", "AI súhrn", "AI összefoglaló")}
         aria-label={t("AI summary", "AI súhrn", "AI összefoglaló")}
         aria-expanded={isActive}
-        className={`${size === "sm" ? "h-8 w-8" : "h-9 w-9"} shrink-0 rounded-xl flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
-          isActive ? "bg-purple-100 text-purple-700" : "text-purple-500 hover:bg-purple-50 hover:text-purple-700"
+        className={`relative ${size === "sm" ? "h-8 w-8" : "h-9 w-9"} shrink-0 rounded-xl flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
+          isActive
+            ? hasProblems
+              ? "bg-rose-100 text-rose-700"
+              : "bg-purple-100 text-purple-700"
+            : hasProblems
+              ? "text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+              : "text-purple-500 hover:bg-purple-50 hover:text-purple-700"
         }`}
       >
         {loadingSummaries[key] ? <Loader2 size={iconSize} className="animate-spin" /> : <Brain size={iconSize} />}
+        {hasProblems && !loadingSummaries[key] && (
+          <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-rose-600 ring-2 ring-white" />
+        )}
       </button>
+    );
+  };
+
+  const renderInlineAiSummaryBanner = (
+    rawKey: string | number,
+    lead: Lead | null,
+    onRefresh?: () => void
+  ) => {
+    const key = String(rawKey);
+    const summaryText = summaries[key];
+    const problems = problemsMap[key] || [];
+    const items = actionItemsMap[key] || [];
+    const isLoading = Boolean(loadingSummaries[key]);
+
+    if (!isOpenAiKeySet && !summaryText) {
+      return (
+        <div
+          data-testid="comm-ai-summary-banner"
+          className="mx-6 mt-3 flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-purple-50/50 border border-purple-100 text-caption font-medium italic text-purple-600 shrink-0"
+        >
+          <Brain className="h-4 w-4 text-purple-400 shrink-0" />
+          {t(
+            "AI summary unavailable. Configure AI provider in Settings.",
+            "AI zhrnutie nie je k dispozícii. Nastavte AI poskytovateľa v nastaveniach.",
+            "Az AI összefoglaló nem érhető el. Állítsa be az AI szolgáltatót a beállításokban."
+          )}
+        </div>
+      );
+    }
+
+    if (!summaryText && !isLoading) {
+      return (
+        <div
+          data-testid="comm-ai-summary-banner"
+          className="mx-6 mt-3 flex items-center justify-between gap-2.5 px-4 py-2.5 rounded-xl bg-purple-50/50 border border-purple-200/70 text-purple-900 shrink-0"
+        >
+          <div className="flex items-center gap-2 text-caption font-semibold">
+            <Brain className="h-4 w-4 text-purple-600 shrink-0" />
+            <span>
+              {t(
+                "Generate AI summary & problem detection for this conversation",
+                "Vygenerovať AI zhrnutie a detekciu problémov pre túto konverzáciu",
+                "AI összefoglaló és problémaészlelés generálása ehhez a beszélgetéshez"
+              )}
+            </span>
+          </div>
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              data-testid="comm-ai-summary-generate-btn"
+              className="px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-micro font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
+            >
+              <Sparkles size={12} />
+              {t("Summarize", "Zhrnúť", "Összefoglalás")}
+            </button>
+          )}
+        </div>
+      );
+    }
+
+    const hasProblems = problems.length > 0;
+    return (
+      <div
+        data-testid="comm-ai-summary-banner"
+        className={`mx-6 mt-3 px-4 py-3 rounded-2xl border transition-all animate-fade-in shrink-0 text-left space-y-2 ${
+          hasProblems
+            ? "bg-rose-50/75 border-rose-200 text-rose-950"
+            : "bg-purple-50/70 border-purple-200 text-purple-950"
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2.5 min-w-0 flex-1">
+            <Brain
+              className={`h-4.5 w-4.5 mt-0.5 shrink-0 ${
+                hasProblems ? "text-rose-600" : "text-purple-600"
+              } ${isLoading ? "animate-pulse" : ""}`}
+            />
+            <div className="min-w-0 flex-1">
+              {isLoading && !summaryText ? (
+                <span className="text-caption text-purple-600 italic animate-pulse flex items-center gap-1.5">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-600" />
+                  {t(
+                    "Generating AI summary & checking for problems...",
+                    "Generuje sa AI zhrnutie a kontrola problémov...",
+                    "AI összefoglaló generálása és problémák keresése..."
+                  )}
+                </span>
+              ) : (
+                <p className="text-caption leading-relaxed font-semibold">
+                  {summaryText}
+                  {isLoading && (
+                    <span className="ml-1.5 text-micro text-purple-500 animate-pulse">
+                      ({t("Updating...", "Aktualizuje sa...", "Frissítés...")})
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={isLoading}
+              title={t("Regenerate AI summary", "Prepočítať AI zhrnutie", "AI összefoglaló újragenerálása")}
+              className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-500 hover:bg-white/80 hover:text-slate-800 cursor-pointer shrink-0 disabled:opacity-40"
+            >
+              <RefreshCw size={13} className={isLoading ? "animate-spin" : ""} />
+            </button>
+          )}
+        </div>
+
+        {hasProblems && (
+          <div
+            data-testid="comm-ai-summary-problems"
+            className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-rose-200/70"
+          >
+            <span className="inline-flex items-center gap-1 text-micro font-extrabold uppercase tracking-wider text-rose-700 mr-1">
+              <CircleAlert size={13} className="shrink-0" />
+              {t("Problems highlighted:", "Zistené problémy:", "Kiemelt problémák:")}
+            </span>
+            {problems.map((prob, idx) => (
+              <span
+                key={idx}
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-white/90 border border-rose-300 text-rose-800 text-micro font-bold shadow-2xs"
+              >
+                ⚠️ {prob}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {items.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-purple-200/50">
+            <span className="text-micro font-bold text-purple-800 mr-1">
+              {t("Suggested actions:", "Navrhované kroky:", "Javasolt lépések:")}
+            </span>
+            {items.slice(0, 3).map((item, idx) => {
+              const matchingTask = tasks.find((task) => task.title === item);
+              return (
+                <span
+                  key={idx}
+                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-white/80 border border-purple-200 text-slate-800 text-micro font-semibold"
+                >
+                  <span>{item}</span>
+                  {matchingTask ? (
+                    <span className="text-emerald-700 font-bold">✓</span>
+                  ) : canEdit && users[0] ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleAddEmailActionItemAsTask(
+                          item,
+                          key,
+                          lead,
+                          currentUser?.name || users[0].name
+                        )
+                      }
+                      className="text-purple-700 hover:text-purple-950 font-bold cursor-pointer"
+                      title={t("Create task", "Vytvoriť úlohu", "Feladat létrehozása")}
+                    >
+                      + {t("Task", "Úloha", "Feladat")}
+                    </button>
+                  ) : null}
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -1206,7 +2635,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
     const position: React.CSSProperties = openUp
       ? { left, width, bottom: window.innerHeight - rect.top + 6 }
       : { left, width, top: rect.bottom + 6 };
-    const isThread = key.startsWith("thread-");
+    const isThread = key.startsWith("thread-") || key.startsWith("wa-");
+    const problems = problemsMap[key] || [];
     const items = actionItemsMap[key] || [];
 
     return (
@@ -1255,6 +2685,25 @@ export const EmailView: React.FC<EmailViewProps> = ({
               <p className="text-body text-slate-400 italic">{t("No summary available.", "Súhrn nie je k dispozícii.", "Nincs elérhető összefoglaló.")}</p>
             )}
           </div>
+
+          {problems.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-rose-100 space-y-1.5">
+              <div className="text-ui font-bold text-rose-800 flex items-center gap-1.5">
+                <CircleAlert size={14} className="text-rose-600" />
+                {t("Problems Highlighted", "Zistené problémy", "Kiemelt problémák")}
+              </div>
+              <ul className="space-y-1">
+                {problems.map((prob, idx) => (
+                  <li
+                    key={idx}
+                    className="rounded-xl bg-rose-50/80 border border-rose-200 px-3 py-1.5 text-caption font-bold text-rose-900"
+                  >
+                    ⚠️ {prob}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {items.length > 0 && (
             <div className="mt-4 pt-3 border-t border-purple-100 space-y-2">
@@ -1438,6 +2887,24 @@ export const EmailView: React.FC<EmailViewProps> = ({
       subtitle={t(`Unified SMTP / IMAP inbox connected to your ${PRODUCT_NAME} contacts`, `Jednotná SMTP / IMAP schránka prepojená s kontaktmi ${PRODUCT_NAME}`, `Egységes SMTP / IMAP postafiók a ${PRODUCT_NAME} kapcsolatokhoz`)}
       actions={
         <>
+          {availableAccounts.length > 1 && (
+            <select
+              value={selectedMailboxId || availableAccounts[0]?.id || ""}
+              onChange={(e) => {
+                setSelectedMailboxId(e.target.value);
+                setSelectedEmail(null);
+                setSelectedThreadId(null);
+              }}
+              aria-label={t("Active mailbox", "Aktívna schránka", "Aktív postafiók")}
+              className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-body font-semibold text-slate-700 shadow-2xs cursor-pointer focus:outline-none focus:border-pink-300"
+            >
+              {availableAccounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.name} ({acc.address})
+                </option>
+              ))}
+            </select>
+          )}
           {!canEdit && (
             <span
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-body font-bold shrink-0"
@@ -1478,7 +2945,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       }
     />
 
-    <div className={`grid grid-cols-1 ws-lg:grid-cols-12 gap-5 select-none h-[calc(100vh-280px)] min-h-130 items-stretch overflow-hidden animate-slide-up email-view-root ${isLargeFont ? 'email-view-large' : ''}`}>
+    <div className={`flex flex-col ws-lg:flex-row gap-4 select-none h-[calc(100vh-280px)] min-h-130 items-stretch overflow-hidden animate-slide-up email-view-root ${isLargeFont ? 'email-view-large' : ''}`}>
       <style>{`
         /* Large-text mode lifts the role tokens for this subtree only (docs/VIEW-SIZE.md). */
         .email-view-large {
@@ -1499,6 +2966,3303 @@ export const EmailView: React.FC<EmailViewProps> = ({
         </div>
       )}
 
+      {/* SECOND SIDEBAR: Authorized Communication Accounts */}
+      <aside
+        data-testid="communication-accounts-sidebar"
+        className="w-full ws-lg:w-64 shrink-0 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-auto ws-lg:h-full max-h-full overflow-hidden text-left"
+      >
+        <div className="px-4 py-3.5 border-b border-slate-100 flex items-center justify-between gap-2 shrink-0">
+          <div>
+            <div className="type-overline text-slate-400">
+              {t("Authorized Channels", "Autorizované kanály", "Engedélyezett csatornák")}
+            </div>
+            <div className="text-ui font-bold text-slate-900">
+              {t("Accounts", "Účty", "Fiókok")} ({availableAccounts.length})
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              window.location.hash = "settings/email/mailboxes";
+            }}
+            title={t("Manage External Connectors", "Spravovať externé konektory", "Külső konektorok kezelése")}
+            className="h-8 w-8 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 flex items-center justify-center transition-colors cursor-pointer"
+          >
+            <Settings size={15} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5">
+          {availableAccounts.length === 0 ? (
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/70 text-caption text-slate-500 space-y-2">
+              <p>{t("No active channels assigned yet.", "Zatiaľ nie sú priradené žiadne kanály.", "Még nincs hozzárendelt csatorna.")}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.hash = "settings/email/mailboxes";
+                }}
+                className="w-full px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-micro font-bold"
+              >
+                + {t("Connect Channel", "Pripojiť kanál", "Csatorna csatlakoztatása")}
+              </button>
+            </div>
+          ) : (
+            availableAccounts.map((acc) => {
+              const meta = PROVIDERS[acc.connectorType] ?? PROVIDERS.smtp;
+              const isSelected = (selectedAccount?.id ?? "") === acc.id;
+              const isAiConn = isAgentConnector(acc.connectorType);
+              const connSubagents = agentStates[acc.id]?.subagents ?? acc.subagents ?? [];
+              const connTriggers = agentStates[acc.id]?.triggers ?? acc.triggers ?? [];
+              const connHeartbeatOn = Boolean(agentStates[acc.id]?.autonomousMode?.enabled);
+
+              return (
+                <div key={acc.id} className="space-y-1">
+                  <button
+                    type="button"
+                    data-testid={`comm-account-${acc.id}`}
+                    onClick={() => {
+                      setSelectedMailboxId(acc.id);
+                      if (isAiConn) {
+                        setActiveChatSubagentId("");
+                      } else {
+                        setSelectedEmail(null);
+                        setSelectedThreadId(null);
+                      }
+                    }}
+                    className={`w-full p-2.5 rounded-2xl border text-left transition-all flex items-start gap-2.5 cursor-pointer ${meta.rowBorder} ${
+                      isSelected
+                        ? `${meta.rowBg} ${meta.accentRing} border-slate-300 shadow-xs`
+                        : "bg-white hover:bg-slate-50/90 border-slate-200/70"
+                    }`}
+                  >
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${meta.iconBg}`}>
+                      <ProviderLogo type={acc.connectorType} className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className={`px-1.5 py-0.5 rounded text-micro font-bold uppercase ${meta.badgeClass}`}>
+                          {meta.label.split(" ")[0]}
+                        </span>
+                        {isAiConn ? (
+                          <div className="flex items-center gap-1">
+                            {connTriggers.filter((tr) => tr.enabled).length > 0 && (
+                              <span
+                                title={t("Active reactive triggers", "Aktívne reaktívne spúšťače", "Aktív reaktív indítók")}
+                                className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-micro font-bold"
+                              >
+                                ⚡ {connTriggers.filter((tr) => tr.enabled).length}
+                              </span>
+                            )}
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedMailboxId(acc.id);
+                                setNewSubagentOpen(true);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.stopPropagation();
+                                  setSelectedMailboxId(acc.id);
+                                  setNewSubagentOpen(true);
+                                }
+                              }}
+                              title={t("Create new agent from this connection", "Vytvoriť nového agenta z tohto pripojenia", "Új ügynök létrehozása ebből a kapcsolatból")}
+                              className="px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 text-micro font-bold"
+                            >
+                              + {t("Agent", "Agent", "Ügynök")}
+                            </span>
+                          </div>
+                        ) : (
+                          acc.isPersonal && (
+                            <span className="text-micro font-semibold text-slate-400">
+                              {t("Personal", "Osobný", "Személyes")}
+                            </span>
+                          )
+                        )}
+                      </div>
+                      <div className="text-ui font-bold text-slate-900 truncate mt-0.5">{acc.name}</div>
+                      <div className="text-micro text-slate-500 font-mono truncate">{acc.address}</div>
+                    </div>
+                  </button>
+
+                  {/* Multi-Agent Tree under AI Connection */}
+                  {isAiConn && (isSelected || connSubagents.length > 0) && (
+                    <div className="pl-3.5 pr-1 py-0.5 space-y-1 border-l-2 border-indigo-100 ml-4">
+                      {/* Main Agent */}
+                      <button
+                        type="button"
+                        data-testid={`comm-agent-${acc.id}-main`}
+                        onClick={() => {
+                          setSelectedMailboxId(acc.id);
+                          setActiveChatSubagentId("");
+                          setVisualTriggersOpen(false);
+                        }}
+                        className={`w-full px-2.5 py-1.5 rounded-xl text-left flex items-center justify-between gap-1.5 transition-all cursor-pointer border ${
+                          isSelected && activeChatSubagentId === "" && !visualTriggersOpen
+                            ? "bg-indigo-50/90 border-indigo-300 text-indigo-950 font-bold shadow-2xs"
+                            : "bg-slate-50/70 hover:bg-slate-100/80 border-slate-200/60 text-slate-700"
+                        }`}
+                      >
+                        <span className="text-micro truncate flex items-center gap-1.5">
+                          <Sparkles size={11} className="text-indigo-600 shrink-0" />
+                          <span className="truncate">{t("Main Agent", "Hlavný agent", "Fő ügynök")}</span>
+                        </span>
+                        <span className="flex items-center gap-1 shrink-0">
+                          {connTriggers.some((tr) => tr.enabled && (!tr.targetSubagentId || tr.targetSubagentId === "main")) && (
+                            <span title={t("Reactive trigger active", "Reaktívny spúšťač aktívny", "Reaktív indító aktív")} className="text-micro">
+                              ⚡
+                            </span>
+                          )}
+                          {connHeartbeatOn && (
+                            <span title={t("Heartbeat active", "Heartbeat aktívny", "Heartbeat aktív")} className="text-micro">
+                              💓
+                            </span>
+                          )}
+                        </span>
+                      </button>
+
+                      {/* Created Independent Agents from this Connection */}
+                      {connSubagents.map((sub) => {
+                        const subActive = isSelected && activeChatSubagentId === sub.id && !visualTriggersOpen;
+                        const subHasTrig = connTriggers.some((tr) => tr.enabled && tr.targetSubagentId === sub.id);
+                        return (
+                          <button
+                            key={sub.id}
+                            type="button"
+                            data-testid={`comm-agent-${acc.id}-${sub.id}`}
+                            onClick={() => {
+                              setSelectedMailboxId(acc.id);
+                              setActiveChatSubagentId(sub.id);
+                              setVisualTriggersOpen(false);
+                            }}
+                            className={`w-full px-2.5 py-1.5 rounded-xl text-left flex items-center justify-between gap-1.5 transition-all cursor-pointer border ${
+                              subActive
+                                ? "bg-amber-50/95 border-amber-300 text-amber-950 font-bold shadow-2xs"
+                                : "bg-white hover:bg-amber-50/40 border-slate-200/70 text-slate-700"
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="text-micro font-bold truncate flex items-center gap-1">
+                                <Bot size={11} className="text-amber-600 shrink-0" />
+                                <span className="truncate">{sub.name}</span>
+                              </div>
+                              <div className="text-micro text-slate-400 truncate pl-4">{sub.role}</div>
+                            </div>
+                            <span className="flex items-center gap-1 shrink-0">
+                              {subHasTrig && (
+                                <span title={t("Reactive trigger active", "Reaktívny spúšťač aktívny", "Reaktív indító aktív")} className="text-micro">
+                                  ⚡
+                                </span>
+                              )}
+                              {sub.heartbeatEnabled && (
+                                <span title={t("Heartbeat active", "Heartbeat aktívny", "Heartbeat aktív")} className="text-micro">
+                                  💓
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })}
+
+                      {/* Quick Visual Triggers Studio launcher under connection */}
+                      <button
+                        type="button"
+                        data-testid={`comm-agent-triggers-${acc.id}`}
+                        onClick={() => {
+                          setSelectedMailboxId(acc.id);
+                          setVisualTriggersOpen(true);
+                        }}
+                        className={`w-full px-2.5 py-1.5 rounded-xl text-left flex items-center justify-between gap-1.5 transition-all cursor-pointer border ${
+                          isSelected && visualTriggersOpen
+                            ? "bg-amber-500 text-white border-amber-600 font-bold shadow-2xs"
+                            : "bg-amber-50/60 hover:bg-amber-100/70 border-amber-200/80 text-amber-900 font-semibold"
+                        }`}
+                      >
+                        <span className="text-micro truncate flex items-center gap-1.5">
+                          <Zap size={11} className="shrink-0" />
+                          <span className="truncate">{t("Visual Triggers", "Vizuálne spúšťače", "Vizuális indítók")}</span>
+                        </span>
+                        <span className="text-micro px-1.5 py-0.2 rounded-full bg-black/10 font-bold">
+                          {connTriggers.length}
+                        </span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </aside>
+
+      {/* RIGHT WORKSPACE: Dynamic Layout Depending on Selected Communication Channel */}
+      {isMessagingConnector(selectedChannelType) ? (
+        /* WHATSAPP & BOTMAN MESSAGING LAYOUT */
+        <div
+          data-testid="communication-whatsapp-layout"
+          className="flex-1 min-w-0 grid grid-cols-1 ws-lg:grid-cols-12 gap-4 h-full max-h-full overflow-hidden"
+        >
+          {(() => {
+            // Merge live WAAI WhatsApp / BotMan chats with CRM leads (phone fallback only for WhatsApp / Twilio SMS)
+            const liveChats: WhatsAppChatSummary[] = Array.isArray(waState?.chats) ? waState!.chats : [];
+            const seenPhones = new Set(
+              liveChats
+                .map((c) => (c.phone || "").replace(/\D/g, ""))
+                .filter(Boolean),
+            );
+            const crmFallbackChats: WhatsAppChatSummary[] =
+              selectedChannelType === "whatsapp" || selectedChannelType === "twilio"
+                ? leads
+                    .filter((l) => {
+                      const digits = (l.phone || "").replace(/\D/g, "");
+                      return !digits || !seenPhones.has(digits);
+                    })
+                    .map((l) => {
+                      const digits = (l.phone || "").replace(/\D/g, "");
+                      return {
+                        id: digits ? `${digits}@s.whatsapp.net` : `lead-${l.id}`,
+                        name: l.name || l.phone || "Contact",
+                        phone: l.phone || "",
+                        isGroup: false,
+                        unreadCount: 0,
+                        lastMessageText: "",
+                        lastMessageTs: 0,
+                      };
+                    })
+                : [];
+
+            const allWaChats = [...liveChats, ...crmFallbackChats];
+            const filteredWaChats = allWaChats.filter((ch) => {
+              if (waFilterType === "groups" && !ch.isGroup) return false;
+              if (waFilterType === "contacts" && ch.isGroup) return false;
+              const q = waSearchQuery.trim().toLowerCase();
+              if (!q) return true;
+              return (
+                (ch.name || "").toLowerCase().includes(q) ||
+                (ch.phone || "").toLowerCase().includes(q) ||
+                (ch.lastMessageText || "").toLowerCase().includes(q)
+              );
+            });
+
+            const activeChat =
+              filteredWaChats.find((c) => c.id === waSelectedLeadId) ??
+              allWaChats.find((c) => c.id === waSelectedLeadId) ??
+              filteredWaChats[0] ??
+              null;
+
+            const activeDigits = (activeChat?.phone || "").replace(/\D/g, "");
+            const activeChatLinkKey =
+              activeChat && selectedAccount ? `${selectedAccount.id}::${activeChat.id}` : "";
+            const explicitLeadId = activeChatLinkKey ? chatClientLinks[activeChatLinkKey] : "";
+            const matchedLead = activeChat
+              ? ((explicitLeadId ? leads.find((l) => l.id === explicitLeadId) : null) ??
+                leads.find((l) => {
+                  const lDigits = (l.phone || "").replace(/\D/g, "");
+                  if (activeDigits && lDigits && activeDigits === lDigits) return true;
+                  return (l.name || "").toLowerCase() === (activeChat.name || "").toLowerCase();
+                }) ??
+                null)
+              : null;
+
+            const liveMessages = activeChat ? (waState?.messages?.[activeChat.id] ?? []) : [];
+            const crmWaEvents = matchedLead
+              ? (matchedLead.timeline ?? []).filter(
+                  (ev: any) =>
+                    (ev.title || "").toLowerCase().includes("whatsapp") ||
+                    (ev.content || "").toLowerCase().includes("whatsapp"),
+                )
+              : [];
+
+            const aiAccounts = availableAccounts.filter((a) => isAgentConnector(a.connectorType));
+            const getChatTakeoverInfo = (chat: WhatsAppChatSummary | null) => {
+              if (!chat || !selectedAccount) {
+                return {
+                  isAgentActive: false,
+                  isAutoTakenOver: false,
+                  isPausedForSession: false,
+                  isManualSessionActive: false,
+                  agentName: "AI Agent",
+                  agentConnectorId: aiAccounts[0]?.id || "",
+                  subagentId: null as string | null,
+                };
+              }
+              const sessionOverride = waState?.agentTakeover?.[chat.id];
+              let matchedTrig: AgentEventTrigger | null = null;
+              let matchedAgentAcc = aiAccounts[0] ?? null;
+
+              for (const agAcc of aiAccounts) {
+                const trigs = agentStates[agAcc.id]?.triggers ?? agAcc.triggers ?? [];
+                for (const tr of trigs) {
+                  if (!tr.enabled || tr.sourceType !== "whatsapp") continue;
+                  if (tr.sourceConnectorId && tr.sourceConnectorId !== selectedAccount.id) continue;
+                  const f = tr.filter ?? {};
+                  if (f.onlyGroup && !chat.isGroup) continue;
+                  if (f.onlyDirect && chat.isGroup) continue;
+                  const cm = (f.chatMatch || "").trim().toLowerCase();
+                  if (cm && cm !== "*") {
+                    const cIdLower = (chat.id || "").toLowerCase();
+                    const cNameLower = (chat.name || "").toLowerCase();
+                    if (cIdLower !== cm && !cNameLower.includes(cm)) continue;
+                  }
+                  matchedTrig = tr;
+                  matchedAgentAcc = agAcc;
+                  break;
+                }
+                if (matchedTrig) break;
+              }
+
+              const isAutoTakenOver = Boolean(matchedTrig && matchedTrig.autoReply !== false);
+              const isPausedForSession = sessionOverride?.mode === "paused";
+              const isAgentActive =
+                sessionOverride?.mode === "active" || (isAutoTakenOver && !isPausedForSession);
+
+              const effectiveAgentAcc =
+                (sessionOverride?.agentConnectorId
+                  ? aiAccounts.find((a) => a.id === sessionOverride.agentConnectorId)
+                  : null) ?? matchedAgentAcc;
+              const targetSubId =
+                sessionOverride?.mode === "active"
+                  ? (sessionOverride.subagentId ?? null)
+                  : (matchedTrig?.targetSubagentId ?? null);
+              const targetSub =
+                targetSubId && effectiveAgentAcc
+                  ? (agentStates[effectiveAgentAcc.id]?.subagents ?? effectiveAgentAcc.subagents ?? []).find(
+                      (s) => s.id === targetSubId,
+                    )
+                  : null;
+              const agentName = targetSub
+                ? targetSub.name
+                : effectiveAgentAcc?.name || t("AI Agent", "AI Agent", "AI Ügynök");
+
+                              return {
+                                isAgentActive,
+                                isAutoTakenOver,
+                                isPausedForSession,
+                                isManualSessionActive: sessionOverride?.mode === "active",
+                                agentName,
+                                agentConnectorId: effectiveAgentAcc?.id || "",
+                                subagentId: targetSubId,
+                              };
+            };
+
+            const activeChatTakeover = getChatTakeoverInfo(activeChat);
+            const adapterMeta = PROVIDERS[selectedChannelType] ?? PROVIDERS.whatsapp;
+            const channelDisplayName = selectedAccount?.name || adapterMeta.label || "WhatsApp";
+            const adapterLabel = adapterMeta.label || "WhatsApp";
+
+            const adapterPalette = (() => {
+              switch (selectedChannelType) {
+                case "messenger":
+                  return {
+                    panelBorder: "border-blue-500/30",
+                    headerGrad: "border-blue-500/20 bg-gradient-to-r from-blue-600/12 to-transparent",
+                    liveDot: "bg-blue-600",
+                    liveText: "text-blue-700",
+                    softBtn: "bg-blue-50 hover:bg-blue-100 text-blue-800 border-blue-200",
+                    pillActive: "bg-blue-600 text-white",
+                    pillInactiveHover: "hover:bg-blue-50",
+                    activeRowBg: "bg-blue-50/85",
+                    avatarBg: "bg-blue-600/15 text-blue-700",
+                    groupAvatarBg: "bg-indigo-500/15 text-indigo-700",
+                    groupBadge: "bg-indigo-50 text-indigo-700 border-indigo-200",
+                    bubbleOut: "bg-blue-600 text-white",
+                    bubbleOutMeta: "text-blue-100",
+                    canvasTint: "bg-blue-500/[0.02]",
+                    inputFocus: "focus:border-blue-500",
+                    sendBtn: "bg-blue-600 hover:bg-blue-500 text-white",
+                  };
+                case "telegram":
+                  return {
+                    panelBorder: "border-sky-500/30",
+                    headerGrad: "border-sky-500/20 bg-gradient-to-r from-sky-500/12 to-transparent",
+                    liveDot: "bg-sky-500",
+                    liveText: "text-sky-700",
+                    softBtn: "bg-sky-50 hover:bg-sky-100 text-sky-800 border-sky-200",
+                    pillActive: "bg-sky-600 text-white",
+                    pillInactiveHover: "hover:bg-sky-50",
+                    activeRowBg: "bg-sky-50/85",
+                    avatarBg: "bg-sky-500/15 text-sky-700",
+                    groupAvatarBg: "bg-cyan-500/15 text-cyan-700",
+                    groupBadge: "bg-cyan-50 text-cyan-700 border-cyan-200",
+                    bubbleOut: "bg-sky-600 text-white",
+                    bubbleOutMeta: "text-sky-100",
+                    canvasTint: "bg-sky-500/[0.02]",
+                    inputFocus: "focus:border-sky-500",
+                    sendBtn: "bg-sky-600 hover:bg-sky-500 text-white",
+                  };
+                case "viber":
+                  return {
+                    panelBorder: "border-purple-500/30",
+                    headerGrad: "border-purple-500/20 bg-gradient-to-r from-purple-600/12 to-transparent",
+                    liveDot: "bg-purple-600",
+                    liveText: "text-purple-700",
+                    softBtn: "bg-purple-50 hover:bg-purple-100 text-purple-800 border-purple-200",
+                    pillActive: "bg-purple-600 text-white",
+                    pillInactiveHover: "hover:bg-purple-50",
+                    activeRowBg: "bg-purple-50/85",
+                    avatarBg: "bg-purple-600/15 text-purple-700",
+                    groupAvatarBg: "bg-fuchsia-500/15 text-fuchsia-700",
+                    groupBadge: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
+                    bubbleOut: "bg-purple-600 text-white",
+                    bubbleOutMeta: "text-purple-100",
+                    canvasTint: "bg-purple-500/[0.02]",
+                    inputFocus: "focus:border-purple-500",
+                    sendBtn: "bg-purple-600 hover:bg-purple-500 text-white",
+                  };
+                case "slack":
+                  return {
+                    panelBorder: "border-fuchsia-500/30",
+                    headerGrad: "border-fuchsia-500/20 bg-gradient-to-r from-fuchsia-600/12 to-transparent",
+                    liveDot: "bg-fuchsia-600",
+                    liveText: "text-fuchsia-700",
+                    softBtn: "bg-fuchsia-50 hover:bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200",
+                    pillActive: "bg-fuchsia-600 text-white",
+                    pillInactiveHover: "hover:bg-fuchsia-50",
+                    activeRowBg: "bg-fuchsia-50/85",
+                    avatarBg: "bg-fuchsia-600/15 text-fuchsia-700",
+                    groupAvatarBg: "bg-purple-500/15 text-purple-700",
+                    groupBadge: "bg-purple-50 text-purple-700 border-purple-200",
+                    bubbleOut: "bg-fuchsia-600 text-white",
+                    bubbleOutMeta: "text-fuchsia-100",
+                    canvasTint: "bg-fuchsia-500/[0.02]",
+                    inputFocus: "focus:border-fuchsia-500",
+                    sendBtn: "bg-fuchsia-600 hover:bg-fuchsia-500 text-white",
+                  };
+                case "discord":
+                  return {
+                    panelBorder: "border-indigo-500/30",
+                    headerGrad: "border-indigo-500/20 bg-gradient-to-r from-indigo-500/12 to-transparent",
+                    liveDot: "bg-indigo-600",
+                    liveText: "text-indigo-700",
+                    softBtn: "bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border-indigo-200",
+                    pillActive: "bg-indigo-600 text-white",
+                    pillInactiveHover: "hover:bg-indigo-50",
+                    activeRowBg: "bg-indigo-50/85",
+                    avatarBg: "bg-indigo-500/15 text-indigo-700",
+                    groupAvatarBg: "bg-violet-500/15 text-violet-700",
+                    groupBadge: "bg-violet-50 text-violet-700 border-violet-200",
+                    bubbleOut: "bg-indigo-600 text-white",
+                    bubbleOutMeta: "text-indigo-100",
+                    canvasTint: "bg-indigo-500/[0.02]",
+                    inputFocus: "focus:border-indigo-500",
+                    sendBtn: "bg-indigo-600 hover:bg-indigo-500 text-white",
+                  };
+                case "teams":
+                  return {
+                    panelBorder: "border-violet-500/30",
+                    headerGrad: "border-violet-500/20 bg-gradient-to-r from-violet-600/12 to-transparent",
+                    liveDot: "bg-violet-600",
+                    liveText: "text-violet-700",
+                    softBtn: "bg-violet-50 hover:bg-violet-100 text-violet-800 border-violet-200",
+                    pillActive: "bg-violet-600 text-white",
+                    pillInactiveHover: "hover:bg-violet-50",
+                    activeRowBg: "bg-violet-50/85",
+                    avatarBg: "bg-violet-600/15 text-violet-700",
+                    groupAvatarBg: "bg-indigo-500/15 text-indigo-700",
+                    groupBadge: "bg-indigo-50 text-indigo-700 border-indigo-200",
+                    bubbleOut: "bg-violet-600 text-white",
+                    bubbleOutMeta: "text-violet-100",
+                    canvasTint: "bg-violet-500/[0.02]",
+                    inputFocus: "focus:border-violet-500",
+                    sendBtn: "bg-violet-600 hover:bg-violet-500 text-white",
+                  };
+                case "twilio":
+                  return {
+                    panelBorder: "border-red-500/30",
+                    headerGrad: "border-red-500/20 bg-gradient-to-r from-red-600/12 to-transparent",
+                    liveDot: "bg-red-600",
+                    liveText: "text-red-700",
+                    softBtn: "bg-red-50 hover:bg-red-100 text-red-800 border-red-200",
+                    pillActive: "bg-red-600 text-white",
+                    pillInactiveHover: "hover:bg-red-50",
+                    activeRowBg: "bg-red-50/85",
+                    avatarBg: "bg-red-600/15 text-red-700",
+                    groupAvatarBg: "bg-rose-500/15 text-rose-700",
+                    groupBadge: "bg-rose-50 text-rose-700 border-rose-200",
+                    bubbleOut: "bg-red-600 text-white",
+                    bubbleOutMeta: "text-red-100",
+                    canvasTint: "bg-red-500/[0.02]",
+                    inputFocus: "focus:border-red-500",
+                    sendBtn: "bg-red-600 hover:bg-red-500 text-white",
+                  };
+                case "webchat":
+                  return {
+                    panelBorder: "border-cyan-500/30",
+                    headerGrad: "border-cyan-500/20 bg-gradient-to-r from-cyan-500/12 to-transparent",
+                    liveDot: "bg-cyan-600",
+                    liveText: "text-cyan-700",
+                    softBtn: "bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200",
+                    pillActive: "bg-cyan-600 text-white",
+                    pillInactiveHover: "hover:bg-cyan-50",
+                    activeRowBg: "bg-cyan-50/85",
+                    avatarBg: "bg-cyan-500/15 text-cyan-700",
+                    groupAvatarBg: "bg-teal-500/15 text-teal-700",
+                    groupBadge: "bg-teal-50 text-teal-700 border-teal-200",
+                    bubbleOut: "bg-cyan-600 text-white",
+                    bubbleOutMeta: "text-cyan-100",
+                    canvasTint: "bg-cyan-500/[0.02]",
+                    inputFocus: "focus:border-cyan-500",
+                    sendBtn: "bg-cyan-600 hover:bg-cyan-500 text-white",
+                  };
+                default:
+                  return {
+                    panelBorder: "border-emerald-500/30",
+                    headerGrad: "border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 to-transparent",
+                    liveDot: "bg-emerald-500",
+                    liveText: "text-emerald-700",
+                    softBtn: "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200",
+                    pillActive: "bg-emerald-600 text-white",
+                    pillInactiveHover: "hover:bg-emerald-50",
+                    activeRowBg: "bg-emerald-50/80",
+                    avatarBg: "bg-emerald-500/15 text-emerald-700",
+                    groupAvatarBg: "bg-teal-500/15 text-teal-700",
+                    groupBadge: "bg-teal-50 text-teal-700 border-teal-200",
+                    bubbleOut: "bg-emerald-600 text-white",
+                    bubbleOutMeta: "text-emerald-100",
+                    canvasTint: "bg-emerald-500/[0.02]",
+                    inputFocus: "focus:border-emerald-500",
+                    sendBtn: "bg-emerald-600 hover:bg-emerald-500 text-white",
+                  };
+              }
+            })();
+
+            return (
+              <>
+                {/* Messaging Chats, Groups & Contacts Column */}
+                <div className={`ws-lg:col-span-4 glass-panel rounded-3xl border ${adapterPalette.panelBorder} bg-white/95 shadow-glass flex flex-col h-full overflow-hidden text-left`}>
+                  <div className={`p-4 border-b ${adapterPalette.headerGrad} space-y-3 shrink-0`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`w-8 h-8 rounded-xl ${adapterMeta.iconBg} flex items-center justify-center shrink-0`}>
+                          <ProviderLogo type={selectedChannelType} className="w-4 h-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <div className="text-ui font-bold text-slate-900 truncate">{selectedAccount?.name}</div>
+                          <div className="text-micro font-mono truncate flex items-center gap-1.5">
+                            {waState?.status === "connected" ? (
+                              <>
+                                <span className={`w-1.5 h-1.5 rounded-full ${adapterPalette.liveDot} shrink-0`} />
+                                <span className={`${adapterPalette.liveText} truncate`}>
+                                  {t("Live", "Naživo", "Élő")} · {waState?.phone || selectedAccount?.address}
+                                  {waState?.historySyncChunks ? ` · ${waState.historySyncChunks} sync` : ""}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                                <span className="text-amber-700 truncate">
+                                  {t(
+                                    "Scan QR for live messages",
+                                    "Naskenujte QR pre živé správy",
+                                    "Olvassa be a QR-t az élő üzenetekhez",
+                                  )}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => void handleResyncWhatsApp(activeChat?.id)}
+                          disabled={waLoading}
+                          title={t(
+                            `Sync ${channelDisplayName} chats & groups`,
+                            `Synchronizovať ${channelDisplayName} konverzácie`,
+                            `${channelDisplayName} beszélgetések szinkronizálása`,
+                          )}
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-micro font-bold cursor-pointer disabled:opacity-50 ${adapterPalette.softBtn}`}
+                        >
+                          <RefreshCw size={11} className={waLoading ? "animate-spin" : ""} />
+                          {t("Sync", "Sync", "Szinkron")}
+                        </button>
+                        {selectedChannelType === "whatsapp" && (
+                          <button
+                            type="button"
+                            onClick={() => void handleStartInlineWaQr()}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-micro font-bold cursor-pointer"
+                          >
+                            <QrCode size={12} /> QR
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Inline QR Pairing Banner when requested or when session requires re-link */}
+                    {(waInlineQrOpen || waState?.status === "pending_qr") && (
+                      <div className="p-3 rounded-2xl bg-amber-50/60 border border-emerald-300 shadow-xs space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-micro font-bold text-emerald-900">
+                            {t(
+                              "Scan with WhatsApp → Linked Devices to sync today's live messages",
+                              "Naskenujte cez WhatsApp → Prepojené zariadenia pre synchronizáciu dnešných správ",
+                              "Olvassa be (WhatsApp → Kapcsolt eszközök) a mai élő üzenetek szinkronizálásához",
+                            )}
+                          </span>
+                          {waInlineQrOpen && waState?.status === "connected" && (
+                            <button
+                              type="button"
+                              onClick={() => setWaInlineQrOpen(false)}
+                              className="text-slate-400 hover:text-slate-600 text-micro font-bold cursor-pointer"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-center py-1">
+                          {waInlineQrUrl || waState?.qr ? (
+                            <img
+                              src={waInlineQrUrl || waState?.qr || ""}
+                              alt="WhatsApp QR"
+                              className="w-44 h-44 rounded-xl bg-white p-1.5 border border-emerald-200 object-contain shadow-2xs"
+                            />
+                          ) : (
+                            <div className="w-44 h-44 rounded-xl bg-white border border-emerald-100 flex items-center justify-center text-micro text-slate-400">
+                              <RefreshCw size={18} className="animate-spin text-emerald-600 mr-1.5" />
+                              {t("Generating QR…", "Generujem QR…", "QR generálása…")}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <input
+                        type="text"
+                        value={waSearchQuery}
+                        onChange={(e) => setWaSearchQuery(e.target.value)}
+                        placeholder={t(
+                          `Search ${channelDisplayName} chats & groups...`,
+                          `Hľadať ${channelDisplayName} chaty a skupiny...`,
+                          `${channelDisplayName} beszélgetések és csoportok keresése...`,
+                        )}
+                        className={`w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-200 text-caption text-slate-700 focus:outline-none ${adapterPalette.inputFocus}`}
+                      />
+                    </div>
+
+                    {/* Filter Pills: All / Groups / Contacts */}
+                    <div className="flex items-center justify-between gap-1 pt-0.5">
+                      <div className="flex items-center gap-1">
+                        {(
+                          [
+                            { id: "all", label: t("All", "Všetko", "Összes"), count: allWaChats.length },
+                            {
+                              id: "groups",
+                              label: t("Groups", "Skupiny", "Csoportok"),
+                              count: allWaChats.filter((c) => c.isGroup).length,
+                            },
+                            {
+                              id: "contacts",
+                              label: t("Contacts", "Kontakty", "Kapcsolatok"),
+                              count: allWaChats.filter((c) => !c.isGroup).length,
+                            },
+                          ] as const
+                        ).map((tab) => (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setWaFilterType(tab.id)}
+                            className={`px-2.5 py-1 rounded-lg text-micro font-bold transition-colors cursor-pointer ${
+                              waFilterType === tab.id
+                                ? adapterPalette.pillActive
+                                : `bg-white/80 text-slate-600 ${adapterPalette.pillInactiveHover} border border-slate-200/80`
+                            }`}
+                          >
+                            {tab.label} ({tab.count})
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+                    {filteredWaChats.length === 0 ? (
+                      <div className="p-6 text-center text-caption text-slate-400 space-y-2">
+                        <div>
+                          {waLoading
+                            ? t(
+                                `Syncing ${channelDisplayName} chats…`,
+                                `Synchronizujem ${channelDisplayName} konverzácie…`,
+                                `${channelDisplayName} beszélgetések szinkronizálása…`,
+                              )
+                            : t(
+                                `No ${channelDisplayName} chats match your filter.`,
+                                `Žiadne ${channelDisplayName} konverzácie nezodpovedajú filtru.`,
+                                `Nincs a szűrőnek megfelelő ${channelDisplayName} beszélgetés.`,
+                              )}
+                        </div>
+                      </div>
+                    ) : (
+                      filteredWaChats.map((chat) => {
+                        const active = activeChat?.id === chat.id;
+                        const chatTk = getChatTakeoverInfo(chat);
+                        return (
+                          <button
+                            key={chat.id}
+                            type="button"
+                            onClick={() => setWaSelectedLeadId(chat.id)}
+                            className={`w-full px-4 py-3 text-left flex items-center gap-3 transition-colors cursor-pointer ${
+                              active ? adapterPalette.activeRowBg : "hover:bg-slate-50"
+                            }`}
+                          >
+                            <span
+                              className={`h-9 w-9 rounded-xl text-caption font-bold flex items-center justify-center shrink-0 ${
+                                chat.isGroup
+                                  ? adapterPalette.groupAvatarBg
+                                  : adapterPalette.avatarBg
+                              }`}
+                            >
+                              {chat.isGroup ? <Users size={15} /> : initialsOf(chat.name)}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-ui font-bold text-slate-900 truncate flex items-center gap-1.5">
+                                  <span className="truncate">{chat.name}</span>
+                                  {chatTk.isAgentActive && (
+                                    <span
+                                      title={t(
+                                        `Handled by ${chatTk.agentName}`,
+                                        `Obsluhuje ${chatTk.agentName}`,
+                                        `Kezeli: ${chatTk.agentName}`,
+                                      )}
+                                      className="px-1.5 py-0.2 rounded-md bg-violet-100 text-violet-800 border border-violet-200 text-micro font-bold shrink-0 max-w-28 truncate"
+                                    >
+                                      🤖 {chatTk.agentName}
+                                    </span>
+                                  )}
+                                  {!chatTk.isAgentActive && chatTk.isPausedForSession && (
+                                    <span
+                                      title={t(
+                                        "Agent turned off for this session",
+                                        "Agent vypnutý pre túto reláciu",
+                                        "Ügynök kikapcsolva erre a munkamenetre",
+                                      )}
+                                      className="px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-500 border border-slate-200 text-micro font-semibold shrink-0"
+                                    >
+                                      ⏸ Off
+                                    </span>
+                                  )}
+                                </span>
+                                {chat.lastMessageAt && (
+                                  <span className="text-micro text-slate-400 shrink-0">
+                                    {formatListDate(chat.lastMessageAt)}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-micro text-slate-500 truncate mt-0.5">
+                                {chat.lastMessageText ? (
+                                  chat.lastMessageText
+                                ) : chat.isGroup ? (
+                                  t(`${adapterLabel} Group`, `${adapterLabel} skupina`, `${adapterLabel} csoport`)
+                                ) : (
+                                  <span className="font-mono">
+                                    {chat.phone || t(`${adapterLabel} Contact`, `${adapterLabel} kontakt`, `${adapterLabel} kapcsolat`)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* Messaging Conversation & Composer Column */}
+                <div className={`ws-lg:col-span-8 glass-panel rounded-3xl border ${adapterPalette.panelBorder} bg-white/95 shadow-glass flex flex-col h-full overflow-hidden text-left`}>
+                  {!activeChat ? (
+                    emptyPane(
+                      t(
+                        `Select a ${channelDisplayName} chat or group`,
+                        `Vyberte ${channelDisplayName} konverzáciu alebo skupinu`,
+                        `Válasszon egy ${channelDisplayName} beszélgetést vagy csoportot`,
+                      ),
+                    )
+                  ) : (
+                    <>
+                      <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3 shrink-0">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-title font-heading font-bold text-slate-900 truncate">
+                              {activeChat.name}
+                            </h3>
+                            {activeChat.isGroup && (
+                              <span className={`px-2 py-0.5 rounded-md border text-micro font-bold uppercase shrink-0 ${adapterPalette.groupBadge}`}>
+                                {t("Group", "Skupina", "Csoport")}
+                              </span>
+                            )}
+                          </div>
+                          <div className={`text-caption ${adapterPalette.liveText} font-mono truncate`}>
+                            {activeChat.participantsPreview ||
+                              activeChat.phone ||
+                              (activeChat.isGroup
+                                ? t(`${adapterLabel} Group Chat`, `Skupinová konverzácia ${adapterLabel}`, `${adapterLabel} csoportos csevegés`)
+                                : activeChat.id)}{" "}
+                            · {selectedAccount?.name}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                          <div
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-all ${
+                              activeChatTakeover.isAgentActive
+                                ? "bg-violet-600 text-white border-violet-700 shadow-xs"
+                                : activeChatTakeover.isPausedForSession
+                                  ? "bg-amber-50 text-amber-900 border-amber-300"
+                                  : "bg-violet-50/80 text-violet-900 border-violet-200"
+                            }`}
+                          >
+                            {waTakeoverBusyChatId === activeChat.id ? (
+                              <Loader2 size={13} className="animate-spin shrink-0" />
+                            ) : (
+                              <Bot size={14} className="shrink-0" />
+                            )}
+                            {activeChatTakeover.isAgentActive && (
+                              <span
+                                title={
+                                  activeChatTakeover.isAutoTakenOver
+                                    ? t("Auto-assigned by trigger", "Automaticky priradené spúšťačom", "Trigger által automatikusan hozzárendelve")
+                                    : t("Active for this session", "Aktívne pre túto reláciu", "Aktív ebben a munkamenetben")
+                                }
+                                className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse shrink-0"
+                              />
+                            )}
+                            <select
+                              data-testid="wa-agent-takeover-btn"
+                              disabled={waTakeoverBusyChatId === activeChat.id || aiAccounts.length === 0}
+                              value={
+                                activeChatTakeover.isManualSessionActive && activeChatTakeover.agentConnectorId
+                                  ? `${activeChatTakeover.agentConnectorId}:${activeChatTakeover.subagentId || "main"}`
+                                  : activeChatTakeover.isAutoTakenOver && !activeChatTakeover.isPausedForSession
+                                    ? "auto"
+                                    : "off"
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === "auto") {
+                                  void handleToggleWaChatAgentTakeover(activeChat, "auto");
+                                } else if (val === "off") {
+                                  void handleToggleWaChatAgentTakeover(activeChat, "paused");
+                                } else {
+                                  const [agId, subRaw] = val.split(":");
+                                  void handleToggleWaChatAgentTakeover(
+                                    activeChat,
+                                    "active",
+                                    agId,
+                                    subRaw && subRaw !== "main" ? subRaw : null,
+                                  );
+                                }
+                              }}
+                              className={`bg-transparent text-caption font-bold focus:outline-none cursor-pointer pr-1 ${
+                                activeChatTakeover.isAgentActive ? "text-white" : "text-slate-800"
+                              }`}
+                            >
+                              {activeChatTakeover.isAutoTakenOver && (
+                                <option value="auto" className="text-slate-900 bg-white">
+                                  ⚡{" "}
+                                  {t(
+                                    `Auto (Visual Trigger · ${activeChatTakeover.agentName})`,
+                                    `Auto (Vizuálny spúšťač · ${activeChatTakeover.agentName})`,
+                                    `Auto (Vizuális trigger · ${activeChatTakeover.agentName})`,
+                                  )}
+                                </option>
+                              )}
+                              <option value="off" className="text-slate-900 bg-white">
+                                🚫{" "}
+                                {activeChatTakeover.isPausedForSession
+                                  ? t(
+                                      "Not handled by AI (Turned off for session)",
+                                      "Neobsluhované AI (Vypnuté pre reláciu)",
+                                      "AI nem kezeli (Munkamenetre kikapcsolva)",
+                                    )
+                                  : t(
+                                      "Not handled by AI",
+                                      "Neobsluhované AI",
+                                      "AI nem kezeli",
+                                    )}
+                              </option>
+                              {aiAccounts.map((agAcc) => {
+                                const subs = agentStates[agAcc.id]?.subagents ?? agAcc.subagents ?? [];
+                                return (
+                                  <optgroup
+                                    key={agAcc.id}
+                                    label={`${agAcc.name} (${(agAcc.connectorType || "AI").toUpperCase()})`}
+                                    className="text-slate-900 bg-white"
+                                  >
+                                    <option value={`${agAcc.id}:main`} className="text-slate-900 bg-white">
+                                      ✦ {agAcc.name} — {t("Main Agent", "Hlavný agent", "Fő ügynök")}
+                                    </option>
+                                    {subs.map((sub) => (
+                                      <option key={sub.id} value={`${agAcc.id}:${sub.id}`} className="text-slate-900 bg-white">
+                                        🤖 {sub.name} ({sub.role})
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                );
+                              })}
+                            </select>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleResyncWhatsApp(activeChat.id)}
+                            disabled={waLoading}
+                            className={`px-3 py-1.5 rounded-xl border text-caption font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${adapterPalette.softBtn}`}
+                          >
+                            <RefreshCw size={13} className={waLoading ? "animate-spin" : ""} />
+                            {t("Sync latest", "Synchronizovať najnovšie", "Legfrissebbek szinkronizálása")}
+                          </button>
+                          {canEdit && (
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-slate-200 bg-white shadow-2xs">
+                              <Users size={13} className="text-slate-500 shrink-0" />
+                              <select
+                                data-testid="wa-client-select"
+                                value={matchedLead?.id || ""}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === "__new__") {
+                                    setPendingChatLinkKey(activeChatLinkKey);
+                                    setClientFormName(activeChat.name || "");
+                                    setClientFormPhone(activeDigits ? activeChat.phone || "" : "");
+                                    setClientFormEmail("");
+                                    setClientFormCity("");
+                                    setClientFormType("person");
+                                    setIsClientSlideoutOpen(true);
+                                  } else {
+                                    saveChatClientLink(activeChatLinkKey, val);
+                                  }
+                                }}
+                                className="bg-transparent text-caption font-bold text-slate-800 focus:outline-none cursor-pointer max-w-44 truncate"
+                              >
+                                <option value="">
+                                  {t("🔗 Select or create client...", "🔗 Vybrať alebo vytvoriť klienta...", "🔗 Ügyfél kiválasztása vagy létrehozása...")}
+                                </option>
+                                <option value="__new__">
+                                  ➕ {t("+ Create New Client", "+ Vytvoriť nového klienta", "+ Új ügyfél létrehozása")}
+                                </option>
+                                {leads
+                                  .filter((l) => !l.archived)
+                                  .map((l) => (
+                                    <option key={l.id} value={l.id}>
+                                      {l.id.startsWith("client-") ? "🏢" : "👤"} {l.name}
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+                          )}
+                          {matchedLead ? (
+                            renderCrmActions(matchedLead, {
+                              name: matchedLead.name,
+                              address: matchedLead.email || "",
+                            })
+                          ) : canEdit ? (
+                            <button
+                              type="button"
+                              data-testid="wa-create-client-btn"
+                              onClick={() => {
+                                setPendingChatLinkKey(activeChatLinkKey);
+                                setClientFormName(activeChat.name || "");
+                                setClientFormPhone(activeDigits ? activeChat.phone || "" : "");
+                                setClientFormEmail("");
+                                setClientFormCity("");
+                                setClientFormType("person");
+                                setIsClientSlideoutOpen(true);
+                              }}
+                              className={`px-3 py-1.5 rounded-xl border text-caption font-bold flex items-center gap-1.5 cursor-pointer ${adapterPalette.softBtn}`}
+                            >
+                              <UserPlus size={13} />
+                              {t("Create Client", "Vytvoriť klienta", "Ügyfél létrehozása")}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      {(liveMessages.length > 0 || crmWaEvents.length > 0) &&
+                        renderInlineAiSummaryBanner(`wa-${activeChat.id}`, matchedLead, () => {
+                          const combinedWaText =
+                            liveMessages.length > 0
+                              ? liveMessages
+                                  .slice(-30)
+                                  .map(
+                                    (m) =>
+                                      `${m.fromMe ? "Me" : m.senderName || activeChat.name} (${m.timestamp || ""}): ${m.text || ""}`
+                                  )
+                                  .join("\n")
+                              : crmWaEvents
+                                  .slice(-20)
+                                  .map((ev: any) => `${ev.author || ""}: ${ev.content || ""}`)
+                                  .join("\n");
+                          void fetchSummary(
+                            `wa-${activeChat.id}`,
+                            "thread",
+                            `${channelDisplayName}: ${activeChat.name}`,
+                            combinedWaText,
+                            true,
+                            Boolean(summaries[`wa-${activeChat.id}`])
+                          );
+                        })}
+
+                      <div
+                        ref={waMessagesScrollRef}
+                        className={`flex-1 overflow-y-auto p-6 space-y-3 ${adapterPalette.canvasTint}`}
+                      >
+                        {liveMessages.length === 0 && crmWaEvents.length === 0 ? (
+                          <div className="text-center py-12 text-slate-400 text-body">
+                            {t(
+                              `No messages in this ${activeChat.name} (${channelDisplayName}) conversation yet. Write a message below.`,
+                              `V tejto konverzácii ${activeChat.name} (${channelDisplayName}) zatiaľ nie sú žiadne správy. Napíšte správu nižšie.`,
+                              `Ebben a(z) ${activeChat.name} (${channelDisplayName}) beszélgetésben még nincs üzenet. Írjon üzenetet alább.`,
+                            )}
+                          </div>
+                        ) : (
+                          <>
+                            {liveMessages.map((msg) => {
+                              const imgSrc = msg.mediaUrl || msg.mediaPreviewUrl || "";
+                              const showCaption =
+                                msg.text &&
+                                !(imgSrc && (msg.text === "📷 Photo" || msg.text === "🏷️ Sticker"));
+                              return (
+                                <div
+                                  key={msg.id}
+                                  className={`max-w-xl p-3.5 rounded-2xl shadow-xs space-y-1.5 ${
+                                    msg.fromMe
+                                      ? `ml-auto ${adapterPalette.bubbleOut}`
+                                      : "mr-auto bg-white border border-slate-200 text-slate-800"
+                                  }`}
+                                >
+                                  <div
+                                    className={`text-micro flex items-center justify-between gap-3 ${
+                                      msg.fromMe ? adapterPalette.bubbleOutMeta : "text-slate-400"
+                                    }`}
+                                  >
+                                    <span
+                                      className={`font-bold ${
+                                        msg.fromMe ? "text-white" : adapterPalette.liveText
+                                      }`}
+                                    >
+                                      {msg.fromMe ? currentUser?.name || "Me" : msg.senderName || activeChat.name}
+                                    </span>
+                                    <span>{msg.timestamp}</span>
+                                  </div>
+                                  {imgSrc && (
+                                    <a
+                                      href={msg.mediaUrl || imgSrc}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="block overflow-hidden rounded-xl border border-black/10"
+                                    >
+                                      <img
+                                        src={imgSrc}
+                                        alt={msg.text || `${adapterLabel} media`}
+                                        className="max-h-72 w-full object-cover rounded-xl"
+                                      />
+                                    </a>
+                                  )}
+                                  {showCaption && (
+                                    <div className="text-body whitespace-pre-wrap break-words">{msg.text}</div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                            {liveMessages.length === 0 &&
+                              crmWaEvents.map((ev: any) => (
+                                <div
+                                  key={ev.id}
+                                  className={`max-w-xl ml-auto p-3.5 rounded-2xl ${adapterPalette.bubbleOut} shadow-xs space-y-1`}
+                                >
+                                  <div className="text-micro opacity-80 flex items-center justify-between gap-2">
+                                    <span>{ev.author || currentUser?.name}</span>
+                                    <span>{ev.timestamp}</span>
+                                  </div>
+                                  <div className="text-body whitespace-pre-wrap">{ev.content}</div>
+                                </div>
+                              ))}
+                          </>
+                        )}
+                      </div>
+
+                      <div className="p-4 border-t border-slate-100 flex items-center gap-2 shrink-0">
+                        <input
+                          type="text"
+                          value={waDraftMessage}
+                          onChange={(e) => setWaDraftMessage(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              void handleSendWhatsAppMessage(activeChat, matchedLead);
+                            }
+                          }}
+                          placeholder={t(
+                            `Write a ${channelDisplayName} message to ${activeChat.name}...`,
+                            `Napíšte ${channelDisplayName} správu pre ${activeChat.name}...`,
+                            `Írjon ${channelDisplayName} üzenetet neki: ${activeChat.name}...`,
+                          )}
+                          className={`flex-1 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-body text-slate-800 focus:outline-none focus:bg-white ${adapterPalette.inputFocus}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void handleSendWhatsAppMessage(activeChat, matchedLead)}
+                          disabled={!waDraftMessage.trim() || !canEdit || waSending}
+                          className={`px-4 py-2.5 rounded-xl ${adapterPalette.sendBtn} text-body font-bold flex items-center gap-2 disabled:opacity-40 cursor-pointer`}
+                        >
+                          <Send size={15} /> {t("Send", "Odoslať", "Küldés")}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      ) : isAgentConnector(selectedChannelType) ? (
+        /* SUBSCRIPTION AI AGENT: CENTER (100% CHAT OR 50/50 SPLIT WITH ARTIFACT EDITOR) + RIGHT SIDEBAR (MEMORY & ARTIFACTS) */
+        <div
+          data-testid="communication-agent-layout"
+          className="flex-1 min-w-0 flex flex-col ws-lg:flex-row gap-4 h-full max-h-full overflow-hidden text-left"
+        >
+          {(() => {
+            const meta = PROVIDERS[selectedChannelType] ?? PROVIDERS.claude;
+            const accId = selectedAccount?.id || "";
+            const chatKey = activeChatSubagentId ? `${accId}:${activeChatSubagentId}` : accId;
+            const history = agentChats[chatKey] ?? [];
+            const st = agentStates[accId];
+            const artifactsList = st?.artifacts ?? [];
+            const subagents = st?.subagents ?? selectedAccount?.subagents ?? [];
+            const triggersList = st?.triggers ?? selectedAccount?.triggers ?? [];
+            const autonomousTasks = st?.tasks ?? [];
+            const activeSubagentObj = subagents.find((s) => s.id === activeChatSubagentId) ?? null;
+            const siblingWaAccount =
+              availableAccounts.find((a) => isMessagingConnector(a.connectorType)) ?? null;
+
+            const isArtSelected = Boolean(selectedArtifactKey);
+            const selectedSubObj =
+              selectedArtifactKey?.startsWith("subagent:")
+                ? subagents.find((s) => `subagent:${s.id}` === selectedArtifactKey) ?? null
+                : null;
+            const selectedTaskObj =
+              selectedArtifactKey?.startsWith("task:")
+                ? autonomousTasks.find((tk) => `task:${tk.id}` === selectedArtifactKey) ?? null
+                : null;
+            const selectedNamedArt =
+              selectedArtifactKey?.startsWith("artifact:")
+                ? artifactsList.find((a) => `artifact:${a.id}` === selectedArtifactKey) ?? null
+                : null;
+
+            const activeHeartbeatEnabled = activeSubagentObj
+              ? Boolean(activeSubagentObj.heartbeatEnabled)
+              : Boolean(st?.autonomousMode?.enabled);
+            const activeHeartbeatInterval = activeSubagentObj
+              ? (activeSubagentObj.heartbeatIntervalMinutes ?? 15)
+              : (st?.autonomousMode?.intervalMinutes ?? 15);
+            const activeTriggersForCurrentAgent = triggersList.filter((tr) =>
+              activeSubagentObj
+                ? tr.targetSubagentId === activeSubagentObj.id
+                : !tr.targetSubagentId || tr.targetSubagentId === "main",
+            );
+
+            return (
+              <>
+                {/* CENTER AREA: VISUAL TRIGGER STUDIO OR (100% CHAT / 50-50 SPLIT WITH ARTIFACT EDITOR) */}
+                <div
+                  data-testid="agent-center-split-container"
+                  className={`flex-1 min-w-0 grid grid-cols-1 ${
+                    !visualTriggersOpen && isArtSelected ? "ws-lg:grid-cols-2" : "ws-lg:grid-cols-1"
+                  } gap-4 h-full max-h-full overflow-hidden`}
+                >
+                  {visualTriggersOpen ? (
+                    /* VISUAL TRIGGER STUDIO (REACTIVE EVENT-DRIVEN WIRING CANVAS) */
+                    <div
+                      data-testid="visual-trigger-studio"
+                      className="glass-panel rounded-3xl border border-amber-300/80 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden"
+                    >
+                      {/* Studio Header */}
+                      <div className="px-5 py-3.5 border-b border-amber-200/70 bg-gradient-to-r from-amber-500/10 via-indigo-500/5 to-emerald-500/10 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="w-9 h-9 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-xs shrink-0">
+                            <Zap size={18} />
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-900 border border-amber-300/70 text-micro font-bold uppercase">
+                                {t("Visual Trigger Studio", "Štúdio vizuálnych spúšťačov", "Vizuális Indító Stúdió")}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-800 border border-emerald-300/60 text-micro font-bold">
+                                💰 {t("$0 Idle Cost (Event-Driven)", "$0 v nečinnosti (Riadené udalosťami)", "$0 üresjárati költség (Eseményvezérelt)")}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-md bg-indigo-500/15 text-indigo-800 border border-indigo-300/60 text-micro font-bold">
+                                📚 {t("Context: Last 50 msgs ∪ 5 days (16k cap)", "Kontext: Posledných 50 správ ∪ 5 dní (16k limit)", "Kontextus: Utolsó 50 üzenet ∪ 5 nap (16k limit)")}
+                              </span>
+                            </div>
+                            <h3 className="text-title-sm font-heading font-bold text-slate-900 truncate mt-0.5">
+                              {t(
+                                "Connect WhatsApp, Email & CRM Events to your AI Agents",
+                                "Prepojte WhatsApp, E-mail a CRM udalosti s vašimi AI agentmi",
+                                "Kösse össze a WhatsApp, E-mail és CRM eseményeket AI ügynökeivel",
+                              )}
+                            </h3>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setNewSubagentOpen(true)}
+                            className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-800 text-micro font-bold flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Bot size={13} /> + {t("Create Agent", "Vytvoriť agenta", "Ügynök létrehozása")}
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="new-visual-trigger-btn"
+                            onClick={() => openNewTriggerModal()}
+                            className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                          >
+                            <Plus size={13} /> {t("New Trigger Wire", "Nové prepojenie", "Új indító kapcsolat")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVisualTriggersOpen(false);
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-micro font-bold cursor-pointer"
+                          >
+                            ← {t("Back to Chat", "Späť na chat", "Vissza a csevegéshez")}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Connections Canvas: Source on Left ➔ Squiggly Line in Middle ➔ Which Agent Runs on Right (with Events Ran on Top) */}
+                      <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
+                        {(() => {
+                          const allSourceAccounts = availableAccounts.filter(
+                            (a) => isMessagingConnector(a.connectorType) || isEmailConnector(a.connectorType),
+                          );
+                          const wiredConnectorIds = new Set(
+                            triggersList.map((tr) => tr.sourceConnectorId).filter(Boolean),
+                          );
+                          const hasGenericWaWire = triggersList.some(
+                            (tr) => tr.sourceType === "whatsapp" && !tr.sourceConnectorId,
+                          );
+                          const hasGenericEmailWire = triggersList.some(
+                            (tr) => tr.sourceType === "email" && !tr.sourceConnectorId,
+                          );
+                          const hasCrmEventWire = triggersList.some((tr) => tr.sourceType === "crm_event");
+
+                          const unwiredAccounts = allSourceAccounts.filter((acc) => {
+                            if (wiredConnectorIds.has(acc.id)) return false;
+                            if (isMessagingConnector(acc.connectorType) && hasGenericWaWire && allSourceAccounts.filter((x) => isMessagingConnector(x.connectorType)).length === 1) {
+                              return false;
+                            }
+                            if (isEmailConnector(acc.connectorType) && hasGenericEmailWire && allSourceAccounts.filter((x) => isEmailConnector(x.connectorType)).length === 1) {
+                              return false;
+                            }
+                            return true;
+                          });
+
+                          const defaultTargetSub = subagents.find((s) => s.id === activeChatSubagentId);
+
+                          return (
+                            <>
+                              {triggersList.map((trig) => {
+                                const targetSub = subagents.find((s) => s.id === trig.targetSubagentId);
+                                const sourceAcc =
+                                  availableAccounts.find((a) => a.id === trig.sourceConnectorId) ||
+                                  (trig.sourceType === "whatsapp"
+                                    ? availableAccounts.find((a) => isMessagingConnector(a.connectorType))
+                                    : trig.sourceType === "email"
+                                      ? availableAccounts.find((a) => isEmailConnector(a.connectorType))
+                                      : undefined);
+                                const eventsRanCount = trig.triggerCount ?? 0;
+                                const channelBadge =
+                                  trig.sourceType === "whatsapp"
+                                    ? (sourceAcc?.connectorType || "WHATSAPP").toUpperCase()
+                                    : trig.sourceType === "email"
+                                      ? (sourceAcc?.connectorType || "SMTP").toUpperCase()
+                                      : "CRM EVENT";
+                                const filterSummary =
+                                  trig.sourceType === "whatsapp"
+                                    ? trig.filter?.chatMatch
+                                      ? `Chat: ${trig.filter.chatMatch}`
+                                      : trig.filter?.onlyGroup
+                                        ? t("All Groups", "Všetky skupiny", "Minden csoport")
+                                        : trig.filter?.onlyDirect
+                                          ? t("Direct Chats", "Priame chaty", "Közvetlen csevegések")
+                                          : t("All Messages", "Všetky správy", "Minden üzenet")
+                                    : trig.sourceType === "email"
+                                      ? trig.filter?.subjectContains ||
+                                        trig.filter?.fromContains ||
+                                        t("All New Emails", "Všetky nové e-maily", "Minden új e-mail")
+                                      : trig.filter?.eventType || "lead_created";
+
+                                return (
+                                  <div
+                                    key={trig.id}
+                                    data-testid={`trigger-wire-card-${trig.id}`}
+                                    className={`p-4 rounded-3xl border transition-all grid grid-cols-1 ws-lg:grid-cols-12 gap-4 items-center ${
+                                      trig.enabled
+                                        ? "bg-white border-amber-300/80 shadow-xs"
+                                        : "bg-slate-50/80 border-slate-200 opacity-75"
+                                    }`}
+                                  >
+                                    {/* LEFT (4 cols): SOURCE CONNECTION */}
+                                    <div
+                                      onClick={() => openEditTriggerModal(trig)}
+                                      className={`ws-lg:col-span-4 p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
+                                        trig.sourceType === "whatsapp"
+                                          ? "bg-emerald-50/40 hover:bg-emerald-50/80 border-emerald-200/90"
+                                          : trig.sourceType === "email"
+                                            ? "bg-pink-50/40 hover:bg-pink-50/80 border-pink-200/90"
+                                            : "bg-indigo-50/40 hover:bg-indigo-50/80 border-indigo-200/90"
+                                      }`}
+                                    >
+                                      <span
+                                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                                          trig.sourceType === "whatsapp"
+                                            ? "bg-emerald-500/15 text-emerald-700"
+                                            : trig.sourceType === "email"
+                                              ? "bg-pink-500/15 text-pink-700"
+                                              : "bg-indigo-500/15 text-indigo-700"
+                                        }`}
+                                      >
+                                        {trig.sourceType === "whatsapp" ? (
+                                          <MessageCircle size={19} />
+                                        ) : trig.sourceType === "email" ? (
+                                          <Mail size={19} />
+                                        ) : (
+                                          <Activity size={19} />
+                                        )}
+                                      </span>
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                          <span
+                                            className={`px-1.5 py-0.5 rounded text-micro font-bold uppercase ${
+                                              trig.sourceType === "whatsapp"
+                                                ? "bg-emerald-100 text-emerald-800"
+                                                : trig.sourceType === "email"
+                                                  ? "bg-pink-100 text-pink-800"
+                                                  : "bg-indigo-100 text-indigo-800"
+                                            }`}
+                                          >
+                                            {channelBadge}
+                                          </span>
+                                          <span className="px-2 py-0.5 rounded-md bg-white/90 border border-slate-200 text-slate-700 text-micro font-mono truncate">
+                                            {filterSummary}
+                                          </span>
+                                        </div>
+                                        <div className="text-caption font-bold text-slate-900 truncate mt-1">
+                                          {sourceAcc?.name ||
+                                            (trig.sourceType === "whatsapp"
+                                              ? "WhatsApp / Messaging"
+                                              : trig.sourceType === "email"
+                                                ? "Email Inbox"
+                                                : t("Leads, Projects & Tickets", "Príležitosti, Projekty a Tikety", "Érdeklődők, Projektek és Jegyek"))}
+                                        </div>
+                                        {sourceAcc?.address && (
+                                          <div className="text-micro text-slate-500 font-mono truncate">{sourceAcc.address}</div>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* MIDDLE (4 cols): SQUIGGLY LINE & WIRE CONTROLS */}
+                                    <div className="ws-lg:col-span-4 flex flex-col items-center justify-center gap-2 px-2">
+                                      <div className="flex items-center flex-wrap justify-center gap-1.5 text-micro font-bold text-slate-700">
+                                        <span>{trig.name}</span>
+                                        {trig.autoReply && (
+                                          <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-micro font-bold">
+                                            ↩ Auto-Reply
+                                          </span>
+                                        )}
+                                        {trig.proactiveEnabled && (
+                                          <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-micro font-bold">
+                                            🔄 Proactive ({trig.proactiveAfterMinutes ?? 120}m)
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {/* Prominent Squiggly Bezier Wire */}
+                                      <svg width="100%" height="34" viewBox="0 0 240 34" className="w-full max-w-60 overflow-visible">
+                                        <circle cx="6" cy="17" r="4" fill={trig.enabled ? "#10b981" : "#94a3b8"} />
+                                        <path
+                                          d="M 10 17 C 48 2, 76 32, 120 17 C 164 2, 192 32, 230 17"
+                                          fill="none"
+                                          stroke={trig.enabled ? "#f59e0b" : "#94a3b8"}
+                                          strokeWidth="2.5"
+                                          strokeDasharray={trig.enabled ? "6 4" : undefined}
+                                        />
+                                        <circle cx="234" cy="17" r="4.5" fill={trig.enabled ? "#f59e0b" : "#94a3b8"} />
+                                      </svg>
+
+                                      {trig.instructions && (
+                                        <div className="text-micro text-slate-500 line-clamp-1 max-w-full px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-100">
+                                          {trig.instructions}
+                                        </div>
+                                      )}
+
+                                      {/* Compact Wire Controls */}
+                                      <div className="flex items-center gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleTestTrigger(trig.id)}
+                                          disabled={isTestingTriggerId === trig.id}
+                                          title={t("Test trigger now with real 50-msg / 5-day conversation context", "Otestovať spúšťač teraz", "Indító tesztelése most")}
+                                          className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-micro font-bold flex items-center gap-1 cursor-pointer disabled:opacity-40"
+                                        >
+                                          {isTestingTriggerId === trig.id ? (
+                                            <Loader2 size={11} className="animate-spin" />
+                                          ) : (
+                                            <Play size={11} />
+                                          )}
+                                          {t("Test", "Test", "Teszt")}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => openEditTriggerModal(trig)}
+                                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-micro font-bold cursor-pointer"
+                                        >
+                                          {t("Edit", "Upraviť", "Szerk.")}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleToggleTriggerEnabled(trig)}
+                                          className={`px-2.5 py-1 rounded-lg text-micro font-bold cursor-pointer ${
+                                            trig.enabled
+                                              ? "bg-emerald-600 text-white"
+                                              : "bg-slate-200 text-slate-600"
+                                          }`}
+                                        >
+                                          {trig.enabled ? t("On", "Zap.", "Be") : t("Off", "Vyp.", "Ki")}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleDeleteTrigger(trig.id)}
+                                          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {/* RIGHT (4 cols): WHICH AGENT RUNS (WITH NUMBER OF EVENTS RAN ON TOP) */}
+                                    <div className="ws-lg:col-span-4 flex flex-col">
+                                      {/* Top of the Agent: Number of Events Ran */}
+                                      <div className="flex items-center justify-between px-1 mb-1.5">
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-micro font-bold">
+                                          ⚡ {eventsRanCount}{" "}
+                                          {eventsRanCount === 1
+                                            ? t("event ran", "spustená udalosť", "lefutott esemény")
+                                            : t("events ran", "spustených udalostí", "lefutott esemény")}
+                                        </span>
+                                        {trig.lastTriggeredAt && (
+                                          <span className="text-micro text-slate-400 font-mono truncate">
+                                            {trig.lastStatus || "ok"}
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      <div
+                                        onClick={() => {
+                                          setActiveChatSubagentId(targetSub ? targetSub.id : "");
+                                          setVisualTriggersOpen(false);
+                                        }}
+                                        className="p-3.5 rounded-2xl border border-indigo-200/90 bg-indigo-50/30 hover:bg-indigo-50/70 transition-all flex items-center justify-between gap-3 cursor-pointer"
+                                      >
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                          <span
+                                            className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                                              targetSub
+                                                ? "bg-amber-500/15 text-amber-700"
+                                                : "bg-indigo-500/15 text-indigo-700"
+                                            }`}
+                                          >
+                                            {targetSub ? <Bot size={18} /> : <Sparkles size={18} />}
+                                          </span>
+                                          <div className="min-w-0">
+                                            <div className="text-caption font-bold text-slate-900 truncate">
+                                              {targetSub
+                                                ? `🤖 ${targetSub.name}`
+                                                : `✦ ${selectedAccount?.name} (${t("Main Agent", "Hlavný agent", "Fő ügynök")})`}
+                                            </div>
+                                            <div className="text-micro text-slate-500 truncate">
+                                              {targetSub ? targetSub.role : meta.label}
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-slate-700 text-micro font-bold shrink-0">
+                                          💬 {t("Chat", "Chat", "Chat")}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+
+                              {/* UNWIRED CONNECTIONS: Show every connected Messaging / BotMan / Email / CRM source so the user sees all connections on the left */}
+                              {(unwiredAccounts.length > 0 || !hasCrmEventWire) && (
+                                <div className="pt-2 space-y-3">
+                                  <div className="flex items-center justify-between px-1">
+                                    <span className="text-micro font-bold uppercase tracking-wider text-slate-400">
+                                      {t(
+                                        "Available Source Connections — Click to Wire to Agent",
+                                        "Dostupné zdrojové spojenia — Kliknutím prepojte s agentom",
+                                        "Elérhető forráskapcsolatok — Kattintson az ügynökhöz kötéshez",
+                                      )}
+                                    </span>
+                                    <span className="text-micro text-slate-400">
+                                      {unwiredAccounts.length + (hasCrmEventWire ? 0 : 1)}{" "}
+                                      {t("unwired sources", "neprepojené zdroje", "bekötetlen forrás")}
+                                    </span>
+                                  </div>
+
+                                  {unwiredAccounts.map((acc) => {
+                                    const isMsg = isMessagingConnector(acc.connectorType);
+                                    const sType: "whatsapp" | "email" = isMsg ? "whatsapp" : "email";
+                                    const badgeLabel = (acc.connectorType || (isMsg ? "whatsapp" : "smtp")).toUpperCase();
+
+                                    return (
+                                      <div
+                                        key={`unwired-${acc.id}`}
+                                        data-testid={`unwired-source-card-${acc.id}`}
+                                        className="p-4 rounded-3xl border border-dashed border-slate-200/90 bg-slate-50/50 hover:bg-white hover:border-amber-300/80 transition-all grid grid-cols-1 ws-lg:grid-cols-12 gap-4 items-center"
+                                      >
+                                        {/* LEFT (4 cols): SOURCE CONNECTION */}
+                                        <div
+                                          onClick={() =>
+                                            openNewTriggerModal({
+                                              sourceType: sType,
+                                              sourceConnectorId: acc.id,
+                                            })
+                                          }
+                                          className={`ws-lg:col-span-4 p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
+                                            isMsg
+                                              ? "bg-emerald-50/30 hover:bg-emerald-50/70 border-emerald-200/70"
+                                              : "bg-pink-50/30 hover:bg-pink-50/70 border-pink-200/70"
+                                          }`}
+                                        >
+                                          <span
+                                            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                                              isMsg
+                                                ? "bg-emerald-500/15 text-emerald-700"
+                                                : "bg-pink-500/15 text-pink-700"
+                                            }`}
+                                          >
+                                            {isMsg ? <MessageCircle size={19} /> : <Mail size={19} />}
+                                          </span>
+                                          <div className="min-w-0 flex-1">
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                              <span
+                                                className={`px-1.5 py-0.5 rounded text-micro font-bold uppercase ${
+                                                  isMsg
+                                                    ? "bg-emerald-100 text-emerald-800"
+                                                    : "bg-pink-100 text-pink-800"
+                                                }`}
+                                              >
+                                                {badgeLabel}
+                                              </span>
+                                              <span className="px-2 py-0.5 rounded-md bg-white/90 border border-slate-200 text-slate-500 text-micro font-mono">
+                                                {t("Not wired yet", "Zatiaľ neprepojené", "Még nincs bekötve")}
+                                              </span>
+                                            </div>
+                                            <div className="text-caption font-bold text-slate-900 truncate mt-1">
+                                              {acc.name}
+                                            </div>
+                                            {acc.address && (
+                                              <div className="text-micro text-slate-500 font-mono truncate">{acc.address}</div>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {/* MIDDLE (4 cols): UNWIRED SQUIGGLY LINE & CONNECT BUTTON */}
+                                        <div className="ws-lg:col-span-4 flex flex-col items-center justify-center gap-2 px-2">
+                                          <svg width="100%" height="28" viewBox="0 0 240 28" className="w-full max-w-60 overflow-visible opacity-60">
+                                            <circle cx="6" cy="14" r="3.5" fill="#94a3b8" />
+                                            <path
+                                              d="M 10 14 C 48 2, 76 26, 120 14 C 164 2, 192 26, 230 14"
+                                              fill="none"
+                                              stroke="#cbd5e1"
+                                              strokeWidth="2"
+                                              strokeDasharray="4 4"
+                                            />
+                                            <circle cx="234" cy="14" r="3.5" fill="#94a3b8" />
+                                          </svg>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              openNewTriggerModal({
+                                                sourceType: sType,
+                                                sourceConnectorId: acc.id,
+                                              })
+                                            }
+                                            className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                                          >
+                                            <Plus size={12} />
+                                            {t("Connect to Agent", "Prepojiť s agentom", "Bekötés ügynökhöz")}
+                                          </button>
+                                        </div>
+
+                                        {/* RIGHT (4 cols): TARGET AGENT PREVIEW */}
+                                        <div className="ws-lg:col-span-4 flex flex-col">
+                                          <div className="flex items-center justify-between px-1 mb-1.5">
+                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200 text-micro font-semibold">
+                                              ⚡ 0 {t("events ran", "spustených udalostí", "lefutott esemény")}
+                                            </span>
+                                          </div>
+                                          <div
+                                            onClick={() =>
+                                              openNewTriggerModal({
+                                                sourceType: sType,
+                                                sourceConnectorId: acc.id,
+                                              })
+                                            }
+                                            className="p-3.5 rounded-2xl border border-dashed border-indigo-200/80 bg-indigo-50/20 hover:bg-indigo-50/50 transition-all flex items-center justify-between gap-3 cursor-pointer"
+                                          >
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                              <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-indigo-500/10 text-indigo-600">
+                                                {defaultTargetSub ? <Bot size={18} /> : <Sparkles size={18} />}
+                                              </span>
+                                              <div className="min-w-0">
+                                                <div className="text-caption font-bold text-slate-800 truncate">
+                                                  {defaultTargetSub
+                                                    ? `🤖 ${defaultTargetSub.name}`
+                                                    : `✦ ${selectedAccount?.name} (${t("Main Agent", "Hlavný agent", "Fő ügynök")})`}
+                                                </div>
+                                                <div className="text-micro text-slate-500 truncate">
+                                                  {defaultTargetSub ? defaultTargetSub.role : meta.label}
+                                                </div>
+                                              </div>
+                                            </div>
+                                            <span className="px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-micro font-bold shrink-0">
+                                              + {t("Wire", "Prepojiť", "Bekötés")}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+
+                                  {!hasCrmEventWire && (
+                                    <div
+                                      data-testid="unwired-source-card-crm_event"
+                                      className="p-4 rounded-3xl border border-dashed border-slate-200/90 bg-slate-50/50 hover:bg-white hover:border-amber-300/80 transition-all grid grid-cols-1 ws-lg:grid-cols-12 gap-4 items-center"
+                                    >
+                                      {/* LEFT (4 cols): CRM EVENT SOURCE */}
+                                      <div
+                                        onClick={() =>
+                                          openNewTriggerModal({
+                                            sourceType: "crm_event",
+                                            sourceConnectorId: "",
+                                          })
+                                        }
+                                        className="ws-lg:col-span-4 p-3.5 rounded-2xl border bg-indigo-50/30 hover:bg-indigo-50/70 border-indigo-200/70 text-left transition-all flex items-start gap-3 cursor-pointer"
+                                      >
+                                        <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-indigo-500/15 text-indigo-700">
+                                          <Activity size={19} />
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex flex-wrap items-center gap-1.5">
+                                            <span className="px-1.5 py-0.5 rounded text-micro font-bold uppercase bg-indigo-100 text-indigo-800">
+                                              CRM EVENT
+                                            </span>
+                                            <span className="px-2 py-0.5 rounded-md bg-white/90 border border-slate-200 text-slate-500 text-micro font-mono">
+                                              {t("Not wired yet", "Zatiaľ neprepojené", "Még nincs bekötve")}
+                                            </span>
+                                          </div>
+                                          <div className="text-caption font-bold text-slate-900 truncate mt-1">
+                                            {t("Leads, Projects & Tickets", "Príležitosti, Projekty a Tikety", "Érdeklődők, Projektek és Jegyek")}
+                                          </div>
+                                          <div className="text-micro text-slate-500 font-mono truncate">
+                                            lead_created · project_created · ticket_created
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* MIDDLE (4 cols): UNWIRED SQUIGGLY LINE & CONNECT BUTTON */}
+                                      <div className="ws-lg:col-span-4 flex flex-col items-center justify-center gap-2 px-2">
+                                        <svg width="100%" height="28" viewBox="0 0 240 28" className="w-full max-w-60 overflow-visible opacity-60">
+                                          <circle cx="6" cy="14" r="3.5" fill="#94a3b8" />
+                                          <path
+                                            d="M 10 14 C 48 2, 76 26, 120 14 C 164 2, 192 26, 230 14"
+                                            fill="none"
+                                            stroke="#cbd5e1"
+                                            strokeWidth="2"
+                                            strokeDasharray="4 4"
+                                          />
+                                          <circle cx="234" cy="14" r="3.5" fill="#94a3b8" />
+                                        </svg>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            openNewTriggerModal({
+                                              sourceType: "crm_event",
+                                              sourceConnectorId: "",
+                                            })
+                                          }
+                                          className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                                        >
+                                          <Plus size={12} />
+                                          {t("Connect to Agent", "Prepojiť s agentom", "Bekötés ügynökhöz")}
+                                        </button>
+                                      </div>
+
+                                      {/* RIGHT (4 cols): TARGET AGENT PREVIEW */}
+                                      <div className="ws-lg:col-span-4 flex flex-col">
+                                        <div className="flex items-center justify-between px-1 mb-1.5">
+                                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200 text-micro font-semibold">
+                                            ⚡ 0 {t("events ran", "spustených udalostí", "lefutott esemény")}
+                                          </span>
+                                        </div>
+                                        <div
+                                          onClick={() =>
+                                            openNewTriggerModal({
+                                              sourceType: "crm_event",
+                                              sourceConnectorId: "",
+                                            })
+                                          }
+                                          className="p-3.5 rounded-2xl border border-dashed border-indigo-200/80 bg-indigo-50/20 hover:bg-indigo-50/50 transition-all flex items-center justify-between gap-3 cursor-pointer"
+                                        >
+                                          <div className="flex items-center gap-2.5 min-w-0">
+                                            <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-indigo-500/10 text-indigo-600">
+                                              {defaultTargetSub ? <Bot size={18} /> : <Sparkles size={18} />}
+                                            </span>
+                                            <div className="min-w-0">
+                                              <div className="text-caption font-bold text-slate-800 truncate">
+                                                {defaultTargetSub
+                                                  ? `🤖 ${defaultTargetSub.name}`
+                                                  : `✦ ${selectedAccount?.name} (${t("Main Agent", "Hlavný agent", "Fő ügynök")})`}
+                                              </div>
+                                              <div className="text-micro text-slate-500 truncate">
+                                                {defaultTargetSub ? defaultTargetSub.role : meta.label}
+                                              </div>
+                                            </div>
+                                          </div>
+                                          <span className="px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-micro font-bold shrink-0">
+                                            + {t("Wire", "Prepojiť", "Bekötés")}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* PENDING PROACTIVE FOLLOW-UPS (Self-scheduled via schedule_conversation_followup) */}
+                              {(st?.followups ?? []).filter((f) => f.status === "pending").length > 0 && (
+                                <div className="pt-2 space-y-2">
+                                  <div className="flex items-center justify-between px-1">
+                                    <span className="text-micro font-bold uppercase tracking-wider text-indigo-700">
+                                      🔄{" "}
+                                      {t(
+                                        "Pending Proactive Follow-Ups ($0 Idle until Due)",
+                                        "Čakajúce proaktívne follow-upy ($0 v nečinnosti)",
+                                        "Ütemezett proaktív utánkövetések ($0 üresjárati költség)",
+                                      )}
+                                    </span>
+                                  </div>
+                                  {(st?.followups ?? [])
+                                    .filter((f) => f.status === "pending")
+                                    .map((fu) => (
+                                      <div
+                                        key={fu.id}
+                                        className="p-3 rounded-2xl border border-indigo-200 bg-indigo-50/40 flex flex-wrap items-center justify-between gap-3"
+                                      >
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex items-center gap-2 text-caption font-bold text-slate-900">
+                                            <span>{fu.targetName || fu.targetChat}</span>
+                                            <span className="px-2 py-0.5 rounded-md bg-white border border-indigo-200 text-indigo-800 text-micro font-mono">
+                                              {t("Due:", "Termín:", "Esedékes:")} {fu.dueAt}
+                                            </span>
+                                            {fu.cancelIfReplied && (
+                                              <span className="px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 text-micro font-semibold">
+                                                {t("Auto-cancels on reply", "Zruší sa pri odpovedi", "Válasznál automatikusan törlődik")}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="text-micro text-slate-600 truncate mt-0.5">
+                                            {fu.instructions}
+                                          </div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleCancelFollowup(fu.id)}
+                                          className="px-2.5 py-1 rounded-xl bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 text-micro font-bold cursor-pointer"
+                                        >
+                                          {t("Cancel", "Zrušiť", "Törlés")}
+                                        </button>
+                                      </div>
+                                    ))}
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  ) : (
+                  /* LEFT HALF (OR FULL WIDTH): AGENT CHAT CARD */
+                  <div
+                    data-testid="agent-chat-pane"
+                    className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden"
+                  >
+                    {/* 1. AGENT HEADER */}
+                    <div className={`px-5 py-3.5 flex flex-wrap items-center justify-between gap-2.5 shrink-0 ${meta.modalHeaderBg}`}>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${meta.iconBg}`}>
+                          <ProviderLogo type={selectedChannelType} className="w-4.5 h-4.5" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className={`px-2 py-0.5 rounded-md text-micro font-bold ${meta.badgeClass}`}>
+                              {meta.label}
+                            </span>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 text-micro font-bold">
+                              <Terminal size={11} /> CCRM MCP
+                            </span>
+                            {siblingWaAccount && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedMailboxId(siblingWaAccount.id)}
+                                title={t(
+                                  `Linked to ${siblingWaAccount.name} (${siblingWaAccount.address}) — agent can read & reply on WhatsApp`,
+                                  `Prepojené s ${siblingWaAccount.name} (${siblingWaAccount.address}) — agent môže čítať a odpovedať cez WhatsApp`,
+                                  `Összekapcsolva: ${siblingWaAccount.name} (${siblingWaAccount.address}) — az ügynök olvashat és válaszolhat WhatsAppon`,
+                                )}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-800 border border-emerald-300/70 text-micro font-bold transition-colors cursor-pointer"
+                              >
+                                <MessageCircle size={11} /> {siblingWaAccount.name}
+                              </button>
+                            )}
+                            {/* Dual Mode Indicator & Toggle: Reactive Triggers + Heartbeat */}
+                            <button
+                              type="button"
+                              data-testid="toggle-visual-triggers-btn"
+                              onClick={() => setVisualTriggersOpen((v) => !v)}
+                              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold shadow-2xs transition-colors cursor-pointer"
+                            >
+                              <Zap size={11} />
+                              {t("Visual Triggers", "Vizuálne spúšťače", "Vizuális Indítók")} ({triggersList.length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (activeSubagentObj) {
+                                  void handleToggleSubagentHeartbeat(activeSubagentObj, {
+                                    heartbeatEnabled: !activeSubagentObj.heartbeatEnabled,
+                                  });
+                                } else {
+                                  handleSelectArtifact("cron:main");
+                                }
+                              }}
+                              title={t(
+                                "Heartbeat Mode (periodic cron vs $0 idle reactive mode)",
+                                "Režim Heartbeat (periodický cron vs $0 nečinný reaktívny režim)",
+                                "Heartbeat mód (időszakos cron vs $0 üresjárati reaktív mód)",
+                              )}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-bold border transition-colors cursor-pointer ${
+                                activeHeartbeatEnabled
+                                  ? "bg-emerald-500/15 text-emerald-800 border-emerald-300"
+                                  : "bg-white/80 text-slate-600 border-slate-200 hover:bg-slate-100"
+                              }`}
+                            >
+                              💓 {activeHeartbeatEnabled ? `${activeHeartbeatInterval}m` : t("Heartbeat Off ($0)", "Heartbeat Vyp. ($0)", "Heartbeat Ki ($0)")}
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <h3 className="text-title-sm font-heading font-bold text-slate-900 truncate">
+                              {activeSubagentObj ? `🤖 ${activeSubagentObj.name}` : selectedAccount?.name}
+                            </h3>
+                            <select
+                              value={activeChatSubagentId}
+                              onChange={(e) => setActiveChatSubagentId(e.target.value)}
+                              aria-label={t("Active agent or subagent", "Aktívny agent alebo subagent", "Aktív ügynök vagy alügynök")}
+                              className="px-2 py-0.5 rounded-lg bg-white/90 border border-slate-200 text-micro font-bold text-slate-700 cursor-pointer"
+                            >
+                              <option value="">
+                                ✦ {t("Main Agent", "Hlavný agent", "Fő ügynök")} ({selectedAccount?.name})
+                              </option>
+                              {subagents.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  🤖 {s.name} ({s.role})
+                                </option>
+                              ))}
+                            </select>
+                            {activeTriggersForCurrentAgent.length > 0 && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-micro font-bold">
+                                ⚡ {activeTriggersForCurrentAgent.length} {t("trigger(s)", "spúšťač(e)", "indító")}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Quick Autonomous & CRM MCP Action Chips */}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {[
+                          ...(siblingWaAccount
+                            ? [
+                                t(
+                                  "Summarize latest WhatsApp chats",
+                                  "Zhrnúť posledné WhatsApp správy",
+                                  "Legutóbbi WhatsApp üzenetek összegzése",
+                                ),
+                              ]
+                            : []),
+                          t("Summarize open leads", "Zhrnúť otvorené príležitosti", "Nyitott érdeklődők összegzése"),
+                          t("List overdue tasks", "Vypísať omeškané úlohy", "Lejárt feladatok listázása"),
+                        ].map((quickPrompt) => (
+                          <button
+                            key={quickPrompt}
+                            type="button"
+                            onClick={() => void handleSendAgentMessage(quickPrompt)}
+                            disabled={isAgentRunning}
+                            className="px-2.5 py-1 rounded-xl bg-white/90 hover:bg-white border border-slate-200 text-micro font-semibold text-slate-700 shadow-2xs transition-colors cursor-pointer disabled:opacity-40"
+                          >
+                            <Sparkles size={11} className="inline mr-1 text-amber-500" />
+                            {quickPrompt}
+                          </button>
+                        ))}
+                        {history.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => void handleClearAgentChat()}
+                            disabled={isAgentRunning}
+                            title={t("Clear chat history", "Vymazať históriu chatu", "Csevegési előzmények törlése")}
+                            className="px-2 py-1 rounded-xl bg-white/80 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-micro font-semibold text-slate-600 hover:text-rose-700 transition-colors cursor-pointer"
+                          >
+                            <Trash2 size={11} className="inline mr-1" />
+                            {t("Clear", "Vymazať", "Törlés")}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 2. CHAT MESSAGES AREA */}
+                    <div
+                      ref={agentChatScrollRef}
+                      className="flex-1 min-h-40 overflow-y-auto px-5 py-4 space-y-3"
+                    >
+                      {history.length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto gap-2.5 text-slate-500 py-4">
+                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${meta.iconBg}`}>
+                            <Bot size={22} />
+                          </div>
+                          <div className="text-title-sm font-bold text-slate-800">
+                            {selectedAccount?.name} · {t("Autonomous CCRM MCP Agent", "Autonómny CCRM MCP Agent", "Autonóm CCRM MCP Ügynök")}
+                          </div>
+                          <p className="text-caption text-slate-500">
+                            {t(
+                              "Instruct the agent in chat. Select memory.md or any artifact in the right sidebar to halve the chat and open the live content editor.",
+                              "Zadajte agentovi pokyn v chate. Kliknutím na memory.md alebo artefakt v pravom paneli rozdelíte chat na polovicu a otvoríte editor obsahu.",
+                              "Utasítsa az ügynököt a csevegésben. Válassza ki a memory.md fájlt vagy bármely artefaktumot a jobb oldali sávban a felezett szerkesztő megnyitásához.",
+                            )}
+                          </p>
+                        </div>
+                      ) : (
+                        history.map((msg) => (
+                          <div
+                            key={msg.id}
+                            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                          >
+                            <div
+                              className={`max-w-xl p-3.5 rounded-2xl space-y-1.5 ${
+                                msg.role === "user"
+                                  ? `${meta.accentBtn} shadow-xs`
+                                  : "bg-slate-100 text-slate-800 border border-slate-200"
+                              }`}
+                            >
+                              <div className="text-micro opacity-80 flex flex-wrap items-center justify-between gap-2">
+                                <span className="font-bold flex items-center gap-1.5">
+                                  {msg.role === "user"
+                                    ? msg.author || currentUser?.name || "You"
+                                    : selectedAccount?.name}
+                                  {msg.subagentId && (
+                                    <span className="px-1.5 py-0.5 rounded bg-black/10 text-micro font-mono">
+                                      🤖 {msg.subagentId}
+                                    </span>
+                                  )}
+                                  {msg.autonomous && (
+                                    <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-900 text-micro font-bold">
+                                      ⏰ {msg.taskTitle || t("Autonomous", "Autonómne", "Autonóm")}
+                                    </span>
+                                  )}
+                                </span>
+                                <span>{msg.timestamp}</span>
+                              </div>
+
+                              {/* Autonomous Step Badges (clickable to open the corresponding artifact or WhatsApp chat) */}
+                              {msg.steps && msg.steps.length > 0 && (
+                                <div className="flex flex-wrap gap-1 pt-0.5">
+                                  {msg.steps.map((stItem) => (
+                                    <button
+                                      key={stItem.id}
+                                      type="button"
+                                      onClick={() => {
+                                        if (stItem.kind === "memory") {
+                                          if (stItem.tool?.startsWith("artifact_") && stItem.detail) {
+                                            handleSelectArtifact(`artifact:${stItem.detail}`);
+                                          } else {
+                                            handleSelectArtifact("memory:main");
+                                          }
+                                        } else if (
+                                          stItem.kind === "whatsapp" &&
+                                          siblingWaAccount &&
+                                          stItem.detail &&
+                                          stItem.detail.includes("@")
+                                        ) {
+                                          setWaSelectedLeadId(stItem.detail);
+                                          setSelectedMailboxId(siblingWaAccount.id);
+                                        }
+                                      }}
+                                      title={stItem.detail || stItem.tool}
+                                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-micro font-bold border cursor-pointer ${
+                                        stItem.kind === "memory"
+                                          ? "bg-violet-50 hover:bg-violet-100 text-violet-800 border-violet-200"
+                                          : stItem.kind === "subagent"
+                                            ? "bg-amber-50 text-amber-800 border-amber-200"
+                                            : stItem.kind === "schedule"
+                                              ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                              : stItem.kind === "whatsapp"
+                                                ? "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300"
+                                                : "bg-white text-slate-700 border-slate-200"
+                                      }`}
+                                    >
+                                      {stItem.kind === "memory"
+                                        ? "📝"
+                                        : stItem.kind === "subagent"
+                                          ? "🤖"
+                                          : stItem.kind === "schedule"
+                                            ? "⏰"
+                                            : stItem.kind === "whatsapp"
+                                              ? stItem.tool === "whatsapp_send_message"
+                                                ? "📤"
+                                                : "💬"
+                                              : "⚡"}{" "}
+                                      {stItem.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+
+                              {msg.role === "assistant" ? (
+                                <Markdown content={msg.text} className="text-body leading-relaxed space-y-1.5" />
+                              ) : (
+                                <div className="text-body whitespace-pre-wrap leading-relaxed">{msg.text}</div>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                      {isAgentRunning && (
+                        <div className="flex items-center gap-2 text-caption text-slate-500 font-semibold">
+                          <Loader2 size={15} className="animate-spin text-indigo-600" />
+                          {t(
+                            "Agent is working autonomously via CCRM MCP...",
+                            "Agent pracuje autonómne cez CCRM MCP...",
+                            "Az ügynök önállóan dolgozik a CCRM MCP-n keresztül...",
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 3. CHAT PROMPT INPUT BAR */}
+                    <div className="px-4 py-3 border-t border-slate-100 flex items-center gap-2 shrink-0 bg-white">
+                      <input
+                        type="text"
+                        value={agentPrompt}
+                        onChange={(e) => setAgentPrompt(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            void handleSendAgentMessage();
+                          }
+                        }}
+                        placeholder={
+                          activeSubagentObj
+                            ? `${t("Instruct subagent", "Zadajte pokyn subagentovi", "Utasítsa az alügynököt")} ${activeSubagentObj.name}...`
+                            : t(
+                                "Instruct the agent what to do, write to memory.md, or create an artifact...",
+                                "Zadajte agentovi, čo má urobiť, zapísať do memory.md alebo vytvoriť artefakt...",
+                                "Utasítsa az ügynököt, mit tegyen, írjon a memory.md-be vagy hozzon létre artefaktumot...",
+                              )
+                        }
+                        className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-body text-slate-800 focus:outline-none focus:bg-white focus:border-indigo-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleSendAgentMessage()}
+                        disabled={!agentPrompt.trim() || isAgentRunning}
+                        className={`px-4 py-2.5 rounded-xl text-body font-bold flex items-center gap-2 disabled:opacity-40 cursor-pointer ${meta.accentBtn}`}
+                      >
+                        {isAgentRunning ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                        {t("Send", "Odoslať", "Küldés")}
+                      </button>
+                    </div>
+                  </div>
+                  )}
+
+                  {/* RIGHT HALF OF CENTER (50% WIDTH): ARTIFACT CONTENT EDITOR (SHOWN WHEN AN ARTIFACT IS SELECTED) */}
+                  {isArtSelected && (
+                    <div
+                      data-testid="agent-artifact-editor-pane"
+                      className="glass-panel rounded-3xl border border-violet-200/80 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden"
+                    >
+                      {/* Editor Header */}
+                      <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/80 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`px-2 py-0.5 rounded-md text-micro font-bold ${
+                                selectedArtifactKey === "memory:main"
+                                  ? "bg-violet-100 text-violet-800"
+                                  : selectedArtifactKey === "cron:main"
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : selectedSubObj
+                                      ? "bg-amber-100 text-amber-800"
+                                      : selectedTaskObj
+                                        ? "bg-emerald-100 text-emerald-800"
+                                        : "bg-indigo-100 text-indigo-800"
+                              }`}
+                            >
+                              {selectedArtifactKey === "memory:main"
+                                ? "MEMORY"
+                                : selectedArtifactKey === "cron:main"
+                                  ? "AUTONOMOUS CRONJOB"
+                                  : selectedSubObj
+                                    ? "SUBAGENT"
+                                    : selectedTaskObj
+                                      ? "AUTONOMOUS TASK"
+                                      : "ARTIFACT"}
+                            </span>
+                            {isMemoryDirty && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 text-micro font-semibold">
+                                {t("Unsaved", "Neuložené", "Mentetlen")}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-title-sm font-heading font-bold text-slate-900 truncate mt-0.5">
+                            {selectedArtifactKey === "memory:main"
+                              ? `${selectedAccount?.name} / memory.md`
+                              : selectedArtifactKey === "cron:main"
+                                ? `⏰ ${t("Autonomous Cron (api/cron.php)", "Autonómny Cron (api/cron.php)", "Autonóm Cron (api/cron.php)")}`
+                                : selectedSubObj
+                                  ? `🤖 ${selectedSubObj.name} · memory.md`
+                                  : selectedTaskObj
+                                    ? `⏰ ${selectedTaskObj.title}`
+                                    : selectedNamedArt
+                                      ? `📄 ${selectedNamedArt.name}`
+                                      : artifactTitleDraft}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          {selectedArtifactKey === "cron:main" && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void handleRunTaskNow("__autonomous__")}
+                                disabled={isAgentRunning}
+                                className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-micro font-bold cursor-pointer disabled:opacity-40"
+                              >
+                                ▶ {t("Trigger Cron Now", "Spustiť Cron teraz", "Cron indítása most")}
+                              </button>
+                              <select
+                                value={String(st?.autonomousMode?.intervalMinutes ?? 15)}
+                                onChange={(e) =>
+                                  void handleUpdateAutonomousCron({
+                                    intervalMinutes: Math.max(1, parseInt(e.target.value, 10) || 15),
+                                  })
+                                }
+                                aria-label={t("Cron interval", "Interval cronu", "Cron időköz")}
+                                className="px-2 py-1.5 rounded-xl bg-white border border-slate-200 text-micro font-bold text-slate-700 cursor-pointer"
+                              >
+                                <option value="1">1m</option>
+                                <option value="5">5m</option>
+                                <option value="15">15m</option>
+                                <option value="30">30m</option>
+                                <option value="60">60m</option>
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleUpdateAutonomousCron({
+                                    enabled: !Boolean(st?.autonomousMode?.enabled),
+                                  })
+                                }
+                                className={`px-2.5 py-1.5 rounded-xl text-micro font-bold cursor-pointer ${
+                                  Boolean(st?.autonomousMode?.enabled)
+                                    ? "bg-emerald-600 text-white"
+                                    : "bg-amber-50 text-amber-700"
+                                }`}
+                              >
+                                {Boolean(st?.autonomousMode?.enabled)
+                                  ? t("Cron Active", "Cron aktívny", "Cron aktív")
+                                  : t("Paused", "Pozastavené", "Szünetel")}
+                              </button>
+                            </>
+                          )}
+                          {selectedSubObj && (
+                            <button
+                              type="button"
+                              onClick={() => setActiveChatSubagentId(selectedSubObj.id)}
+                              className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-micro font-bold cursor-pointer"
+                            >
+                              💬 {t("Instruct", "Pokyn", "Utasítás")}
+                            </button>
+                          )}
+                          {selectedTaskObj && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void handleRunTaskNow(selectedTaskObj.id)}
+                                disabled={isAgentRunning}
+                                className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-micro font-bold cursor-pointer disabled:opacity-40"
+                              >
+                                ▶ {t("Run now", "Spustiť", "Futtatás")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleToggleTask(selectedTaskObj)}
+                                className={`px-2.5 py-1.5 rounded-xl text-micro font-bold cursor-pointer ${
+                                  selectedTaskObj.enabled
+                                    ? "bg-slate-100 text-slate-700"
+                                    : "bg-amber-50 text-amber-700"
+                                }`}
+                              >
+                                {selectedTaskObj.enabled
+                                  ? t("Active", "Aktívne", "Aktív")
+                                  : t("Paused", "Pozastavené", "Szünetel")}
+                              </button>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void handleSaveSelectedArtifact()}
+                            disabled={isSavingMemory || !canEdit}
+                            data-testid="save-agent-memory-btn"
+                            className={`px-3 py-1.5 rounded-xl text-micro font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-40 ${
+                              isMemoryDirty
+                                ? "bg-violet-600 hover:bg-violet-500 text-white shadow-2xs"
+                                : "bg-white hover:bg-slate-100 text-slate-700 border border-slate-200"
+                            }`}
+                          >
+                            {isSavingMemory ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                            {t("Save", "Uložiť", "Mentés")}
+                          </button>
+                          {selectedNamedArt && (
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteArtifact(selectedNamedArt.id)}
+                              title={t("Delete artifact", "Odstrániť artefakt", "Artefaktum törlése")}
+                              className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                          {selectedSubObj && (
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteSubagent(selectedSubObj.id)}
+                              title={t("Delete subagent", "Odstrániť subagenta", "Alügynök törlése")}
+                              className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                          {selectedTaskObj && (
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteTask(selectedTaskObj.id)}
+                              title={t("Delete task", "Odstrániť úlohu", "Feladat törlése")}
+                              className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleSelectArtifact(null)}
+                            data-testid="close-artifact-editor-btn"
+                            title={t("Close editor", "Zavrieť editor", "Szerkesztő bezárása")}
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-200/60 cursor-pointer"
+                          >
+                            <X size={15} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Optional Autonomous Cron Info Banner */}
+                      {selectedArtifactKey === "cron:main" && (
+                        <div className="px-5 py-2.5 border-b border-slate-100 bg-emerald-50/50 space-y-1 shrink-0">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-micro text-emerald-900 font-semibold">
+                            <span>
+                              {t(
+                                "Executed autonomously by server cronjob:",
+                                "Spúšťané autonómne serverovým cronjobom:",
+                                "A szerver cronjob önállóan futtatja:",
+                              )}{" "}
+                              <code className="px-1.5 py-0.5 rounded bg-white border border-emerald-200 font-mono text-emerald-800">
+                                * * * * * php /var/www/html/api/cron.php
+                              </code>
+                            </span>
+                            {st?.autonomousMode?.lastRunAt && (
+                              <span className="font-mono text-emerald-700">
+                                {t("Last cron tick:", "Posledný beh cronu:", "Utolsó cron futás:")}{" "}
+                                {new Date(st.autonomousMode.lastRunAt).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  second: "2-digit",
+                                })}{" "}
+                                ({st.autonomousMode.lastStatus || "ok"})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Optional Subagent System Prompt Field */}
+                      {selectedSubObj && (
+                        <div className="px-5 py-2.5 border-b border-slate-100 bg-amber-50/40 space-y-1 shrink-0">
+                          <label className="block text-micro font-bold text-amber-900">
+                            {t("Subagent System Instructions", "Systémové pokyny subagenta", "Alügynök rendszerutasításai")} ({selectedSubObj.role})
+                          </label>
+                          <input
+                            type="text"
+                            value={subPromptDraft}
+                            onChange={(e) => {
+                              setSubPromptDraft(e.target.value);
+                              setIsMemoryDirty(true);
+                            }}
+                            className="w-full px-3 py-1.5 rounded-xl bg-white border border-amber-200 text-caption text-slate-800 focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                      )}
+
+                      {/* Full-height Content Editor Textarea */}
+                      <div className="flex-1 p-4 flex flex-col min-h-0 overflow-hidden">
+                        <textarea
+                          data-testid="agent-memory-textarea"
+                          value={memoryDraft}
+                          onChange={(e) => {
+                            setMemoryDraft(e.target.value);
+                            setIsMemoryDirty(true);
+                          }}
+                          onKeyDown={(e) => {
+                            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+                              e.preventDefault();
+                              void handleSaveSelectedArtifact();
+                            }
+                          }}
+                          placeholder="# Markdown artifact content..."
+                          className="w-full flex-1 p-3.5 rounded-2xl bg-slate-50/70 focus:bg-white border border-slate-200 font-mono text-caption text-slate-800 focus:outline-none focus:border-violet-500 resize-none leading-relaxed overflow-y-auto"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* RIGHT SIDEBAR: MEMORY & ARTIFACTS */}
+                <div
+                  data-testid="agent-artifacts-sidebar"
+                  className="w-full ws-lg:w-64 shrink-0 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden"
+                >
+                  <div className="px-4 py-3.5 border-b border-slate-100 flex items-center justify-between gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5">
+                      <FileText size={14} className="text-violet-600" />
+                      <span className="text-caption font-bold text-slate-900">
+                        {t("Memory & Artifacts", "Pamäť a artefakty", "Memória és artefaktumok")}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setNewArtifactOpen((v) => !v)}
+                      title={t("New artifact", "Nový artefakt", "Új artefaktum")}
+                      className="px-2 py-0.5 rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-700 text-micro font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus size={11} /> {t("New", "Nový", "Új")}
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-3 space-y-4">
+                    {/* New Artifact Inline Form */}
+                    {newArtifactOpen && (
+                      <div className="p-2.5 rounded-2xl bg-violet-50/60 border border-violet-200 space-y-2">
+                        <input
+                          type="text"
+                          value={newArtifactName}
+                          onChange={(e) => setNewArtifactName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              void handleCreateArtifact();
+                            }
+                          }}
+                          placeholder={t("e.g. playbook.md", "napr. playbook.md", "pl. playbook.md")}
+                          className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-caption"
+                        />
+                        <div className="flex justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setNewArtifactOpen(false)}
+                            className="px-2 py-0.5 rounded-lg text-micro font-semibold text-slate-500 cursor-pointer"
+                          >
+                            {t("Cancel", "Zrušiť", "Mégse")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleCreateArtifact()}
+                            className="px-2.5 py-0.5 rounded-lg bg-violet-600 text-white text-micro font-bold cursor-pointer"
+                          >
+                            {t("Create", "Vytvoriť", "Létrehozás")}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Section 1: Memory & Named Artifacts */}
+                    <div className="space-y-1">
+                      <div className="px-1 text-micro font-bold uppercase tracking-wider text-slate-400">
+                        {t("Files & Memory", "Súbory a pamäť", "Fájlok és memória")}
+                      </div>
+
+                      {/* Primary memory.md */}
+                      <button
+                        type="button"
+                        data-testid="sidebar-artifact-memory-main"
+                        onClick={() => handleSelectArtifact("memory:main")}
+                        className={`w-full px-3 py-2 rounded-2xl text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
+                          selectedArtifactKey === "memory:main"
+                            ? "bg-violet-50/90 border-violet-300 text-violet-950 shadow-2xs"
+                            : "bg-white hover:bg-slate-50 border-slate-100 text-slate-700"
+                        }`}
+                      >
+                        <span className="w-7 h-7 rounded-xl bg-violet-500/15 text-violet-700 flex items-center justify-center shrink-0">
+                          <FileText size={14} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-caption font-bold truncate">memory.md</div>
+                          <div className="text-micro text-slate-400 truncate">
+                            {t("Core agent memory", "Hlavná pamäť agenta", "Ügynök fő memóriája")}
+                          </div>
+                        </div>
+                      </button>
+
+                      {/* Additional named artifacts */}
+                      {artifactsList.map((art) => {
+                        const key = `artifact:${art.id}`;
+                        const active = selectedArtifactKey === key;
+                        return (
+                          <button
+                            key={art.id}
+                            type="button"
+                            onClick={() => handleSelectArtifact(key)}
+                            className={`w-full px-3 py-2 rounded-2xl text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
+                              active
+                                ? "bg-indigo-50/90 border-indigo-300 text-indigo-950 shadow-2xs"
+                                : "bg-white hover:bg-slate-50 border-slate-100 text-slate-700"
+                            }`}
+                          >
+                            <span className="w-7 h-7 rounded-xl bg-indigo-500/15 text-indigo-700 flex items-center justify-center shrink-0">
+                              <FileText size={14} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-caption font-bold truncate">{art.name}</div>
+                              <div className="text-micro text-slate-400 truncate">{art.title}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Section 2: Subagents */}
+                    <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                      <div className="px-1 flex items-center justify-between">
+                        <span className="text-micro font-bold uppercase tracking-wider text-slate-400">
+                          {t("Subagents", "Subagenti", "Alügynökök")} ({subagents.length})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setNewSubagentOpen((v) => !v)}
+                          className="text-micro font-bold text-amber-700 hover:text-amber-800 cursor-pointer"
+                        >
+                          + {t("Add", "Pridať", "Hozzáadás")}
+                        </button>
+                      </div>
+
+                      {newSubagentOpen && (
+                        <div className="p-2.5 rounded-2xl bg-amber-50/60 border border-amber-200 space-y-1.5">
+                          <input
+                            type="text"
+                            value={newSubName}
+                            onChange={(e) => setNewSubName(e.target.value)}
+                            placeholder={t("Name (e.g. Lead Qualifier)", "Názov", "Név")}
+                            className="w-full px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-caption"
+                          />
+                          <input
+                            type="text"
+                            value={newSubRole}
+                            onChange={(e) => setNewSubRole(e.target.value)}
+                            placeholder={t("Role / Specialty", "Rola", "Szerepkör")}
+                            className="w-full px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-caption"
+                          />
+                          <input
+                            type="text"
+                            value={newSubPrompt}
+                            onChange={(e) => setNewSubPrompt(e.target.value)}
+                            placeholder={t("System prompt...", "Systémový pokyn...", "Rendszerutasítás...")}
+                            className="w-full px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-caption"
+                          />
+                          <div className="flex justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setNewSubagentOpen(false)}
+                              className="px-2 py-0.5 rounded-lg text-micro font-semibold text-slate-500 cursor-pointer"
+                            >
+                              {t("Cancel", "Zrušiť", "Mégse")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleCreateSubagent()}
+                              className="px-2.5 py-0.5 rounded-lg bg-amber-600 text-white text-micro font-bold cursor-pointer"
+                            >
+                              {t("Create", "Vytvoriť", "Létrehozás")}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {subagents.length === 0 ? (
+                        <div className="px-2 py-2 text-micro text-slate-400">
+                          {t("No subagents yet.", "Zatiaľ žiadni subagenti.", "Még nincs alügynök.")}
+                        </div>
+                      ) : (
+                        subagents.map((sub) => {
+                          const key = `subagent:${sub.id}`;
+                          const active = selectedArtifactKey === key;
+                          return (
+                            <button
+                              key={sub.id}
+                              type="button"
+                              onClick={() => handleSelectArtifact(key)}
+                              className={`w-full px-3 py-2 rounded-2xl text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
+                                active
+                                  ? "bg-amber-50/90 border-amber-300 text-amber-950 shadow-2xs"
+                                  : "bg-white hover:bg-slate-50 border-slate-100 text-slate-700"
+                              }`}
+                            >
+                              <span className="w-7 h-7 rounded-xl bg-amber-500/15 text-amber-700 flex items-center justify-center shrink-0">
+                                <Bot size={14} />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-caption font-bold truncate">{sub.name}</div>
+                                <div className="text-micro text-amber-700 truncate">{sub.role}</div>
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* Section 2b: Reactive Event Triggers */}
+                    <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                      <div className="px-1 flex items-center justify-between">
+                        <span className="text-micro font-bold uppercase tracking-wider text-slate-400">
+                          ⚡ {t("Reactive Triggers", "Reaktívne spúšťače", "Reaktív triggerek")} ({(st?.triggers || []).length})
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setVisualTriggersOpen(true)}
+                            className="text-micro font-bold text-indigo-700 hover:text-indigo-800 cursor-pointer"
+                          >
+                            {t("Studio", "Štúdio", "Stúdió")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openNewTriggerModal({
+                                sourceType: "whatsapp",
+                                targetSubagentId: activeChatSubagentId,
+                              })
+                            }
+                            className="text-micro font-bold text-violet-700 hover:text-violet-800 cursor-pointer"
+                          >
+                            + {t("Add", "Pridať", "Hozzáadás")}
+                          </button>
+                        </div>
+                      </div>
+
+                      {(st?.triggers || []).length === 0 ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openNewTriggerModal({
+                              sourceType: "whatsapp",
+                              targetSubagentId: activeChatSubagentId,
+                            })
+                          }
+                          className="w-full px-3 py-2 rounded-2xl border border-dashed border-violet-200 bg-violet-50/30 hover:bg-violet-50/70 text-left text-micro text-violet-700 font-semibold cursor-pointer transition-all"
+                        >
+                          ⚡ {t("Connect WhatsApp, Email or CRM event ($0 idle cost)", "Prepojiť WhatsApp, e-mail alebo CRM udalosť ($0 nečinné náklady)", "WhatsApp, e-mail vagy CRM esemény bekötése ($0 üresjárati költség)")}
+                        </button>
+                      ) : (
+                        (st?.triggers || []).map((tr) => (
+                          <button
+                            key={tr.id}
+                            type="button"
+                            onClick={() => openEditTriggerModal(tr)}
+                            className={`w-full px-3 py-2 rounded-2xl text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
+                              tr.enabled
+                                ? "bg-violet-50/70 hover:bg-violet-50 border-violet-200 text-slate-800"
+                                : "bg-slate-50 border-slate-100 text-slate-400"
+                            }`}
+                          >
+                            <span className="w-7 h-7 rounded-xl bg-violet-500/15 text-violet-700 flex items-center justify-center shrink-0">
+                              <Zap size={13} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-caption font-bold truncate">{tr.name}</div>
+                              <div className="text-micro text-violet-700 truncate">
+                                {tr.sourceType === "whatsapp"
+                                  ? `WhatsApp${tr.filter?.chatMatch ? ` · ${tr.filter.chatMatch}` : ""}`
+                                  : tr.sourceType === "email"
+                                    ? "Email"
+                                    : `CRM · ${tr.filter?.eventType || "event"}`}
+                                {" → "}
+                                {!tr.targetSubagentId || tr.targetSubagentId === "main"
+                                  ? "Main"
+                                  : subagents.find((s) => s.id === tr.targetSubagentId)?.name || tr.targetSubagentId}
+                              </div>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+
+                    {/* Section 3: Autonomous Loop (Cronjob) */}
+                    <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                      <div className="px-1 flex items-center justify-between">
+                        <span className="text-micro font-bold uppercase tracking-wider text-slate-400">
+                          💓 {t("Heartbeat Cron", "Heartbeat Cron", "Heartbeat Cron")}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setNewTaskOpen((v) => !v)}
+                          className="text-micro font-bold text-emerald-700 hover:text-emerald-800 cursor-pointer"
+                        >
+                          + {t("Task", "Úloha", "Feladat")}
+                        </button>
+                      </div>
+
+                      {/* Primary Server Cronjob Autonomous Mode */}
+                      <button
+                        type="button"
+                        data-testid="sidebar-artifact-cron-main"
+                        onClick={() => handleSelectArtifact("cron:main")}
+                        className={`w-full px-3 py-2 rounded-2xl text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
+                          selectedArtifactKey === "cron:main"
+                            ? "bg-emerald-50/90 border-emerald-300 text-emerald-950 shadow-2xs"
+                            : "bg-white hover:bg-slate-50 border-slate-100 text-slate-700"
+                        }`}
+                      >
+                        <span className="w-7 h-7 rounded-xl bg-emerald-500/15 text-emerald-700 flex items-center justify-center shrink-0">
+                          <Clock size={14} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-caption font-bold truncate">
+                            {t("Autonomous Cron", "Autonómny Cron", "Autonóm Cron")}
+                          </div>
+                          <div className="text-micro text-emerald-700 truncate">
+                            {t("Every", "Každých", "Minden")} {st?.autonomousMode?.intervalMinutes ?? 15}m ·{" "}
+                            {Boolean(st?.autonomousMode?.enabled)
+                              ? t("Cron Active", "Cron aktívny", "Cron aktív")
+                              : t("Paused ($0 idle)", "Pozastavené ($0)", "Szünetel ($0)")}
+                          </div>
+                        </div>
+                      </button>
+
+                      {newTaskOpen && (
+                        <div className="p-2.5 rounded-2xl bg-emerald-50/60 border border-emerald-200 space-y-1.5">
+                          <input
+                            type="text"
+                            value={newTaskTitle}
+                            onChange={(e) => setNewTaskTitle(e.target.value)}
+                            placeholder={t("Task title", "Názov úlohy", "Feladat címe")}
+                            className="w-full px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-caption"
+                          />
+                          <input
+                            type="number"
+                            min={1}
+                            value={newTaskInterval}
+                            onChange={(e) => setNewTaskInterval(e.target.value)}
+                            placeholder={t("Interval (min)", "Interval (min)", "Időköz (perc)")}
+                            className="w-full px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-caption"
+                          />
+                          <input
+                            type="text"
+                            value={newTaskPrompt}
+                            onChange={(e) => setNewTaskPrompt(e.target.value)}
+                            placeholder={t("Instruction prompt...", "Pokyn...", "Utasítás...")}
+                            className="w-full px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-caption"
+                          />
+                          <div className="flex justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setNewTaskOpen(false)}
+                              className="px-2 py-0.5 rounded-lg text-micro font-semibold text-slate-500 cursor-pointer"
+                            >
+                              {t("Cancel", "Zrušiť", "Mégse")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleCreateTask()}
+                              className="px-2.5 py-0.5 rounded-lg bg-emerald-600 text-white text-micro font-bold cursor-pointer"
+                            >
+                              {t("Schedule", "Naplánovať", "Ütemezés")}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {autonomousTasks.length === 0 ? (
+                        <div className="px-2 py-2 text-micro text-slate-400">
+                          {t("No standing tasks.", "Žiadne trvalé úlohy.", "Nincs állandó feladat.")}
+                        </div>
+                      ) : (
+                        autonomousTasks.map((tk) => {
+                          const key = `task:${tk.id}`;
+                          const active = selectedArtifactKey === key;
+                          return (
+                            <button
+                              key={tk.id}
+                              type="button"
+                              onClick={() => handleSelectArtifact(key)}
+                              className={`w-full px-3 py-2 rounded-2xl text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
+                                active
+                                  ? "bg-emerald-50/90 border-emerald-300 text-emerald-950 shadow-2xs"
+                                  : "bg-white hover:bg-slate-50 border-slate-100 text-slate-700"
+                              }`}
+                            >
+                              <span className="w-7 h-7 rounded-xl bg-emerald-500/15 text-emerald-700 flex items-center justify-center shrink-0">
+                                <Clock size={14} />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-caption font-bold truncate">{tk.title}</div>
+                                <div className="text-micro text-emerald-700 truncate">
+                                  {t("Every", "Každých", "Minden")} {tk.intervalMinutes}m ·{" "}
+                                  {tk.enabled ? t("Active", "Aktívne", "Aktív") : t("Paused", "Pozastavené", "Szünetel")}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* REACTIVE TRIGGER CONFIGURATION MODAL */}
+                {triggerModalOpen && (
+                  <div
+                    data-testid="agent-trigger-modal"
+                    className="fixed inset-0 z-50 bg-slate-900/45 backdrop-blur-xs flex items-center justify-center p-4"
+                    onClick={() => setTriggerModalOpen(false)}
+                  >
+                    <div
+                      className="w-full max-w-xl rounded-3xl bg-white border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-violet-50/80 via-indigo-50/50 to-white flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <span className="w-9 h-9 rounded-2xl bg-violet-600 text-white flex items-center justify-center shadow-xs">
+                            <Zap size={17} />
+                          </span>
+                          <div>
+                            <div className="text-title-sm font-heading font-bold text-slate-900">
+                              {triggerDraftId
+                                ? t("Edit Reactive Event Trigger", "Upraviť reaktívny spúšťač", "Reaktív trigger szerkesztése")
+                                : t("New Reactive Event Trigger", "Nový reaktívny spúšťač", "Új reaktív esemény trigger")}
+                            </div>
+                            <div className="text-micro text-slate-500">
+                              {t(
+                                "Runs the agent immediately when an event matches ($0 idle cost)",
+                                "Spustí agenta okamžite pri zhode udalosti ($0 pri nečinnosti)",
+                                "Azonnal futtatja az ügynököt esemény egyezésekor ($0 üresjárati költség)",
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setTriggerModalOpen(false)}
+                          className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+
+                      <div className="p-6 overflow-y-auto space-y-4">
+                        {/* Trigger Name */}
+                        <div>
+                          <label className="block text-micro font-bold uppercase tracking-wider text-slate-500 mb-1">
+                            {t("Trigger Name", "Názov spúšťača", "Trigger neve")}
+                          </label>
+                          <input
+                            type="text"
+                            data-testid="trigger-name-input"
+                            value={triggerDraftName}
+                            onChange={(e) => setTriggerDraftName(e.target.value)}
+                            placeholder={t(
+                              "e.g. Managment Cstudios Haiku Auto-Reply",
+                              "napr. Automatická odpoveď WhatsApp",
+                              "pl. Managment Cstudios Haiku válaszoló",
+                            )}
+                            className="w-full px-3.5 py-2 rounded-xl bg-slate-50 focus:bg-white border border-slate-200 text-body text-slate-800 focus:outline-none focus:border-violet-500"
+                          />
+                        </div>
+
+                        {/* Source Connection & Target Agent */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-micro font-bold uppercase tracking-wider text-slate-500 mb-1">
+                              1. {t("Event Source Connection", "Zdrojové spojenie", "Esemény forráskapcsolata")}
+                            </label>
+                            <select
+                              data-testid="trigger-source-type-select"
+                              value={
+                                triggerDraftSourceType !== "crm_event" &&
+                                triggerDraftSourceConnectorId &&
+                                availableAccounts.some((a) => a.id === triggerDraftSourceConnectorId)
+                                  ? `conn:${triggerDraftSourceConnectorId}`
+                                  : triggerDraftSourceType
+                              }
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val.startsWith("conn:")) {
+                                  const accId = val.slice(5);
+                                  const acc = availableAccounts.find((a) => a.id === accId);
+                                  setTriggerDraftSourceConnectorId(accId);
+                                  setTriggerDraftSourceType(
+                                    isMessagingConnector(acc?.connectorType) ? "whatsapp" : "email",
+                                  );
+                                } else {
+                                  const nextType = val as "whatsapp" | "email" | "crm_event";
+                                  setTriggerDraftSourceType(nextType);
+                                  if (nextType === "whatsapp") {
+                                    const waAcc = availableAccounts.find((a) => isMessagingConnector(a.connectorType));
+                                    setTriggerDraftSourceConnectorId(waAcc?.id || "");
+                                  } else if (nextType === "email") {
+                                    const emAcc = availableAccounts.find((a) => isEmailConnector(a.connectorType));
+                                    setTriggerDraftSourceConnectorId(emAcc?.id || "");
+                                  } else {
+                                    setTriggerDraftSourceConnectorId("");
+                                  }
+                                }
+                              }}
+                              className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-body font-semibold text-slate-800"
+                            >
+                              <optgroup label={t("Messaging & BotMan Connections", "Messaging & BotMan spojenia", "Messaging és BotMan kapcsolatok")}>
+                                {availableAccounts
+                                  .filter((a) => isMessagingConnector(a.connectorType))
+                                  .map((acc) => (
+                                    <option key={acc.id} value={`conn:${acc.id}`}>
+                                      💬 {acc.name} ({(acc.connectorType || "whatsapp").toUpperCase()}
+                                      {acc.address ? ` · ${acc.address}` : ""})
+                                    </option>
+                                  ))}
+                                <option value="whatsapp">
+                                  💬 {t("Any Messaging / BotMan Channel", "Akýkoľvek Messaging / BotMan kanál", "Bármely Messaging / BotMan csatorna")}
+                                </option>
+                              </optgroup>
+                              <optgroup label={t("Email Mailboxes", "E-mailové schránky", "E-mail postafiókok")}>
+                                {availableAccounts
+                                  .filter((a) => isEmailConnector(a.connectorType))
+                                  .map((acc) => (
+                                    <option key={acc.id} value={`conn:${acc.id}`}>
+                                      ✉️ {acc.name} ({(acc.connectorType || "smtp").toUpperCase()}
+                                      {acc.address ? ` · ${acc.address}` : ""})
+                                    </option>
+                                  ))}
+                                <option value="email">
+                                  ✉️ {t("Any Email Mailbox", "Akákoľvek e-mailová schránka", "Bármely e-mail postafiók")}
+                                </option>
+                              </optgroup>
+                              <optgroup label={t("CRM System Events", "Systémové udalosti CRM", "CRM rendszeresemények")}>
+                                <option value="crm_event">🔔 CRM Event (Lead / Project / Task)</option>
+                              </optgroup>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-micro font-bold uppercase tracking-wider text-slate-500 mb-1">
+                              2. {t("Target Agent", "Cieľový agent", "Cél ügynök")}
+                            </label>
+                            <select
+                              data-testid="trigger-target-agent-select"
+                              value={triggerDraftTargetSubagentId}
+                              onChange={(e) => setTriggerDraftTargetSubagentId(e.target.value)}
+                              className="w-full px-3 py-2 rounded-xl bg-violet-50/70 border border-violet-200 text-body font-bold text-violet-950"
+                            >
+                              <option value="">✦ {selectedAccount?.name} (Main Agent)</option>
+                              {subagents.map((sub) => (
+                                <option key={sub.id} value={sub.id}>
+                                  🤖 {sub.name} ({sub.role})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Source-Specific Filters */}
+                        {triggerDraftSourceType === "whatsapp" && (
+                          <div className="p-3.5 rounded-2xl bg-emerald-50/50 border border-emerald-200/80 space-y-3">
+                            {(() => {
+                              const draftSourceAcc = availableAccounts.find(
+                                (a) => a.id === triggerDraftSourceConnectorId,
+                              );
+                              const isNativeWa =
+                                !draftSourceAcc || (draftSourceAcc.connectorType || "whatsapp") === "whatsapp";
+                              const channelHeaderLabel = draftSourceAcc
+                                ? `${draftSourceAcc.name} (${(draftSourceAcc.connectorType || "whatsapp").toUpperCase()})`
+                                : "WhatsApp / BotMan";
+                              return (
+                                <>
+                                  <div className="text-micro font-bold uppercase tracking-wider text-emerald-800">
+                                    💬 {channelHeaderLabel} —{" "}
+                                    {t("Conversation Filter", "Filter konverzácie", "Beszélgetés szűrő")}
+                                  </div>
+
+                                  {isNativeWa && waState?.chats && waState.chats.length > 0 && (
+                                    <div>
+                                      <label className="block text-micro font-semibold text-emerald-900 mb-1">
+                                        {t(
+                                          "Quick-pick synced WhatsApp chat / group:",
+                                          "Rýchly výber chatu / skupiny:",
+                                          "Szinkronizált csoport / chat gyorsválasztó:",
+                                        )}
+                                      </label>
+                                      <select
+                                        value=""
+                                        onChange={(e) => {
+                                          if (e.target.value) setTriggerDraftChatMatch(e.target.value);
+                                        }}
+                                        className="w-full px-3 py-1.5 rounded-xl bg-white border border-emerald-200 text-caption text-slate-800"
+                                      >
+                                        <option value="">
+                                          {t(
+                                            "— Select a WhatsApp chat or group —",
+                                            "— Vyberte chat alebo skupinu —",
+                                            "— Válassz WhatsApp chatet vagy csoportot —",
+                                          )}
+                                        </option>
+                                        {waState.chats.map((c) => (
+                                          <option key={c.id} value={c.name || c.id}>
+                                            {c.isGroup ? "👥 " : "👤 "}
+                                            {c.name} ({c.id})
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              <div>
+                                <label className="block text-micro font-semibold text-emerald-900 mb-1">
+                                  {t("Chat / Group Name or JID contains", "Názov chatu / skupiny obsahuje", "Chat / Csoport neve vagy JID tartalmazza")}
+                                </label>
+                                <input
+                                  type="text"
+                                  data-testid="trigger-chat-match-input"
+                                  value={triggerDraftChatMatch}
+                                  onChange={(e) => setTriggerDraftChatMatch(e.target.value)}
+                                  placeholder={t("e.g. Managment Cstudios (blank = all)", "napr. Managment Cstudios", "pl. Managment Cstudios (üres = mind)")}
+                                  className="w-full px-3 py-1.5 rounded-xl bg-white border border-emerald-200 text-caption text-slate-800"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-micro font-semibold text-emerald-900 mb-1">
+                                  {t("Message Keyword Filter (optional)", "Kľúčové slovo v správe", "Üzenet kulcsszó szűrő (opcionális)")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={triggerDraftKeywordContains}
+                                  onChange={(e) => setTriggerDraftKeywordContains(e.target.value)}
+                                  placeholder={t("Any message if blank", "Akákoľvek správa ak prázdne", "Üresen minden üzenet")}
+                                  className="w-full px-3 py-1.5 rounded-xl bg-white border border-emerald-200 text-caption text-slate-800"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-4 pt-1">
+                              <label className="inline-flex items-center gap-1.5 text-micro font-semibold text-emerald-900 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={triggerDraftOnlyGroup}
+                                  onChange={(e) => {
+                                    setTriggerDraftOnlyGroup(e.target.checked);
+                                    if (e.target.checked) setTriggerDraftOnlyDirect(false);
+                                  }}
+                                />
+                                {t("Only Group Chats (@g.us)", "Iba skupinové chaty", "Csak csoportos chatek (@g.us)")}
+                              </label>
+                              <label className="inline-flex items-center gap-1.5 text-micro font-semibold text-emerald-900 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={triggerDraftOnlyDirect}
+                                  onChange={(e) => {
+                                    setTriggerDraftOnlyDirect(e.target.checked);
+                                    if (e.target.checked) setTriggerDraftOnlyGroup(false);
+                                  }}
+                                />
+                                {t("Only Direct 1-on-1 Chats", "Iba priame 1-na-1 správy", "Csak privát 1-1 beszélgetések")}
+                              </label>
+                            </div>
+                          </div>
+                        )}
+
+                        {triggerDraftSourceType === "email" && (
+                          <div className="p-3.5 rounded-2xl bg-sky-50/60 border border-sky-200/80 space-y-2.5">
+                            <div className="text-micro font-bold uppercase tracking-wider text-sky-800">
+                              ✉️ {t("Incoming Email Filter", "Filter prichádzajúcich e-mailov", "Bejövő e-mail szűrő")}
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              <div>
+                                <label className="block text-micro font-semibold text-sky-900 mb-1">
+                                  {t("Sender (From) contains", "Odosielateľ obsahuje", "Feladó tartalmazza")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={triggerDraftFromContains}
+                                  onChange={(e) => setTriggerDraftFromContains(e.target.value)}
+                                  placeholder={t("e.g. @client.com (blank = all)", "napr. @klient.sk", "pl. @ugyfel.hu (üres = mind)")}
+                                  className="w-full px-3 py-1.5 rounded-xl bg-white border border-sky-200 text-caption text-slate-800"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-micro font-semibold text-sky-900 mb-1">
+                                  {t("Subject contains", "Predmet obsahuje", "Tárgy tartalmazza")}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={triggerDraftSubjectContains}
+                                  onChange={(e) => setTriggerDraftSubjectContains(e.target.value)}
+                                  placeholder={t("e.g. Quote / Urgent (blank = all)", "napr. Dopyt", "pl. Árajánlat (üres = mind)")}
+                                  className="w-full px-3 py-1.5 rounded-xl bg-white border border-sky-200 text-caption text-slate-800"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {triggerDraftSourceType === "crm_event" && (
+                          <div className="p-3.5 rounded-2xl bg-amber-50/60 border border-amber-200/80 space-y-2">
+                            <label className="block text-micro font-bold uppercase tracking-wider text-amber-800">
+                              🔔 {t("CRM Event Type", "Typ CRM udalosti", "CRM esemény típusa")}
+                            </label>
+                            <select
+                              value={triggerDraftEventType}
+                              onChange={(e) => setTriggerDraftEventType(e.target.value)}
+                              className="w-full px-3 py-1.5 rounded-xl bg-white border border-amber-200 text-caption font-semibold text-slate-800"
+                            >
+                              <option value="lead_created">✨ New Lead Created (lead_created)</option>
+                              <option value="project_created">🚀 New Project Created (project_created)</option>
+                              <option value="ticket_created">🎫 New Support Ticket Created (ticket_created)</option>
+                              <option value="task_created">✅ New Task Created (task_created)</option>
+                            </select>
+                          </div>
+                        )}
+
+                        {/* Full Conversation Context Window Badge */}
+                        <div className="px-3.5 py-2.5 rounded-2xl bg-indigo-50/70 border border-indigo-200/80 flex items-center justify-between gap-2 text-micro text-indigo-950">
+                          <span className="font-semibold">
+                            📚 {t(
+                              "Full Conversation History: Agent automatically receives the last 50 messages AND at least the last 5 days of history (capped at 16,000 chars).",
+                              "Plná história konverzácie: Agent automaticky dostane posledných 50 správ A aspoň posledných 5 dní histórie (limit 16 000 znakov).",
+                              "Teljes beszélgetési előzmény: Az ügynök automatikusan megkapja az utolsó 50 üzenetet ÉS legalább az elmúlt 5 nap üzeneteit (16 000 karakteres limittel).",
+                            )}
+                          </span>
+                        </div>
+
+                        {/* Agent Instructions when Triggered */}
+                        <div>
+                          <label className="block text-micro font-bold uppercase tracking-wider text-slate-500 mb-1">
+                            3. {t("Instructions for the Agent when Triggered", "Pokyny pre agenta pri spustení", "Utasítások az ügynök számára aktiváláskor")}
+                          </label>
+                          <textarea
+                            rows={3}
+                            data-testid="trigger-instructions-textarea"
+                            value={triggerDraftInstructions}
+                            onChange={(e) => setTriggerDraftInstructions(e.target.value)}
+                            placeholder={t(
+                              "e.g. Read the full conversation context and reply in a Hungarian haiku (5-7-5) to the latest message.",
+                              "napr. Prečítaj si celú konverzáciu a odpovedz na najnovšiu správu.",
+                              "pl. Olvasd el a teljes beszélgetést, és válaszolj magyar haikuban (5-7-5) a legújabb üzenetre.",
+                            )}
+                            className="w-full p-3 rounded-2xl bg-slate-50 focus:bg-white border border-slate-200 text-caption text-slate-800 focus:outline-none focus:border-violet-500"
+                          />
+                        </div>
+
+                        {/* Auto-Reply Toggle */}
+                        <label className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-violet-50/50 border border-violet-200/70 cursor-pointer">
+                          <div>
+                            <div className="text-caption font-bold text-slate-900">
+                              {t(
+                                "Authorize Automatic Reply Tools (send_whatsapp_message / send_email_reply)",
+                                "Povoliť nástroje automatickej odpovede",
+                                "Automatikus válasz eszközök engedélyezése (send_whatsapp_message / send_email_reply)",
+                              )}
+                            </div>
+                            <div className="text-micro text-slate-500">
+                              {t(
+                                "Includes loop-protection so the agent never replies to its own messages.",
+                                "Zahŕňa ochranu proti slučkám, aby agent nikdy neodpovedal na vlastné správy.",
+                                "Végtelen ciklus elleni védelemmel (az ügynök sosem válaszol a saját üzenetére).",
+                              )}
+                            </div>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={triggerDraftAutoReply}
+                            onChange={(e) => setTriggerDraftAutoReply(e.target.checked)}
+                            className="w-4 h-4 accent-violet-600"
+                          />
+                        </label>
+
+                        {/* Proactive Conversation Re-Initiation ($0 Idle Cost) */}
+                        {triggerDraftSourceType !== "crm_event" && (
+                          <div className="p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-200/80 space-y-3">
+                            <label className="flex items-center justify-between gap-3 cursor-pointer">
+                              <div>
+                                <div className="text-caption font-bold text-indigo-950 flex items-center gap-1.5">
+                                  🔄{" "}
+                                  {t(
+                                    "Proactive Conversation Re-Initiation ($0 Idle Cost)",
+                                    "Proaktívne znovuotvorenie konverzácie ($0 v nečinnosti)",
+                                    "Proaktív beszélgetés-újraindítás ($0 üresjárati költség)",
+                                  )}
+                                </div>
+                                <div className="text-micro text-slate-600">
+                                  {t(
+                                    "Automatically re-initiate conversation if the contact stops replying after an agent message, or when the agent calls schedule_conversation_followup.",
+                                    "Automaticky nadviaže kontakt, ak klient prestane odpovedať, alebo keď agent naplánuje follow-up.",
+                                    "Automatikusan újraindítja a beszélgetést, ha az ügyfél nem válaszol az ügynök üzenetére, vagy ha az ügynök follow-upot ütemez.",
+                                  )}
+                                </div>
+                              </div>
+                              <input
+                                type="checkbox"
+                                data-testid="trigger-proactive-toggle"
+                                checked={triggerDraftProactiveEnabled}
+                                onChange={(e) => setTriggerDraftProactiveEnabled(e.target.checked)}
+                                className="w-4 h-4 accent-indigo-600"
+                              />
+                            </label>
+
+                            {triggerDraftProactiveEnabled && (
+                              <div className="space-y-2.5 pt-2 border-t border-indigo-200/60">
+                                <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-2.5">
+                                  <div>
+                                    <label className="block text-micro font-bold uppercase tracking-wider text-indigo-900 mb-1">
+                                      {t(
+                                        "Follow up after silence (minutes)",
+                                        "Ozvanie po tichu (minúty)",
+                                        "Utánkövetés csend után (perc)",
+                                      )}
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min={5}
+                                      max={10080}
+                                      value={triggerDraftProactiveAfterMinutes}
+                                      onChange={(e) =>
+                                        setTriggerDraftProactiveAfterMinutes(
+                                          Math.max(5, Math.min(10080, Number(e.target.value) || 120)),
+                                        )
+                                      }
+                                      className="w-full px-3 py-1.5 rounded-xl bg-white border border-indigo-200 text-caption font-semibold text-slate-800"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-micro font-bold uppercase tracking-wider text-indigo-900 mb-1">
+                                      {t(
+                                        "Max unprompted follow-ups",
+                                        "Max. počet pripomenutí",
+                                        "Max. proaktív üzenet",
+                                      )}
+                                    </label>
+                                    <select
+                                      value={triggerDraftProactiveMaxAttempts}
+                                      onChange={(e) => setTriggerDraftProactiveMaxAttempts(Number(e.target.value) || 1)}
+                                      className="w-full px-3 py-1.5 rounded-xl bg-white border border-indigo-200 text-caption font-semibold text-slate-800"
+                                    >
+                                      <option value={1}>1 {t("attempt (Recommended)", "pokus (Odporúčané)", "alkalom (Ajánlott)")}</option>
+                                      <option value={2}>2 {t("attempts", "pokusy", "alkalom")}</option>
+                                      <option value={3}>3 {t("attempts", "pokusy", "alkalom")}</option>
+                                    </select>
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="block text-micro font-bold uppercase tracking-wider text-indigo-900 mb-1">
+                                    {t(
+                                      "Proactive Follow-Up Instructions",
+                                      "Pokyny pre proaktívne oslovenie",
+                                      "Proaktív utánkövetési utasítások",
+                                    )}
+                                  </label>
+                                  <textarea
+                                    rows={2}
+                                    value={triggerDraftProactiveInstructions}
+                                    onChange={(e) => setTriggerDraftProactiveInstructions(e.target.value)}
+                                    placeholder={t(
+                                      "e.g. Check if they still need help with their quote or have any questions. If the conversation ended naturally, reply with [SKIP_FOLLOWUP].",
+                                      "napr. Spýtaj sa, či ešte potrebujú pomoc s ponukou. Ak sa rozhovor prirodzene skončil, odpovedz [SKIP_FOLLOWUP].",
+                                      "pl. Kérdezd meg udvariasan, tudunk-e még segíteni az ajánlattal kapcsolatban. Ha a beszélgetés természetesen lezárult, válaszolj [SKIP_FOLLOWUP]-pal.",
+                                    )}
+                                    className="w-full p-2.5 rounded-xl bg-white border border-indigo-200 text-caption text-slate-800 focus:outline-none focus:border-indigo-500"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/80 flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setTriggerModalOpen(false)}
+                          className="px-4 py-2 rounded-xl text-caption font-semibold text-slate-600 hover:bg-slate-200/60 cursor-pointer"
+                        >
+                          {t("Cancel", "Zrušiť", "Mégse")}
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="save-agent-trigger-btn"
+                          onClick={() => void handleSaveTriggerDraft()}
+                          className="px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-caption font-bold shadow-xs flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Zap size={13} />
+                          {triggerDraftId
+                            ? t("Save Trigger", "Uložiť spúšťač", "Trigger mentése")
+                            : t("Connect Trigger", "Prepojiť spúšťač", "Trigger bekötése")}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      ) : (
+        /* EMAIL COMMUNICATION LAYOUT (Gmail, SMTP/IMAP, MS Exchange, Personal) */
+        <div
+          data-testid="communication-email-layout"
+          className="flex-1 min-w-0 grid grid-cols-1 ws-lg:grid-cols-12 gap-5 h-full max-h-full overflow-hidden"
+        >
       {/* COLUMN 1: Conversation list */}
       <div className="ws-lg:col-span-5 ws-xl:col-span-4 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden">
         {/* Search & filters */}
@@ -1678,8 +6442,25 @@ export const EmailView: React.FC<EmailViewProps> = ({
                   </div>
                 </div>
 
+                {renderInlineAiSummaryBanner(threadKey, threadLead, () => {
+                  const combinedText = activeThread.emails
+                    .map((e) => {
+                      const sender = e.isSent ? "Me" : e.from.name || e.from.address;
+                      const bodyText = threadBodies[e.uid]
+                        ? stripHtml(threadBodies[e.uid].html || threadBodies[e.uid].text || "")
+                        : e.preview || "";
+                      return `From: ${sender}\nDate: ${e.date}\nSubject: ${e.subject}\nContent: ${bodyText}`;
+                    })
+                    .join("\n\n---\n\n");
+                  void fetchSummary(threadKey, "thread", activeThread.subject, combinedText, true, true);
+                })}
+
                 {/* Messages, oldest first */}
-                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-3 scrollbar-thin" onScroll={onListScroll}>
+                <div
+                  ref={emailThreadScrollRef}
+                  className="flex-1 overflow-y-auto px-6 py-5 space-y-3 scrollbar-thin"
+                  onScroll={onListScroll}
+                >
                   {activeThread.emails.map((email) => {
                     const isExpanded = !!expandedEmailUids[email.uid];
                     const bodyObj = threadBodies[email.uid];
@@ -1833,6 +6614,18 @@ export const EmailView: React.FC<EmailViewProps> = ({
                   </div>
                 </div>
 
+                {renderInlineAiSummaryBanner(selectedEmail.uid, lead, () => {
+                  const rawBody = bodyObj ? bodyObj.html || bodyObj.text || "" : selectedEmail.preview || "";
+                  void fetchSummary(
+                    selectedEmail.uid,
+                    selectedEmail.isSent ? "Sent" : activeFolder,
+                    selectedEmail.subject,
+                    rawBody,
+                    false,
+                    true
+                  );
+                })}
+
                 {/* Body + attachments */}
                 <div className="flex-1 min-h-0 flex flex-col gap-5 px-6 py-5">
                   {bodyObj ? (
@@ -1863,6 +6656,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
           })() : emptyPane(t("Select a conversation thread", "Vyberte vlákno konverzácie", "Válasszon egy beszélgetésszálat"))
         )}
       </div>
+      </div>
+      )}
 
       {renderDigestPopover()}
 
@@ -2064,7 +6859,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <div>
                 <span className="type-overline text-pink-500">{t(`${PRODUCT_NAME} Client Registration`, `Registrácia klienta ${PRODUCT_NAME}`, `${PRODUCT_NAME} ügyfél regisztráció`)}</span>
-                <h3 className="text-body font-heading font-bold">{t("Create New Client from Email", "Vytvoriť nového klienta z e-mailu", "Új ügyfél létrehozása e-mailből")}</h3>
+                <h3 className="text-body font-heading font-bold">
+                  {pendingChatLinkKey
+                    ? t("Create New Client from Chat", "Vytvoriť nového klienta z chatu", "Új ügyfél létrehozása csevegésből")
+                    : t("Create New Client from Email", "Vytvoriť nového klienta z e-mailu", "Új ügyfél létrehozása e-mailből")}
+                </h3>
               </div>
               <button
                 onClick={closeClientSlideout}
@@ -2091,7 +6890,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     <label className="type-overline text-slate-500">{t("Email Address", "E-mailová adresa", "E-mail cím")}</label>
                     <input
                       type="email"
-                      required
+                      required={!pendingChatLinkKey}
                       value={clientFormEmail}
                       onChange={(e) => setClientFormEmail(e.target.value)}
                       className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui focus:outline-none focus:bg-white font-semibold"
@@ -2113,7 +6912,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     <label className="type-overline text-slate-500">{t("City", "Mesto", "Város")}</label>
                     <input
                       type="text"
-                      required
+                      required={!pendingChatLinkKey}
                       value={clientFormCity}
                       onChange={(e) => setClientFormCity(e.target.value)}
                       className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui focus:outline-none focus:bg-white font-semibold"

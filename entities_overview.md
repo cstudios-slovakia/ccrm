@@ -100,6 +100,8 @@ Main table representing potential deals, customers, and client accounts.
 * `ticket_allowed_emails` TEXT [NULLable] (JSON array of whitelisted sender emails/domains for support tickets)
 * `client_id` VARCHAR(50) [NULLable, indexed] (the client record - a `client-*` row of this table - the lead belongs to; not a foreign key. NULL = not linked, the app then falls back to matching by name)
 * `price_level_id` VARCHAR(50) [NULLable] (the price level - an `id` of the `PRICE_LEVELS` setting - this client buys on; NULL = the items' default sell prices)
+* `company_client_id` VARCHAR(50) [NULLable, indexed] (for person clients: optional parent Business/Partner company `leads.id` where they act as a client-side contact; rented agency employees never live in `leads`)
+* `contact_role` VARCHAR(120) [NULLable] (role/title of an attached person contact at their company, e.g. HR Manager)
 * `contact_person` VARCHAR(100)
 * `contact_first_name` VARCHAR(100) [NULLable] (the contact person's first name as typed; synced as `contactFirstName`. `{{first_name}}` of the newsletter reads this, never `contact_person`. Rule shared by `composeContactName()` and `ccrm_compose_contact_name()`: when either part is filled, `contact_person` = first + ' ' + last; both empty keeps `contact_person`. Rows that predate the column were split once by `ccrm_backfill_contact_names()`, flag `CONTACT_NAME_BACKFILL` in `system_settings`)
 * `contact_last_name` VARCHAR(100) [NULLable] (the contact person's last name as typed; synced as `contactLastName`)
@@ -158,6 +160,7 @@ General system and operational tasks.
 * `owner` VARCHAR(100) (primary assignee; empty when unassigned)
 * `created_by` VARCHAR(100) (immutable creator name; nullable for legacy rows)
 * `related_lead_id` VARCHAR(50)
+* `related_agency_worker_id` VARCHAR(64) [NULLable] (References `agency_workers.id`)
 * `is_locking` TINYINT(1)
 * `archived` TINYINT(1)
 * `external_source` VARCHAR(20) [NULLable] (integration client code that pushed the task, e.g. waai; server-only, never written by a client save)
@@ -265,6 +268,18 @@ The readable plain-text body of a filed message, apart from `timeline_events` be
 * `event_id` VARCHAR(50) [PK] (= `timeline_events.id`)
 * `body` MEDIUMTEXT, `attachments_json` TEXT (JSON list `[{ name, size, part, key? }]`; `key` is the random storage name of the file kept under `uploads/private/mail/` (behind a deny-all guard, streamed by `mail_broker.php?action=get_filed_mail_attachment` after the e-mail permission check). An entry without `key` was not kept: too big, a blocked type, an embedded image. The client never receives `key`)
 * `created_at` TIMESTAMP
+
+### `mail_envelopes`
+Cached email headers and previews per mailbox and folder, allowing `#email` to display already-received correspondences immediately from the database while live IMAP checks run in the background.
+* `mailbox_key` VARCHAR(100) + `folder` VARCHAR(120) + `uid` BIGINT [PK] (`c:<company mailbox id>` or `u:<user email>`)
+* `event_id` VARCHAR(64)
+* `subject` VARCHAR(500), `from_name` VARCHAR(255), `from_address` VARCHAR(255), `to_name` VARCHAR(255), `to_address` VARCHAR(255)
+* `email_date` DATETIME [NULLable]
+* `is_outgoing` TINYINT(1), `seen` TINYINT(1), `size` INT
+* `message_id` VARCHAR(255), `in_reply_to` VARCHAR(255), `references_hdr` TEXT [NULLable]
+* `preview` VARCHAR(500), `attachment_count` INT, `timeline_hidden` TINYINT(1)
+* `updated_at` TIMESTAMP
+* Index: `idx_mail_envelopes_lookup` (`mailbox_key`, `folder`, `email_date` DESC, `uid` DESC)
 
 ## 6. Projects & Lifecycles
 
@@ -763,6 +778,7 @@ Support tickets, bug reports, and client inquiries attached to projects and clie
 * `source` ENUM('email', 'widget', 'manual', 'phone')
 * `project_id` VARCHAR(50) [NULLable] (References `projects.id`)
 * `client_id` VARCHAR(50) [NULLable] (References `leads.id`)
+* `agency_worker_id` VARCHAR(64) [NULLable] (References `agency_workers.id`)
 * `reporter_name` VARCHAR(200) [NULLable]
 * `reporter_email` VARCHAR(255) [NULLable]
 * `reporter_phone` VARCHAR(50) [NULLable]
@@ -820,6 +836,26 @@ Logged support hours (billable and non-billable) against a ticket.
 * `logged_at` DATE
 * `created_at` TIMESTAMP
 
+### `weekly_plan_cards`
+Standalone planning cards displayed on the Weekly Plan board (by day date and vertical position). Cards are independent of `tasks` (no automatic sync), while their `refs_json` can reference projects, leads, clients, employees, tickets, tasks, and `#tags`.
+* `id` VARCHAR(64) [PK]
+* `date` VARCHAR(10) (ISO date `YYYY-MM-DD`, indexed with `position`)
+* `content` TEXT
+* `position` INT
+* `completed` TINYINT(1)
+* `color` VARCHAR(32) (Card color key: `''`, `'indigo'`, `'emerald'`, `'amber'`, `'rose'`, `'sky'`, `'purple'`, `'orange'`)
+* `refs_json` LONGTEXT [NULLable] (JSON array of `{ kind, id, label }`)
+* `created_by` VARCHAR(64) [NULLable]
+* `created_at` DATETIME
+* `updated_at` DATETIME
+
+### `weekly_plan_day_notes`
+Per-day management notes displayed underneath each day header on the Weekly Plan board.
+* `date` VARCHAR(10) [PK] (ISO date `YYYY-MM-DD`)
+* `note` TEXT
+* `updated_by` VARCHAR(64) [NULLable]
+* `updated_at` DATETIME
+
 ---
 
 ## 12. Newsletter
@@ -874,3 +910,145 @@ The one global opt-out list. Every send skips these addresses.
 JSON (C3), read and written only by `api/newsletter.php` (`settings_get` / `settings_save`); a missing key means the defaults.
 `{ version: 1, header: EmailDoc | null, footer: EmailDoc | null, theme: { contentWidth 520..800, pageBackground, contentBackground, fontFamily, textColor, linkColor, buttonBackground, buttonTextColor }, sender: { fromName, replyTo }, sending: { batchSize 10..200 (40), perHourLimit 10..10000 (400), testRecipients: string[] (max 5) } }`.
 `header` / `footer` `null` = the built-in default for the company and language. Uploaded images are plain files under `<uploads>/newsletter/YYYY/MM/<random hex>.<ext>` (no table).
+
+---
+
+## 13. Agency & Workforce Leasing
+
+### `agency_workers`
+Permanent candidate and rented-employee profiles (separate entity from `leads` contacts).
+* `id` VARCHAR(100) [PK]
+* `worker_code` VARCHAR(50) [NULLable] (Human-readable reference e.g. `AGW-001`)
+* `full_name` VARCHAR(200)
+* `preferred_name` VARCHAR(120) [NULLable]
+* `email` VARCHAR(255) [NULLable]
+* `phone` VARCHAR(60) [NULLable]
+* `stage_id` VARCHAR(80) (Customizable recruitment stage key from `AGENCY_SETTINGS`)
+* `worker_status` ENUM('candidate', 'rented', 'bench', 'archived')
+* `nationality` VARCHAR(100) [NULLable]
+* `date_of_birth` VARCHAR(20) [NULLable]
+* `profile_json` LONGTEXT [NULLable] (Structured applicant, passport, permit, stayWork, addresses, family, and custom fields)
+* `skills_json` TEXT [NULLable]
+* `notes` LONGTEXT [NULLable]
+* `default_pay_rate` DECIMAL(12, 2)
+* `default_bill_rate` DECIMAL(12, 2)
+* `currency` VARCHAR(10)
+* `assigned_recruiter` VARCHAR(100) [NULLable]
+* `created_by` VARCHAR(100) [NULLable]
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+
+### `agency_workplaces`
+External company worksites / shifts locations linked to Business/Partner clients in `leads`.
+* `id` VARCHAR(100) [PK]
+* `company_client_id` VARCHAR(100) (References company `leads.id`)
+* `name` VARCHAR(160)
+* `address` VARCHAR(255) [NULLable]
+* `contact_lead_id` VARCHAR(100) [NULLable] (Person contact in `leads` at that company)
+* `default_shift_code` VARCHAR(50) [NULLable]
+* `notes` TEXT [NULLable]
+* `active` TINYINT(1)
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+
+### `agency_placements`
+Historical and active workforce leasing placements assigning an `agency_workers` row to an external client company and workplace.
+* `id` VARCHAR(100) [PK]
+* `worker_id` VARCHAR(100) (References `agency_workers.id`)
+* `company_client_id` VARCHAR(100) (References company `leads.id`)
+* `workplace_id` VARCHAR(100) [NULLable] (References `agency_workplaces.id`)
+* `contact_lead_id` VARCHAR(100) [NULLable] (Client-side HR/site contact `leads.id`)
+* `job_role` VARCHAR(160)
+* `status` ENUM('planned', 'active', 'completed', 'terminated')
+* `start_date` DATE
+* `end_date` DATE [NULLable]
+* `pay_rate` DECIMAL(12, 2)
+* `pay_rate_type` ENUM('hourly', 'monthly')
+* `bill_rate` DECIMAL(12, 2)
+* `bill_rate_type` ENUM('hourly', 'monthly')
+* `currency` VARCHAR(10)
+* `notes` TEXT [NULLable]
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+
+### `agency_worker_checklists`
+Customizable compliance and onboarding checklist items per worker.
+* `id` VARCHAR(100) [PK]
+* `worker_id` VARCHAR(100)
+* `item_key` VARCHAR(100)
+* `label` VARCHAR(200)
+* `status` ENUM('pending', 'submitted', 'verified', 'expired')
+* `expires_at` DATE [NULLable]
+* `note` TEXT [NULLable]
+* `file_id` VARCHAR(100) [NULLable]
+* `sort_order` INT
+* `updated_at` TIMESTAMP
+
+### `agency_worker_files`
+Private candidate/worker documents stored outside the web root under `uploads/private/agency/` and served through `api/agency_file.php`.
+* `id` VARCHAR(100) [PK]
+* `worker_id` VARCHAR(100)
+* `category` VARCHAR(60)
+* `checklist_item_id` VARCHAR(100) [NULLable]
+* `file_name` VARCHAR(255)
+* `mime_type` VARCHAR(120) [NULLable]
+* `size_bytes` BIGINT
+* `storage_name` VARCHAR(255)
+* `uploaded_by` VARCHAR(100) [NULLable]
+* `created_at` TIMESTAMP
+
+### `agency_timeline_events`
+Lifecycle timeline per worker (`stage_change`, `contact`, `placement`, `sick_leave`, `compliance`, `note`, `work_log`).
+* `id` VARCHAR(100) [PK]
+* `worker_id` VARCHAR(100)
+* `event_type` ENUM('stage_change', 'contact', 'placement', 'sick_leave', 'compliance', 'note', 'work_log')
+* `title` VARCHAR(255)
+* `description` TEXT [NULLable]
+* `meta_json` TEXT [NULLable]
+* `occurred_at` DATETIME
+* `created_by` VARCHAR(100) [NULLable]
+* `created_at` TIMESTAMP
+
+### `agency_shifts`
+Daily scheduled shifts, worked shifts, and sick leave entries per rented worker, company, and workplace.
+* `id` VARCHAR(100) [PK]
+* `worker_id` VARCHAR(100)
+* `placement_id` VARCHAR(100) [NULLable]
+* `company_client_id` VARCHAR(100)
+* `workplace_id` VARCHAR(100) [NULLable]
+* `work_date` DATE
+* `shift_template_id` VARCHAR(80) [NULLable]
+* `shift_label` VARCHAR(120) [NULLable]
+* `start_time` VARCHAR(10) [NULLable]
+* `end_time` VARCHAR(10) [NULLable]
+* `hours` DECIMAL(6, 2)
+* `overtime_hours` DECIMAL(6, 2)
+* `status` ENUM('scheduled', 'worked', 'sick', 'absent', 'holiday')
+* `sick_note` TEXT [NULLable]
+* `notes` TEXT [NULLable]
+* `created_by` VARCHAR(100) [NULLable]
+* `updated_at` TIMESTAMP
+
+### `agency_payments`
+Monthly worker payout and client billing calculation records linked to `financial_records`.
+* `id` VARCHAR(100) [PK]
+* `worker_id` VARCHAR(100)
+* `placement_id` VARCHAR(100) [NULLable]
+* `company_client_id` VARCHAR(100) [NULLable]
+* `period_ym` VARCHAR(10)
+* `regular_hours` DECIMAL(8, 2)
+* `overtime_hours` DECIMAL(8, 2)
+* `sick_days` DECIMAL(6, 1)
+* `base_pay` DECIMAL(12, 2)
+* `items_json` LONGTEXT [NULLable]
+* `gross_pay` DECIMAL(12, 2)
+* `deductions_total` DECIMAL(12, 2)
+* `net_pay` DECIMAL(12, 2)
+* `paid_amount` DECIMAL(12, 2)
+* `billable_total` DECIMAL(12, 2)
+* `currency` VARCHAR(10)
+* `status` ENUM('draft', 'approved', 'paid')
+* `paid_at` DATE [NULLable]
+* `financial_record_id` VARCHAR(100) [NULLable]
+* `notes` TEXT [NULLable]
+* `updated_at` TIMESTAMP

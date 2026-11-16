@@ -234,8 +234,10 @@ function ccrm_mail_store_event(PDO $pdo, array $m): string {
  * read its body and file it. Returns the outcome of ccrm_mail_store_event(), or
  * 'skipped' (no customer, or gone from the server) / 'old' (before the cut-off date).
  */
-function ccrm_mail_process_uid(PDO $pdo, $stream, int $uid, array $ctx): string {
-    $msgNo = @imap_msgno($stream, $uid);
+function ccrm_mail_process_uid(PDO $pdo, $stream, int $uid, array $ctx, ?int $msgNo = null): string {
+    if ($msgNo === null || $msgNo <= 0) {
+        $msgNo = (int)@imap_msgno($stream, $uid);
+    }
     if (!$msgNo) return 'skipped';
     $h = @imap_headerinfo($stream, $msgNo);
     if (!$h) return 'skipped';
@@ -310,6 +312,11 @@ function ccrm_company_mailbox_settings(array $row): array {
 function ccrm_mail_filing_sources(PDO $pdo): array {
     $sources = [];
     foreach ($pdo->query("SELECT * FROM `company_mailboxes` WHERE `is_active` = 1 ORDER BY `name`")->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $settings = ccrm_company_mailbox_settings($r);
+        $connectorType = (string)($settings['connectorType'] ?? '');
+        if (in_array($connectorType, ['whatsapp', 'claude', 'antigravity', 'chatgpt', 'claude_api', 'gemini_api', 'openai_api'], true)) {
+            continue;
+        }
         $owner = null;
         if (!empty($r['owner_user_id'])) {
             $o = $pdo->prepare("SELECT `name`, `email` FROM `users` WHERE `id` = ?");
@@ -318,7 +325,7 @@ function ccrm_mail_filing_sources(PDO $pdo): array {
         }
         $sources[] = [
             'key' => 'c:' . $r['id'], 'kind' => 'company', 'id' => $r['id'], 'label' => $r['name'] !== '' ? $r['name'] : $r['address'],
-            'address' => strtolower(trim((string)$r['address'])), 'settings' => ccrm_company_mailbox_settings($r),
+            'address' => strtolower(trim((string)$r['address'])), 'settings' => $settings,
             // A company mailbox is nobody's personal mail: everyone reads its filed mail from the stored body.
             'owner_email' => null, 'owner_name' => $owner['name'] ?? null,
             'cutoff' => !empty($r['backfill_since']) ? (int)strtotime($r['backfill_since'] . ' 00:00:00') : null,
@@ -388,11 +395,11 @@ function ccrm_mail_run_folder(PDO $pdo, array $source, string $folder, array $ct
                 'backfill_upper_uid' => $nextUid, 'backfill_done' => $nextUid <= 1 ? 1 : 0, 'filed_count' => 0,
             ];
         }
-        $step = function (int $uid) use ($pdo, $stream, $ctx, &$counts, &$budget, &$st): ?string {
+        $step = function (int $uid, ?int $msgNo = null) use ($pdo, $stream, $ctx, &$counts, &$budget, &$st): ?string {
             if ($budget['left'] <= 0 || microtime(true) >= $budget['deadline']) return null;
             $budget['left']--;
             $counts['seen']++;
-            $r = ccrm_mail_process_uid($pdo, $stream, $uid, $ctx);
+            $r = ccrm_mail_process_uid($pdo, $stream, $uid, $ctx, $msgNo);
             if (isset($counts[$r])) $counts[$r]++;
             if ($r === 'filed') $st['filed_count'] = (int)($st['filed_count'] ?? 0) + 1;
             return $r;
@@ -401,13 +408,16 @@ function ccrm_mail_run_folder(PDO $pdo, array $source, string $folder, array $ct
         // 1. New mail (UIDs above the high-water mark), oldest first so the mark only moves up.
         if ($nextUid - 1 > (int)$st['last_uid']) {
             $overview = @imap_fetch_overview($stream, ((int)$st['last_uid'] + 1) . ':' . ($nextUid - 1), FT_UID);
-            $uids = [];
+            $newItems = [];
             foreach (is_array($overview) ? $overview : [] as $o) {
-                if ((int)$o->uid > (int)$st['last_uid']) $uids[] = (int)$o->uid;
+                if ((int)$o->uid > (int)$st['last_uid']) {
+                    $newItems[(int)$o->uid] = (int)($o->msgno ?? 0);
+                }
             }
-            sort($uids, SORT_NUMERIC);
-            foreach ($uids as $uid) {
-                if ($step($uid) === null) break;
+            ksort($newItems, SORT_NUMERIC);
+            $uids = array_keys($newItems);
+            foreach ($newItems as $uid => $msgNo) {
+                if ($step($uid, $msgNo) === null) break;
                 $st['last_uid'] = $uid;
             }
             // Everything up to the server's UIDNEXT was looked at when the list was exhausted.
@@ -417,20 +427,31 @@ function ccrm_mail_run_folder(PDO $pdo, array $source, string $folder, array $ct
         }
 
         // 2. Backlog, newest first, in chunks, back to the cut-off date.
+        // Search by sequence number (without SE_UID) so c-client never scans 1:N UIDs on huge mailboxes.
         if (empty($st['backfill_done']) && $budget['left'] > 0 && microtime(true) < $budget['deadline']) {
             $criteria = !empty($ctx['cutoff']) ? 'SINCE "' . date('d-M-Y', (int)$ctx['cutoff']) . '"' : 'ALL';
-            $found = @imap_search($stream, $criteria, SE_UID);
-            $upper = (int)($st['backfill_upper_uid'] ?? 0);
-            $pool = [];
-            foreach (is_array($found) ? $found : [] as $uid) {
-                if ((int)$uid < $upper) $pool[] = (int)$uid;
+            if ($criteria === 'ALL') {
+                $numMsg = (int)@imap_num_msg($stream);
+                $foundSeqs = $numMsg > 0 ? range(1, $numMsg) : [];
+            } else {
+                $found = @imap_search($stream, $criteria);
+                $foundSeqs = is_array($found) ? array_map('intval', $found) : [];
             }
-            rsort($pool, SORT_NUMERIC);
+            rsort($foundSeqs, SORT_NUMERIC);
+            $upper = (int)($st['backfill_upper_uid'] ?? 0);
             $stoppedEarly = false;
-            foreach ($pool as $uid) {
-                $r = $step($uid);
-                if ($r === null) { $stoppedEarly = true; break; }
-                $st['backfill_upper_uid'] = $uid;
+            foreach (array_chunk($foundSeqs, 50) as $seqChunk) {
+                $ovChunk = @imap_fetch_overview($stream, implode(',', $seqChunk), 0);
+                if (!is_array($ovChunk)) continue;
+                usort($ovChunk, fn($a, $b) => ((int)($b->uid ?? 0)) <=> ((int)($a->uid ?? 0)));
+                foreach ($ovChunk as $o) {
+                    $uid = (int)($o->uid ?? 0);
+                    $msgNo = (int)($o->msgno ?? 0);
+                    if ($uid <= 0 || $uid >= $upper) continue;
+                    $r = $step($uid, $msgNo);
+                    if ($r === null) { $stoppedEarly = true; break 2; }
+                    $st['backfill_upper_uid'] = $uid;
+                }
             }
             if (!$stoppedEarly) {
                 $st['backfill_done'] = 1;

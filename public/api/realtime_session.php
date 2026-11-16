@@ -16,6 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 $sessionUser = ccrm_require_auth();
 
 require_once __DIR__ . '/agent_utils.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 try {
     $pdo = get_db_connection();
@@ -82,11 +83,12 @@ $configJson = $stmt->fetchColumn();
 $integrationsConfig = $configJson ? json_decode($configJson, true) : [];
 $integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys()) : [];
 
-$openAiKey = $integrationsConfig['openAiKey'] ?? '';
+$openAiKey = ccrm_ai_resolve_openai_key($pdo, $integrationsConfig);
 if (empty($openAiKey)) {
     echo json_encode([
         'success' => false,
-        'message' => ('OpenAI API key is missing. Please configure your OpenAI API Key in ' . KOPERNIQ_PRODUCT_NAME . ' Settings > Integrations.')
+        'code' => 'ai_key_missing',
+        'message' => 'OpenAI API key is required for Live Realtime WebRTC Voice. Configure an OpenAI API connector or fallback OpenAI key in Settings → AI integration.'
     ]);
     exit;
 }

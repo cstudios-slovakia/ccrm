@@ -24,6 +24,7 @@ export interface VoiceTaskActionBarProps {
     defaultStatus?: string;
     relatedLeadId?: string;
     relatedProjectId?: string;
+    relatedAgencyWorkerId?: string;
     isLocking?: boolean;
     canCreate?: boolean;
     manualButtonText?: string;
@@ -63,6 +64,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
     defaultStatus = "New",
     relatedLeadId,
     relatedProjectId,
+    relatedAgencyWorkerId,
     isLocking = false,
     canCreate = true,
     manualButtonText,
@@ -465,6 +467,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                     assignedUsers: matchedUser ? [matchedUser] : [],
                     relatedLeadId: relatedLeadId || undefined,
                     relatedProjectId: relatedProjectId || undefined,
+                    relatedAgencyWorkerId: relatedAgencyWorkerId || undefined,
                     isLocking: isLocking || undefined,
                     isAiGenerated: true,
                 };

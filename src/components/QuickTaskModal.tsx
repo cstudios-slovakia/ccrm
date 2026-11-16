@@ -21,6 +21,7 @@ import type { Lead, Project, RecurringTaskTemplate, Task, TaskEmailReminder, Tas
 import type { Language } from "../utils/translations";
 import { CustomSelect, type DropdownOption } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
+import { AgencyWorkerSelect } from "./agency/AgencyWorkerSelect";
 import { taskEmailReminderHint } from "./TaskEmailReminderField";
 import { useTaskSettings } from "../hooks/useTaskSettings";
 import { TaskTagMentionInput } from "./TaskTagMentionInput";
@@ -306,6 +307,7 @@ interface QuickTaskModalProps {
     /** The person creating the task; also the default assignee. */
     currentUserName: string;
     mailConfigured?: boolean;
+    agencyEnabled?: boolean;
     leadStageGroups?: Record<string, string>;
     leadStateParents?: Record<string, string>;
     /** Pre-filled deadline (the calendar's "+" on a day); defaults to today. */
@@ -354,6 +356,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     systemLanguage,
     currentUserName,
     mailConfigured = true,
+    agencyEnabled = false,
     leadStageGroups,
     leadStateParents,
     initialDeadline,
@@ -387,6 +390,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     const [customTime, setCustomTime] = useState(false);
     const [relatedLeadId, setRelatedLeadId] = useState("");
     const [relatedProjectId, setRelatedProjectId] = useState("");
+    const [relatedAgencyWorkerId, setRelatedAgencyWorkerId] = useState("");
     const [isLocking, setIsLocking] = useState(false);
     const { offerConclusion, defaultRequiresConclusion } = useTaskSettings();
     const [requiresConclusion, setRequiresConclusion] = useState(() => Boolean(defaultRequiresConclusion));
@@ -929,6 +933,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                     assignedUsers: assignedUser ? [assignedUser] : [],
                     relatedLeadId: relatedLeadId || null,
                     relatedProjectId: relatedProjectId || null,
+                    relatedAgencyWorkerId: relatedAgencyWorkerId || null,
                     isLocking: relatedLeadId ? isLocking : false,
                     emailReminders,
                     requiresConclusion: offerConclusion && requiresConclusion ? true : undefined,
@@ -959,6 +964,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
             assignedUsers: assignedUser ? [assignedUser] : [],
             relatedLeadId: relatedLeadId || undefined,
             relatedProjectId: relatedProjectId || undefined,
+            relatedAgencyWorkerId: relatedAgencyWorkerId || undefined,
             isLocking: relatedLeadId ? isLocking : false,
             emailReminders,
             // Only while the setting offers it: a stale tick must not outlive the setting.
@@ -1434,6 +1440,19 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                     />
                 </div>
             </div>
+            {agencyEnabled && (
+                <div className="flex flex-col gap-1.5">
+                    <FieldLabel>{t("Agency Worker / Rented Employee", "Agentúrny pracovník", "Kölcsönzött dolgozó")}</FieldLabel>
+                    <AgencyWorkerSelect
+                        unstyled
+                        value={relatedAgencyWorkerId}
+                        onChange={setRelatedAgencyWorkerId}
+                        lang={systemLanguage}
+                        className={selectSkin(false, relatedAgencyWorkerId ? "" : "text-slate-500")}
+                        testId="quick-task-agency-worker"
+                    />
+                </div>
+            )}
             {anyDictatedContext && (
                 <div role="note" className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-blue-50 text-blue-900 text-micro leading-[1.4]">
                     <span className="h-5.5 px-2 rounded-full bg-blue-100 text-blue-700 text-micro font-semibold flex items-center gap-1 shrink-0">

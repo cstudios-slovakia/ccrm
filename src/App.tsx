@@ -37,6 +37,7 @@ import {
 } from "./utils/browserNotifications";
 import { isDoneTaskState } from "./utils/projectTasks";
 import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listIds";
+import { agencyRightsFrom } from "./utils/agencyRights";
 import { VERSION } from "./utils/version";
 import { reconcileInvoiceMovements } from "./utils/invoiceFinanceBridge";
 import { materializeDueCharges } from "./utils/recurringRuleDeletion";
@@ -70,6 +71,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AiKeyBanner } from "./components/ui/AiKeyBanner";
 import { ModuleSetupRequired } from "./components/ui/ModuleSetupRequired";
 import { isPersonalMailboxConfigured, isVectorDbConfigured } from "./utils/moduleRequirements";
+import { listMyConnectors } from "./utils/companyMailboxes";
 import { hasOpenAiKey, openAiSettings } from "./utils/aiConfig";
 import { QuickAddClientProvider } from "./components/ui/QuickAddClient";
 import FilePreviewPane from "./components/FilePreviewPane";
@@ -204,6 +206,7 @@ const WarehouseView = safeLazy(() => import("./components/WarehouseView").then(m
 const FinancialManagementView = safeLazy(() => import("./components/FinancialManagementView").then(m => ({ default: m.FinancialManagementView })));
 const PriceOffersView = safeLazy(() => import("./components/PriceOffersView").then(m => ({ default: m.PriceOffersView })));
 const EmployeesView = safeLazy(() => import("./components/employees/EmployeesView").then(m => ({ default: m.EmployeesView })));
+const AgencyView = safeLazy(() => import("./components/agency/AgencyView").then(m => ({ default: m.AgencyView })));
 const OrdersView = safeLazy(() => import("./components/OrdersView").then(m => ({ default: m.OrdersView })));
 const TicketsView = safeLazy(() => import("./components/TicketsView").then(m => ({ default: m.TicketsView })));
 const PublicProjectTicketsView = safeLazy(() => import("./components/PublicProjectTicketsView").then(m => ({ default: m.PublicProjectTicketsView })));
@@ -490,12 +493,12 @@ function App() {
 
     const resolvedBase = aliasMap[hashLower] || hashLower;
 
-    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("project-") || resolvedBase.startsWith("employee-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("orders") || resolvedBase.startsWith("order-") || resolvedBase.startsWith("tickets") || resolvedBase.startsWith("ticket-") || resolvedBase.startsWith("public-tickets") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation") || resolvedBase.startsWith("employees")) {
+    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("project-") || resolvedBase.startsWith("employee-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("orders") || resolvedBase.startsWith("order-") || resolvedBase.startsWith("tickets") || resolvedBase.startsWith("ticket-") || resolvedBase.startsWith("public-tickets") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation") || resolvedBase.startsWith("employees") || resolvedBase.startsWith("agency")) {
       // An alias maps to its canonical tab; anything else keeps its original case.
       const route = (aliasMap[hashLower] || baseRaw) + subPath;
       return queryRaw ? `${route}?${queryRaw}` : route;
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "orders", "tickets", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "time-tracking", "whatsapp", "newsletter", "updates", "warehouse", "financial", "employees", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "orders", "tickets", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "time-tracking", "whatsapp", "newsletter", "updates", "warehouse", "financial", "employees", "agency", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
     if (typeof window !== "undefined" && (window.location.search.includes("embed=tasks") || window.location.search.includes("embed=true"))) {
       if (!hashLower || hashLower === "" || hashLower === "dashboard") {
         return "tasks";
@@ -1264,6 +1267,9 @@ ${log.payload || ''}
         case "employees":
           viewName = getTranslation(userLanguage, "sidebar.employees");
           break;
+        case "agency":
+          viewName = getTranslation(userLanguage, "sidebar.agency");
+          break;
         case "invoices":
           viewName = t("Price Offers", "Cenové ponuky", "Árajánlatok");
           break;
@@ -1294,6 +1300,8 @@ ${log.payload || ''}
   // `ModuleAccess` slice so none of them has to know about roles.
   const access = useMemo(() => buildAccess(currentUser, roles), [currentUser, roles]);
   const employeeRights = useMemo(() => employeeRightsFrom(access), [access]);
+  const agencyRights = useMemo(() => agencyRightsFrom(access), [access]);
+  const agencyEnabled = !!currentUser?.id && access.can("agency") && !(integrationsConfig?.disabledModules || []).includes("agency");
   const dashboardSourceAccess = useMemo(() => ({ can: access.can, isAdmin: access.isAdmin }), [access]);
 
   const taskAccess = (() => {
@@ -1304,6 +1312,8 @@ ${log.payload || ''}
       edit: m.edit,
       delete: m.delete,
       viewAll: access.can("tasks.view_all"),
+      weeklyPlanView: access.can("tasks.weekly_plan"),
+      weeklyPlanEdit: access.canEdit("tasks.weekly_plan"),
     };
   })();
 
@@ -3428,11 +3438,36 @@ ${log.payload || ''}
     return () => clearInterval(interval);
   }, [currentUser]);
 
+  // Track whether the current user is authorized to see at least one shared communication connector
+  const [hasAuthorizedConnector, setHasAuthorizedConnector] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!currentUser) {
+      setHasAuthorizedConnector(false);
+      return;
+    }
+    const refreshConnectors = () => {
+      listMyConnectors()
+        .then((res) => {
+          const list = res.mailboxes ?? res.connectors ?? [];
+          setHasAuthorizedConnector(Array.isArray(list) && list.length > 0);
+        })
+        .catch(() => {
+          setHasAuthorizedConnector(false);
+        });
+    };
+    refreshConnectors();
+    window.addEventListener("ccrm:connectors-updated", refreshConnectors);
+    return () => window.removeEventListener("ccrm:connectors-updated", refreshConnectors);
+  }, [currentUser]);
+
+  const canOpenRouteWithComm = (route: string) =>
+    (route.split("/")[0].toLowerCase() === "email" && Boolean(hasAuthorizedConnector)) || access.canOpenRoute(route);
+
   // Modules that stay in the navigation before their setup is done and open to
   // ModuleSetupRequired instead of the real view until it is.
   const isModuleSetupPending = (route: string) =>
     (route === "rag_ai" && !isVectorDbConfigured(integrationsConfig)) ||
-    (route === "email" && !isPersonalMailboxConfigured(currentUser || users[0]));
+    (route === "email" && hasAuthorizedConnector === false && !isPersonalMailboxConfigured(currentUser || users[0]));
 
   // What the RAG AI view and the Executive Copilot (same chat_rag.php backend) show
   // while the vector database is not connected. One source, so they never drift.
@@ -3513,6 +3548,8 @@ ${log.payload || ''}
           setRecurringTasks={updateRecurringTasksAndSync}
           leads={leads}
           projects={projects}
+          tickets={tickets}
+          employees={employees}
           users={users}
           systemLanguage={userLanguage}
           currentUser={activeUser}
@@ -3520,6 +3557,7 @@ ${log.payload || ''}
           taskStateColors={taskStateColors}
           taskAccess={taskAccess}
           mailConfigured={isSystemMailConfigured(integrationsConfig)}
+          agencyEnabled={agencyEnabled}
           leadStageGroups={leadStageGroups}
           leadStateParents={leadStateParents}
         />
@@ -3538,7 +3576,7 @@ ${log.payload || ''}
     // here. Unknown routes fall through to the tasks board below, and
     // permissionKeyForRoute maps them to "tasks" so that case is covered too.
     const routeKey = permissionKeyForRoute(activeRoute);
-    if (routeKey !== null && !access.canOpenRoute(activeRoute)) {
+    if (routeKey !== null && !canOpenRouteWithComm(activeRoute)) {
       return (
         <AccessDeniedView
           systemLanguage={userLanguage}
@@ -3724,6 +3762,7 @@ ${log.payload || ''}
           setEmployeeSettings={updateEmployeeSettingsAndSync}
           financialCategories={financialCategories}
           isDemoMode={isDemoMode}
+          integrationsConfig={integrationsConfig}
         />
       );
     }
@@ -3778,6 +3817,8 @@ ${log.payload || ''}
           taskStateColors={taskStateColors}
           tickets={tickets}
           ticketStatuses={ticketStatuses}
+          agencyEnabled={agencyEnabled}
+          agencyRights={agencyRights}
         />
       );
     }
@@ -3967,6 +4008,7 @@ ${log.payload || ''}
             access={access.module("tickets")}
             canSeeTicketTime={access.can("tickets.time")}
             canTrackTime={access.canEdit("time_tracking")}
+            agencyEnabled={agencyEnabled}
             initialSelectedTicketId={subTicketId}
             onNavigate={(route: string) => {
               setActiveTab(route);
@@ -4112,6 +4154,8 @@ ${log.payload || ''}
             taskStateColors={taskStateColors}
             tickets={tickets}
             ticketStatuses={ticketStatuses}
+            agencyEnabled={agencyEnabled}
+            agencyRights={agencyRights}
           />
         );
       }
@@ -4301,8 +4345,14 @@ ${log.payload || ''}
                   "A postafiók kapcsolata (IMAP / SMTP szerver, felhasználónév és jelszó), a kapcsolatteszttel ellenőrizve"
                 ),
               ]}
-              settingsLocation={t("Personal settings → Email", "Osobné nastavenia → E-mail", "Személyes beállítások → E-mail")}
-              onOpenSettings={() => { window.location.hash = "personal-settings/email"; }}
+              settingsLocation={
+                access.hasSettingsAccess
+                  ? t("Settings → Email → Connectors & mailboxes", "Nastavenia → E-mail → Konektory a schránky", "Beállítások → E-mail → Konektorok és postafiókok")
+                  : t("Personal settings → Email", "Osobné nastavenia → E-mail", "Személyes beállítások → E-mail")
+              }
+              onOpenSettings={() => {
+                window.location.hash = access.hasSettingsAccess ? "settings/email/mailboxes" : "personal-settings/email";
+              }}
             />
           );
         }
@@ -4550,6 +4600,53 @@ ${log.payload || ''}
             setEmployeeSettings={updateEmployeeSettingsAndSync}
             financialCategories={financialCategories}
             isDemoMode={isDemoMode}
+            integrationsConfig={integrationsConfig}
+          />
+        );
+      case "agency":
+        return agencyEnabled ? (
+          <AgencyView
+            route={activeRoute}
+            onNavigate={(route) => {
+              setActiveTab(route);
+              window.location.hash = route;
+            }}
+            lang={userLanguage}
+            rights={agencyRights}
+            isAdmin={access.isAdmin}
+            currentUser={activeUser}
+            leads={leads}
+            tasks={tasks}
+            setTasks={updateTasksAndSync}
+            projects={projects}
+            users={users}
+            taskStates={taskStates}
+            taskStateColors={taskStateColors}
+            taskAccess={taskAccess}
+            tickets={tickets}
+            setTickets={updateTicketsAndSync}
+            ticketStatuses={ticketStatuses}
+            financialCategories={financialCategories}
+            mailConfigured={isSystemMailConfigured(integrationsConfig)}
+            integrationsConfig={integrationsConfig}
+          />
+        ) : (
+          <AccessDeniedView
+            systemLanguage={userLanguage}
+            fallbackRoute={firstAllowedRoute(access)}
+            onNavigate={(route) => {
+              setActiveTab(route);
+              window.location.hash = route;
+            }}
+            roleName={currentUser?.role}
+            hasKnownRole={access.hasKnownRole}
+            onLogout={() => {
+              commitPendingUndos().then(() => fetch("/api/logout.php", { method: "POST" }))
+                .finally(() => {
+                  setCurrentUser(null);
+                  window.location.href = "/";
+                });
+            }}
           />
         );
       default:
@@ -4562,6 +4659,7 @@ ${log.payload || ''}
             leads={leads}
             projects={projects}
             tickets={tickets}
+            employees={employees}
             users={users}
             systemLanguage={userLanguage}
             currentUser={activeUser}
@@ -4569,6 +4667,7 @@ ${log.payload || ''}
             taskStateColors={taskStateColors}
             taskAccess={taskAccess}
             mailConfigured={isSystemMailConfigured(integrationsConfig)}
+            agencyEnabled={agencyEnabled}
             leadStageGroups={leadStageGroups}
             leadStateParents={leadStateParents}
           />
@@ -4857,6 +4956,7 @@ ${log.payload || ''}
                 systemLanguage={userLanguage}
                 currentUserName={displayUser.name}
                 mailConfigured={isSystemMailConfigured(integrationsConfig)}
+                agencyEnabled={agencyEnabled}
                 leadStageGroups={leadStageGroups}
                 leadStateParents={leadStateParents}
                 onCreate={(created) => updateTasksAndSync((prev) => [...created, ...prev])}
@@ -4881,11 +4981,11 @@ ${log.payload || ''}
             <Sidebar 
               activeTab={activeTab} 
               setActiveTab={(tab) => { 
-                if (!access.canOpenRoute(tab)) return;
+                if (!canOpenRouteWithComm(tab)) return;
                 window.location.hash = tab; 
               }} 
               showSettings={access.hasSettingsAccess}
-              canOpenRoute={access.canOpenRoute}
+              canOpenRoute={canOpenRouteWithComm}
               onLogout={() => {
                 commitPendingUndos().then(() => fetch("/api/logout.php", { method: "POST" }))
                   .finally(() => {
@@ -4959,6 +5059,7 @@ ${log.payload || ''}
               systemLanguage={userLanguage}
               currentUserName={displayUser.name}
               mailConfigured={isSystemMailConfigured(integrationsConfig)}
+              agencyEnabled={agencyEnabled}
               leadStageGroups={leadStageGroups}
               leadStateParents={leadStateParents}
               onCreate={(created) => updateTasksAndSync((prev) => [...created, ...prev])}

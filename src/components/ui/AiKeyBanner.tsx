@@ -59,15 +59,15 @@ export const AiKeyBanner: React.FC<AiKeyBannerProps> = ({
   const explanation = feature
     ? t(
         language,
-        `“${feature}” needs an OpenAI API key. It stays unavailable until an administrator saves one in Settings → AI integration.`,
-        `Funkcia „${feature}“ vyžaduje OpenAI API kľúč. Kým ho administrátor neuloží v Nastaveniach → AI integrácia, zostane nedostupná.`,
-        `A(z) „${feature}“ funkció OpenAI API kulcsot igényel. Amíg egy adminisztrátor nem ment kulcsot a Beállítások → AI integráció alatt, nem érhető el.`
+        `“${feature}” needs an OpenAI API key or an active LLM connector. It stays unavailable until an administrator configures one in Settings → AI integration.`,
+        `Funkcia „${feature}“ vyžaduje OpenAI API kľúč alebo aktívny LLM konektor. Kým ho administrátor nenastaví v Nastaveniach → AI integrácia, zostane nedostupná.`,
+        `A(z) „${feature}“ funkció OpenAI API kulcsot vagy aktív LLM csatlakozót igényel. Amíg egy adminisztrátor nem állítja be a Beállítások → AI integráció alatt, nem érhető el.`
       )
     : t(
         language,
-        "The AI features in this section stay unavailable until an administrator saves an OpenAI API key in Settings → AI integration.",
-        "AI funkcie v tejto sekcii zostanú nedostupné, kým administrátor neuloží OpenAI API kľúč v Nastaveniach → AI integrácia.",
-        "Az ebben a szakaszban lévő AI funkciók addig nem érhetők el, amíg egy adminisztrátor nem ment OpenAI API kulcsot a Beállítások → AI integráció alatt."
+        "The AI features in this section stay unavailable until an administrator saves an OpenAI API key or selects an LLM connector in Settings → AI integration.",
+        "AI funkcie v tejto sekcii zostanú nedostupné, kým administrátor neuloží OpenAI API kľúč alebo nevyberie LLM konektor v Nastaveniach → AI integrácia.",
+        "Az ebben a szakaszban lévő AI funkciók addig nem érhetők el, amíg egy adminisztrátor nem ment OpenAI API kulcsot vagy nem választ LLM csatlakozót a Beállítások → AI integráció alatt."
       );
 
   return (

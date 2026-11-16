@@ -6,6 +6,7 @@
 require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -53,12 +54,11 @@ try {
     summary_error(500, 'db_error', 'Database connection failed.');
 }
 
-// Fetch integrations config to get OpenAI API key
+// Fetch integrations config and check active AI source (connector or manual key)
 $integrationsConfig = ccrm_load_integrations_config($pdo);
-$openAiKey = trim((string)($integrationsConfig['openAiKey'] ?? ''));
 
-if ($openAiKey === '') {
-    summary_error(400, 'ai_key_missing', 'OpenAI API Key is not configured. Please configure it in Settings.');
+if (!ccrm_ai_is_configured($pdo, $integrationsConfig)) {
+    summary_error(422, 'ai_key_missing', 'AI provider is not configured. Please configure it in Settings.');
 }
 
 // Helper function to fetch registeruz URLs
@@ -157,54 +157,37 @@ Financial Data:
 $compiledDataText
 ---";
 
-// 4. Call OpenAI API
-$ch = curl_init('https://api.openai.com/v1/chat/completions');
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    'Content-Type: application/json',
-    'Authorization: Bearer ' . $openAiKey
-]);
-
-$financialModel = ccrm_ai_model();
-$payload = [
-    'model' => $financialModel,
-    'messages' => [
-        [
-            'role' => 'user',
-            'content' => $prompt
-        ]
+// 4. Call configured AI provider
+$financialModel = ccrm_ai_model($integrationsConfig);
+$aiRes = ccrm_ai_chat_completion(
+    $pdo,
+    [
+        'model' => $financialModel,
+        'messages' => [
+            [
+                'role' => 'user',
+                'content' => $prompt
+            ]
+        ],
+        'temperature' => 0.3,
     ],
-];
-if (ccrm_ai_model_supports_temperature($financialModel)) {
-    $payload['temperature'] = 0.3;
+    [
+        'feature' => 'financial_summary',
+        'timeout' => 45,
+        'integrationsConfig' => $integrationsConfig,
+    ]
+);
+
+if (empty($aiRes['ok'])) {
+    $errMsg = (string)($aiRes['error'] ?: 'AI API request failed');
+    $code = (string)($aiRes['code'] ?: 'ai_error');
+    summary_error(502, $code, 'AI Error: ' . $errMsg, ['providerMessage' => $errMsg]);
 }
 
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE));
-$response = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$curlErr = curl_error($ch);
-curl_close($ch);
-
-if ($httpCode !== 200 || !$response) {
-    $errData = json_decode($response, true);
-    $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI API request failed');
-    // 401/403 means the stored key exists but OpenAI rejected it — a different
-    // problem from "no key at all", and one the user fixes in the same place.
-    $code = ($httpCode === 401 || $httpCode === 403) ? 'ai_key_invalid'
-          : (($httpCode === 429) ? 'ai_rate_limited' : 'ai_error');
-    summary_error(502, $code, 'OpenAI Error: ' . $errMsg, ['providerMessage' => $errMsg]);
-}
-
-$resData = json_decode($response, true);
-ccrm_ai_capture_usage($pdo, 'financial_summary', $resData, $financialModel);
-$aiReply = trim($resData['choices'][0]['message']['content'] ?? '');
+$aiReply = trim((string)($aiRes['content'] ?? ''));
 
 if (empty($aiReply)) {
-    summary_error(502, 'ai_empty', 'Empty response from OpenAI');
+    summary_error(502, 'ai_empty', 'Empty response from AI provider');
 }
 
 echo json_encode([

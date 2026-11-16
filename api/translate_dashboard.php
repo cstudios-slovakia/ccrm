@@ -9,6 +9,7 @@
 require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -40,12 +41,12 @@ try {
     exit;
 }
 
-$openAiKey = $integrationsConfig['openAiKey'] ?? '';
-if (empty($openAiKey)) {
+if (!ccrm_ai_is_configured($pdo, $integrationsConfig)) {
     http_response_code(400);
     echo json_encode([
         'success' => false,
-        'message' => 'OpenAI API Key is not configured. Please configure it in Settings.'
+        'code' => 'ai_key_missing',
+        'message' => 'AI provider is not configured. Please configure it in Settings.'
     ]);
     exit;
 }
@@ -81,38 +82,32 @@ $messages = [
     ['role' => 'user', 'content' => json_encode($layout)]
 ];
 
-$ch = curl_init('https://api.openai.com/v1/chat/completions');
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    'Content-Type: application/json',
-    'Authorization: Bearer ' . $openAiKey
-]);
-$payload = [
-    'model' => $model,
-    'messages' => $messages,
-];
-if (ccrm_ai_model_supports_temperature($model)) {
-    $payload['temperature'] = 0.2;
-}
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+$aiRes = ccrm_ai_chat_completion(
+    $pdo,
+    [
+        'model' => $model,
+        'messages' => $messages,
+        'temperature' => 0.2,
+    ],
+    [
+        'feature' => 'dashboard_translate',
+        'timeout' => 60,
+        'integrationsConfig' => $integrationsConfig,
+    ]
+);
 
-$response = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$curlErr = curl_error($ch);
-curl_close($ch);
-
-if ($httpCode !== 200) {
-    $errData = json_decode($response, true);
-    $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI API request failed');
+if (empty($aiRes['ok'])) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'OpenAI Error: ' . $errMsg]);
+    echo json_encode([
+        'success' => false,
+        'code' => $aiRes['code'] ?: 'ai_error',
+        'message' => 'AI Error: ' . ($aiRes['error'] ?: 'AI API request failed'),
+        'providerMessage' => $aiRes['error'] ?? '',
+    ]);
     exit;
 }
 
-$resData = json_decode($response, true);
-ccrm_ai_capture_usage($pdo, 'dashboard_translate', $resData, $model);
-$rawText = $resData['choices'][0]['message']['content'] ?? '';
+$rawText = (string)($aiRes['content'] ?? '');
 
 $cleanedText = trim($rawText);
 if (strpos($cleanedText, '```') === 0) {

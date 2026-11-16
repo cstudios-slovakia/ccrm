@@ -95,7 +95,7 @@ if (!function_exists('demo_wipe_demo_rows')) {
     /** Rows another writer derives from a demo id (sync.php: 'fr-sal-' . salaryId, MCP: 'fr-inv-' . invoiceId). */
     function demo_wipe_derived_ids(): array {
         return [
-            'financial_records' => ['fr-sal-demo-%', 'fr-inv-demo-%', 'fr-inv-inv-demo-%'],
+            'financial_records' => ['fr-sal-demo-%', 'fr-inv-demo-%', 'fr-inv-inv-demo-%', 'fr-ag-demo-%'],
         ];
     }
 

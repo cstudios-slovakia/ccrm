@@ -55,6 +55,7 @@ interface EmployeesViewProps {
   roles?: RolePermission[];
   /** The person may open the "My employment" tab (any self.* permission). */
   selfService?: boolean;
+  integrationsConfig?: any;
 }
 
 type EmployeesViewName = "list" | "detail" | "matrix" | "form" | "settings" | "me";
@@ -197,7 +198,8 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   rights = FULL_EMPLOYEE_RIGHTS,
   users = [],
   roles = [],
-  selfService = false
+  selfService = false,
+  integrationsConfig
 }) => {
   // Reopening a closed payroll month unlocks its time entries; the server honours it for admins only
   const canReopenPayroll = isAdminRoleName(_currentUser?.role);
@@ -445,6 +447,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             systemLanguage={systemLanguage}
             systemCurrency={systemCurrency}
             rights={rights}
+            integrationsConfig={integrationsConfig}
           />
         )}
 
@@ -469,6 +472,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             users={users}
             roles={roles}
             canReopenPayroll={canReopenPayroll}
+            integrationsConfig={integrationsConfig}
           />
         )}
 

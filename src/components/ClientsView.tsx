@@ -12,7 +12,7 @@ import {
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
   ChevronLeft, ChevronRight, Milestone, MessageCircle, Coins, Archive, ArchiveRestore, Settings,
-  AlertTriangle, CheckSquare, FileCheck, ExternalLink, Ticket as TicketIcon, Tag
+  AlertTriangle, CheckSquare, FileCheck, ExternalLink, Ticket as TicketIcon, Tag, Building2, Link2
 } from "lucide-react";
 import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project, Order, WarehouseItem, Warehouse, WarehouseMovement, InvoiceOffer, InvoiceOfferItem, CompanyBillingSettings, Ticket, TicketStatusDefinition } from "../types";
 import { DEFAULT_TICKET_STATUSES, ticketStatusColor, ticketStatusLabel, ticketTypeColor, ticketTypeLabel, PRIORITY_COLORS } from "../utils/tickets";
@@ -45,6 +45,8 @@ import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { AiKeyBanner } from "./ui/AiKeyBanner";
 import { EntityTasksPanel } from "./EntityTasksPanel";
+import type { AgencyRights } from "../utils/agencyRights";
+import { ClientCompanyAgencyTab } from "./agency/ClientCompanyAgencyTab";
 import {
   hasOpenAiKey,
   hasTranscriptionKey,
@@ -71,6 +73,15 @@ import { FiledMailBody, MailAccountBadge } from "./FiledMail";
 import { fetchFiledMail, shouldReadStoredBody } from "../utils/filedMail";
 import { EntityHeader, PageHeader, Tabs } from "./layout";
 import { WhatsAppChip, OpenInChatLink } from "./WhatsAppChip";
+import { PROVIDERS, ProviderLogo } from "./CompanyMailboxSettings";
+import {
+  getWhatsAppChats,
+  inferConnectorType,
+  isMessagingConnector,
+  listMyConnectors,
+  type ConnectorType,
+  type WhatsAppChatSummary,
+} from "../utils/companyMailboxes";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { archiveLeadsWithUndo } from "../utils/leadActions";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
@@ -158,6 +169,8 @@ interface ClientsViewProps {
   taskStateColors?: Record<string, string>;
   tickets?: Ticket[];
   ticketStatuses?: TicketStatusDefinition[];
+  agencyEnabled?: boolean;
+  agencyRights?: AgencyRights;
 }
 
 /** The "without a category" row of the category filter. Not a real category id. */
@@ -495,6 +508,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   taskStateColors = {},
   tickets = [],
   ticketStatuses = DEFAULT_TICKET_STATUSES,
+  agencyEnabled = false,
+  agencyRights,
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   // Role gates. `view` is what let the user in; read-only users still search,
@@ -629,6 +644,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [newClientAdjustment, setNewClientAdjustment] = useState("");
   const [newClientCategories, setNewClientCategories] = useState<string[]>([]);
   const [newClientCategoryId, setNewClientCategoryId] = useState("");
+  const [newClientCompanyClientId, setNewClientCompanyClientId] = useState("");
+  const [newClientContactRole, setNewClientContactRole] = useState("");
 
   // Company registry type-ahead for the register drawer. The client profile
   // panel keeps its own instance, declared next to the profile form state.
@@ -959,6 +976,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       district: newClientType !== "person" ? newClientDistrict.trim() : undefined,
       categories: newClientCategories,
       clientCategoryId: newClientCategoryId || null,
+      companyClientId: newClientType === "person" ? (newClientCompanyClientId || null) : null,
+      contactRole: newClientType === "person" ? (newClientContactRole.trim() || null) : null,
       timeline: [
         {
           id: `ev-${Date.now()}`,
@@ -1004,6 +1023,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setNewClientAdjustment("");
     setNewClientCategories([]);
     setNewClientCategoryId("");
+    setNewClientCompanyClientId("");
+    setNewClientContactRole("");
     setNewClientVatStatus("idle");
     setNewClientVatResult(null);
     
@@ -1019,6 +1040,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
    */
   const allClientProfiles = useMemo(() => {
     const profilesMap: Record<string, {
+      primaryId: string;
       name: string;
       city: string;
       clientType: "person" | "business" | "partner";
@@ -1057,6 +1079,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       ticketAllowedEmails: string[];
       clientCategoryId: string | null;
       priceLevelId: string | null;
+      companyClientId: string | null;
+      contactRole: string | null;
       archived: boolean;
       aiSummary?: string;
       aiSummaryFingerprint?: string;
@@ -1087,6 +1111,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         // per-lead loop below still adds every lead's own value, categories and
         // timeline, the anchor's included, exactly once.
         profilesMap[clientKey] = {
+          primaryId: anchor.id,
           name: anchor.name,
           city: anchor.city || "",
           clientType: anchor.clientType || "person",
@@ -1125,6 +1150,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           ticketAllowedEmails: [],
           clientCategoryId: anchor.clientCategoryId || null,
           priceLevelId: anchor.priceLevelId || null,
+          companyClientId: anchor.companyClientId || null,
+          contactRole: anchor.contactRole || null,
           archived: !!anchor.archived,
           aiSummary: anchor.aiSummary || "",
           aiSummaryFingerprint: anchor.aiSummaryFingerprint || "",
@@ -1135,6 +1162,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       // Fold this lead into its profile. Every merge below keeps the first value
       // it finds, so it is a no-op for the anchor that seeded the profile, and the
       // first lead seen counts too when it is not the anchor.
+      if ((lead.id || "").startsWith("client-") && !profilesMap[clientKey].primaryId.startsWith("client-")) {
+        profilesMap[clientKey].primaryId = lead.id;
+      }
       if (lead.aiSummary && !profilesMap[clientKey].aiSummary) {
         profilesMap[clientKey].aiSummary = lead.aiSummary;
         profilesMap[clientKey].aiSummaryFingerprint = lead.aiSummaryFingerprint;
@@ -1144,6 +1174,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       }
       if (!profilesMap[clientKey].priceLevelId && lead.priceLevelId) {
         profilesMap[clientKey].priceLevelId = lead.priceLevelId;
+      }
+      if (!profilesMap[clientKey].companyClientId && lead.companyClientId) {
+        profilesMap[clientKey].companyClientId = lead.companyClientId;
+      }
+      if (!profilesMap[clientKey].contactRole && lead.contactRole) {
+        profilesMap[clientKey].contactRole = lead.contactRole;
       }
       // Archived only while every lead of the profile is: a new deal under the
       // same name brings the client back into the register on its own.
@@ -1218,6 +1254,24 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       return hasClientRecord || hasAdjustment;
     });
   }, [allClientProfiles]);
+
+  // Business / Partner companies available for attaching client-side person contacts.
+  const companyClientProfiles = useMemo(
+    () => clientProfiles.filter(c => c.clientType !== "person" && !c.archived),
+    [clientProfiles]
+  );
+
+  const companyByIdMap = useMemo(() => {
+    const map = new Map<string, (typeof clientProfiles)[number]>();
+    for (const company of clientProfiles) {
+      if (company.clientType === "person") continue;
+      map.set(company.primaryId, company);
+      for (const l of company.associatedLeads) {
+        if (l.id) map.set(l.id, company);
+      }
+    }
+    return map;
+  }, [clientProfiles]);
 
   // Find active client details based on URL deep routing (resilient matching across all client profiles)
   const activeClient = useMemo(() => {
@@ -1332,6 +1386,64 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [isLoadingMails, setIsLoadingMails] = useState(false);
   // Why the mail half of the timeline is empty, when it is empty for a reason.
   const [clientMailError, setClientMailError] = useState<string | null>(null);
+
+  const [messagingChannels, setMessagingChannels] = useState<
+    Array<{ id: string; name: string; connectorType: ConnectorType; chats: WhatsAppChatSummary[] }>
+  >([]);
+  const [chatClientLinks, setChatClientLinks] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("ccrm_chat_client_links") || "{}");
+    } catch {
+      return {};
+    }
+  });
+
+  const updateChatClientLink = (chatKey: string, leadId: string) => {
+    setChatClientLinks((prev) => {
+      const next = { ...prev };
+      if (leadId) next[chatKey] = leadId;
+      else delete next[chatKey];
+      try {
+        localStorage.setItem("ccrm_chat_client_links", JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!activeClient) return;
+    let cancelled = false;
+    void listMyConnectors()
+      .then(async (res) => {
+        if (cancelled) return;
+        const msgBoxes = (res.connectors ?? res.mailboxes ?? [])
+          .map((box) => ({
+            id: box.id,
+            name: box.name || box.address,
+            connectorType: inferConnectorType(box.settings, box.address, box.connectorType),
+          }))
+          .filter((b) => isMessagingConnector(b.connectorType));
+        const loaded = await Promise.all(
+          msgBoxes.map(async (b) => {
+            try {
+              const st = await getWhatsAppChats(b.id);
+              return { ...b, chats: Array.isArray(st.chats) ? st.chats : [] };
+            } catch {
+              return { ...b, chats: [] };
+            }
+          }),
+        );
+        if (!cancelled) setMessagingChannels(loaded);
+      })
+      .catch(() => {
+        /* ignore */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeClient?.name]);
 
   useEffect(() => {
     if (!activeClient || !activeClient.email || !userEmailSettings || !userEmailSettings.isValidated) {
@@ -1487,6 +1599,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [profileCategories, setProfileCategories] = useState<string[]>([]);
   const [profileClientCategoryId, setProfileClientCategoryId] = useState("");
   const [profilePriceLevelId, setProfilePriceLevelId] = useState("");
+  const [profileCompanyClientId, setProfileCompanyClientId] = useState("");
+  const [profileContactRole, setProfileContactRole] = useState("");
+  const [attachExistingPersonId, setAttachExistingPersonId] = useState("");
+  const [attachExistingRole, setAttachExistingRole] = useState("");
 
   // The same registry autofill as the register drawer, on the client profile.
   const profileLookup = useCompanyLookup<CompanyLookupField>({
@@ -1600,7 +1716,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   });
 
   // --- DETAIL TABS & DOCUMENT UPLOADER STATE WITH URL SYNC ---
-  type DetailTabKey = "timeline" | "tasks" | "orders" | "invoices" | "leads" | "financial_status" | "files" | "tickets";
+  type DetailTabKey = "timeline" | "tasks" | "orders" | "invoices" | "leads" | "contacts" | "agency_workers" | "financial_status" | "files" | "tickets";
 
   const getInitialDetailTab = (): DetailTabKey => {
     const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
@@ -1610,6 +1726,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       tabParam === "orders" ||
       tabParam === "files" ||
       tabParam === "leads" ||
+      tabParam === "contacts" ||
+      tabParam === "agency_workers" ||
       tabParam === "financial_status" ||
       tabParam === "timeline" ||
       tabParam === "tasks" ||
@@ -2767,6 +2885,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         setProfileCategories(activeClient.categories || []);
         setProfileClientCategoryId(activeClient.clientCategoryId || "");
         setProfilePriceLevelId(activeClient.priceLevelId || "");
+        setProfileCompanyClientId(activeClient.companyClientId || "");
+        setProfileContactRole(activeClient.contactRole || "");
         
         if (clientNameChanged) {
           setIsEditingProfile(false); // Reset to read-only by default on transition to a new client
@@ -2867,7 +2987,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       district: profileType !== "person" ? profileDistrict.trim() : undefined,
       categories: profileCategories,
       clientCategoryId: profileClientCategoryId || null,
-      priceLevelId: profilePriceLevelId || null
+      priceLevelId: profilePriceLevelId || null,
+      companyClientId: profileType === "person" ? (profileCompanyClientId || null) : null,
+      contactRole: profileType === "person" ? (profileContactRole.trim() || null) : null
     }));
 
     setIsEditingProfile(false); // Toggle back to read-only
@@ -3450,6 +3572,22 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     {activeClient.clientType}
                   </span>
                 )}
+                {activeClient.clientType === "person" && activeClient.companyClientId && companyByIdMap.get(activeClient.companyClientId) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const comp = companyByIdMap.get(activeClient.companyClientId!);
+                      if (comp) window.location.hash = `client-${encodeURIComponent(comp.name)}`;
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full type-overline bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 transition-colors cursor-pointer"
+                  >
+                    <Building2 className="h-3 w-3 text-sky-600" />
+                    <span>{companyByIdMap.get(activeClient.companyClientId)!.name}</span>
+                    {activeClient.contactRole && (
+                      <span className="text-sky-600">• {activeClient.contactRole}</span>
+                    )}
+                  </button>
+                )}
                 {activeClient.companyId && (
                   <span className="font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200 text-caption">
                     IČO: {activeClient.companyId}
@@ -3628,6 +3766,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     setProfileDissolutionDate(activeClient.dissolutionDate || "");
                     setProfileRegion(activeClient.region || "");
                     setProfileDistrict(activeClient.district || "");
+                    setProfileCompanyClientId(activeClient.companyClientId || "");
+                    setProfileContactRole(activeClient.contactRole || "");
                   }
                   setIsEditingProfile(!isEditingProfile);
                 }}
@@ -3794,6 +3934,162 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   )}
                 </div>
               </div>
+
+              {/* Chats / Instant Messaging under Client Contact Profile */}
+              {(() => {
+                const clientLeadIds = new Set((activeClient.associatedLeads || []).map((l) => l.id));
+                const primaryLeadId =
+                  activeClient.associatedLeads.find((l) => (l.id || "").startsWith("client-"))?.id ??
+                  activeClient.associatedLeads[0]?.id ??
+                  "";
+                const clientDigits = (activeClient.phone || "").replace(/\D/g, "");
+                const clientNameLower = (activeClient.name || "").trim().toLowerCase();
+
+                const matchedChats: Array<{
+                  channelId: string;
+                  channelName: string;
+                  connectorType: ConnectorType;
+                  chat: WhatsAppChatSummary;
+                  linkKey: string;
+                  isExplicit: boolean;
+                }> = [];
+
+                for (const ch of messagingChannels) {
+                  for (const chat of ch.chats) {
+                    const linkKey = `${ch.id}::${chat.id}`;
+                    const explicitId = chatClientLinks[linkKey];
+                    const isExplicit = Boolean(explicitId && clientLeadIds.has(explicitId));
+                    const chatDigits = (chat.phone || "").replace(/\D/g, "");
+                    const isAutoMatch =
+                      !explicitId &&
+                      ((clientDigits && chatDigits && clientDigits === chatDigits) ||
+                        (chat.name || "").trim().toLowerCase() === clientNameLower);
+                    if (isExplicit || isAutoMatch) {
+                      matchedChats.push({
+                        channelId: ch.id,
+                        channelName: ch.name,
+                        connectorType: ch.connectorType,
+                        chat,
+                        linkKey,
+                        isExplicit,
+                      });
+                    }
+                  }
+                }
+
+                const availableUnlinkedChats = messagingChannels.flatMap((ch) =>
+                  ch.chats
+                    .filter((chat) => !matchedChats.some((m) => m.linkKey === `${ch.id}::${chat.id}`))
+                    .map((chat) => ({
+                      channelId: ch.id,
+                      channelName: ch.name,
+                      connectorType: ch.connectorType,
+                      chat,
+                      linkKey: `${ch.id}::${chat.id}`,
+                    })),
+                );
+
+                return (
+                  <div className="border-t-2 border-slate-100 pt-4 space-y-2.5" data-testid="client-contact-chats-section">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="type-overline text-emerald-600 flex items-center gap-1">
+                        <MessageCircle className="h-3.5 w-3.5" />
+                        {t("Chats & Instant Messaging", "Chaty a komunikátory", "Csevegések és üzenetküldők")}
+                      </span>
+                      {primaryLeadId && availableUnlinkedChats.length > 0 && (
+                        <select
+                          data-testid="client-link-chat-select"
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              updateChatClientLink(e.target.value, primaryLeadId);
+                            }
+                          }}
+                          className="px-2.5 py-1 rounded-xl border border-slate-200 bg-slate-50 hover:bg-white text-caption font-bold text-slate-700 focus:outline-none cursor-pointer max-w-52 truncate"
+                        >
+                          <option value="">
+                            ➕ {t("Link existing chat...", "Prepojiť existujúci chat...", "Meglévő csevegés összekapcsolása...")}
+                          </option>
+                          {availableUnlinkedChats.map((item) => (
+                            <option key={item.linkKey} value={item.linkKey}>
+                              {PROVIDERS[item.connectorType]?.label || item.connectorType.toUpperCase()} · {item.chat.name} ({item.channelName})
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+
+                    {matchedChats.length === 0 ? (
+                      <div className="p-3 rounded-xl bg-slate-50/70 border border-slate-200/80 flex items-center justify-between gap-2 text-caption text-slate-500">
+                        <span>
+                          {t(
+                            "No linked chats yet. Select a chat above or start one from Communications.",
+                            "Zatiaľ žiadne prepojené chaty. Vyberte chat vyššie alebo začnite konverzáciu v Komunikácii.",
+                            "Még nincs összekapcsolt csevegés. Válasszon fentebb, vagy indítson egyet a Kommunikációban.",
+                          )}
+                        </span>
+                        <a
+                          href="#email"
+                          className="shrink-0 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold transition-colors"
+                        >
+                          {t("Open Chats", "Otvoriť chaty", "Csevegések megnyitása")}
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {matchedChats.map((item) => {
+                          const pMeta = PROVIDERS[item.connectorType] ?? PROVIDERS.whatsapp;
+                          return (
+                            <div
+                              key={item.linkKey}
+                              className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50/80 border border-slate-200 hover:border-slate-300 transition-all"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <span
+                                  className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${pMeta.iconBg}`}
+                                >
+                                  <ProviderLogo type={item.connectorType} className="w-3.5 h-3.5" />
+                                </span>
+                                <div className="min-w-0">
+                                  <div className="text-ui font-bold text-slate-900 truncate flex items-center gap-1.5">
+                                    <span className="truncate">{item.chat.name}</span>
+                                    <span className={`px-1.5 py-0.5 rounded-md text-micro font-extrabold ${pMeta.badgeClass}`}>
+                                      {pMeta.label}
+                                    </span>
+                                  </div>
+                                  <div className="text-micro text-slate-500 truncate">
+                                    {item.channelName}
+                                    {item.chat.lastMessageText ? ` · ${item.chat.lastMessageText}` : ""}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <a
+                                  href={`#email?channel=${encodeURIComponent(item.channelId)}&chat=${encodeURIComponent(item.chat.id)}`}
+                                  className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 text-caption font-bold flex items-center gap-1 transition-all shadow-2xs"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  {t("Open Chat", "Otvoriť chat", "Megnyitás")}
+                                </a>
+                                {item.isExplicit && (
+                                  <button
+                                    type="button"
+                                    onClick={() => updateChatClientLink(item.linkKey, "")}
+                                    title={t("Unlink chat", "Odpojiť chat", "Leválasztás")}
+                                    className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Address details */}
               <div className="border-t-2 border-slate-100 pt-4 space-y-3">
@@ -4105,6 +4401,63 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 </div>
               )}
 
+              {/* Person client company attachment (client-side contacts only, never rented employees) */}
+              {profileType === "person" && (
+                <div className="border-t-2 border-slate-100 pt-4 space-y-3 text-left">
+                  <div className="space-y-1">
+                    <label className="type-overline text-slate-500 flex items-center gap-1">
+                      <Building2 className="h-3 w-3" /> {t("Attached Company", "Priradená firma", "Kapcsolt cég")}
+                    </label>
+                    {isEditingProfile ? (
+                      <CustomSelect
+                        value={profileCompanyClientId}
+                        onChange={setProfileCompanyClientId}
+                        options={[
+                          { value: "", label: t("Independent / No company", "Nezávislá osoba / Bez firmy", "Független / Nincs cég") },
+                          ...companyClientProfiles.map(c => ({ value: c.primaryId, label: c.name })),
+                        ]}
+                      />
+                    ) : profileCompanyClientId && companyByIdMap.get(profileCompanyClientId) ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const comp = companyByIdMap.get(profileCompanyClientId);
+                          if (comp) window.location.hash = `client-${encodeURIComponent(comp.name)}`;
+                        }}
+                        className="inline-flex items-center gap-1.5 text-ui font-bold text-sky-700 hover:underline cursor-pointer pt-0.5"
+                      >
+                        <Building2 className="h-3.5 w-3.5 text-sky-600" />
+                        <span>{companyByIdMap.get(profileCompanyClientId)!.name}</span>
+                        <ExternalLink className="h-3 w-3 opacity-60" />
+                      </button>
+                    ) : (
+                      <span className="block pt-0.5 text-micro text-slate-400 italic">
+                        {t("Independent person", "Nezávislá osoba", "Független személy")}
+                      </span>
+                    )}
+                  </div>
+                  {(isEditingProfile ? !!profileCompanyClientId : !!(profileCompanyClientId && profileContactRole)) && (
+                    <div className="space-y-1">
+                      <label className="type-overline text-slate-500">
+                        {t("Role at Company", "Pozícia vo firme", "Szerepkör a cégnél")}
+                      </label>
+                      <input
+                        type="text"
+                        readOnly={!isEditingProfile}
+                        value={profileContactRole}
+                        onChange={(e) => setProfileContactRole(e.target.value)}
+                        placeholder={isEditingProfile ? t("e.g. HR Manager, Site Supervisor", "napr. HR manažér, Majster zmeny", "pl. HR vezető, Műszakvezető") : ""}
+                        className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
+                          isEditingProfile
+                            ? "bg-white border-2 border-slate-200 text-slate-800"
+                            : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default"
+                        }`}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Project Manager */}
               <div className="border-t-2 border-slate-100 pt-4 space-y-1">
                 <label className="type-overline text-slate-500">{getTranslation(systemLanguage, "profile.primary_pm")}</label>
@@ -4254,6 +4607,23 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     icon: <Layers className="h-4.5 w-4.5" />,
                     label: systemLanguage === "sk" ? "Aktívne Leady" : systemLanguage === "hu" ? "Aktív leadek" : "Active Leads",
                     count: (activeClient.associatedLeads || []).filter((l: any) => l.status.toLowerCase() !== "won" && l.status.toLowerCase() !== "lost").length,
+                  },
+                  {
+                    key: "contacts",
+                    hidden: activeClient.clientType === "person",
+                    icon: <Users className="h-4.5 w-4.5" />,
+                    label: t("Contacts", "Kontakty", "Kapcsolattartók"),
+                    count: (() => {
+                      const ids = new Set(activeClient.associatedLeads.map((l: Lead) => l.id));
+                      return clientProfiles.filter(c => c.clientType === "person" && !!c.companyClientId && ids.has(c.companyClientId)).length;
+                    })(),
+                  },
+                  {
+                    key: "agency_workers",
+                    testId: "client-tab-agency-workers",
+                    hidden: !agencyEnabled || activeClient.clientType === "person",
+                    icon: <UserCheck className="h-4.5 w-4.5" />,
+                    label: t("Rented Employees", "Prenajatí zamestnanci", "Kölcsönzött dolgozók"),
                   },
                   { key: "financial_status", hidden: activeClient.clientType === "person", icon: <TrendingUp className="h-4.5 w-4.5" />, label: t("Financial Report", "Finančný report", "Pénzügyi jelentés") },
                   { key: "files", icon: <FileText className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.attached_files"), count: (activeClient.timeline || []).reduce((n, event) => n + timelineEventFiles(event).length, 0) },
@@ -5208,6 +5578,180 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     </div>
                   )}
                 </div>
+              )}
+
+              {activeDetailTab === "contacts" && activeClient.clientType !== "person" && (() => {
+                const companyIdSet = new Set(activeClient.associatedLeads.map((l: Lead) => l.id));
+                const attachedContacts = clientProfiles.filter(
+                  c => c.clientType === "person" && !!c.companyClientId && companyIdSet.has(c.companyClientId)
+                );
+                const attachablePersons = clientProfiles.filter(
+                  c => c.clientType === "person" && !c.archived && (!c.companyClientId || !companyIdSet.has(c.companyClientId))
+                );
+                const linkPersonToCompany = (personName: string, companyId: string | null, role?: string) => {
+                  setLeads(prev => prev.map(l => {
+                    if (l.name.trim().toLowerCase() !== personName.trim().toLowerCase()) return l;
+                    return {
+                      ...l,
+                      companyClientId: companyId,
+                      contactRole: companyId ? ((role ?? l.contactRole) || null) : null,
+                    };
+                  }));
+                };
+                return (
+                  <div className="space-y-4 text-left" data-testid="company-attached-contacts">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-slate-100 pb-3">
+                      <div>
+                        <h3 className="text-ui font-bold text-slate-700 flex items-center gap-1.5">
+                          <Users className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" />
+                          {t("Company Contact Persons", "Kontaktné osoby firmy", "Céges kapcsolattartók")}
+                        </h3>
+                        <p className="text-micro text-slate-400 mt-0.5">
+                          {t(
+                            "Client-side HR, dispatch, and billing contacts at this company.",
+                            "Kontaktné osoby klienta (HR, majstri, fakturácia) v tejto firme.",
+                            "Az ügyféloldali HR, üzemi és számlázási kapcsolattartók."
+                          )}
+                        </p>
+                      </div>
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewClientType("person");
+                            setNewClientCompanyClientId(activeClient.primaryId);
+                            setNewClientContactRole("");
+                            setShowRegisterDrawer(true);
+                          }}
+                          className="h-9 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-ui font-semibold flex items-center gap-1.5 shadow-sm cursor-pointer"
+                        >
+                          <Plus className="h-4 w-4" />
+                          <span>{t("New contact person", "Nový kontakt", "Új kapcsolattartó")}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {canEdit && attachablePersons.length > 0 && (
+                      <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 grid grid-cols-1 ws-md:grid-cols-12 gap-2.5 items-end">
+                        <div className="ws-md:col-span-5 space-y-1">
+                          <label className="type-overline text-slate-500">
+                            {t("Attach existing person contact", "Priradiť existujúcu osobu", "Meglévő személy hozzárendelése")}
+                          </label>
+                          <CustomSelect
+                            value={attachExistingPersonId}
+                            onChange={setAttachExistingPersonId}
+                            options={[
+                              { value: "", label: t("Select person...", "Vyberte osobu...", "Válasszon személyt...") },
+                              ...attachablePersons.map(p => ({ value: p.name, label: p.name })),
+                            ]}
+                          />
+                        </div>
+                        <div className="ws-md:col-span-4 space-y-1">
+                          <label className="type-overline text-slate-500">
+                            {t("Role", "Pozícia", "Szerepkör")}
+                          </label>
+                          <input
+                            type="text"
+                            value={attachExistingRole}
+                            onChange={(e) => setAttachExistingRole(e.target.value)}
+                            placeholder={t("e.g. HR Manager", "napr. HR manažér", "pl. HR vezető")}
+                            className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui font-semibold focus:outline-none focus:border-emerald-500"
+                          />
+                        </div>
+                        <div className="ws-md:col-span-3">
+                          <button
+                            type="button"
+                            disabled={!attachExistingPersonId}
+                            onClick={() => {
+                              if (!attachExistingPersonId) return;
+                              linkPersonToCompany(attachExistingPersonId, activeClient.primaryId, attachExistingRole.trim());
+                              setAttachExistingPersonId("");
+                              setAttachExistingRole("");
+                              (window as any).showToast?.(t("Contact attached to company", "Kontakt priradený k firme", "Kapcsolattartó hozzárendelve"));
+                            }}
+                            className="w-full h-10 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white text-ui font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                          >
+                            <Link2 className="h-3.5 w-3.5" />
+                            <span>{t("Attach", "Priradiť", "Csatolás")}</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {attachedContacts.length === 0 ? (
+                      <div className="py-8 text-center text-slate-400 text-ui font-bold rounded-2xl border border-dashed border-slate-200 bg-slate-50/50">
+                        {t("No contacts attached to this company yet.", "K tejto firme zatiaľ nie sú priradené žiadne kontakty.", "Még nincsenek kapcsolattartók ehhez a céghez rendelve.")}
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {attachedContacts.map(person => (
+                          <div
+                            key={person.primaryId}
+                            className="p-4 rounded-2xl border border-slate-200 bg-white hover:border-emerald-300 transition-all shadow-xs flex flex-wrap items-center justify-between gap-3"
+                          >
+                            <div className="min-w-0 space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    window.location.hash = `client-${encodeURIComponent(person.name)}`;
+                                  }}
+                                  className="font-heading font-bold text-ui text-slate-900 hover:text-emerald-700 cursor-pointer flex items-center gap-1"
+                                >
+                                  <User className="h-3.5 w-3.5 text-emerald-600" />
+                                  <span>{person.name}</span>
+                                </button>
+                                {person.contactRole && (
+                                  <span className="px-2 py-0.5 rounded-full type-overline bg-sky-50 text-sky-700 border border-sky-200">
+                                    {person.contactRole}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-3 text-micro text-slate-500">
+                                {person.phone && (
+                                  <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-500" /> {person.phone}</span>
+                                )}
+                                {person.email && (
+                                  <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-emerald-500" /> {person.email}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => { window.location.hash = `client-${encodeURIComponent(person.name)}`; }}
+                                className="h-8 px-2.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-ui font-semibold text-slate-700 cursor-pointer flex items-center gap-1"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                <span>{t("Open", "Otvoriť", "Megnyitás")}</span>
+                              </button>
+                              {canEdit && (
+                                <button
+                                  type="button"
+                                  onClick={() => linkPersonToCompany(person.name, null)}
+                                  className="h-8 px-2.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-ui font-semibold text-rose-700 cursor-pointer"
+                                  title={t("Unlink from company", "Odobrať z firmy", "Leválasztás a cégről")}
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {activeDetailTab === "agency_workers" && agencyEnabled && activeClient.clientType !== "person" && (
+                <ClientCompanyAgencyTab
+                  companyIds={activeClient.associatedLeads.map((l: Lead) => l.id)}
+                  primaryCompanyId={activeClient.associatedLeads[0]?.id || ""}
+                  companyName={activeClient.name}
+                  lang={systemLanguage}
+                  rights={agencyRights}
+                />
               )}
 
               {activeDetailTab === "financial_status" && (
@@ -6451,6 +6995,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         </div>
                         <div className="flex flex-col">
                           <span className="line-clamp-1 group-hover:text-emerald-700 transition-colors font-bold text-body text-slate-800">{client.name}</span>
+                          {client.clientType === "person" && client.companyClientId && companyByIdMap.get(client.companyClientId) && (
+                            <span className="text-micro text-sky-700 font-semibold flex items-center gap-1 mt-0.5">
+                              <Building2 className="h-3 w-3 shrink-0 text-sky-600" />
+                              <span className="truncate">
+                                {companyByIdMap.get(client.companyClientId)!.name}
+                                {client.contactRole ? ` (${client.contactRole})` : ""}
+                              </span>
+                            </span>
+                          )}
                           {client.categories && client.categories.length > 0 && (
                             <span className="type-overline text-slate-400 line-clamp-1 mt-0.5">
                               {client.categories.join(", ")}
@@ -7040,6 +7593,37 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Company attachment when registering a Person contact */}
+              {newClientType === "person" && companyClientProfiles.length > 0 && (
+                <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4 bg-sky-50/50 border border-sky-200/70 rounded-2xl p-3.5">
+                  <div className="space-y-1">
+                    <label className="type-overline text-slate-500 block">
+                      {t("Attached Company (optional)", "Priradená firma (voliteľné)", "Kapcsolt cég (opcionális)")}
+                    </label>
+                    <CustomSelect
+                      value={newClientCompanyClientId}
+                      onChange={setNewClientCompanyClientId}
+                      options={[
+                        { value: "", label: t("Independent / No company", "Nezávislá osoba / Bez firmy", "Független / Nincs cég") },
+                        ...companyClientProfiles.map(c => ({ value: c.primaryId, label: c.name })),
+                      ]}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="type-overline text-slate-500 block">
+                      {t("Role at Company", "Pozícia vo firme", "Szerepkör a cégnél")}
+                    </label>
+                    <input
+                      type="text"
+                      value={newClientContactRole}
+                      onChange={(e) => setNewClientContactRole(e.target.value)}
+                      placeholder={t("e.g. HR Manager", "napr. HR manažér", "pl. HR vezető")}
+                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-emerald-500 transition-all font-semibold"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Corporate Register Section (Only for Business/Partner) */}
               {newClientType !== "person" && (

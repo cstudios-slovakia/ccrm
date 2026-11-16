@@ -63,11 +63,13 @@ const access = (
   legacyDefault: PermissionValue = "edit",
   newRoleDefault: PermissionValue = "nothing",
   legacy?: { keys: string[]; edit: string[] },
+  requires?: { key: string; level: AccessLevel },
 ): PermissionDef => ({
   key,
   kind: "access",
   legacyDefault,
   newRoleDefault,
+  requires,
   legacyKeys: legacy?.keys,
   legacyEdit: legacy?.edit,
 });
@@ -103,6 +105,14 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
       deleteToggle("tasks", "nothing"),
       // On for every role until revoked — see resolveTaskViewAll in taskSelectors.
       toggle("tasks.view_all", "edit", "edit", { key: "tasks", level: "view" }),
+      // Standalone Weekly Plan board view inside Tasks.
+      access(
+        "tasks.weekly_plan",
+        "edit",
+        "nothing",
+        { keys: ["tasks.view", "tasks.create", "tasks.edit"], edit: ["tasks.create", "tasks.edit"] },
+        { key: "tasks", level: "view" },
+      ),
     ],
   },
   {
@@ -155,6 +165,15 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
       toggle("employees.vacations", "edit", "nothing", { key: "employees", level: "view" }),
       toggle("employees.files", "edit", "nothing", { key: "employees", level: "view" }),
       toggle("employees.personal", "edit", "nothing", { key: "employees", level: "view" }),
+    ],
+  },
+  {
+    id: "agency",
+    permissions: [
+      access("agency"),
+      deleteToggle("agency"),
+      toggle("agency.personal", "edit", "nothing", { key: "agency", level: "view" }),
+      toggle("agency.payments", "nothing", "nothing", { key: "agency", level: "view" }),
     ],
   },
   {
@@ -336,6 +355,7 @@ export const employeeRolePermissions = (): Record<string, PermissionValue> => ({
   tasks: "edit",
   "tasks.delete": "nothing",
   "tasks.view_all": "nothing",
+  "tasks.weekly_plan": "view",
   leads: "nothing",
   "leads.delete": "nothing",
   clients: "nothing",
@@ -359,6 +379,10 @@ export const employeeRolePermissions = (): Record<string, PermissionValue> => ({
   "employees.vacations": "nothing",
   "employees.files": "nothing",
   "employees.personal": "nothing",
+  agency: "nothing",
+  "agency.delete": "nothing",
+  "agency.personal": "nothing",
+  "agency.payments": "nothing",
   meetings: "nothing",
   "meetings.delete": "nothing",
   time_tracking: "edit",
@@ -472,6 +496,7 @@ export const permissionKeyForRoute = (routeId: string): string | null => {
   // the My employment tab needs a self.* key. Either opens the section; `my-employment` is the
   // old address of that tab.
   if (base === "employees" || base === "my-employment") return "people";
+  if (base === "agency") return "agency";
   if (base === "time-tracking") return "time_tracking";
   if (base === "whatsapp") return "whatsapp";
   if (base === "newsletter") return "newsletter";

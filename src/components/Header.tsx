@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
     User,
+    UserCheck,
     PencilLine,
     Mic,
     Plus,
@@ -448,6 +449,8 @@ export const Header: React.FC<HeaderProps> = ({
                 return <PencilLine className="h-4 w-4 text-amber-500" />;
             case "unified_entry":
                 return <Database className="h-4 w-4 text-purple-500" />;
+            case "agency_worker":
+                return <UserCheck className="h-4 w-4 text-amber-600" />;
             default:
                 return <FileText className="h-4 w-4 text-slate-400" />;
         }
@@ -487,6 +490,12 @@ export const Header: React.FC<HeaderProps> = ({
                     : systemLanguage === "hu"
                       ? "Bejegyzés"
                       : "Registry";
+            case "agency_worker":
+                return systemLanguage === "sk"
+                    ? "Pracovník"
+                    : systemLanguage === "hu"
+                      ? "Dolgozó"
+                      : "Worker";
             default:
                 return t("Item", "Položka", "Elem");
         }
@@ -506,6 +515,8 @@ export const Header: React.FC<HeaderProps> = ({
                 return "bg-amber-50 text-amber-700 border-amber-200";
             case "unified_entry":
                 return "bg-purple-50 text-purple-700 border-purple-200";
+            case "agency_worker":
+                return "bg-amber-50 text-amber-800 border-amber-200";
             default:
                 return "bg-slate-50 text-slate-700 border-slate-200";
         }

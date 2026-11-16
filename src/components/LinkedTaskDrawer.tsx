@@ -19,6 +19,8 @@ export interface LinkedTaskDrawerProps {
   taskAccess: TaskAccess;
   currentUser?: UserProfile;
   mailConfigured?: boolean;
+  /** Show the agency worker link field (Agency module on, or the task already has one). */
+  agencyEnabled?: boolean;
   onClose: () => void;
 }
 
@@ -40,6 +42,7 @@ export const LinkedTaskDrawer: React.FC<LinkedTaskDrawerProps> = ({
   taskAccess,
   currentUser,
   mailConfigured,
+  agencyEnabled,
   onClose,
 }) => {
   const recurringTemplates = useRecurringTemplates();
@@ -67,6 +70,7 @@ export const LinkedTaskDrawer: React.FC<LinkedTaskDrawerProps> = ({
       currentUser={currentUser}
       currentUserName={myName}
       mailConfigured={mailConfigured}
+      agencyEnabled={agencyEnabled}
       canEdit={canEditTask(task, currentUser, taskAccess)}
       canArchive={taskAccess.edit && canArchiveTask(task, currentUser)}
       canDelete={canDeleteTask(task, currentUser, taskAccess)}

@@ -1,12 +1,37 @@
 import React from "react";
-import { Hash, User, Briefcase, FolderKanban, Target } from "lucide-react";
+import {
+    Hash,
+    User,
+    UserCheck,
+    Briefcase,
+    FolderKanban,
+    Target,
+    Ticket as TicketIcon,
+    CheckSquare,
+} from "lucide-react";
+
+export type MentionEntityType =
+    | "user"
+    | "employee"
+    | "project"
+    | "client"
+    | "lead"
+    | "ticket"
+    | "task";
 
 export interface MentionEntity {
     id: string;
     name: string;
-    type: "user" | "project" | "client" | "lead";
+    type: MentionEntityType;
     detail?: string;
+    subtitle?: string;
 }
+
+export type ParsedTaskToken =
+    | { kind: "newline"; text: string }
+    | { kind: "tag"; text: string; tag: string }
+    | { kind: "mention"; text: string; mentionName: string; entity?: MentionEntity }
+    | { kind: "text"; text: string };
 
 /**
  * Extracts all unique #tags from a text string.
@@ -20,9 +45,147 @@ export function extractTagsFromText(text: string): string[] {
     return Array.from(unique);
 }
 
+const ENTITY_BOUNDARY_AFTER = /[\s,;:!?)\]}\n]/;
+const PRECEDING_IDENTIFIER_CHAR = /[a-zA-Z0-9_.\u00C0-\u024F\u1E00-\u1EFF]/;
+
+/**
+ * Tokenizes card/task text into plain text, newlines, `#tag`s, and `@mention`s.
+ * When `knownEntities` is provided, multi-word entity names (e.g. `@Novák Stavby s.r.o.`)
+ * are matched longest-first alongside underscore-escaped `@Entity_Name` forms.
+ */
+export function parseTaskTokens(
+    text: string,
+    knownEntities: MentionEntity[] = [],
+): ParsedTaskToken[] {
+    if (!text) return [];
+
+    const sortedEntities = [...knownEntities]
+        .filter((e) => Boolean(e.name && e.name.trim()))
+        .sort((a, b) => b.name.trim().length - a.name.trim().length);
+
+    const tokens: ParsedTaskToken[] = [];
+    let plainStart = 0;
+    let i = 0;
+
+    const flushPlain = (end: number) => {
+        if (end > plainStart) {
+            tokens.push({ kind: "text", text: text.slice(plainStart, end) });
+        }
+    };
+
+    while (i < text.length) {
+        const ch = text[i];
+
+        if (ch === "\n") {
+            flushPlain(i);
+            tokens.push({ kind: "newline", text: "\n" });
+            i += 1;
+            plainStart = i;
+            continue;
+        }
+
+        if (ch === "#") {
+            const match = text.slice(i).match(/^#([a-zA-Z0-9_\u00C0-\u024F\u1E00-\u1EFF-]+)/);
+            if (match) {
+                flushPlain(i);
+                tokens.push({ kind: "tag", text: match[0], tag: match[1] });
+                i += match[0].length;
+                plainStart = i;
+                continue;
+            }
+        }
+
+        if (ch === "@" && (i === 0 || !PRECEDING_IDENTIFIER_CHAR.test(text[i - 1]))) {
+            const afterAt = text.slice(i + 1);
+            const afterAtLower = afterAt.toLowerCase();
+
+            // 1. Try matching full entity names (longest-first, supports multi-word names)
+            let matchedEntity: MentionEntity | undefined;
+            let matchedLen = 0;
+
+            for (const entity of sortedEntities) {
+                const trimmedName = entity.name.trim();
+                const nameLower = trimmedName.toLowerCase();
+                const underscoreLower = nameLower.replace(/\s+/g, "_");
+
+                if (afterAtLower.startsWith(nameLower)) {
+                    const nextChar = afterAt[trimmedName.length];
+                    if (nextChar === undefined || ENTITY_BOUNDARY_AFTER.test(nextChar)) {
+                        matchedEntity = entity;
+                        matchedLen = trimmedName.length;
+                        break;
+                    }
+                } else if (underscoreLower !== nameLower && afterAtLower.startsWith(underscoreLower)) {
+                    const nextChar = afterAt[underscoreLower.length];
+                    if (nextChar === undefined || ENTITY_BOUNDARY_AFTER.test(nextChar)) {
+                        matchedEntity = entity;
+                        matchedLen = underscoreLower.length;
+                        break;
+                    }
+                }
+            }
+
+            if (matchedEntity && matchedLen > 0) {
+                flushPlain(i);
+                const fullToken = text.slice(i, i + 1 + matchedLen);
+                tokens.push({
+                    kind: "mention",
+                    text: fullToken,
+                    mentionName: matchedEntity.name.trim(),
+                    entity: matchedEntity,
+                });
+                i += fullToken.length;
+                plainStart = i;
+                continue;
+            }
+
+            // 2. Fallback: single-token @mention
+            const fallbackMatch = text.slice(i).match(/^@([\w\u00C0-\u024F\u1E00-\u1EFF.-]+)/);
+            if (fallbackMatch) {
+                flushPlain(i);
+                const rawName = fallbackMatch[1];
+                const rawLower = rawName.toLowerCase();
+                const found = knownEntities.find(
+                    (e) =>
+                        e.name.trim().toLowerCase() === rawLower ||
+                        e.name.trim().toLowerCase().replace(/\s+/g, "_") === rawLower,
+                );
+                tokens.push({
+                    kind: "mention",
+                    text: fallbackMatch[0],
+                    mentionName: found ? found.name.trim() : rawName,
+                    entity: found,
+                });
+                i += fallbackMatch[0].length;
+                plainStart = i;
+                continue;
+            }
+        }
+
+        i += 1;
+    }
+
+    flushPlain(text.length);
+    return tokens;
+}
+
+export const MENTION_STYLE_MAP: Record<
+    MentionEntityType,
+    { badgeClass: string; Icon: React.ComponentType<{ className?: string }> }
+> = {
+    user: { badgeClass: "bg-purple-50 text-purple-700 border-purple-200", Icon: User },
+    employee: { badgeClass: "bg-teal-50 text-teal-800 border-teal-200", Icon: UserCheck },
+    project: { badgeClass: "bg-amber-50 text-amber-800 border-amber-200", Icon: FolderKanban },
+    client: { badgeClass: "bg-emerald-50 text-emerald-800 border-emerald-200", Icon: Briefcase },
+    lead: { badgeClass: "bg-sky-50 text-sky-800 border-sky-200", Icon: Target },
+    ticket: { badgeClass: "bg-rose-50 text-rose-800 border-rose-200", Icon: TicketIcon },
+    task: { badgeClass: "bg-indigo-50 text-indigo-800 border-indigo-200", Icon: CheckSquare },
+};
+
 interface TaskPillTextProps {
     text: string;
     onTagClick?: (tag: string) => void;
+    onMentionClick?: (entity: MentionEntity | undefined, mentionName: string) => void;
     className?: string;
     knownEntities?: MentionEntity[];
 }
@@ -30,26 +193,23 @@ interface TaskPillTextProps {
 export const TaskPillText: React.FC<TaskPillTextProps> = ({
     text,
     onTagClick,
+    onMentionClick,
     className = "",
     knownEntities = [],
 }) => {
     if (!text) return null;
 
-    // Tokenize by spaces and line breaks while keeping delimiters
-    // Matches #tag or @mention or normal words
-    const regex = /(#[\w\u00C0-\u024F\u1E00-\u1EFF-]+|@[\w\u00C0-\u024F\u1E00-\u1EFF.-]+|\n|[^\s#@\n]+|\s+)/g;
-    const tokens = text.match(regex) || [text];
+    const tokens = parseTaskTokens(text, knownEntities);
 
     return (
         <span className={`inline ${className}`}>
             {tokens.map((token, index) => {
-                if (token === "\n") {
+                if (token.kind === "newline") {
                     return <br key={index} />;
                 }
 
-                // Hashtag pill (#tag)
-                if (token.startsWith("#") && token.length > 1) {
-                    const tag = token.slice(1);
+                if (token.kind === "tag") {
+                    const tag = token.tag;
                     return (
                         <span
                             key={index}
@@ -59,57 +219,46 @@ export const TaskPillText: React.FC<TaskPillTextProps> = ({
                                     onTagClick(tag);
                                 }
                             }}
-                            className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-md type-overline mx-0.5 select-none transition-all ${
+                            style={{ boxDecorationBreak: "clone", WebkitBoxDecorationBreak: "clone" }}
+                            className={`inline px-1.5 py-0.5 rounded text-micro font-bold mx-0.5 select-none transition-all box-decoration-clone align-baseline ${
                                 onTagClick
-                                    ? "bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-900 border border-indigo-200 shadow-xs cursor-pointer active:scale-95"
+                                    ? "bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-900 border border-indigo-200 shadow-2xs cursor-pointer"
                                     : "bg-indigo-50 text-indigo-700 border border-indigo-200"
                             }`}
-                            title={`Filter archive by #${tag}`}
+                            title={onTagClick ? `#${tag}` : undefined}
                         >
-                            <Hash className="h-2.5 w-2.5 opacity-70 shrink-0" />
+                            <Hash className="inline h-2.5 w-2.5 mr-0.5 -mt-0.5 opacity-70" />
                             <span>{tag}</span>
                         </span>
                     );
                 }
 
-                // Mention pill (@entity)
-                if (token.startsWith("@") && token.length > 1) {
-                    const mentionName = token.slice(1).toLowerCase();
-                    const matchedEntity = knownEntities.find(
-                        (e) =>
-                            e.name.toLowerCase() === mentionName ||
-                            e.name.toLowerCase().replace(/\s+/g, "_") === mentionName,
-                    );
-
-                    const entityType = matchedEntity?.type || "user";
-
-                    let badgeClass = "bg-purple-50 text-purple-700 border-purple-200";
-                    let IconComponent = User;
-
-                    if (entityType === "project") {
-                        badgeClass = "bg-amber-50 text-amber-800 border-amber-200";
-                        IconComponent = FolderKanban;
-                    } else if (entityType === "client") {
-                        badgeClass = "bg-emerald-50 text-emerald-800 border-emerald-200";
-                        IconComponent = Briefcase;
-                    } else if (entityType === "lead") {
-                        badgeClass = "bg-sky-50 text-sky-800 border-sky-200";
-                        IconComponent = Target;
-                    }
+                if (token.kind === "mention") {
+                    const entityType: MentionEntityType = token.entity?.type || "user";
+                    const style = MENTION_STYLE_MAP[entityType] || MENTION_STYLE_MAP.user;
+                    const IconComponent = style.Icon;
 
                     return (
                         <span
                             key={index}
-                            className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-micro font-bold mx-0.5 select-none border shadow-xs ${badgeClass}`}
+                            onClick={(e) => {
+                                if (onMentionClick) {
+                                    e.stopPropagation();
+                                    onMentionClick(token.entity, token.mentionName);
+                                }
+                            }}
+                            style={{ boxDecorationBreak: "clone", WebkitBoxDecorationBreak: "clone" }}
+                            className={`inline px-1.5 py-0.5 rounded text-micro font-bold mx-0.5 select-none border shadow-2xs box-decoration-clone align-baseline ${
+                                style.badgeClass
+                            } ${onMentionClick ? "cursor-pointer hover:brightness-95 transition-all" : ""}`}
                         >
-                            <IconComponent className="h-2.5 w-2.5 opacity-70 shrink-0" />
-                            <span>{token}</span>
+                            <IconComponent className="inline h-2.5 w-2.5 mr-0.5 -mt-0.5 opacity-75" />
+                            <span>{token.text}</span>
                         </span>
                     );
                 }
 
-                // Normal text
-                return <React.Fragment key={index}>{token}</React.Fragment>;
+                return <React.Fragment key={index}>{token.text}</React.Fragment>;
             })}
         </span>
     );

@@ -72,6 +72,36 @@ test.describe('Company mailboxes', () => {
     // edit the stored one: its password is a mask, and stays one
     await panel.getByTitle('Upraviť').click();
     const form = panel.getByTestId('company-mailbox-form');
+    await expect(form).toBeVisible();
+    const modalGeometry = await page.evaluate(() => {
+      const formEl = document.querySelector('[data-testid="company-mailbox-form"]') as HTMLElement;
+      const backdropEl = formEl?.parentElement as HTMLElement;
+      const tabsEl = document.querySelector('[data-testid="settings-section-tabs"]') as HTMLElement | null;
+      const bRect = backdropEl.getBoundingClientRect();
+      const fRect = formEl.getBoundingClientRect();
+      const tRect = tabsEl?.getBoundingClientRect();
+      const hitAtTabsY = tRect
+        ? document.elementFromPoint(fRect.left + fRect.width / 2, tRect.top + tRect.height / 2)
+        : null;
+      return {
+        backdropTop: Math.round(bRect.top),
+        backdropLeft: Math.round(bRect.left),
+        backdropWidth: Math.round(bRect.width),
+        backdropHeight: Math.round(bRect.height),
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        formTop: Math.round(fRect.top),
+        formBottom: Math.round(fRect.bottom),
+        formCoversTabs: hitAtTabsY ? formEl.contains(hitAtTabsY) || backdropEl.contains(hitAtTabsY) : true,
+      };
+    });
+    expect(modalGeometry.backdropTop).toBe(0);
+    expect(modalGeometry.backdropLeft).toBe(0);
+    expect(modalGeometry.backdropWidth).toBe(modalGeometry.viewportWidth);
+    expect(modalGeometry.backdropHeight).toBe(modalGeometry.viewportHeight);
+    expect(modalGeometry.formTop).toBeGreaterThanOrEqual(0);
+    expect(modalGeometry.formBottom).toBeLessThanOrEqual(modalGeometry.viewportHeight);
+    expect(modalGeometry.formCoversTabs).toBe(true);
     await expect(form.getByLabel('Heslo')).toHaveValue('********');
     await form.getByRole('button', { name: 'Otestovať spojenie' }).click();
     await expect.poll(() => sent.find((s) => s.action === 'test')?.body, { timeout: 10_000 }).toMatchObject({ id: 'cmb-info' });
@@ -191,5 +221,67 @@ test.describe('Mail filed by the background job', () => {
     await page.getByText('Moja vlastná správa', { exact: true }).first().click();
     await expect.poll(() => requests.live, { timeout: 10_000 }).toEqual(['uid=12']);
     expect(requests.stored).not.toContain('email-inbox-bbbbbbbbbbbb-12');
+  });
+
+  test('Unified Communication View (#email) shows authorized channels in the second sidebar and switches layout per channel', async ({ page }) => {
+    await startSession(page);
+    await page.route('**/api/company_mailboxes.php**', async (route) => {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          mailboxes: [
+            {
+              id: 'cmb-gmail',
+              name: 'Sales Gmail',
+              address: 'sales@gmail.com',
+              connectorType: 'gmail',
+              userIds: ['user-erik'],
+              isActive: true,
+              settings: { connectorType: 'gmail', imapHost: 'imap.gmail.com' },
+            },
+            {
+              id: 'cmb-wa',
+              name: 'Support WhatsApp',
+              address: '+421905123456',
+              connectorType: 'whatsapp',
+              userIds: ['user-erik'],
+              isActive: true,
+              settings: { connectorType: 'whatsapp', waStatus: 'connected', waAccountId: 'wa-1' },
+            },
+            {
+              id: 'cmb-antigravity',
+              name: 'Google Antigravity Team',
+              address: 'antigravity-sub',
+              connectorType: 'antigravity',
+              userIds: ['user-erik'],
+              isActive: true,
+              settings: { connectorType: 'antigravity', subscriptionToken: '********', agentModel: 'gemini-2.5-pro' },
+            },
+          ],
+        }),
+      });
+    });
+
+    await gotoView(page, '#email');
+
+    const sidebar = page.getByTestId('communication-accounts-sidebar');
+    await expect(sidebar).toBeVisible();
+    await expect(sidebar.getByTestId('comm-account-cmb-gmail')).toContainText('Sales Gmail');
+    await expect(sidebar.getByTestId('comm-account-cmb-wa')).toContainText('Support WhatsApp');
+    await expect(sidebar.getByTestId('comm-account-cmb-antigravity')).toContainText('Google Antigravity Team');
+
+    // Selecting Gmail shows Email Layout
+    await sidebar.getByTestId('comm-account-cmb-gmail').click();
+    await expect(page.getByTestId('communication-email-layout')).toBeVisible();
+
+    // Selecting WhatsApp switches to WhatsApp Layout
+    await sidebar.getByTestId('comm-account-cmb-wa').click();
+    await expect(page.getByTestId('communication-whatsapp-layout')).toBeVisible();
+
+    // Selecting Google Antigravity switches to Subscription Agent MCP Layout
+    await sidebar.getByTestId('comm-account-cmb-antigravity').click();
+    await expect(page.getByTestId('communication-agent-layout')).toBeVisible();
   });
 });

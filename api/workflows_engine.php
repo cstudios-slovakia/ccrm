@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 // Safe DSN loader
 $configFile = dirname(__DIR__) . '/config.php';
@@ -716,6 +717,16 @@ if (!function_exists('ccrm_trigger_workflow')) {
             if (!empty($hasEnqueued) && !$pdo->inTransaction()) {
                 ccrm_process_workflow_queue($pdo);
             }
+
+            if ($pdo instanceof PDO && !$pdo->inTransaction()) {
+                $marveenLib = __DIR__ . '/marveen/marveen_lib.php';
+                if (is_file($marveenLib)) {
+                    require_once $marveenLib;
+                    if (function_exists('ccrm_marveen_process_crm_event_triggers')) {
+                        ccrm_marveen_process_crm_event_triggers($pdo, (string)$eventType, is_array($payload) ? $payload : []);
+                    }
+                }
+            }
         } catch (\Throwable $e) {
             if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
         }
@@ -814,18 +825,30 @@ if (!function_exists('ccrm_execute_workflow')) {
                     $provider = $nodeData['provider'] ?? 'gemini';
                     $key = ccrm_ai_provider_key($pdo, $provider);
 
-                    if (empty($key)) {
-                        throw new Exception("AI Provider API key is not configured for $provider. Set it in Settings -> AI Settings & Embeddings.");
-                    }
-                    
                     $promptTemplate = $nodeData['prompt'] ?? '';
                     $prompt = ccrm_interpolate_variables($promptTemplate, $incomingPayload, $context);
-                    
-                    $response = ccrm_call_llm($provider, $key, $prompt, [
-                        'model' => $nodeData['model'] ?? '',
-                        'pdo' => $pdo,
-                        'feature' => 'workflow',
-                    ]);
+
+                    if (!empty($key)) {
+                        $response = ccrm_call_llm($provider, $key, $prompt, [
+                            'model' => $nodeData['model'] ?? '',
+                            'pdo' => $pdo,
+                            'feature' => 'workflow',
+                        ]);
+                    } elseif (ccrm_ai_is_configured($pdo)) {
+                        $gwRes = ccrm_ai_chat_completion($pdo, [
+                            'model' => (string)($nodeData['model'] ?? ''),
+                            'messages' => [['role' => 'user', 'content' => $prompt]],
+                        ], [
+                            'feature' => 'workflow',
+                            'timeout' => 45,
+                        ]);
+                        if (empty($gwRes['ok'])) {
+                            throw new Exception("AI connector call failed: " . ($gwRes['error'] ?: 'Unknown AI error'));
+                        }
+                        $response = (string)($gwRes['content'] ?? '');
+                    } else {
+                        throw new Exception("AI Provider API key is not configured for $provider. Set an API key or select an LLM connector in Settings -> AI & OpenAI Integration.");
+                    }
                     
                     // Attempt to decode as JSON if next node expects object, or just keep as text
                     $jsonDecoded = json_decode($response, true);

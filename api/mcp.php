@@ -40,6 +40,8 @@ require_once __DIR__ . '/mcp_window.php';
 require_once __DIR__ . '/mcp_lists_crm.php';
 require_once __DIR__ . '/mcp_lists_money.php';
 require_once __DIR__ . '/mcp_lists_people.php';
+require_once __DIR__ . '/mcp_ext_modules.php';
+require_once __DIR__ . '/mcp_ext_agency.php';
 
 try {
     $pdo = function_exists('get_db_connection') ? get_db_connection() : ccrm_auth_pdo();
@@ -183,12 +185,18 @@ function mcp_tool_permissions(): array {
         'record_salary_payout' => ['edit' => ['employees'], 'view' => ['employees.salaries']],
         'list_vacations' => $v('employees', 'employees.vacations'),
         'record_vacation' => ['edit' => ['employees'], 'view' => ['employees.vacations']],
+        'whatsapp_list_chats' => $v('whatsapp'),
+        'whatsapp_read_messages' => $v('whatsapp'),
+        'whatsapp_send_message' => $e('whatsapp'),
+        'whatsapp_sync_chat' => $e('whatsapp'),
     ];
     // Part B tools (mcp_ext.php).
     $map += mcp_ext_fin_permissions();
     $map += mcp_ext_ops_permissions();
     $map += mcp_ext_intel_permissions();
     $map += mcp_deleted_permissions();
+    $map += mcp_ext_modules_permissions();
+    $map += mcp_ext_agency_permissions();
     return $map;
 }
 
@@ -328,9 +336,9 @@ if ($method === 'GET') {
         'capabilities' => [
             'tools_count' => count(array_filter(mcp_get_tool_definitions(), fn($t) => mcp_tool_allowed((string)($t['name'] ?? '')))),
             'domains' => [
-                'leads', 'clients', 'tasks', 'projects', 'financials', 'invoices',
-                'warehouse', 'meetings', 'communications', 'search', 'team',
-                'employees', 'automation', 'files'
+                'leads', 'clients', 'tasks', 'weekly_plan', 'projects', 'financials', 'invoices',
+                'orders', 'warehouse', 'time_tracking', 'tickets', 'meetings', 'communications',
+                'search', 'team', 'employees', 'automation', 'files'
             ]
         ]
     ]);
@@ -479,7 +487,7 @@ switch ($rpcMethod) {
 // TOOL DEFINITIONS (core tools; the finance, operations and automation tools live in mcp_ext*.php)
 // ============================================================================
 function mcp_get_tool_definitions(): array {
-    return array_merge(mcp_core_tool_definitions(), mcp_ext_fin_tool_definitions(), mcp_ext_ops_tool_definitions(), mcp_ext_intel_tool_definitions(), mcp_deleted_tool_definitions());
+    return array_merge(mcp_core_tool_definitions(), mcp_ext_fin_tool_definitions(), mcp_ext_ops_tool_definitions(), mcp_ext_intel_tool_definitions(), mcp_deleted_tool_definitions(), mcp_get_module_tool_definitions(), mcp_get_agency_tool_definitions());
 }
 
 function mcp_core_tool_definitions(): array {
@@ -1005,7 +1013,7 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 9: Cross-Entity Global Search
         [
             'name' => 'search_entities',
-            'description' => 'Search leads, clients, tasks, projects, invoices and the warehouse catalog. Every word of the query must match (case- and accent-insensitive), each in any searched field; the query run together also matches names written without spaces ("villa testa" and "villatesta" both find "Villatesta"). Leads/clients are searched by name, email, phone, IČO, DIČ, IČ DPH, contact person, notes, city and website; projects by their own and their client\'s name. Lead/client and project rows carry a `url` into the web app.',
+            'description' => 'Search leads, clients, tasks, projects, invoices, tickets, orders and the warehouse catalog. Every word of the query must match (case- and accent-insensitive), each in any searched field; the query run together also matches names written without spaces ("villa testa" and "villatesta" both find "Villatesta"). Leads/clients are searched by name, email, phone, IČO, DIČ, IČ DPH, contact person, notes, city and website; projects by their own and their client\'s name. Lead/client and project rows carry a `url` into the web app.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -1013,7 +1021,7 @@ function mcp_core_tool_definitions(): array {
                     'entity_types' => [
                         'type' => 'array',
                         'items' => ['type' => 'string'],
-                        'description' => 'Optional filter: leads, clients, tasks, projects, invoices, warehouse'
+                        'description' => 'Optional filter: leads, clients, tasks, projects, invoices, tickets, orders, warehouse'
                     ],
                     'limit' => ['type' => 'integer', 'description' => 'Rows per section (default 15, max 50)']
                 ],
@@ -1181,6 +1189,58 @@ function mcp_core_tool_definitions(): array {
                     'note' => ['type' => 'string', 'description' => 'Note or reason']
                 ],
                 'required' => ['employee_id', 'start_date', 'end_date']
+            ]
+        ],
+
+        // DOMAIN 12: WhatsApp (WAAI) Live Messaging
+        [
+            'name' => 'whatsapp_list_chats',
+            'description' => 'List WhatsApp chats and groups from the connected WhatsApp (WAAI) channel. Supports filtering by search query or chat type (all, groups, contacts).',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'query' => ['type' => 'string', 'description' => 'Optional search string to filter chats by contact name, group name, phone number, participant name, or message preview.'],
+                    'type' => ['type' => 'string', 'enum' => ['all', 'groups', 'contacts'], 'description' => 'Filter by chat type: all (default), groups, or contacts.'],
+                    'limit' => ['type' => 'integer', 'description' => 'Maximum number of chats to return (default 30, max 100).'],
+                    'connector_id' => ['type' => 'string', 'description' => 'Optional WhatsApp connector ID.']
+                ]
+            ]
+        ],
+        [
+            'name' => 'whatsapp_read_messages',
+            'description' => 'Read the message history of a WhatsApp contact or group chat by chat name (e.g. "Managment Cstudios", "Roland Vanyek"), phone number, or WhatsApp JID.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'chat' => ['type' => 'string', 'description' => 'Target WhatsApp chat name, group name, participant name, phone number, or JID.'],
+                    'limit' => ['type' => 'integer', 'description' => 'Number of most recent messages to return (default 30, max 100).'],
+                    'connector_id' => ['type' => 'string', 'description' => 'Optional WhatsApp connector ID.']
+                ],
+                'required' => ['chat']
+            ]
+        ],
+        [
+            'name' => 'whatsapp_send_message',
+            'description' => 'Send a WhatsApp message (or reply) to a contact or group chat via the connected WhatsApp (WAAI) channel.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'chat' => ['type' => 'string', 'description' => 'Target WhatsApp chat name, group name, phone number, or JID.'],
+                    'message' => ['type' => 'string', 'description' => 'The exact text message to send on WhatsApp.'],
+                    'connector_id' => ['type' => 'string', 'description' => 'Optional WhatsApp connector ID.']
+                ],
+                'required' => ['chat', 'message']
+            ]
+        ],
+        [
+            'name' => 'whatsapp_sync_chat',
+            'description' => 'Trigger a live on-demand WhatsApp sync (fetchMessageHistory) for a specific chat/group or the entire WhatsApp (WAAI) connector.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'chat' => ['type' => 'string', 'description' => 'Optional chat name, phone number, or JID to sync on-demand.'],
+                    'connector_id' => ['type' => 'string', 'description' => 'Optional WhatsApp connector ID.']
+                ]
             ]
         ]
     ];
@@ -2101,6 +2161,15 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
         case 'record_vacation':
             return mcp_do_record_vacation($pdo, $user, $args);
 
+        case 'whatsapp_list_chats':
+        case 'whatsapp_read_messages':
+        case 'whatsapp_send_message':
+        case 'whatsapp_sync_chat':
+            require_once __DIR__ . '/marveen/marveen_lib.php';
+            $waExec = ccrm_marveen_execute_whatsapp_tool($pdo, null, $tool, $args, (string)($user['id'] ?? ''));
+            $decoded = json_decode((string)($waExec['toolText'] ?? '{}'), true);
+            return is_array($decoded) ? $decoded : ['result' => $waExec['toolText'] ?? ''];
+
         default:
             $extResult = mcp_ext_fin_execute($pdo, $user, $tool, $args);
             if ($extResult !== MCP_NOT_MINE) return $extResult;
@@ -2109,6 +2178,10 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $extResult = mcp_ext_intel_execute($pdo, $user, $tool, $args);
             if ($extResult !== MCP_NOT_MINE) return $extResult;
             $extResult = mcp_deleted_execute($pdo, $user, $tool, $args);
+            if ($extResult !== MCP_NOT_MINE) return $extResult;
+            $extResult = mcp_ext_modules_execute($pdo, $user, $tool, $args);
+            if ($extResult !== MCP_NOT_MINE) return $extResult;
+            $extResult = mcp_ext_agency_execute($pdo, $user, $tool, $args);
             if ($extResult !== MCP_NOT_MINE) return $extResult;
             throw new \Exception("Unrecognized tool name: " . htmlspecialchars($tool));
     }

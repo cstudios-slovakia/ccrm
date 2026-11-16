@@ -753,7 +753,7 @@ function mcp_invoice_totals(array $rows): array {
 function mcp_search_entities(\PDO $pdo, array $user, array $args): array {
     $query = mcp_require_string($args, 'query');
     $tokens = mcp_query_tokens($query);
-    $types = is_array($args['entity_types'] ?? null) ? $args['entity_types'] : ['leads', 'clients', 'tasks', 'projects', 'invoices', 'warehouse'];
+    $types = is_array($args['entity_types'] ?? null) ? $args['entity_types'] : ['leads', 'clients', 'tasks', 'projects', 'invoices', 'tickets', 'orders', 'warehouse'];
     $limit = min(max(1, (int)($args['limit'] ?? 15)), 50);
     $results = [];
 
@@ -826,6 +826,20 @@ function mcp_search_entities(\PDO $pdo, array $user, array $args): array {
         $stmt = $pdo->prepare("SELECT id, sku, name, category, default_sell_price FROM warehouse_items WHERE {$w} ORDER BY name ASC LIMIT {$limit}");
         $stmt->execute($p);
         $results['warehouse_items'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    if (in_array('tickets', $types, true) && mcp_can('tickets') && ccrm_table_exists($pdo, 'tickets')) {
+        [$w, $p] = mcp_token_where(['ticket_number', 'title', 'description', 'reporter_name', 'reporter_email'], $tokens);
+        $stmt = $pdo->prepare("SELECT id, ticket_number, title, status, priority, assignee_name FROM tickets WHERE archived = 0 AND ({$w}) ORDER BY updated_at DESC LIMIT {$limit}");
+        $stmt->execute($p);
+        $results['tickets'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    if (in_array('orders', $types, true) && mcp_can('orders') && ccrm_table_exists($pdo, 'orders')) {
+        [$w, $p] = mcp_token_where(['order_number', 'guest_name', 'guest_company', 'guest_email', 'notes'], $tokens);
+        $stmt = $pdo->prepare("SELECT id, order_number, type, status, payment_status, total_gross_amount, currency, order_date FROM orders WHERE ({$w}) ORDER BY order_date DESC LIMIT {$limit}");
+        $stmt->execute($p);
+        $results['orders'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     return $results;

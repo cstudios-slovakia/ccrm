@@ -4,7 +4,7 @@ import {
   ShieldCheck, ScrollText, ToggleRight, Shapes, Workflow, Signpost, Tags, Shuffle,
   Webhook, CircleDot, Sparkles, ListChecks, ListTodo, Percent, BadgePercent, CreditCard,
   LayoutTemplate, BadgeCheck, PackageCheck, Truck, BookOpen, FolderTree, Inbox, Send,
-  MailCheck, Key, Bot, Megaphone, Share2, KeyRound, Database, Bug, TriangleAlert, FileText, Timer, MessageCircle,
+  MailCheck, Key, Bot, Megaphone, Share2, KeyRound, Database, Bug, TriangleAlert, FileText, Timer, MessageCircle, UserCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -188,6 +188,15 @@ export const SETTINGS_CATEGORIES: SettingsCategoryDef[] = [
     ],
     related: [rel("email/outgoing", "outgoing_server")],
   },
+  {
+    id: "agency", group: "work", icon: UserCheck, tint: "teal",
+    sections: [
+      S("workflow", Workflow, "general_config"),
+      S("schema", IdCard, "general_config"),
+      S("shifts", Timer, "general_config"),
+    ],
+    related: [rel("modules/visible", "what_people_see"), rel("access/roles", "who_uses_modules")],
+  },
   // ── Connections & system ──────────────────────────────────────────────────
   {
     id: "email", group: "connections", icon: Mail, tint: "rose",
@@ -327,6 +336,7 @@ export const LEGACY_SETTINGS_ROUTES: Record<string, string> = {
   errors: "system/errors",
   audit: "access/audit",
   danger: "system/reset",
+  "agency-settings": "agency/workflow",
 };
 
 export interface ParsedSettingsRoute {

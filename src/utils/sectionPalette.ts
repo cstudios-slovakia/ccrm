@@ -34,6 +34,7 @@ export type SectionVisualId =
   | "clients"
   | "leads"
   | "employees"
+  | "agency"
   | "projects"
   | "tickets"
   | "warehouse"
@@ -74,7 +75,8 @@ export const SECTION_PALETTE: Record<SectionVisualId, SectionPaletteEntry> = {
 
   clients: entry("clients", "people", "Users", "#115e59"),
   leads: entry("leads", "people", "TableProperties", "#0f766e"),
-  employees: entry("employees", "people", "EmployeeTieIcon", "#0d9488"),
+  employees: entry("employees", "people", "EmployeeTieIcon", "#c29b62"),
+  agency: entry("agency", "people", "UserCheck", "#5c6f28"),
 
   projects: entry("projects", "delivery", "Briefcase", "#6b21a8"),
   tickets: entry("tickets", "delivery", "LifeBuoy", "#7e22ce"),

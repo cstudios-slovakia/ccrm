@@ -27,7 +27,8 @@ try {
 // no HTTP request, so only someone already on the server can start it and no token is
 // asked for. A web request always sets REQUEST_METHOD, so this can't be reached over HTTP.
 $ccrmCronFromCli = !isset($_SERVER['REQUEST_METHOD'])
-    && (PHP_SAPI === 'cli' || strncmp(PHP_SAPI, 'cgi', 3) === 0);
+    && (PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg' || strncmp(PHP_SAPI, 'cgi', 3) === 0);
+$isCli = $ccrmCronFromCli;
 if ($ccrmCronFromCli) {
     // Code below reads the host from the request (SMTP greeting name, links); give it the
     // app's stored address so a CLI run behaves like the URL call.
@@ -38,6 +39,24 @@ if ($ccrmCronFromCli) {
         $_SERVER['HTTP_HOST'] = $_SERVER['SERVER_NAME'] = $appHost;
         if (parse_url($appBase, PHP_URL_SCHEME) === 'https') {
             $_SERVER['HTTPS'] = 'on';
+        }
+    }
+}
+
+// `php api/cron.php --trigger-wa=<account>`: run only the reactive WhatsApp triggers.
+if ($ccrmCronFromCli && !empty($argv) && is_array($argv)) {
+    foreach ($argv as $arg) {
+        if (str_starts_with((string)$arg, '--trigger-wa=')) {
+            $waAcc = trim(substr((string)$arg, strlen('--trigger-wa=')));
+            try {
+                require_once __DIR__ . '/marveen/marveen_lib.php';
+                $res = ccrm_marveen_process_event_triggers($pdo, $waAcc !== '' ? $waAcc : null);
+                echo json_encode(array_merge(['success' => true, 'mode' => 'wa_reactive_trigger'], $res));
+            } catch (Throwable $e) {
+                if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+                echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            }
+            exit;
         }
     }
 }
@@ -195,6 +214,17 @@ try {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
 }
 
+// 2e. Autonomous AI Agent Connectors heartbeat (Marveen + CCRM MCP)
+$agentTicks = null;
+try {
+    require_once __DIR__ . '/marveen/marveen_lib.php';
+    if (function_exists('ccrm_marveen_run_autonomous_ticks')) {
+        $agentTicks = ccrm_marveen_run_autonomous_ticks($pdo);
+    }
+} catch (Throwable $e) {
+    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+}
+
 // 3. Process Workflow Queue
 try {
     ccrm_process_workflow_queue($pdo);
@@ -217,6 +247,7 @@ try {
         'holidayRefresh' => $holidayRefresh,
         'activityPurge' => $activityPurge,
         'newsletter' => $newsletter,
+        'agentTicks' => $agentTicks,
         'mailFiling' => $mailFiling === null ? null : [
             'ran' => $mailFiling['ran'] ?? false,
             'seen' => $mailFiling['seen'] ?? 0,

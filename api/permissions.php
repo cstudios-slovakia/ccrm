@@ -38,13 +38,13 @@ if (!function_exists('ccrm_permission_sections')) {
      */
     function ccrm_permission_sections(): array {
         // Mirrors the access() / toggle() / deleteToggle() helpers of the TS file.
-        $access = function (string $key, string $legacyDefault = 'edit', string $newRoleDefault = 'nothing', ?array $legacy = null): array {
+        $access = function (string $key, string $legacyDefault = 'edit', string $newRoleDefault = 'nothing', ?array $legacy = null, ?array $requires = null): array {
             return [
                 'key' => $key,
                 'kind' => 'access',
                 'legacyDefault' => $legacyDefault,
                 'newRoleDefault' => $newRoleDefault,
-                'requires' => null,
+                'requires' => $requires,
                 'legacyKeys' => $legacy['keys'] ?? null,
                 'legacyEdit' => $legacy['edit'] ?? null,
             ];
@@ -75,6 +75,14 @@ if (!function_exists('ccrm_permission_sections')) {
                 $deleteToggle('tasks', 'nothing'),
                 // On for every role until revoked — see resolveTaskViewAll in taskSelectors.
                 $toggle('tasks.view_all', 'edit', 'edit', ['key' => 'tasks', 'level' => 'view']),
+                // Standalone Weekly Plan board view inside Tasks.
+                $access(
+                    'tasks.weekly_plan',
+                    'edit',
+                    'nothing',
+                    ['keys' => ['tasks.view', 'tasks.create', 'tasks.edit'], 'edit' => ['tasks.create', 'tasks.edit']],
+                    ['key' => 'tasks', 'level' => 'view']
+                ),
             ]],
             ['id' => 'leads', 'permissions' => [
                 $access('leads', 'edit', 'nothing', ['keys' => ['leads.view', 'leads.create', 'leads.edit'], 'edit' => ['leads.create', 'leads.edit']]),
@@ -98,6 +106,12 @@ if (!function_exists('ccrm_permission_sections')) {
                 $toggle('employees.vacations', 'edit', 'nothing', ['key' => 'employees', 'level' => 'view']),
                 $toggle('employees.files', 'edit', 'nothing', ['key' => 'employees', 'level' => 'view']),
                 $toggle('employees.personal', 'edit', 'nothing', ['key' => 'employees', 'level' => 'view']),
+            ]],
+            ['id' => 'agency', 'permissions' => [
+                $access('agency'),
+                $deleteToggle('agency'),
+                $toggle('agency.personal', 'edit', 'nothing', ['key' => 'agency', 'level' => 'view']),
+                $toggle('agency.payments', 'nothing', 'nothing', ['key' => 'agency', 'level' => 'view']),
             ]],
             ['id' => 'self_service', 'permissions' => [
                 $access('self.profile', 'nothing', 'nothing'),
@@ -232,6 +246,7 @@ if (!function_exists('ccrm_permission_sections')) {
                     'tasks' => 'edit',
                     'tasks.delete' => 'nothing',
                     'tasks.view_all' => 'edit',
+                    'tasks.weekly_plan' => 'edit',
                     'leads' => 'edit',
                     'leads.delete' => 'edit',
                     'clients' => 'edit',
@@ -255,6 +270,10 @@ if (!function_exists('ccrm_permission_sections')) {
                     'employees.vacations' => 'edit',
                     'employees.files' => 'edit',
                     'employees.personal' => 'edit',
+                    'agency' => 'edit',
+                    'agency.delete' => 'edit',
+                    'agency.personal' => 'edit',
+                    'agency.payments' => 'nothing',
                     'meetings' => 'edit',
                     'meetings.delete' => 'edit',
                     'time_tracking' => 'edit',
@@ -396,6 +415,7 @@ if (!function_exists('ccrm_permission_sections')) {
             'tasks' => 'edit',
             'tasks.delete' => 'nothing',
             'tasks.view_all' => 'nothing',
+            'tasks.weekly_plan' => 'view',
             'leads' => 'nothing',
             'leads.delete' => 'nothing',
             'clients' => 'nothing',
@@ -419,6 +439,10 @@ if (!function_exists('ccrm_permission_sections')) {
             'employees.vacations' => 'nothing',
             'employees.files' => 'nothing',
             'employees.personal' => 'nothing',
+            'agency' => 'nothing',
+            'agency.delete' => 'nothing',
+            'agency.personal' => 'nothing',
+            'agency.payments' => 'nothing',
             'meetings' => 'nothing',
             'meetings.delete' => 'nothing',
             'time_tracking' => 'edit',

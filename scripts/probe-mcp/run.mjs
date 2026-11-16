@@ -79,7 +79,7 @@ const isErr = (r, re) => !!(r && r.__error && (!re || re.test(r.__error)));
 const forbidden = (r) => !!(r && r.__rpc && r.__rpc.code === -32003);
 
 // ----------------------------------------------------------------------------- setup / teardown
-const MODULES = ['dashboard', 'tasks', 'leads', 'clients', 'projects', 'invoices', 'warehouse', 'financial', 'employees', 'meetings', 'files', 'email', 'unified_entries', 'automation', 'social_media'];
+const MODULES = ['dashboard', 'tasks', 'tasks.weekly_plan', 'leads', 'clients', 'projects', 'invoices', 'orders', 'warehouse', 'financial', 'employees', 'meetings', 'tickets', 'time_tracking', 'whatsapp', 'files', 'email', 'unified_entries', 'automation', 'social_media'];
 const SETTINGS_KEYS = ['general_config', 'pm_managers', 'pipeline_stages', 'traffic_sources', 'ai_config', 'system_reset', 'nav_edit'];
 const role = (name, level) => ({
   name,
@@ -87,11 +87,12 @@ const role = (name, level) => ({
     ...Object.fromEntries(MODULES.map((m) => [m, level])),
     ...Object.fromEntries(SETTINGS_KEYS.map((k) => [k, 'nothing'])),
     'tasks.view_all': 'nothing', 'employees.salaries': 'nothing', 'dashboard.custom': 'nothing', 'overview': 'nothing',
+    'time_tracking_team': 'nothing', 'time_tracking_costs': 'nothing', 'tickets.time': 'nothing',
     // HR field groups, written out so nothing falls back to the legacy "edit" default: personal data and
     // documents are off; leave is on for the editor only (the leave tools need it).
     'employees.personal': 'nothing', 'employees.files': 'nothing', 'employees.vacations': level === 'edit' ? 'edit' : 'nothing',
-    'leads.delete': 'nothing', 'clients.delete': 'nothing', 'projects.delete': 'nothing', 'invoices.delete': 'nothing',
-    'warehouse.delete': 'nothing', 'financial.delete': 'nothing', 'employees.delete': 'nothing', 'meetings.delete': 'nothing',
+    'leads.delete': 'nothing', 'clients.delete': 'nothing', 'projects.delete': 'nothing', 'invoices.delete': 'nothing', 'orders.delete': 'nothing',
+    'warehouse.delete': 'nothing', 'financial.delete': 'nothing', 'employees.delete': 'nothing', 'meetings.delete': 'nothing', 'tickets.delete': 'nothing',
     'files.delete': 'nothing', 'unified_entries.delete': 'nothing', 'tasks.delete': 'nothing',
   },
 });
@@ -174,7 +175,7 @@ async function authorizationChecks() {
   const noneSearch = await call(TOKENS.none, 'search_entities', { query: 'a' });
   check('search_entities returns no module sections to nothing-role', noneSearch && !noneSearch.__error && Object.keys(noneSearch).length === 0, JSON.stringify(noneSearch).slice(0, 200));
 
-  const WRITE = /^(create|update|set|record|adjust|convert|transition|complete|add|schedule|log)_/;
+  const WRITE = /^(create|update|set|record|adjust|convert|transition|complete|add|schedule|log|start|stop)_/;
   const viewerTools = await listTools(TOKENS.viewer);
   check('view-only role sees no write tool', !viewerTools.some((t) => WRITE.test(t)), viewerTools.filter((t) => WRITE.test(t)).join(','));
   check('view-only role sees read tools', ['list_leads', 'get_financial_overview', 'list_employees', 'get_project_billing_summary'].every((t) => viewerTools.includes(t)), '');
@@ -691,6 +692,76 @@ async function writeChecks() {
   const overviewSimple = await call(A, 'get_financial_overview', {});
   check('get_financial_overview points simplified workspaces to the simplified table', overviewSimple.mode === 'simplified', JSON.stringify(overviewSimple));
   await call(A, 'set_financial_mode', { mode: 'connected' });
+
+  // Time tracking lifecycle
+  const runBefore = await call(A, 'get_running_timer');
+  check('get_running_timer starts empty', runBefore.running === null, JSON.stringify(runBefore));
+  const started = await call(A, 'start_timer', { description: 'Probe timer work', project_id: 'p1', billable: true });
+  check('start_timer creates running entry', Boolean(started.entry?.id), JSON.stringify(started));
+  const runDuring = await call(A, 'get_running_timer');
+  check('get_running_timer sees started timer', Boolean(started.entry?.id) && runDuring.running?.id === started.entry?.id, JSON.stringify(runDuring));
+  const stopped = await call(A, 'stop_timer', { note: 'Finished probe work', project_id: 'p1' });
+  check('stop_timer ends running timer', Boolean(started.entry?.id) && stopped.entry?.id === started.entry?.id && stopped.entry?.endAt !== null, JSON.stringify(stopped));
+  const loggedTe = await call(A, 'log_time_entry', { duration_minutes: 30, description: 'Manual probe time', project_id: 'p1', billable: false });
+  check('log_time_entry creates entry', Boolean(loggedTe.entry?.id), JSON.stringify(loggedTe));
+  const updTe = await call(A, 'update_time_entry', { id: loggedTe.entry.id, duration_minutes: 45, billable: true });
+  check('update_time_entry updates duration', updTe.entry?.durationSec === 2700 && updTe.entry?.billable === true, JSON.stringify(updTe));
+  const teListEd = await call(A, 'list_time_entries', { limit: 10 });
+  check('list_time_entries returns entries', Array.isArray(teListEd) && teListEd.some((x) => x.id === loggedTe.entry.id));
+  const teSum = await call(A, 'get_time_tracking_summary', { group_by: 'project' });
+  check('get_time_tracking_summary returns totals', typeof teSum.total_hours === 'number' && teSum.total_hours > 0, JSON.stringify(teSum));
+
+  // Support tickets & contracts
+  const tckCreated = await call(TOKENS.editor, 'create_ticket', { title: 'Probe support ticket', description: 'Initial issue details', priority: 'high' });
+  check('create_ticket returns ticket number', Boolean(tckCreated.id && tckCreated.ticket_number), JSON.stringify(tckCreated));
+  const tckMsg = await call(TOKENS.editor, 'add_ticket_message', { ticket_id: tckCreated.id, body: 'Public reply from agent', is_internal: false, status: 'open' });
+  check('add_ticket_message logs reply', tckMsg.success === true, JSON.stringify(tckMsg));
+  await call(TOKENS.editor, 'update_ticket', { id: tckCreated.id, priority: 'critical' });
+  const tckGot = await call(TOKENS.editor, 'get_ticket', { id: tckCreated.id });
+  check('get_ticket reflects updated priority and messages', tckGot.priority === 'critical' && Array.isArray(tckGot.messages) && tckGot.messages.length >= 2, JSON.stringify(tckGot));
+  const tckList = await call(TOKENS.editor, 'list_tickets', { search: tckCreated.ticket_number });
+  check('list_tickets finds created ticket', Array.isArray(tckList) && tckList.some((t) => t.id === tckCreated.id));
+  const scList = await call(TOKENS.editor, 'list_support_contracts', {});
+  check('list_support_contracts returns array', Array.isArray(scList));
+
+  // Orders
+  const ordCreated = await call(TOKENS.editor, 'create_order', {
+    type: 'sales',
+    guest_name: 'Probe Buyer',
+    items: [{ name: 'Probe Widget', quantity: 2, unit_price: 50, tax_rate: 20 }],
+  });
+  check('create_order computes totals', ordCreated.success === true && ordCreated.total_gross_amount === 120, JSON.stringify(ordCreated));
+  const ordUpd = await call(TOKENS.editor, 'update_order', { id: ordCreated.id, status: 'confirmed', payment_status: 'paid' });
+  check('update_order succeeds', ordUpd.success === true, JSON.stringify(ordUpd));
+  const ordGot = await call(TOKENS.editor, 'get_order', { id: ordCreated.id });
+  check('get_order returns line items and updated status', ordGot.status === 'confirmed' && ordGot.items?.length === 1, JSON.stringify(ordGot));
+  const ordList = await call(TOKENS.editor, 'list_orders', { search: ordCreated.order_number });
+  check('list_orders finds created order', Array.isArray(ordList) && ordList.some((o) => o.id === ordCreated.id));
+
+  // Weekly plan
+  const wpCard = await call(TOKENS.editor, 'create_weekly_plan_card', { date: '2026-11-16', content: 'Probe weekly goal', color: 'blue' });
+  check('create_weekly_plan_card creates card', wpCard.success === true && Boolean(wpCard.id), JSON.stringify(wpCard));
+  const wpUpd = await call(TOKENS.editor, 'update_weekly_plan_card', { id: wpCard.id, completed: true });
+  check('update_weekly_plan_card succeeds', wpUpd.success === true, JSON.stringify(wpUpd));
+  const wpNote = await call(TOKENS.editor, 'set_weekly_plan_day_note', { date: '2026-11-16', note: 'Probe day note' });
+  check('set_weekly_plan_day_note succeeds', wpNote.success === true, JSON.stringify(wpNote));
+  const wpBoard = await call(TOKENS.editor, 'get_weekly_plan', { date: '2026-11-18' });
+  check('get_weekly_plan returns card and day note', wpBoard.cards?.some((c) => c.id === wpCard.id && c.completed === true) && wpBoard.day_notes?.['2026-11-16'] === 'Probe day note', JSON.stringify(wpBoard));
+
+  // Price offer & recurring tasks
+  const clientsForOffer = await call(TOKENS.editor, 'list_leads', { limit: 1 });
+  const offerClient = clientsForOffer[0]?.id || (await call(TOKENS.editor, 'create_lead', { name: 'Offer Probe Client' })).id;
+  const offerRes = await call(TOKENS.editor, 'create_price_offer', {
+    client_id: offerClient,
+    title: 'Probe Website Package',
+    items: [{ title: 'Setup', quantity: 1, unit_price: 500 }],
+  });
+  check('create_price_offer generates CP offer', offerRes.success === true && String(offerRes.document_number).startsWith('CP-'), JSON.stringify(offerRes));
+
+  const recTask = await call(TOKENS.editor, 'create_recurring_task', { title: 'Weekly Probe Check', frequency: 'weekly', interval: 1 });
+  check('create_recurring_task creates template', recTask.success === true && Boolean(recTask.id), JSON.stringify(recTask));
+  const recList = await call(TOKENS.editor, 'list_recurring_tasks', { search: 'Weekly Probe Check' });
+  check('list_recurring_tasks finds template', Array.isArray(recList) && recList.some((t) => t.id === recTask.id), JSON.stringify(recList));
 }
 
 // ----------------------------------------------------------------------------- 4. client & project intelligence

@@ -42,7 +42,7 @@ import {
     SlidersHorizontal,
     Ticket as TicketIcon,
 } from "lucide-react";
-import type { Task, UserProfile, Lead, Project, Ticket, RecurringTaskTemplate } from "../types";
+import type { Task, UserProfile, Lead, Project, Ticket, Employee, RecurringTaskTemplate } from "../types";
 import { describeRecurrence, getPlannedOccurrencesInRange } from "../utils/recurringTasks";
 import { TaskRecurringMark } from "./TaskRecurringMark";
 import { deleteRecurringOccurrenceWithUndo, deleteRecurringSeriesWithUndo } from "../utils/recurringTaskActions";
@@ -94,6 +94,7 @@ import { DeadlinePostponedBadge } from "./TaskDeadlineExtras";
 import { useListFilter } from "../hooks/useListFilter";
 import { TaskWhatsAppMarks } from "./WhatsAppChip";
 import { PRODUCT_NAME } from "../utils/brand";
+import { WeeklyPlanView } from "./WeeklyPlanView";
 
 // Format a Date as a LOCAL calendar date (YYYY-MM-DD). Task deadlines are stored
 // as plain local date strings, so we must NOT go through toISOString() (which
@@ -366,6 +367,8 @@ interface TaskDashboardViewProps {
     projects?: Project[];
     /** Support tickets so tasks created from a ticket link directly to it. */
     tickets?: Ticket[];
+    /** Team employees for @mentions on Weekly Plan. */
+    employees?: Employee[];
     users?: UserProfile[]; // made optional to avoid TS errors if not passed
     systemLanguage: Language;
     currentUser?: UserProfile;
@@ -374,6 +377,8 @@ interface TaskDashboardViewProps {
     taskAccess?: TaskAccess;
     /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
     mailConfigured?: boolean;
+    /** True when the opt-in Agency & Workforce Leasing module is active. */
+    agencyEnabled?: boolean;
     /** Lead-state settings, to keep closed leads out of the lead / client picker. */
     leadStageGroups?: Record<string, string>;
     leadStateParents?: Record<string, string>;
@@ -542,6 +547,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     leads,
     projects = [],
     tickets = [],
+    employees = [],
     users = [],
     systemLanguage,
     currentUser,
@@ -554,6 +560,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     },
     taskAccess = { view: true, create: true, edit: true, delete: true, viewAll: true },
     mailConfigured,
+    agencyEnabled = false,
     leadStageGroups,
     leadStateParents,
 }) => {
@@ -759,7 +766,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
 
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [viewMode, setViewMode] = useState<"calendar" | "archive" | "global" | "recurring">(
+    const [viewMode, setViewMode] = useState<"calendar" | "archive" | "global" | "recurring" | "weekly_plan">(
         "calendar",
     );
     const [showPlannedRecurring, setShowPlannedRecurringState] = useState<boolean>(() => getShowPlannedRecurringCookie());
@@ -4578,6 +4585,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         systemLanguage={systemLanguage}
                         currentUserName={myName}
                         mailConfigured={mailConfigured}
+                        agencyEnabled={agencyEnabled}
                         leadStageGroups={leadStageGroups}
                         leadStateParents={leadStateParents}
                         initialDeadline={addDeadline}
@@ -5499,17 +5507,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Globálne úlohy",
                                     "Globális feladatok",
                                 )
-                              : viewMode === "recurring"
-                                ? t(
-                                      "Recurring Tasks",
-                                      "Opakované úlohy",
-                                      "Ismétlődő feladatok",
-                                  )
-                              : t(
-                                  "Done & Archived Tasks",
-                                  "Hotové a archivované úlohy",
-                                  "Kész és archivált feladatok",
-                              )}
+                                : viewMode === "recurring"
+                                    ? t(
+                                          "Recurring Tasks",
+                                          "Opakované úlohy",
+                                          "Ismétlődő feladatok",
+                                      )
+                                    : viewMode === "weekly_plan"
+                                      ? t(
+                                            "Weekly Plan",
+                                            "Týždenný plán",
+                                            "Heti terv",
+                                        )
+                                      : t(
+                                            "Done & Archived Tasks",
+                                            "Hotové a archivované úlohy",
+                                            "Kész és archivált feladatok",
+                                        )}
               subtitle={viewMode === "calendar"
                             ? t(
                                   "Tasks assigned to you. Team tasks remain available in Global Tasks.",
@@ -5528,7 +5542,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                       "Pravidlá sérií, ktoré automaticky vytvárajú úlohy podľa plánu alebo po dokončení.",
                                       "Sorozatszabályok, amelyek automatikusan feladatokat hoznak létre ütemezés szerint veya befejezés után.",
                                   )
-                              : archiveTab === "done"
+                                : viewMode === "weekly_plan"
+                                  ? t(
+                                        "Management weekly planning board with @references, #tags, day notes, and holiday highlights.",
+                                        "Týždenná plánovacia nástenka vedenia s @odkazmi, #štítkami, poznámkami dňa a vyznačením sviatkov.",
+                                        "Vezetőségi heti tervezőtábla @hivatkozásokkal, #címkékkel, napi jegyzetekkel és ünnepnap-jelöléssel.",
+                                    )
+                                  : archiveTab === "done"
                                 ? t(
                                       "History of completed tasks, logging details, and timing status.",
                                       "História dokončených úloh s informáciami o dobe omeškania.",
@@ -5594,6 +5614,19 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                   "Kész és archívum",
                               )}
                           </button>
+                          {(taskAccess.weeklyPlanView ?? taskAccess.view) && (
+                              <button
+                                  onClick={() => setViewMode("weekly_plan")}
+                                  data-testid="tasks-tab-weekly-plan"
+                    className={`px-3 ws-sm:px-4 py-2 rounded-lg font-bold text-ui transition-all cursor-pointer whitespace-nowrap ${
+                                      viewMode === "weekly_plan"
+                                          ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
+                                          : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
+                                  }`}
+                              >
+                                  {t("Weekly Plan", "Týždenný plán", "Heti terv")}
+                              </button>
+                          )}
                       </div>
 
                       {!isMiniWindow && (
@@ -5638,6 +5671,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     systemLanguage={systemLanguage}
                     currentUserName={myName}
                     mailConfigured={mailConfigured}
+                    agencyEnabled={agencyEnabled}
                     leadStageGroups={leadStageGroups}
                     leadStateParents={leadStateParents}
                     initialDeadline={addDeadline}
@@ -6016,6 +6050,18 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 renderGlobalTasksView()
             ) : viewMode === "recurring" ? (
                 renderRecurringTasksView()
+            ) : viewMode === "weekly_plan" ? (
+                <WeeklyPlanView
+                    leads={leads}
+                    projects={projects}
+                    tickets={tickets}
+                    users={users}
+                    employees={employees}
+                    tasks={tasks}
+                    existingTags={allExistingTags}
+                    systemLanguage={systemLanguage}
+                    canEdit={Boolean(taskAccess.weeklyPlanEdit ?? taskAccess.edit)}
+                />
             ) : calendarScope === "hide" ? (
                 <div className="flex-1 min-h-0">
                     {renderMyTaskListColumn(true)}
@@ -6068,6 +6114,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     currentUser={currentUser}
                     currentUserName={currentUser?.name || defaultUserName}
                     mailConfigured={mailConfigured}
+                    agencyEnabled={agencyEnabled}
                     canEdit={mayEditTask(editingTask)}
                     canArchive={mayArchiveTask(editingTask)}
                     canDelete={mayDeleteTask(editingTask)}
@@ -6098,6 +6145,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             assignedUsers: taskToConvert.assignedUsers,
                             relatedLeadId: taskToConvert.relatedLeadId,
                             relatedProjectId: taskToConvert.relatedProjectId,
+                            relatedAgencyWorkerId: taskToConvert.relatedAgencyWorkerId ?? null,
                             isLocking: taskToConvert.isLocking,
                             emailReminders: taskToConvert.emailReminders,
                             requiresConclusion: taskToConvert.requiresConclusion,
@@ -6171,6 +6219,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     currentUser={currentUser}
                     currentUserName={currentUser?.name || defaultUserName}
                     mailConfigured={mailConfigured}
+                    agencyEnabled={agencyEnabled}
                     canEdit={taskAccess.edit}
                     canArchive={false}
                     canDelete={taskAccess.delete}

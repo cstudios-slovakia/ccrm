@@ -12,6 +12,7 @@
 require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('GET, POST, OPTIONS');
@@ -161,6 +162,60 @@ $swarmRequireAccess = function (string $simId) use ($swarmManager, $swarmCanAcce
 // ACTION: LLM PROXY (Secure browser -> CCRM -> OpenAI gateway)
 // ─────────────────────────────────────────────────────────────
 if ($action === 'llm_proxy') {
+    $rawInput = file_get_contents('php://input');
+    $body = json_decode($rawInput, true) ?: [];
+    $messages = $body['messages'] ?? [];
+    $temperature = isset($body['temperature']) ? (float)$body['temperature'] : 0.7;
+    $responseFormat = $body['response_format'] ?? null;
+    $maxTokens = isset($body['max_completion_tokens'])
+        ? (int)$body['max_completion_tokens']
+        : (isset($body['max_tokens']) ? (int)$body['max_tokens'] : 8000);
+    $maxTokens = max(1, min($maxTokens, 16000));
+
+    if (empty($messages) || !is_array($messages)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Messages array cannot be empty.']);
+        exit;
+    }
+
+    $aiSrc = ccrm_ai_resolve_source($pdo);
+    if (($aiSrc['mode'] ?? 'manual') === 'connector') {
+        if (empty($aiSrc['configured'])) {
+            http_response_code(400);
+            echo json_encode([
+                'success' => false,
+                'code' => $aiSrc['errorCode'] ?: 'ai_connector_unconfigured',
+                'message' => $aiSrc['error'] ?: 'Selected AI connector is not configured.',
+            ]);
+            exit;
+        }
+        $connectorPayload = [
+            'model' => (string)$aiSrc['model'],
+            'messages' => $messages,
+            'max_completion_tokens' => $maxTokens,
+            'temperature' => $temperature,
+        ];
+        if ($responseFormat) {
+            $connectorPayload['response_format'] = $responseFormat;
+        }
+        $gwRes = ccrm_ai_chat_completion($pdo, $connectorPayload, [
+            'feature' => 'sai_swarm',
+            'timeout' => 90,
+        ]);
+        if (empty($gwRes['ok'])) {
+            http_response_code(502);
+            echo json_encode([
+                'success' => false,
+                'code' => $gwRes['code'] ?: 'ai_error',
+                'message' => $gwRes['error'] ?: 'LLM connector communication error.',
+            ]);
+            exit;
+        }
+        http_response_code(200);
+        echo json_encode($gwRes['raw'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     // (gated for every action at the top of this file)
     $creds = get_server_llm_credentials($pdo);
     if (empty($creds['apiKey'])) {
@@ -172,10 +227,6 @@ if ($action === 'llm_proxy') {
         exit;
     }
 
-    $rawInput = file_get_contents('php://input');
-    $body = json_decode($rawInput, true) ?: [];
-
-    $messages = $body['messages'] ?? [];
     // Only the models the Swarm UI offers (or the administrator configured): an
     // arbitrary client-chosen model would let any user spend the key on the most
     // expensive one. A stored GPT-5.6 / GPT-4o id is rewritten first.
@@ -188,19 +239,6 @@ if ($action === 'llm_proxy') {
     $swarmAllowedModels = ['gpt-6-luna', 'gpt-6.1-terra', 'gpt-6.1-sol', $configured, ccrm_ai_model($swarmCfg, $configured)];
     $requested = isset($body['model']) && is_string($body['model']) ? ccrm_ai_upgrade_model($body['model'], $configured) : $configured;
     $model = in_array($requested, $swarmAllowedModels, true) ? $requested : $configured;
-    $temperature = isset($body['temperature']) ? (float)$body['temperature'] : 0.7;
-    $responseFormat = $body['response_format'] ?? null;
-    $maxTokens = isset($body['max_completion_tokens']) 
-        ? (int)$body['max_completion_tokens'] 
-        : (isset($body['max_tokens']) ? (int)$body['max_tokens'] : 8000);
-
-    $maxTokens = max(1, min($maxTokens, 16000));
-
-    if (empty($messages) || !is_array($messages)) {
-        http_response_code(400);
-        echo json_encode(['success' => false, 'message' => 'Messages array cannot be empty.']);
-        exit;
-    }
 
     $isReasoningModel = !ccrm_ai_model_supports_temperature($model);
     $payload = [

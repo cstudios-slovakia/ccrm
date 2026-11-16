@@ -23,6 +23,7 @@
 
 require_once __DIR__ . '/read_scope.php';
 require_once __DIR__ . '/agent_utils.php';
+require_once __DIR__ . '/ai_gateway.php';
 
 if (!defined('CCRM_VEC_DIM')) {
     define('CCRM_VEC_DIM', 768);                       // text-embedding-3-small, shortened: 4x smaller, near-equal quality
@@ -49,7 +50,12 @@ function ccrm_vec_config(\PDO $pdo): array {
     $stmt->execute();
     $json = $stmt->fetchColumn();
     $cfg = $json ? json_decode($json, true) : [];
-    return is_array($cfg) ? ccrm_decrypt_config_secrets($cfg, ccrm_integration_secret_keys()) : [];
+    $cfg = is_array($cfg) ? ccrm_decrypt_config_secrets($cfg, ccrm_integration_secret_keys()) : [];
+    $resolved = ccrm_ai_resolve_openai_key($pdo, $cfg);
+    if ($resolved !== '') {
+        $cfg['openAiKey'] = $resolved;
+    }
+    return $cfg;
 }
 
 /** Create the index tables. Returns an error message, or '' when the schema is ready. */

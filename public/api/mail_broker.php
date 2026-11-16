@@ -19,6 +19,17 @@ ccrm_send_cors('GET, POST, OPTIONS, DELETE');
 
 // SECURITY: mailbox access is restricted to authenticated users.
 ccrm_require_auth();
+// Release the PHP session file lock immediately so concurrent IMAP requests
+// (INBOX, Sent, detail, and 5-second sync.php polls) never block each other.
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+if (function_exists('imap_timeout')) {
+    @imap_timeout(IMAP_OPENTIMEOUT, 8);
+    @imap_timeout(IMAP_READTIMEOUT, 8);
+    @imap_timeout(IMAP_WRITETIMEOUT, 8);
+    @imap_timeout(IMAP_CLOSETIMEOUT, 4);
+}
 
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {
@@ -241,6 +252,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $action === 'get_filed_mail_attachme
 // The header is now ignored entirely.
 $sessionUser = ccrm_current_user();
 $userEmail = $sessionUser['email'] ?? '';
+$userId = (string)($sessionUser['id'] ?? '');
+$isAdminUser = strtolower((string)($sessionUser['role'] ?? '')) === 'admin';
 
 if (empty($userEmail)) {
     http_response_code(401);
@@ -252,15 +265,87 @@ if (empty($userEmail)) {
 $stmt = $pdo->prepare("SELECT `metadata_json` FROM `users` WHERE `email` = ?");
 $stmt->execute([$userEmail]);
 $metadataStr = $stmt->fetchColumn();
+$metadata = $metadataStr ? json_decode($metadataStr, true) : [];
+$personalEmailSettings = ccrm_decrypt_email_settings(is_array($metadata) ? ($metadata['emailSettings'] ?? null) : null);
+$hasPersonalMailbox = !empty($personalEmailSettings) && (
+    !empty($personalEmailSettings['imapHost']) ||
+    (($personalEmailSettings['provider'] ?? '') === 'exchange' && !empty($personalEmailSettings['exchangeUrl']))
+);
 
-if (!$metadataStr) {
-    http_response_code(404);
-    echo json_encode(['success' => false, 'error' => 'User not found or configured.']);
+// Load company email connectors (`gmail`, `smtp`, `exchange`) assigned to this user via `userIds[]`
+$assignedCompanyMailboxes = [];
+try {
+    $cStmt = $pdo->query("SELECT * FROM `company_mailboxes` WHERE `is_active` = 1 ORDER BY `name`");
+    foreach ($cStmt ? $cStmt->fetchAll(PDO::FETCH_ASSOC) : [] as $cRow) {
+        $rawC = json_decode((string)($cRow['settings_json'] ?? '{}'), true);
+        $cSettings = ccrm_decrypt_email_settings(is_array($rawC) ? $rawC : []);
+        $cType = strtolower(trim((string)($cSettings['connectorType'] ?? (($cSettings['provider'] ?? '') === 'exchange' ? 'exchange' : 'smtp'))));
+        if (in_array($cType, ['whatsapp', 'claude', 'antigravity', 'chatgpt', 'claude_api', 'gemini_api', 'openai_api'], true)) {
+            continue;
+        }
+        $uIds = is_array($cSettings['userIds'] ?? null) ? array_values(array_filter(array_map('strval', $cSettings['userIds']))) : [];
+        if (!empty($cRow['owner_user_id']) && !in_array((string)$cRow['owner_user_id'], $uIds, true)) {
+            array_unshift($uIds, (string)$cRow['owner_user_id']);
+        }
+        $allowed = in_array($userId, $uIds, true) || ($isAdminUser && empty($uIds));
+        if ($allowed) {
+            if (!empty($cRow['backfill_since'])) {
+                $cSettings['backfillSince'] = trim((string)$cRow['backfill_since']);
+            }
+            $cRow['decrypted_settings'] = $cSettings;
+            $cRow['connector_type'] = $cType;
+            $assignedCompanyMailboxes[$cRow['id']] = $cRow;
+        }
+    }
+} catch (\Throwable $e) {
+    // company_mailboxes table may not exist yet before first migration
+}
+
+if ($action === 'accounts') {
+    $accounts = [];
+    if ($hasPersonalMailbox) {
+        $accounts[] = [
+            'id' => 'personal',
+            'name' => (string)($sessionUser['name'] ?? $userEmail),
+            'address' => (string)($personalEmailSettings['imapUsername'] ?? $userEmail),
+            'connectorType' => ($personalEmailSettings['provider'] ?? '') === 'exchange' ? 'exchange' : 'smtp',
+            'isPersonal' => true,
+        ];
+    }
+    foreach ($assignedCompanyMailboxes as $cid => $cRow) {
+        $accounts[] = [
+            'id' => $cid,
+            'name' => (string)$cRow['name'],
+            'address' => (string)$cRow['address'],
+            'connectorType' => (string)$cRow['connector_type'],
+            'isPersonal' => false,
+        ];
+    }
+    echo json_encode(['success' => true, 'accounts' => $accounts]);
     exit;
 }
 
-$metadata = json_decode($metadataStr, true);
-$emailSettings = ccrm_decrypt_email_settings($metadata['emailSettings'] ?? null);
+$requestedMailboxId = trim((string)($_GET['mailbox_id'] ?? ''));
+$emailSettings = null;
+$activeMailboxKey = 'u:' . strtolower(trim($userEmail));
+if ($requestedMailboxId !== '' && $requestedMailboxId !== 'personal') {
+    if (!isset($assignedCompanyMailboxes[$requestedMailboxId])) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'You do not have access to this mailbox connector.']);
+        exit;
+    }
+    $emailSettings = $assignedCompanyMailboxes[$requestedMailboxId]['decrypted_settings'];
+    $userEmail = (string)$assignedCompanyMailboxes[$requestedMailboxId]['address'];
+    $activeMailboxKey = 'c:' . $requestedMailboxId;
+} elseif ($hasPersonalMailbox) {
+    $emailSettings = $personalEmailSettings;
+    $activeMailboxKey = 'u:' . strtolower(trim($userEmail));
+} elseif (!empty($assignedCompanyMailboxes)) {
+    $firstAssigned = reset($assignedCompanyMailboxes);
+    $emailSettings = $firstAssigned['decrypted_settings'];
+    $userEmail = (string)$firstAssigned['address'];
+    $activeMailboxKey = 'c:' . (string)$firstAssigned['id'];
+}
 
 if (!$emailSettings) {
     http_response_code(400);
@@ -286,25 +371,93 @@ try {
             break;
 
         case 'get_emails':
-            $folder = isset($_GET['folder']) ? $_GET['folder'] : 'INBOX';
+            $requestedFolder = isset($_GET['folder']) ? trim((string)$_GET['folder']) : 'INBOX';
+            $uiFolder = strcasecmp($requestedFolder, 'Sent') === 0 ? 'Sent' : ($requestedFolder === '' ? 'INBOX' : $requestedFolder);
+            $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+            $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
+            $searchEmail = isset($_GET['email']) ? $_GET['email'] : null;
+
+            // Fast DB-cached envelope read (`cached_only=1`) so opening a mailbox
+            // displays already-received emails immediately without waiting for IMAP.
+            if (!empty($_GET['cached_only'])) {
+                $cachedResult = ccrm_read_cached_envelopes($pdo, $activeMailboxKey, $uiFolder, $emailSettings, $userEmail, $page, 25, $filter, $searchEmail);
+                echo json_encode(array_merge(['success' => true, 'cached' => true, 'folder' => $uiFolder], $cachedResult));
+                break;
+            }
+
             // Callers ask for the literal "Sent". Not every server calls it that,
             // and asking for a folder that does not exist reads as an empty one —
             // no error, and no outgoing mail on any timeline.
-            $folder = ccrm_canonical_folder($emailSettings, $folder);
-            $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
-            $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
-            $searchEmail = isset($_GET['email']) ? $_GET['email'] : null;
-            $result = fetch_imap_emails($emailSettings, $folder, $page, 25, $filter, $searchEmail);
+            $folder = ccrm_canonical_folder($emailSettings, $requestedFolder);
+            try {
+                $result = fetch_imap_emails($emailSettings, $folder, $page, 25, $filter, $searchEmail);
+            } catch (\Throwable $imapEx) {
+                if ($uiFolder === 'Sent') {
+                    $result = ['emails' => [], 'pagination' => ['total' => 0, 'unseen' => 0, 'page' => $page, 'limit' => 25, 'pages' => 1]];
+                } else {
+                    throw $imapEx;
+                }
+            }
+            if (!empty($result['emails']) && is_array($result['emails'])) {
+                ccrm_upsert_cached_envelopes($pdo, $activeMailboxKey, $uiFolder, $result['emails']);
+            }
+            // For Sent folder, also merge any locally recorded outgoing envelopes (e.g. AI agent replies or SMTP-only sends)
+            // from `mail_envelopes` so sent emails are always visible in the mailbox and threads even if IMAP Sent wasn't appended.
+            if ($uiFolder === 'Sent') {
+                $cachedSent = ccrm_read_cached_envelopes($pdo, $activeMailboxKey, 'Sent', $emailSettings, $userEmail, $page, 50, $filter, $searchEmail);
+                $seenUids = [];
+                $seenMsgIds = [];
+                foreach (($result['emails'] ?? []) as $emItem) {
+                    $seenUids[(int)($emItem['uid'] ?? 0)] = true;
+                    if (!empty($emItem['message_id'])) {
+                        $seenMsgIds[(string)$emItem['message_id']] = true;
+                    }
+                }
+                foreach (($cachedSent['emails'] ?? []) as $cItem) {
+                    $cUid = (int)($cItem['uid'] ?? 0);
+                    $cMsgId = (string)($cItem['message_id'] ?? '');
+                    if (isset($seenUids[$cUid]) || ($cMsgId !== '' && isset($seenMsgIds[$cMsgId]))) {
+                        continue;
+                    }
+                    $result['emails'][] = $cItem;
+                }
+                if (!empty($result['emails'])) {
+                    usort($result['emails'], static function (array $a, array $b): int {
+                        return strcmp((string)($b['date'] ?? ''), (string)($a['date'] ?? ''));
+                    });
+                }
+            }
             echo json_encode(array_merge(['success' => true, 'folder' => $folder], $result));
             break;
 
         case 'get_email_detail':
             $uid = isset($_GET['uid']) ? $_GET['uid'] : '';
-            $folder = ccrm_canonical_folder($emailSettings, isset($_GET['folder']) ? $_GET['folder'] : 'INBOX');
+            $requestedFolder = isset($_GET['folder']) ? trim((string)$_GET['folder']) : 'INBOX';
+            $uiFolder = strcasecmp($requestedFolder, 'Sent') === 0 ? 'Sent' : ($requestedFolder === '' ? 'INBOX' : $requestedFolder);
+            $folder = ccrm_canonical_folder($emailSettings, $requestedFolder);
             if (empty($uid)) {
                 throw new Exception('Missing email UID.');
             }
-            $email = fetch_imap_email_detail($emailSettings, $folder, $uid);
+            try {
+                $email = fetch_imap_email_detail($emailSettings, $folder, $uid);
+            } catch (\Throwable $detailEx) {
+                // Fallback to cached envelope preview when an outgoing reply was stored in `mail_envelopes`
+                $envStmt = $pdo->prepare("SELECT `preview`, `seen` FROM `mail_envelopes` WHERE `mailbox_key` = ? AND `uid` = ? LIMIT 1");
+                $envStmt->execute([$activeMailboxKey, (int)$uid]);
+                $envRow = $envStmt->fetch(PDO::FETCH_ASSOC);
+                if ($envRow) {
+                    $previewText = (string)($envRow['preview'] ?? '');
+                    $email = [
+                        'uid' => $uid,
+                        'html' => nl2br(htmlspecialchars($previewText, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')),
+                        'text' => $previewText,
+                        'attachments' => [],
+                        'seen' => !empty($envRow['seen']),
+                    ];
+                } else {
+                    throw $detailEx;
+                }
+            }
             echo json_encode(['success' => true, 'email' => $email]);
             break;
 
@@ -318,6 +471,31 @@ try {
                 throw new Exception('Invalid email payload.');
             }
             $sendResult = send_smtp_email($emailSettings, $payload['to'], $payload['subject'], $payload['html']);
+            // Record the sent message in `mail_envelopes` immediately so it appears in the mailbox & thread right away
+            try {
+                ccrm_ensure_mail_envelopes_table($pdo);
+                $fakeUid = (int)(time() * 10 + random_int(1, 9));
+                $plainPreview = mb_substr(trim(strip_tags((string)($payload['html'] ?? ''))), 0, 480, 'UTF-8');
+                $insStmt = $pdo->prepare(
+                    "INSERT IGNORE INTO `mail_envelopes` (
+                        `mailbox_key`, `folder`, `uid`, `event_id`, `subject`,
+                        `from_name`, `from_address`, `to_name`, `to_address`,
+                        `email_date`, `is_outgoing`, `seen`, `size`,
+                        `message_id`, `in_reply_to`, `references_hdr`, `preview`
+                    ) VALUES (?, 'Sent', ?, ?, ?, '', ?, '', ?, NOW(), 1, 1, ?, ?, '', '', ?)"
+                );
+                $insStmt->execute([
+                    $activeMailboxKey,
+                    $fakeUid,
+                    'email-sent-' . uniqid('', false),
+                    mb_substr((string)($payload['subject'] ?? ''), 0, 500, 'UTF-8'),
+                    mb_substr($userEmail, 0, 255, 'UTF-8'),
+                    mb_substr((string)($payload['to'] ?? ''), 0, 255, 'UTF-8'),
+                    strlen((string)($payload['html'] ?? '')),
+                    (string)($sendResult['message_id'] ?? ''),
+                    $plainPreview,
+                ]);
+            } catch (\Throwable $e) {}
             // `filed_to_sent` is false when the message was delivered but the
             // archive copy could not be stored. The send still succeeded; the
             // client says so, because an unfiled copy will not reach the timeline.
@@ -339,11 +517,14 @@ try {
                 throw new Exception('Invalid payload.');
             }
             $uid = isset($payload['uid']) ? trim((string)$payload['uid']) : '';
-            $folder = ccrm_canonical_folder($emailSettings, isset($payload['folder']) ? $payload['folder'] : 'INBOX');
+            $requestedFolder = isset($payload['folder']) ? trim((string)$payload['folder']) : 'INBOX';
+            $uiFolder = strcasecmp($requestedFolder, 'Sent') === 0 ? 'Sent' : ($requestedFolder === '' ? 'INBOX' : $requestedFolder);
+            $folder = ccrm_canonical_folder($emailSettings, $requestedFolder);
             if ($uid === '' || !array_key_exists('seen', $payload)) {
                 throw new Exception('Missing parameters.');
             }
             $seen = set_imap_email_seen($emailSettings, $folder, $uid, !empty($payload['seen']));
+            ccrm_update_cached_envelope_seen($pdo, $activeMailboxKey, $uiFolder, (int)$uid, (bool)$seen);
             echo json_encode(['success' => true, 'uid' => $uid, 'folder' => $folder, 'seen' => $seen]);
             break;
 
@@ -352,8 +533,11 @@ try {
                 throw new Exception('Invalid method.');
             }
             $uid = isset($_GET['uid']) ? $_GET['uid'] : '';
-            $folder = ccrm_canonical_folder($emailSettings, isset($_GET['folder']) ? $_GET['folder'] : 'INBOX');
+            $requestedFolder = isset($_GET['folder']) ? trim((string)$_GET['folder']) : 'INBOX';
+            $uiFolder = strcasecmp($requestedFolder, 'Sent') === 0 ? 'Sent' : ($requestedFolder === '' ? 'INBOX' : $requestedFolder);
+            $folder = ccrm_canonical_folder($emailSettings, $requestedFolder);
             delete_imap_email($emailSettings, $folder, $uid);
+            ccrm_delete_cached_envelope($pdo, $activeMailboxKey, $uiFolder, (int)$uid);
             echo json_encode(['success' => true]);
             break;
 
@@ -410,6 +594,224 @@ function safe_utf8($str) {
 }
 
 exit;
+
+function ccrm_ensure_mail_envelopes_table(PDO $pdo): void {
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+    $ensured = true;
+    try {
+        $pdo->exec(
+            "CREATE TABLE IF NOT EXISTS `mail_envelopes` (
+              `mailbox_key` VARCHAR(100) NOT NULL COMMENT 'c:<company mailbox id> or u:<user email>',
+              `folder` VARCHAR(120) NOT NULL COMMENT 'Canonical UI folder key (INBOX, Sent, or custom folder)',
+              `uid` BIGINT NOT NULL,
+              `event_id` VARCHAR(64) NOT NULL,
+              `subject` VARCHAR(500) NOT NULL DEFAULT '',
+              `from_name` VARCHAR(255) NOT NULL DEFAULT '',
+              `from_address` VARCHAR(255) NOT NULL DEFAULT '',
+              `to_name` VARCHAR(255) NOT NULL DEFAULT '',
+              `to_address` VARCHAR(255) NOT NULL DEFAULT '',
+              `email_date` DATETIME NULL,
+              `is_outgoing` TINYINT(1) NOT NULL DEFAULT 0,
+              `seen` TINYINT(1) NOT NULL DEFAULT 0,
+              `size` INT NOT NULL DEFAULT 0,
+              `message_id` VARCHAR(255) NOT NULL DEFAULT '',
+              `in_reply_to` VARCHAR(255) NOT NULL DEFAULT '',
+              `references_hdr` TEXT NULL,
+              `preview` VARCHAR(500) NOT NULL DEFAULT '',
+              `attachment_count` INT NOT NULL DEFAULT 0,
+              `timeline_hidden` TINYINT(1) NOT NULL DEFAULT 0,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (`mailbox_key`, `folder`, `uid`),
+              INDEX `idx_mail_envelopes_lookup` (`mailbox_key`, `folder`, `email_date` DESC, `uid` DESC)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        );
+    } catch (\Throwable $e) {}
+}
+
+function ccrm_upsert_cached_envelopes(PDO $pdo, string $mailboxKey, string $uiFolder, array $emails): void {
+    if (empty($emails)) {
+        return;
+    }
+    ccrm_ensure_mail_envelopes_table($pdo);
+    try {
+        $stmt = $pdo->prepare(
+            "INSERT INTO `mail_envelopes` (
+                `mailbox_key`, `folder`, `uid`, `event_id`, `subject`,
+                `from_name`, `from_address`, `to_name`, `to_address`,
+                `email_date`, `is_outgoing`, `seen`, `size`,
+                `message_id`, `in_reply_to`, `references_hdr`,
+                `preview`, `attachment_count`, `timeline_hidden`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                `event_id` = VALUES(`event_id`),
+                `subject` = VALUES(`subject`),
+                `from_name` = VALUES(`from_name`),
+                `from_address` = VALUES(`from_address`),
+                `to_name` = VALUES(`to_name`),
+                `to_address` = VALUES(`to_address`),
+                `email_date` = VALUES(`email_date`),
+                `is_outgoing` = VALUES(`is_outgoing`),
+                `seen` = VALUES(`seen`),
+                `size` = VALUES(`size`),
+                `message_id` = VALUES(`message_id`),
+                `in_reply_to` = VALUES(`in_reply_to`),
+                `references_hdr` = VALUES(`references_hdr`),
+                `preview` = IF(VALUES(`preview`) <> '', VALUES(`preview`), `preview`),
+                `attachment_count` = IF(VALUES(`preview`) <> '' OR VALUES(`attachment_count`) > 0, VALUES(`attachment_count`), `attachment_count`),
+                `timeline_hidden` = VALUES(`timeline_hidden`)"
+        );
+        foreach ($emails as $m) {
+            if (!is_array($m) || !isset($m['uid'])) {
+                continue;
+            }
+            $dateStr = trim((string)($m['date'] ?? ''));
+            $emailDate = ($dateStr !== '' && strtotime($dateStr) !== false) ? date('Y-m-d H:i:s', strtotime($dateStr)) : null;
+            $stmt->execute([
+                $mailboxKey,
+                $uiFolder,
+                (int)$m['uid'],
+                mb_substr((string)($m['event_id'] ?? ''), 0, 64, 'UTF-8'),
+                mb_substr((string)($m['subject'] ?? '(No Subject)'), 0, 500, 'UTF-8'),
+                mb_substr((string)($m['from']['name'] ?? ''), 0, 255, 'UTF-8'),
+                mb_substr((string)($m['from']['address'] ?? ''), 0, 255, 'UTF-8'),
+                mb_substr((string)($m['to']['name'] ?? ''), 0, 255, 'UTF-8'),
+                mb_substr((string)($m['to']['address'] ?? ''), 0, 255, 'UTF-8'),
+                $emailDate,
+                !empty($m['is_outgoing']) ? 1 : 0,
+                !empty($m['seen']) ? 1 : 0,
+                (int)($m['size'] ?? 0),
+                mb_substr((string)($m['message_id'] ?? ''), 0, 255, 'UTF-8'),
+                mb_substr((string)($m['in_reply_to'] ?? ''), 0, 255, 'UTF-8'),
+                (string)($m['references'] ?? ''),
+                mb_substr((string)($m['preview'] ?? ''), 0, 500, 'UTF-8'),
+                (int)($m['attachment_count'] ?? 0),
+                !empty($m['timeline_hidden']) ? 1 : 0,
+            ]);
+        }
+    } catch (\Throwable $e) {
+        error_log('[ccrm mail_envelopes] upsert failed: ' . $e->getMessage());
+    }
+}
+
+function ccrm_update_cached_envelope_seen(PDO $pdo, string $mailboxKey, string $uiFolder, int $uid, bool $seen): void {
+    ccrm_ensure_mail_envelopes_table($pdo);
+    try {
+        $stmt = $pdo->prepare("UPDATE `mail_envelopes` SET `seen` = ? WHERE `mailbox_key` = ? AND `folder` = ? AND `uid` = ?");
+        $stmt->execute([$seen ? 1 : 0, $mailboxKey, $uiFolder, $uid]);
+    } catch (\Throwable $e) {}
+}
+
+function ccrm_delete_cached_envelope(PDO $pdo, string $mailboxKey, string $uiFolder, int $uid): void {
+    ccrm_ensure_mail_envelopes_table($pdo);
+    try {
+        $stmt = $pdo->prepare("DELETE FROM `mail_envelopes` WHERE `mailbox_key` = ? AND `folder` = ? AND `uid` = ?");
+        $stmt->execute([$mailboxKey, $uiFolder, $uid]);
+    } catch (\Throwable $e) {}
+}
+
+function ccrm_read_cached_envelopes(
+    PDO $pdo,
+    string $mailboxKey,
+    string $uiFolder,
+    array $settings,
+    string $userEmail,
+    int $page,
+    int $limit,
+    string $filter,
+    ?string $searchEmail = null
+): array {
+    ccrm_ensure_mail_envelopes_table($pdo);
+    $where = ["e.`mailbox_key` = ?", "e.`folder` = ?"];
+    $params = [$mailboxKey, $uiFolder];
+
+    if (!empty($settings['backfillSince'])) {
+        $ts = strtotime(trim((string)$settings['backfillSince']) . ' 00:00:00');
+        if ($ts !== false && $ts > 0) {
+            $where[] = "(e.`email_date` IS NULL OR e.`email_date` >= ?)";
+            $params[] = date('Y-m-d 00:00:00', $ts);
+        }
+    }
+
+    if ($searchEmail !== null && trim($searchEmail) !== '') {
+        $needle = '%' . strtolower(trim($searchEmail)) . '%';
+        $where[] = "(LOWER(e.`from_address`) LIKE ? OR LOWER(e.`to_address`) LIKE ?)";
+        $params[] = $needle;
+        $params[] = $needle;
+    }
+
+    $baseWhereSql = implode(' AND ', $where);
+    $unseenStmt = $pdo->prepare("SELECT COUNT(*) FROM `mail_envelopes` e WHERE {$baseWhereSql} AND e.`seen` = 0");
+    $unseenStmt->execute($params);
+    $unseen = (int)$unseenStmt->fetchColumn();
+
+    if ($filter === 'unread') {
+        $where[] = "e.`seen` = 0";
+    }
+    $whereSql = implode(' AND ', $where);
+
+    $countStmt = $pdo->prepare("SELECT COUNT(*) FROM `mail_envelopes` e WHERE {$whereSql}");
+    $countStmt->execute($params);
+    $total = (int)$countStmt->fetchColumn();
+
+    $offset = max(0, ($page - 1) * $limit);
+    $sql = "SELECT e.*, s.`summary`
+            FROM `mail_envelopes` e
+            LEFT JOIN `email_summaries` s
+              ON s.`user_email` COLLATE utf8mb4_unicode_ci = ? COLLATE utf8mb4_unicode_ci
+             AND s.`folder` COLLATE utf8mb4_unicode_ci = e.`folder` COLLATE utf8mb4_unicode_ci
+             AND s.`email_uid` COLLATE utf8mb4_unicode_ci = CAST(e.`uid` AS CHAR) COLLATE utf8mb4_unicode_ci
+            WHERE {$whereSql}
+            ORDER BY e.`uid` DESC
+            LIMIT " . (int)$limit . " OFFSET " . (int)$offset;
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute(array_merge([$userEmail], $params));
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $emails = [];
+    foreach ($rows as $r) {
+        $item = [
+            'uid' => (int)$r['uid'],
+            'event_id' => (string)$r['event_id'],
+            'subject' => (string)$r['subject'],
+            'from' => [
+                'name' => (string)$r['from_name'],
+                'address' => (string)$r['from_address'],
+            ],
+            'to' => [
+                'name' => (string)$r['to_name'],
+                'address' => (string)$r['to_address'],
+            ],
+            'date' => (string)($r['email_date'] ?? ''),
+            'is_outgoing' => !empty($r['is_outgoing']),
+            'seen' => !empty($r['seen']),
+            'size' => (int)$r['size'],
+            'message_id' => (string)$r['message_id'],
+            'in_reply_to' => (string)$r['in_reply_to'],
+            'references' => (string)($r['references_hdr'] ?? ''),
+            'summary' => (string)($r['summary'] ?? ''),
+            'preview' => (string)$r['preview'],
+            'attachment_count' => (int)$r['attachment_count'],
+        ];
+        if (!empty($r['timeline_hidden'])) {
+            $item['timeline_hidden'] = true;
+        }
+        $emails[] = $item;
+    }
+
+    return [
+        'emails' => $emails,
+        'pagination' => [
+            'total' => $total,
+            'unseen' => $unseen,
+            'page' => $page,
+            'limit' => $limit,
+            'pages' => $limit > 0 ? (int)ceil($total / $limit) : 1,
+        ],
+    ];
+}
 
 function get_imap_credentials($settings) {
     $user = !empty($settings['imapUsername']) ? $settings['imapUsername'] : (isset($settings['username']) ? $settings['username'] : '');
@@ -519,8 +921,18 @@ function ccrm_resolve_sent_folder($settings) {
         return $cache[$root];
     }
 
-    $resolved = 'Sent';
     list($imapUser, $imapPass) = get_imap_credentials($settings);
+    $cacheKey = sha1($root . '|' . strtolower((string)$imapUser));
+    $cacheFile = sys_get_temp_dir() . '/ccrm_sent_folder_' . $cacheKey . '.txt';
+    if (is_file($cacheFile) && (time() - (int)@filemtime($cacheFile)) < 86400) {
+        $cachedFolder = trim((string)@file_get_contents($cacheFile));
+        if ($cachedFolder !== '') {
+            $cache[$root] = $cachedFolder;
+            return $cachedFolder;
+        }
+    }
+
+    $resolved = 'Sent';
     $stream = @imap_open($root, $imapUser, $imapPass, OP_HALFOPEN, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
     if ($stream) {
         $list = @imap_getmailboxes($stream, $root, '*');
@@ -531,8 +943,12 @@ function ccrm_resolve_sent_folder($settings) {
             }
             // Most specific first. Folder names travel as modified UTF-7, so a
             // localised name only matches once decoded.
-            $candidates = ['Sent', 'INBOX.Sent', 'INBOX/Sent', 'Sent Items',
-                           'Sent Messages', 'Odoslané', 'Odoslaná pošta', 'Elküldött elemek'];
+            $candidates = [
+                '[Gmail]/Sent Mail', '[Gmail]/Odoslaná pošta', '[Gmail]/Elküldött levelek',
+                '[Gmail]/Gesendet', '[Google Mail]/Sent Mail',
+                'Sent', 'INBOX.Sent', 'INBOX/Sent', 'Sent Items',
+                'Sent Messages', 'Odoslané', 'Odoslaná pošta', 'Elküldött elemek',
+            ];
             foreach ($candidates as $candidate) {
                 foreach ($names as $n) {
                     if (strcasecmp($n, $candidate) === 0 || strcasecmp(@imap_utf8($n), $candidate) === 0) {
@@ -546,6 +962,7 @@ function ccrm_resolve_sent_folder($settings) {
     }
     @imap_errors();
 
+    @file_put_contents($cacheFile, $resolved);
     $cache[$root] = $resolved;
     return $resolved;
 }
@@ -723,58 +1140,117 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
     if (!$imapStream) {
         throw new Exception('IMAP Connection failed: ' . imap_last_error());
     }
-    
-    // NOTE: always search with SE_UID. Without it IMAP returns message sequence
-    // numbers, which shift every time a message is deleted, while the overview
-    // below is keyed by the stable UID - the two stop matching and messages get
-    // silently dropped from the listing.
-    $uids = [];
+
+    // Respect `backfillSince` ("Earliest mail to file" / earliest date to load emails from)
+    // when configured on the connector so a 159k-message mailbox only loads emails from
+    // the chosen cutoff date onwards.
+    $sinceCriterion = '';
+    $cutoffTs = null;
+    if (!empty($settings['backfillSince'])) {
+        $ts = strtotime(trim((string)$settings['backfillSince']) . ' 00:00:00');
+        if ($ts !== false && $ts > 0) {
+            $cutoffTs = $ts;
+            $sinceCriterion = 'SINCE "' . date('d-M-Y', $ts) . '"';
+        }
+    }
+
+    // IMPORTANT: Never pass SE_UID to imap_search() or FT_UID to multi-message
+    // imap_fetch_overview() — in PHP's uw-imap (c-client) library, both trigger
+    // `FETCH 1:N (UID)` across the entire mailbox (159k+ messages) before returning!
+    // Searching by sequence number and calling imap_fetch_overview(..., 0) touches
+    // ONLY the matching messages, and each returned overview object already carries
+    // both `$o->uid` (the stable IMAP UID) and `$o->msgno`.
+    $seqNums = [];
     if (!empty($searchEmail)) {
-        $uidsFrom = imap_search($imapStream, 'FROM "' . $searchEmail . '"', SE_UID);
-        $uidsTo = imap_search($imapStream, 'TO "' . $searchEmail . '"', SE_UID);
-        $uidsCombined = [];
-        if (is_array($uidsFrom)) {
-            $uidsCombined = array_merge($uidsCombined, $uidsFrom);
+        $qFrom = 'FROM "' . $searchEmail . '"' . ($sinceCriterion !== '' ? ' ' . $sinceCriterion : '');
+        $qTo = 'TO "' . $searchEmail . '"' . ($sinceCriterion !== '' ? ' ' . $sinceCriterion : '');
+        $seqsFrom = @imap_search($imapStream, $qFrom);
+        $seqsTo = @imap_search($imapStream, $qTo);
+        $combined = [];
+        if (is_array($seqsFrom)) {
+            $combined = array_merge($combined, $seqsFrom);
         }
-        if (is_array($uidsTo)) {
-            $uidsCombined = array_merge($uidsCombined, $uidsTo);
+        if (is_array($seqsTo)) {
+            $combined = array_merge($combined, $seqsTo);
         }
-        $uids = array_unique($uidsCombined);
+        $seqNums = array_unique(array_map('intval', $combined));
     } else {
-        $criteria = 'ALL';
+        $parts = [];
         if ($filter === 'unread') {
-            $criteria = 'UNSEEN';
+            $parts[] = 'UNSEEN';
         }
-        $uids = imap_search($imapStream, $criteria, SE_UID);
+        if ($sinceCriterion !== '') {
+            $parts[] = $sinceCriterion;
+        }
+        $criteria = !empty($parts) ? implode(' ', $parts) : 'ALL';
+        if ($criteria === 'ALL') {
+            $numMsg = (int)@imap_num_msg($imapStream);
+            $seqNums = $numMsg > 0 ? range(1, $numMsg) : [];
+        } else {
+            $found = @imap_search($imapStream, $criteria);
+            $seqNums = is_array($found) ? array_map('intval', $found) : [];
+        }
     }
     $emails = [];
     $total = 0;
     $unseen = 0;
-    
-    // Get unseen count
-    $status = imap_status($imapStream, $mailbox, SA_UNSEEN);
-    if ($status) {
-        $unseen = $status->unseen;
+
+    // Get unseen count (scoped to backfillSince when configured)
+    if ($sinceCriterion !== '') {
+        if ($filter === 'unread' && empty($searchEmail)) {
+            $unseen = count($seqNums);
+        } else {
+            $unseenFound = @imap_search($imapStream, 'UNSEEN ' . $sinceCriterion);
+            $unseen = is_array($unseenFound) ? count($unseenFound) : 0;
+        }
+    } else {
+        $status = @imap_status($imapStream, $mailbox, SA_UNSEEN);
+        if ($status) {
+            $unseen = (int)$status->unseen;
+        }
     }
-    
-    if ($uids) {
-        $uids = array_map('intval', $uids);
-        $total = count($uids);
-        rsort($uids, SORT_NUMERIC); // Newest first
+
+    if (!empty($seqNums)) {
+        $total = count($seqNums);
+        rsort($seqNums, SORT_NUMERIC); // Newest first
 
         $startIdx = ($page - 1) * $limit;
-        $sliceUids = array_slice($uids, $startIdx, $limit);
+        $sliceSeqs = array_slice($seqNums, $startIdx, $limit);
 
-        if (!empty($sliceUids)) {
-            // FT_UID: the sequence above is a list of UIDs, not sequence numbers
-            $overview = imap_fetch_overview($imapStream, implode(',', $sliceUids), FT_UID);
+        if (!empty($sliceSeqs)) {
+            // Fetch overviews by sequence number (0) so c-client never scans 1:N UIDs.
+            // Every returned $o object includes $o->uid and $o->msgno.
+            $overview = @imap_fetch_overview($imapStream, implode(',', $sliceSeqs), 0);
             if (!is_array($overview)) {
                 $overview = [];
             }
-            
+            usort($overview, function ($a, $b) {
+                return ((int)($b->uid ?? 0)) <=> ((int)($a->uid ?? 0));
+            });
+
+            // Preload address index and author once outside the loop instead of per message
+            $addressIndex = null;
+            $resolvedEventAuthor = null;
+            $accountEmail = isset($GLOBALS['userEmail']) ? strtolower(trim($GLOBALS['userEmail'])) : '';
+            if (isset($GLOBALS['pdo'])) {
+                require_once __DIR__ . '/mail_filing.php';
+                $addressIndex = ccrm_mail_address_index($GLOBALS['pdo']);
+                if ($accountEmail !== '') {
+                    $authorStmt = $GLOBALS['pdo']->prepare("SELECT `name` FROM `users` WHERE LOWER(`email`) = ? LIMIT 1");
+                    $authorStmt->execute([$accountEmail]);
+                    $resolvedAuthor = $authorStmt->fetchColumn();
+                    if ($resolvedAuthor !== false && trim((string)$resolvedAuthor) !== '') {
+                        $resolvedEventAuthor = $resolvedAuthor;
+                    }
+                }
+            }
+
             // Map headers to structured entities
             $emailsMap = [];
+            $sliceUids = [];
+            $livePreviewBudget = 5;
             foreach ($overview as $o) {
+                $sliceUids[] = (int)$o->uid;
                 // Parse "From" header
                 $fromHeader = isset($o->from) ? $o->from : '';
                 $fromName = $fromHeader;
@@ -796,24 +1272,31 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                 }
                 
                 $summary = '';
+                $cachedBodyPreview = '';
                 if (isset($GLOBALS['pdo']) && isset($GLOBALS['userEmail'])) {
                     try {
                         $sumStmt = $GLOBALS['pdo']->prepare("SELECT `summary` FROM `email_summaries` WHERE `user_email` = ? AND `folder` = ? AND `email_uid` = ?");
                         $sumStmt->execute([$GLOBALS['userEmail'], $folder, $o->uid]);
                         $summary = $sumStmt->fetchColumn() ?: '';
+                        $ragStmt = $GLOBALS['pdo']->prepare("SELECT SUBSTRING(`body`, 1, 240) FROM `rag_emails` WHERE `user_email` = ? AND `folder` = ? AND `email_uid` = ? LIMIT 1");
+                        $ragStmt->execute([$GLOBALS['userEmail'], $folder, $o->uid]);
+                        $cachedBodyPreview = trim((string)($ragStmt->fetchColumn() ?: ''));
                     } catch (\Exception $e) {
                         $summary = '';
                     }
                 }
 
                 // The canonical timeline id for this message, handed to the client
-                // so both sides agree on it. The client used to mint its own
-                // ("email-sent-<uid>") while the row below was stored under a
-                // different one, so the de-duplication that merges the live IMAP
-                // list with the stored timeline never matched and every imported
-                // mail rendered twice.
+                // so both sides agree on it.
                 $mailEventId = ccrm_mail_event_id($imapUser, $folder, $o->uid);
-                $listPreview = fetch_list_preview($imapStream, $o->uid);
+                if ($cachedBodyPreview !== '') {
+                    $listPreview = ['preview' => safe_utf8(preg_replace('/\s+/u', ' ', $cachedBodyPreview)), 'attachment_count' => 0];
+                } elseif ($livePreviewBudget > 0) {
+                    $livePreviewBudget--;
+                    $listPreview = fetch_list_preview($imapStream, $o->uid);
+                } else {
+                    $listPreview = ['preview' => '', 'attachment_count' => 0];
+                }
                 $isOutgoing = ccrm_mail_is_outgoing($mailboxAddresses, $fromAddress, $folder);
 
                 $emailsMap[$o->uid] = [
@@ -843,14 +1326,8 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                 ];
 
                 // Auto-upsert timeline email entries to database with email date and time
-                if (isset($GLOBALS['pdo'])) {
+                if (isset($GLOBALS['pdo']) && is_array($addressIndex)) {
                     $pdo = $GLOBALS['pdo'];
-                    $matchedLeadId = null;
-
-                    // The same matcher the background filing job uses (mail_filing.php), so the
-                    // two always agree on which record a message belongs to: the counterparty's
-                    // address, then the address the caller searched for.
-                    require_once __DIR__ . '/mail_filing.php';
                     $matchAddresses = ccrm_mail_counterparties(
                         ccrm_mail_addresses_in($fromHeader),
                         ccrm_mail_addresses_in($toHeader),
@@ -861,38 +1338,15 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                     if (!empty($searchEmail)) {
                         $matchAddresses[] = strtolower(trim($searchEmail));
                     }
-                    $matchedLeadId = ccrm_mail_match_row(ccrm_mail_address_index($pdo), $matchAddresses);
+                    $matchedLeadId = ccrm_mail_match_row($addressIndex, $matchAddresses);
 
                     if ($matchedLeadId) {
                         $eventId = $mailEventId;
                         $timestamp = isset($o->date) ? date('Y-m-d H:i:s', strtotime($o->date)) : date('Y-m-d H:i:s');
                         $title = isset($o->subject) ? safe_utf8(imap_utf8($o->subject)) : '(No Subject)';
                         $content = "From: " . $fromName . " <" . $fromAddress . ">\nTo: " . $toName . " <" . $toAddress . ">\nSubject: " . $title;
-                        // The timeline badge (and the folder its body is later
-                        // fetched from) depends on who sent the message:
-                        // $isOutgoing, computed above against the mailbox's own
-                        // address.
+                        $eventAuthor = $isOutgoing ? $resolvedEventAuthor : null;
 
-                        // Only a message we sent has an author inside the CRM:
-                        // the mailbox belongs to the logged-in user, so resolve
-                        // their login to the user behind it. An incoming mail was
-                        // nobody's action here and stays unattributed.
-                        $accountEmail = isset($GLOBALS['userEmail']) ? strtolower(trim($GLOBALS['userEmail'])) : '';
-                        $eventAuthor = null;
-                        if ($isOutgoing && $accountEmail !== '') {
-                            $authorStmt = $pdo->prepare("SELECT `name` FROM `users` WHERE LOWER(`email`) = ? LIMIT 1");
-                            $authorStmt->execute([$accountEmail]);
-                            $resolvedAuthor = $authorStmt->fetchColumn();
-                            if ($resolvedAuthor !== false && trim((string)$resolvedAuthor) !== '') {
-                                $eventAuthor = $resolvedAuthor;
-                            }
-                        }
-
-                        // One store for both paths (see ccrm_mail_store_event): it inserts, or
-                        // refreshes what the message owns without touching the title and
-                        // timestamp the user may have corrected; a removed entry stays a
-                        // tombstone so this read does not file it again; and a message that is
-                        // already on this timeline from another mailbox is not filed twice.
                         $stored = ccrm_mail_store_event($pdo, [
                             'lead_id' => $matchedLeadId,
                             'event_id' => $eventId,
@@ -901,60 +1355,14 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                             'content' => $content,
                             'is_outgoing' => (bool)$isOutgoing,
                             'author' => $eventAuthor,
-                            // The mailbox is this user's own: they read it live, everyone else
-                            // reads the stored body, if the background job has filed one.
                             'mail_account' => $imapUser,
                             'mail_owner' => $accountEmail !== '' ? $accountEmail : null,
                             'message_id' => isset($o->message_id) ? mb_substr(trim($o->message_id), 0, 255, 'UTF-8') : '',
                             'body' => null,
                             'attachments' => [],
                         ]);
-                        // Removed by the user, or already filed from another mailbox: the client
-                        // leaves its live copy out.
                         if ($stored === 'hidden' || $stored === 'duplicate') {
                             $emailsMap[$o->uid]['timeline_hidden'] = true;
-                        }
-                    }
-                }
-
-                // RAG Ingestion: Cache fetched email in RAG database tables (main DB and vector DB)
-                if (isset($GLOBALS['pdo']) && isset($GLOBALS['userEmail'])) {
-                    $mPdo = $GLOBALS['pdo'];
-                    $uEmail = $GLOBALS['userEmail'];
-                    
-                    // Check if already in main DB's rag_emails
-                    $checkRag = $mPdo->prepare("SELECT 1 FROM `rag_emails` WHERE `user_email` = ? AND `folder` = ? AND `email_uid` = ?");
-                    $checkRag->execute([$uEmail, $folder, $o->uid]);
-                    // Skip caching when the UID no longer resolves rather than
-                    // risk storing another message's body under this UID
-                    $ragMsgNo = @imap_msgno($imapStream, $o->uid);
-                    if (!$checkRag->fetchColumn() && $ragMsgNo) {
-                        // Fetch the body
-                        $bodyText = safe_utf8(fetch_email_body_text($imapStream, $ragMsgNo));
-
-                        $subject = isset($o->subject) ? safe_utf8(imap_utf8($o->subject)) : '(No Subject)';
-                        $sender = safe_utf8($fromHeader);
-                        $recipient = safe_utf8($toHeader);
-                        $receivedAt = isset($o->date) ? date('Y-m-d H:i:s', strtotime($o->date)) : date('Y-m-d H:i:s');
-                        
-                        // Insert into main DB
-                        $insRag = $mPdo->prepare("INSERT INTO `rag_emails` (`user_email`, `folder`, `email_uid`, `subject`, `sender`, `recipient`, `body`, `received_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-                        $insRag->execute([$uEmail, $folder, $o->uid, $subject, $sender, $recipient, $bodyText, $receivedAt]);
-                        
-                        // Also insert into RAG DB if active
-                        require_once __DIR__ . '/agent_utils.php';
-                        // Retrieve integrations config
-                        $stmtConfig = $mPdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'");
-                        $stmtConfig->execute();
-                        $configJsonStr = $stmtConfig->fetchColumn();
-                        $integrationsConfigObj = $configJsonStr ? json_decode($configJsonStr, true) : [];
-                        $integrationsConfigObj = is_array($integrationsConfigObj) ? ccrm_decrypt_config_secrets($integrationsConfigObj, ccrm_integration_secret_keys()) : [];
-                        
-                        $rPdo = get_rag_db_connection($integrationsConfigObj);
-                        if ($rPdo) {
-                            init_rag_db_schemas($rPdo);
-                            $insRagVec = $rPdo->prepare("INSERT INTO `rag_emails` (`user_email`, `folder`, `email_uid`, `subject`, `sender`, `recipient`, `body`, `received_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `subject` = VALUES(`subject`), `body` = VALUES(`body`)");
-                            $insRagVec->execute([$uEmail, $folder, $o->uid, $subject, $sender, $recipient, $bodyText, $receivedAt]);
                         }
                     }
                 }
@@ -995,76 +1403,74 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
     if (!$imapStream) {
         throw new Exception('IMAP Detail Connection failed: ' . imap_last_error());
     }
-    
-    // Never fall back to treating the UID as a sequence number - that silently
-    // opens a different message once the mailbox has had a deletion.
-    $msgNo = @imap_msgno($imapStream, $uid);
-    if (!$msgNo) {
+
+    $uidInt = (int)$uid;
+    // Use FT_UID directly so c-client sends `UID FETCH <uid> ...` without
+    // executing `FETCH 1:N (UID)` across the entire mailbox via imap_msgno().
+    $structure = @imap_fetchstructure($imapStream, $uidInt, FT_UID);
+    if (!$structure) {
         @imap_close($imapStream);
+        @imap_errors();
         throw new Exception('This message is no longer in ' . $folder . ' (it may have been moved or deleted).');
     }
 
     // Fetch body parts
     $html = '';
     $text = '';
-    
-    // Helper to get structured body parts
-    $structure = imap_fetchstructure($imapStream, $msgNo);
-    $attachments = [];
-    if ($structure) {
-        $attachments = get_attachments_from_structure($structure);
-        if (isset($structure->parts) && count($structure->parts)) {
-            foreach ($structure->parts as $partNo => $part) {
-                // If nested parts
-                if (isset($part->parts)) {
-                    foreach ($part->parts as $nestedPartNo => $nestedPart) {
-                        $partStr = ($partNo + 1) . '.' . ($nestedPartNo + 1);
-                        $body = imap_fetchbody($imapStream, $msgNo, $partStr, FT_PEEK);
-                        $body = decode_imap_body($body, $nestedPart->encoding, get_part_charset($nestedPart));
-                        if (isset($nestedPart->subtype) && $nestedPart->subtype === 'HTML') {
-                            $html = $body;
-                        } elseif (isset($nestedPart->subtype) && $nestedPart->subtype === 'PLAIN') {
-                            $text = $body;
-                        }
-                    }
-                } else {
-                    $body = imap_fetchbody($imapStream, $msgNo, (string)($partNo + 1), FT_PEEK);
-                    $body = decode_imap_body($body, $part->encoding, get_part_charset($part));
-                    if (isset($part->subtype) && $part->subtype === 'HTML') {
+    $attachments = get_attachments_from_structure($structure);
+    if (isset($structure->parts) && count($structure->parts)) {
+        foreach ($structure->parts as $partNo => $part) {
+            if (isset($part->parts)) {
+                foreach ($part->parts as $nestedPartNo => $nestedPart) {
+                    $partStr = ($partNo + 1) . '.' . ($nestedPartNo + 1);
+                    $body = @imap_fetchbody($imapStream, $uidInt, $partStr, FT_UID | FT_PEEK);
+                    $body = decode_imap_body($body, $nestedPart->encoding, get_part_charset($nestedPart));
+                    if (isset($nestedPart->subtype) && $nestedPart->subtype === 'HTML') {
                         $html = $body;
-                    } elseif (isset($part->subtype) && $part->subtype === 'PLAIN') {
+                    } elseif (isset($nestedPart->subtype) && $nestedPart->subtype === 'PLAIN') {
                         $text = $body;
                     }
                 }
-            }
-        } else {
-            // Simple structure
-            $body = imap_body($imapStream, $msgNo, FT_PEEK);
-            $body = decode_imap_body($body, $structure->encoding, get_part_charset($structure));
-            if (isset($structure->subtype) && $structure->subtype === 'HTML') {
-                $html = $body;
             } else {
-                $text = $body;
+                $body = @imap_fetchbody($imapStream, $uidInt, (string)($partNo + 1), FT_UID | FT_PEEK);
+                $body = decode_imap_body($body, $part->encoding, get_part_charset($part));
+                if (isset($part->subtype) && $part->subtype === 'HTML') {
+                    $html = $body;
+                } elseif (isset($part->subtype) && $part->subtype === 'PLAIN') {
+                    $text = $body;
+                }
             }
         }
+    } else {
+        $body = @imap_body($imapStream, $uidInt, FT_UID | FT_PEEK);
+        $body = decode_imap_body($body, $structure->encoding, get_part_charset($structure));
+        if (isset($structure->subtype) && $structure->subtype === 'HTML') {
+            $html = $body;
+        } else {
+            $text = $body;
+        }
     }
-    
-    // Read the current seen state without altering it (opening/fetching detail does not mark as seen)
-    $overview = @imap_fetch_overview($imapStream, (string)$uid, FT_UID);
-    $seen = (is_array($overview) && !empty($overview) && is_object($overview[0]) && isset($overview[0]->seen))
-        ? (bool)$overview[0]->seen
-        : false;
 
-    @imap_close($imapStream);
-    @imap_errors();
-
-    return [
+    // Read the current seen state without altering it when the mailbox is small;
+    // on huge mailboxes (>2000 messages) imap_fetch_overview(..., FT_UID) scans 1:N,
+    // so let the client keep its envelope seen flag.
+    $out = [
         'uid' => $uid,
         'html' => safe_utf8($html),
         'text' => safe_utf8($text),
         'attachments' => $attachments,
-        'seen' => $seen
     ];
+    if ((int)@imap_num_msg($imapStream) <= 2000) {
+        $overview = @imap_fetch_overview($imapStream, (string)$uidInt, FT_UID);
+        $out['seen'] = (is_array($overview) && !empty($overview) && is_object($overview[0]) && isset($overview[0]->seen))
+            ? (bool)$overview[0]->seen
+            : false;
+    }
+
+    @imap_close($imapStream);
+    @imap_errors();
+
+    return $out;
 }
 
 /**
@@ -1534,14 +1940,13 @@ function serve_imap_attachment($settings, $folder, $uid, $partNum, $name) {
     if (!$imapStream) {
         throw new Exception('IMAP connection failed.');
     }
-    
-    $msgNo = @imap_msgno($imapStream, $uid);
-    if (!$msgNo) {
+
+    $uidInt = (int)$uid;
+    $structure = @imap_fetchstructure($imapStream, $uidInt, FT_UID);
+    if (!$structure) {
         @imap_close($imapStream);
         throw new Exception('This message is no longer in ' . $folder . ' (it may have been moved or deleted).');
     }
-
-    $structure = imap_fetchstructure($imapStream, $msgNo);
     // Find the part encoding
     $encoding = 0;
     
@@ -1551,7 +1956,7 @@ function serve_imap_attachment($settings, $folder, $uid, $partNum, $name) {
         $encoding = $part->encoding;
     }
     
-    $data = imap_fetchbody($imapStream, $msgNo, $partNum, FT_PEEK);
+    $data = @imap_fetchbody($imapStream, $uidInt, $partNum, FT_UID | FT_PEEK);
     $data = decode_imap_body($data, $encoding);
     
     @imap_close($imapStream);
@@ -1642,11 +2047,11 @@ function fetch_email_body_text($imapStream, $msgNo) {
 // every row of every list page.
 function fetch_list_preview($imapStream, $uid) {
     $result = ['preview' => '', 'attachment_count' => 0];
-    $msgNo = @imap_msgno($imapStream, (int)$uid);
-    if (!$msgNo) {
+    $uidInt = (int)$uid;
+    if ($uidInt <= 0) {
         return $result;
     }
-    $structure = @imap_fetchstructure($imapStream, $msgNo);
+    $structure = @imap_fetchstructure($imapStream, $uidInt, FT_UID);
     if (!$structure) {
         return $result;
     }
@@ -1679,8 +2084,8 @@ function fetch_list_preview($imapStream, $uid) {
     }
     list($part, $partNum) = $pick;
     $raw = $partNum === ''
-        ? @imap_body($imapStream, $msgNo, FT_PEEK)
-        : @imap_fetchbody($imapStream, $msgNo, $partNum, FT_PEEK);
+        ? @imap_body($imapStream, $uidInt, FT_UID | FT_PEEK)
+        : @imap_fetchbody($imapStream, $uidInt, $partNum, FT_UID | FT_PEEK);
     $text = decode_imap_body($raw, $part->encoding, get_part_charset($part));
     if ($pick === $html) {
         $text = preg_replace('#<(style|script|head)\b[^>]*>.*?</\1>#is', ' ', $text);
@@ -1725,13 +2130,12 @@ function save_imap_attachment_to_uploads($settings, $folder, $uid, $partNum, $na
         return ['success' => false, 'error' => 'IMAP connection failed.'];
     }
     
-    $msgNo = @imap_msgno($imapStream, $uid);
-    if (!$msgNo) {
+    $uidInt = (int)$uid;
+    $structure = @imap_fetchstructure($imapStream, $uidInt, FT_UID);
+    if (!$structure) {
         @imap_close($imapStream);
         return ['success' => false, 'error' => 'This message is no longer in ' . $folder . ' (it may have been moved or deleted).'];
     }
-
-    $structure = @imap_fetchstructure($imapStream, $msgNo);
 
     $part = $structure ? find_structure_part($structure, $partNum) : null;
     if (!$part || !is_object($part)) {
@@ -1744,7 +2148,7 @@ function save_imap_attachment_to_uploads($settings, $folder, $uid, $partNum, $na
     }
     $encoding = isset($part->encoding) ? $part->encoding : 0;
 
-    $data = @imap_fetchbody($imapStream, $msgNo, $partNum, FT_PEEK);
+    $data = @imap_fetchbody($imapStream, $uidInt, $partNum, FT_UID | FT_PEEK);
     $data = decode_imap_body($data, $encoding);
 
     @imap_close($imapStream);

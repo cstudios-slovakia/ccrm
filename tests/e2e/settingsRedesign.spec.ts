@@ -14,7 +14,7 @@ import { SETTINGS_CATEGORIES } from '../../src/components/settings/settingsRegis
 const SETTLE = { timeout: 20_000 };
 const CATEGORY_IDS = [
   'company', 'access', 'modules', 'leads', 'projects', 'offers', 'orders',
-  'finance', 'tickets', 'email', 'integrations', 'system',
+  'finance', 'tickets', 'agency', 'email', 'integrations', 'system',
 ];
 
 const hashOf = (page: Page) => page.evaluate(() => window.location.hash);
@@ -37,7 +37,7 @@ test.describe('Settings home — tiles', () => {
 
     await expect(page.getByTestId('settings-home')).toBeVisible(SETTLE);
     for (const id of CATEGORY_IDS) await expect(page.getByTestId(`settings-tile-${id}`)).toBeVisible();
-    await expect(page.locator('[data-testid^="settings-tile-"]')).toHaveCount(12);
+    await expect(page.locator('[data-testid^="settings-tile-"]')).toHaveCount(13);
     await expect(page.getByTestId('settings-layout-switch')).toBeVisible();
 
     // Every tile is one link, with no section chips inside it.
@@ -104,7 +104,7 @@ test.describe('Settings home — tiles', () => {
     await page.getByTestId('settings-nav-leads').click();
 
     await expect(page.getByTestId('settings-category')).toHaveAttribute('data-category', 'leads', SETTLE);
-    await expect(page.locator('[data-testid^="settings-nav-"]')).toHaveCount(12);
+    await expect(page.locator('[data-testid^="settings-nav-"]')).toHaveCount(13);
     await expect(page.getByTestId('settings-nav').locator('ul a')).toHaveCount(5);
   });
 
@@ -216,7 +216,7 @@ test.describe('Settings — inline search', () => {
     expect(sameCard).toBe(true);
 
     await page.getByRole('button', { name: /Clear search|Vymazať hľadanie|Keresés törlése/ }).click();
-    await expect(page.locator('[data-testid^="settings-tile-"]')).toHaveCount(12);
+    await expect(page.locator('[data-testid^="settings-tile-"]')).toHaveCount(13);
     await expect(field).toHaveValue('');
   });
 
@@ -248,7 +248,7 @@ test.describe('Settings — inline search', () => {
     await page.keyboard.press('Backspace');
     await page.keyboard.press('Escape');
     await expect(field).toHaveValue('');
-    await expect(page.locator('[data-testid^="settings-tile-"]')).toHaveCount(12);
+    await expect(page.locator('[data-testid^="settings-tile-"]')).toHaveCount(13);
 
     await field.fill('pipeline');
     await page.keyboard.press('ArrowDown');
@@ -436,7 +436,7 @@ test.describe('Settings — on a phone', () => {
         return { x: Math.round(r.x), w: Math.round(r.width), h: Math.round(r.height) };
       }),
     );
-    expect(boxes).toHaveLength(12);
+    expect(boxes).toHaveLength(13);
     expect(new Set(boxes.map((b) => b.h)).size).toBe(1);
     expect(new Set(boxes.map((b) => b.x)).size).toBe(2); // two columns
     // Nothing is clipped by the fixed height, even for the longest two-line title.
@@ -547,7 +547,7 @@ test.describe('Settings — on a phone', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.locator('[data-testid^="settings-tile-"]')).toHaveCount(0);
     await page.getByRole('button', { name: /Clear search|Vymazať hľadanie|Keresés törlése/ }).click();
-    await expect(page.locator('[data-testid^="settings-tile-"]')).toHaveCount(12);
+    await expect(page.locator('[data-testid^="settings-tile-"]')).toHaveCount(13);
   });
 
   test('an edited company form saves itself: no save bar, no save button, a "Saved" chip', async ({ page }) => {

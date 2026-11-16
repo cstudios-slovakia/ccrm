@@ -4,7 +4,8 @@ import {
   Database, Trash2, Sliders,
   Globe, Plus, X, ShieldCheck, Lock,
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, Check,
-  Menu, ArrowUp, FolderOpen, Search, Building2, RotateCcw
+  Menu, ArrowUp, FolderOpen, Search, Building2, RotateCcw,
+  Key, Bot, ExternalLink, AlertTriangle, CheckCircle2
 } from "lucide-react";
 import type { WarehouseItem, Employee, UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, LeadAssignmentSettings, ProjectAutoCreateSettings, TaskSettings, CustomDashboard } from "../types";
 import { DEFAULT_VAT_RATES, DEFAULT_STANDARD_VAT_RATE, getAvailableVatRates, sanitizeVatRates } from "../utils/vat";
@@ -101,6 +102,9 @@ import { PRODUCT_NAME, normalizeSystemTitleOverride } from "../utils/brand";
 import { ScrollFade } from "./settings/ScrollFade";
 import { AiUsagePanel } from "./settings/AiUsagePanel";
 import { WaaiIntegrationSettings } from "./settings/WaaiIntegrationSettings";
+import { AgencySettingsSection } from "./agency/AgencySettingsSection";
+import { listLlmSourceConnectors, getAgentConnectorTypeLabel, type LlmSourceConnector } from "../utils/companyMailboxes";
+import { hasOpenAiEmbeddingSource } from "../utils/aiConfig";
 
 /** The billing fields the company forms own. Saving writes only these, so a payment or shipping edit made elsewhere is never overwritten. */
 const COMPANY_FORM_KEYS: Array<keyof CompanyBillingSettings> = [
@@ -1812,6 +1816,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (changed("googleRefreshToken")) setGoogleRefreshToken(integrationsConfig.googleRefreshToken || "");
       if (changed("adsConnected")) setIsConnected(integrationsConfig.adsConnected === true);
       if (changed("campaigns")) setCampaigns(integrationsConfig.campaigns || []);
+      if (changed("aiSourceMode")) setAiSourceMode(integrationsConfig.aiSourceMode === "connector" ? "connector" : "manual");
+      if (changed("aiConnectorId")) setAiConnectorId(integrationsConfig.aiConnectorId || "");
+      if (changed("aiConnectorType")) setAiConnectorType(integrationsConfig.aiConnectorType || "");
+      if (changed("aiConnectorName")) setAiConnectorName(integrationsConfig.aiConnectorName || "");
       if (changed("openAiKey")) setOpenAiKey(integrationsConfig.openAiKey || "");
       if (changed("anthropicKey")) setAnthropicKey(integrationsConfig.anthropicKey || "");
       if (changed("sonioxApiKey")) setSonioxApiKey(integrationsConfig.sonioxApiKey || "");
@@ -1830,13 +1838,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   }, [integrationsConfig]);
 
-  // OpenAI & Vector DB Configuration States
-  const [openAiKey, setOpenAiKey] = React.useState("");
+  // AI Source & OpenAI & Vector DB Configuration States
+  const [aiSourceMode, setAiSourceMode] = React.useState<"manual" | "connector">(
+    () => (integrationsConfig?.aiSourceMode === "connector" ? "connector" : "manual")
+  );
+  const [aiConnectorId, setAiConnectorId] = React.useState(() => integrationsConfig?.aiConnectorId || "");
+  const [aiConnectorType, setAiConnectorType] = React.useState(() => integrationsConfig?.aiConnectorType || "");
+  const [aiConnectorName, setAiConnectorName] = React.useState(() => integrationsConfig?.aiConnectorName || "");
+  const [llmConnectors, setLlmConnectors] = React.useState<LlmSourceConnector[]>([]);
+  const [llmConnectorsLoading, setLlmConnectorsLoading] = React.useState(false);
+  const [openAiKey, setOpenAiKey] = React.useState(() => integrationsConfig?.openAiKey || "");
   // Alternative LLM providers — only the Automation workflow AI nodes can pick
-  // a provider, the rest of the CRM's AI features are OpenAI-only. Kept here so
+  // a provider, the rest of the CRM's AI features rely on OpenAI or an LLM connector. Kept here so
   // every AI credential lives in one place.
-  const [anthropicKey, setAnthropicKey] = React.useState("");
-  const [geminiKey, setGeminiKey] = React.useState("");
+  const [anthropicKey, setAnthropicKey] = React.useState(() => integrationsConfig?.anthropicKey || "");
+  const [geminiKey, setGeminiKey] = React.useState(() => integrationsConfig?.geminiKey || "");
   const [sonioxApiKey, setSonioxApiKey] = React.useState("");
   const [vectorDb, setVectorDb] = React.useState<"none" | "mariadb" | "qdrant" | "pinecone">("none");
   const [mariaDbHost, setMariaDbHost] = React.useState("");
@@ -1863,6 +1879,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       fetchTrainingStats();
     }
   }, [aiOpen, vectorDbValidated]);
+
+  // Load configured LLM connectors when the AI integration section is open
+  React.useEffect(() => {
+    if (!aiOpen) return;
+    let cancelled = false;
+    setLlmConnectorsLoading(true);
+    listLlmSourceConnectors()
+      .then((res) => {
+        if (!cancelled) setLlmConnectors(Array.isArray(res.connectors) ? res.connectors : []);
+      })
+      .catch(() => {
+        if (!cancelled) setLlmConnectors([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLlmConnectorsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [aiOpen]);
 
   // Email Server Configuration States
   const [emailProvider, setEmailProvider] = React.useState<"smtp" | "exchange">("smtp");
@@ -2112,10 +2148,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // AI credentials and the vector database settings save themselves too.
   const aiDraft = JSON.stringify({
+    aiSourceMode, aiConnectorId, aiConnectorType, aiConnectorName,
     openAiKey, anthropicKey, geminiKey, sonioxApiKey, vectorDb, mariaDbHost, mariaDbPort, mariaDbUser, mariaDbPassword,
     mariaDbName, qdrantUrl, qdrantApiKey, pineconeApiKey, pineconeIndex, vectorDbValidated,
   });
   const aiStored = JSON.stringify({
+    aiSourceMode: integrationsConfig?.aiSourceMode === "connector" ? "connector" : "manual",
+    aiConnectorId: integrationsConfig?.aiConnectorId || "",
+    aiConnectorType: integrationsConfig?.aiConnectorType || "",
+    aiConnectorName: integrationsConfig?.aiConnectorName || "",
     openAiKey: integrationsConfig?.openAiKey || "",
     anthropicKey: integrationsConfig?.anthropicKey || "",
     geminiKey: integrationsConfig?.geminiKey || "",
@@ -2132,10 +2173,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     pineconeIndex: integrationsConfig?.pineconeIndex || "",
     vectorDbValidated: integrationsConfig?.vectorDbValidated === true,
   });
+  const aiHydrated = seenIntegrationsRef.current === integrationsConfig;
   const aiStatus = useAutosave({
     value: aiDraft,
-    dirty: aiDraft !== aiStored,
-    enabled: getPermission("ai_config") === "edit" && Boolean(updateIntegrationsConfig),
+    dirty: aiHydrated && aiDraft !== aiStored,
+    enabled: aiHydrated && getPermission("ai_config") === "edit" && Boolean(updateIntegrationsConfig),
     save: (json) => updateIntegrationsConfig?.((prev: any) => ({ ...(prev || {}), ...JSON.parse(json) })),
   });
 
@@ -4357,36 +4399,325 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </SectionCard>
                   </div>
         );
-      case "integrations/ai":
+      case "integrations/ai": {
+        const aiReadOnly = getPermission("ai_config") === "view";
+        const selectedConnector = aiConnectorId
+          ? llmConnectors.find((c) => c.id === aiConnectorId) ?? null
+          : null;
+        const effectiveConnectorType = selectedConnector?.connectorType || aiConnectorType;
+        const canConfigureVectorDb =
+          hasOpenAiEmbeddingSource({
+            openAiKey,
+            aiSourceMode,
+            aiConnectorId,
+            aiConnectorType: effectiveConnectorType,
+          }) &&
+          !(
+            aiSourceMode === "connector" &&
+            effectiveConnectorType === "openai_api" &&
+            selectedConnector &&
+            !selectedConnector.hasCredentials &&
+            openAiKey.trim() === ""
+          );
+
         return (
                   <div className="space-y-6 animate-fade-in">
         
-                    {/* API CREDENTIALS — always editable, independent of vector DB connection state */}
+                    {/* API CREDENTIALS OR CONNECTOR SOURCE — always editable, independent of vector DB connection state */}
                     <SectionCard
                       title={t("AI & OpenAI Integration", "Integrácia AI a OpenAI", "AI és OpenAI integráció")}
-                      description={t(`Configure your OpenAI access credential. Once entered, you can proceed to select your vector database sidecar and enable semantic RAG lookup inside the ${PRODUCT_NAME} sidebar assistant.`, `Nakonfigurujte svoj prístupový údaj OpenAI. Po jeho zadaní môžete pokračovať výberom sidecar vektorovej databázy a povoliť sémantické vyhľadávanie RAG v asistentovi na bočnom paneli ${PRODUCT_NAME}.`, `Állítsa be az OpenAI hozzáférési hitelesítő adatát. A megadás után kiválaszthatja a vektoradatbázis sidecart, és engedélyezheti a szemantikus RAG keresést a ${PRODUCT_NAME} oldalsávi asszisztensében.`)}
+                      description={t(`Choose whether ${PRODUCT_NAME} AI features use standalone API keys or an existing external LLM connector. Once an OpenAI credential source is available, you can also configure the vector database sidecar.`, `Vyberte, či AI funkcie v ${PRODUCT_NAME} používajú samostatné API kľúče alebo existujúci externý LLM konektor. Keď je dostupný zdroj OpenAI, môžete nastaviť aj sidecar vektorovej databázy.`, `Válassza ki, hogy a ${PRODUCT_NAME} AI funkciói külön API kulcsokat vagy egy meglévő külső LLM csatlakozót használjanak. Amint OpenAI hitelesítési forrás érhető el, a vektoradatbázis sidecart is beállíthatja.`)}
                       action={<SaveStatus lang={userLanguage} status={aiStatus} />}
                     >
-        
+                      {/* AI Source Mode Switcher */}
                       <div className="space-y-2">
                         <label className="type-overline text-slate-500 block">
-                          {t("OpenAI API Secret Key", "Tajný API kľúč OpenAI", "OpenAI API titkos kulcs")}
+                          {t("AI Source", "Zdroj AI", "AI forrás")}
                         </label>
-                        <SecretInput
-                          className="max-w-2xl"
-                          language={userLanguage}
-                          disabled={getPermission("ai_config") === "view"}
-                          value={openAiKey}
-                          onChange={setOpenAiKey}
-                          placeholder="sk-proj-..."
-                        />
+                        <div
+                          role="tablist"
+                          aria-label={t("AI Source", "Zdroj AI", "AI forrás")}
+                          className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200/60 gap-1 w-full ws-sm:max-w-md"
+                        >
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={aiSourceMode === "manual"}
+                            disabled={aiReadOnly}
+                            onClick={() => setAiSourceMode("manual")}
+                            className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-ui transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                              aiSourceMode === "manual"
+                                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20 font-bold"
+                                : "text-slate-500 hover:text-slate-800 hover:bg-white/60 font-semibold"
+                            }`}
+                          >
+                            <Key className="h-3.5 w-3.5 shrink-0" />
+                            <span>{t("Manual API Keys", "Manuálne API kľúče", "Manuális API kulcsok")}</span>
+                          </button>
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={aiSourceMode === "connector"}
+                            disabled={aiReadOnly}
+                            onClick={() => setAiSourceMode("connector")}
+                            className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-ui transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                              aiSourceMode === "connector"
+                                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20 font-bold"
+                                : "text-slate-500 hover:text-slate-800 hover:bg-white/60 font-semibold"
+                            }`}
+                          >
+                            <Bot className="h-3.5 w-3.5 shrink-0" />
+                            <span>{t("Existing LLM Connector", "Existujúci LLM konektor", "Meglévő LLM csatlakozó")}</span>
+                          </button>
+                        </div>
                       </div>
-        
+
+                      {aiSourceMode === "connector" ? (
+                        <div className="space-y-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2 max-w-2xl">
+                            <label className="type-overline text-slate-500">
+                              {t("Selected LLM Connector", "Vybratý LLM konektor", "Kiválasztott LLM csatlakozó")}
+                            </label>
+                            <button
+                              type="button"
+                              data-testid="ai-manage-connectors-btn"
+                              onClick={() => {
+                                window.location.hash = "settings/email/mailboxes";
+                              }}
+                              className="inline-flex items-center gap-1.5 text-micro font-bold text-indigo-600 hover:text-indigo-700 cursor-pointer"
+                            >
+                              <span>{t("Manage Connectors", "Spravovať konektory", "Csatlakozók kezelése")}</span>
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+
+                          {!llmConnectorsLoading && llmConnectors.length === 0 ? (
+                            <div
+                              data-testid="ai-connectors-empty"
+                              className="max-w-2xl p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-2"
+                            >
+                              <p className="text-ui font-bold text-slate-800">
+                                {t("No LLM connectors configured yet", "Zatiaľ nie sú nastavené žiadne LLM konektory", "Még nincs beállított LLM csatlakozó")}
+                              </p>
+                              <p className="text-micro font-medium text-slate-500 leading-relaxed">
+                                {t(
+                                  "Add an OpenAI API, Claude API, Gemini API, Claude, Antigravity, or ChatGPT connector in Connectors settings, then select it here.",
+                                  "Pridajte konektor OpenAI API, Claude API, Gemini API, Claude, Antigravity alebo ChatGPT v nastaveniach Konektorov a následne ho vyberte tu.",
+                                  "Adjon hozzá egy OpenAI API, Claude API, Gemini API, Claude, Antigravity vagy ChatGPT csatlakozót a Csatlakozók beállításaiban, majd válassza ki itt."
+                                )}
+                              </p>
+                            </div>
+                          ) : (
+                            <div data-testid="ai-connector-select" className="max-w-2xl">
+                              <CustomSelect
+                                disabled={aiReadOnly}
+                                value={aiConnectorId}
+                                onChange={(val) => {
+                                  const picked = llmConnectors.find((c) => c.id === val);
+                                  setAiConnectorId(val);
+                                  setAiConnectorType(picked?.connectorType || "");
+                                  setAiConnectorName(picked?.name || "");
+                                }}
+                                options={[
+                                  {
+                                    value: "",
+                                    label: llmConnectorsLoading
+                                      ? t("Loading connectors...", "Načítavajú sa konektory...", "Csatlakozók betöltése...")
+                                      : t("Select an LLM connector...", "Vyberte LLM konektor...", "Válasszon LLM csatlakozót..."),
+                                  },
+                                  ...llmConnectors.map((c) => {
+                                    const typeLabel = getAgentConnectorTypeLabel(c.connectorType, userLanguage);
+                                    const modelPart = c.agentModel ? ` · ${c.agentModel}` : "";
+                                    const statusPart = !c.isActive
+                                      ? ` — ${t("Inactive", "Neaktívny", "Inaktív")}`
+                                      : !c.hasCredentials
+                                        ? ` — ${t("Missing credentials", "Chýbajú údaje", "Hiányzó hitelesítés")}`
+                                        : "";
+                                    return {
+                                      value: c.id,
+                                      label: `${c.name} (${typeLabel}${modelPart})${statusPart}`,
+                                    };
+                                  }),
+                                ]}
+                              />
+                            </div>
+                          )}
+
+                          {selectedConnector ? (
+                            <div
+                              data-testid="ai-connector-status"
+                              className="max-w-2xl p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-2"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-ui font-bold text-slate-800">{selectedConnector.name}</span>
+                                  <span className="px-2 py-0.5 rounded-full text-micro font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/70">
+                                    {getAgentConnectorTypeLabel(selectedConnector.connectorType, userLanguage)}
+                                  </span>
+                                  {selectedConnector.agentModel && (
+                                    <span className="px-2 py-0.5 rounded-full text-micro font-mono font-semibold bg-white text-slate-600 border border-slate-200">
+                                      {selectedConnector.agentModel}
+                                    </span>
+                                  )}
+                                </div>
+                                {!selectedConnector.isActive ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-micro font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                    <AlertTriangle className="h-3.5 w-3.5" />
+                                    {t("Inactive", "Neaktívny", "Inaktív")}
+                                  </span>
+                                ) : !selectedConnector.hasCredentials ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-micro font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                    <AlertTriangle className="h-3.5 w-3.5" />
+                                    {t("Missing credentials", "Chýbajúce údaje", "Hiányzó hitelesítés")}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-micro font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    {t("Active & Ready", "Aktívny a pripravený", "Aktív és kész")}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-micro font-medium text-slate-500 leading-relaxed">
+                                {t(
+                                  `${PRODUCT_NAME} AI features inherit this connector's configured model automatically.`,
+                                  `AI funkcie v ${PRODUCT_NAME} automaticky preberajú model nakonfigurovaný v tomto konektore.`,
+                                  `A ${PRODUCT_NAME} AI funkciói automatikusan átveszik a csatlakozó beállított modelljét.`
+                                )}
+                              </p>
+                            </div>
+                          ) : aiConnectorId && !llmConnectorsLoading ? (
+                            <div
+                              data-testid="ai-connector-missing"
+                              className="max-w-2xl p-4 rounded-2xl border border-amber-200 bg-amber-50/70 flex items-start gap-2.5 text-amber-900"
+                            >
+                              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
+                              <div className="space-y-0.5">
+                                <p className="text-ui font-bold">
+                                  {t("Selected connector is unavailable", "Vybratý konektor nie je dostupný", "A kiválasztott csatlakozó nem érhető el")}
+                                </p>
+                                <p className="text-micro font-medium text-amber-800">
+                                  {t(
+                                    `“${aiConnectorName || aiConnectorId}” was removed or disabled. Select another connector or switch to manual API keys.`,
+                                    `Konektor „${aiConnectorName || aiConnectorId}“ bol odstránený alebo zakázaný. Vyberte iný konektor alebo prepnite na manuálne API kľúče.`,
+                                    `A(z) „${aiConnectorName || aiConnectorId}“ csatlakozót eltávolították vagy letiltották. Válasszon másik csatlakozót, vagy váltson manuális API kulcsokra.`
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                          ) : !aiConnectorId ? (
+                            <p className="text-micro text-slate-400 font-semibold leading-relaxed max-w-2xl">
+                              {t(
+                                "Select a connector above to activate AI summaries, chat, reports, dashboards, routing, and agents without entering a separate OpenAI API key.",
+                                "Vyberte konektor vyššie a aktivujte AI zhrnutia, chat, reporty, dashboardy, smerovanie a agentov bez zadávania samostatného OpenAI API kľúča.",
+                                "Válasszon csatlakozót fent az AI összefoglalók, csevegés, riportok, irányítópultok, jegy-irányítás és ügynökök használatához külön OpenAI API kulcs nélkül."
+                              )}
+                            </p>
+                          ) : null}
+
+                          {aiConnectorId && effectiveConnectorType && effectiveConnectorType !== "openai_api" && (
+                            <div
+                              data-testid="ai-fallback-openai-key"
+                              className="space-y-3 pt-4 border-t border-slate-100 max-w-2xl"
+                            >
+                              <label className="type-overline text-slate-500 block">
+                                {t(
+                                  "Optional OpenAI Fallback Key (Embeddings, Realtime Voice & WAAI)",
+                                  "Voliteľný záložný OpenAI kľúč (Vektorové indexy, Hlas v reálnom čase a WAAI)",
+                                  "Opcionális tartalék OpenAI kulcs (Vektoros indexelés, Valós idejű hang és WAAI)"
+                                )}
+                              </label>
+                              <p className="text-micro text-slate-400 font-semibold leading-relaxed">
+                                {t(
+                                  "Your selected connector handles chat, summaries, reports, dashboards, routing, and agents (and Gemini connectors also cover audio transcription). Add an OpenAI key below only if you use MariaDB 768-d Vector Search, Live Realtime Voice, or WAAI.",
+                                  "Vybratý konektor zabezpečuje chat, zhrnutia, reporty, dashboardy, smerovanie a agentov (Gemini konektory podporujú aj prepis zvuku). OpenAI kľúč doplňte nižšie iba ak používate vektorové vyhľadávanie MariaDB, živý hlas v reálnom čase alebo WAAI.",
+                                  "A kiválasztott csatlakozó kezeli a csevegést, összefoglalókat, riportokat, irányítópultokat, irányítást és ügynököket (a Gemini csatlakozók a hangátírást is). Csak akkor adjon meg OpenAI kulcsot alább, ha MariaDB vektoros keresést, valós idejű hangot vagy WAAI-t használ."
+                                )}
+                              </p>
+                              <SecretInput
+                                className="max-w-2xl"
+                                language={userLanguage}
+                                disabled={aiReadOnly}
+                                value={openAiKey}
+                                onChange={setOpenAiKey}
+                                placeholder="sk-proj-..."
+                              />
+                            </div>
+                          )}
+
+                          {aiConnectorId && effectiveConnectorType === "openai_api" && (
+                            <div
+                              data-testid="ai-openai-connector-all-modalities"
+                              className="max-w-2xl px-4 py-3 rounded-2xl bg-indigo-50/70 border border-indigo-100 text-micro font-semibold text-indigo-800 leading-relaxed"
+                            >
+                              {t(
+                                "This OpenAI API connector automatically supplies credentials for 768-d Vector DB embeddings, audio transcription, Live Realtime Voice, and WAAI as well.",
+                                "Tento OpenAI API konektor automaticky pokrýva aj 768-d vektorové embeddingy, prepis zvuku, živý hlas v reálnom čase a WAAI.",
+                                "Ez az OpenAI API csatlakozó automatikusan biztosítja a hitelesítést a 768-d vektoros beágyazásokhoz, hangátíráshoz, valós idejű hanghoz és a WAAI-hoz is."
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <>
+                          <div className="space-y-2">
+                            <label className="type-overline text-slate-500 block">
+                              {t("OpenAI API Secret Key", "Tajný API kľúč OpenAI", "OpenAI API titkos kulcs")}
+                            </label>
+                            <SecretInput
+                              className="max-w-2xl"
+                              language={userLanguage}
+                              disabled={aiReadOnly}
+                              value={openAiKey}
+                              onChange={setOpenAiKey}
+                              placeholder="sk-proj-..."
+                            />
+                          </div>
+            
+                          <div className="space-y-4 pt-4 border-t border-slate-100">
+                            <p className="text-micro text-slate-400 font-semibold leading-relaxed max-w-2xl">
+                              {t(
+                                `Optional — these providers are only used by AI agent nodes in Automations & Workflows. Every other AI feature in ${PRODUCT_NAME} runs on OpenAI unless an External LLM Connector is selected above.`,
+                                `Voliteľné — títo poskytovatelia sa používajú iba v uzloch AI agenta v Automatizáciách a workflowoch. Všetky ostatné AI funkcie v ${PRODUCT_NAME} používajú OpenAI, pokiaľ vyššie nezvolíte externý LLM konektor.`,
+                                `Opcionális — ezeket a szolgáltatókat csak az Automatizálások és munkafolyamatok AI ügynök csomópontjai használják. A ${PRODUCT_NAME} többi AI funkciója OpenAI-t használ, hacsak fent nincs kiválasztva egy külső LLM csatlakozó.`
+                              )}
+                            </p>
+            
+                            <div className="space-y-2">
+                              <label className="type-overline text-slate-500 block">
+                                {t("Anthropic API Secret Key", "Tajný API kľúč Anthropic", "Anthropic API titkos kulcs")}
+                              </label>
+                              <SecretInput
+                                className="max-w-2xl"
+                                language={userLanguage}
+                                disabled={aiReadOnly}
+                                value={anthropicKey}
+                                onChange={setAnthropicKey}
+                                placeholder="sk-ant-..."
+                              />
+                            </div>
+            
+                            <div className="space-y-2">
+                              <label className="type-overline text-slate-500 block">
+                                {t("Google Gemini API Secret Key", "Tajný API kľúč Google Gemini", "Google Gemini API titkos kulcs")}
+                              </label>
+                              <SecretInput
+                                className="max-w-2xl"
+                                language={userLanguage}
+                                disabled={aiReadOnly}
+                                value={geminiKey}
+                                onChange={setGeminiKey}
+                                placeholder="AIzaSy..."
+                              />
+                            </div>
+                          </div>
+                        </>
+                      )}
+
                       <div className="space-y-2 pt-4 border-t border-slate-100">
                         <label className="type-overline text-slate-500 block">
                           {t("Meeting transcription with speakers (Soniox)", "Prepis stretnutí s rozlíšením hovoriacich (Soniox)", "Megbeszélés-átirat beszélőkkel (Soniox)")}
                         </label>
-                        {/* Permanent: recording works with either key, this says what the Soniox key adds. */}
+                        {/* Permanent: recording works with either source, this says what the Soniox key adds. */}
                         <div
                           className={cn(
                             "max-w-2xl flex items-start gap-2.5 px-3.5 py-3 rounded-xl border text-ui",
@@ -4401,14 +4732,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <p className="leading-relaxed">
                             {sonioxApiKey.trim() !== ""
                               ? t(
-                                  "Speakers are told apart. Meeting Room transcribes recordings through Soniox, live and after you stop, and labels who spoke (Participant 1, 2, …). OpenAI still writes the AI summary.",
-                                  "Hovoriaci sa rozlišujú. Zasadačka prepisuje nahrávky cez Soniox, naživo aj po zastavení, a označí, kto hovoril (Účastník 1, 2, …). AI zhrnutie naďalej píše OpenAI.",
-                                  "A beszélők megkülönböztetve. A Tárgyaló a Sonioxon keresztül írja át a felvételeket, élőben és leállítás után is, és jelöli, ki beszélt (1., 2. résztvevő, …). Az AI-összefoglalót továbbra is az OpenAI írja."
+                                  "Speakers are told apart. Meeting Room transcribes recordings through Soniox, live and after you stop, and labels who spoke (Participant 1, 2, …). The AI source above still writes the AI summary.",
+                                  "Hovoriaci sa rozlišujú. Zasadačka prepisuje nahrávky cez Soniox, naživo aj po zastavení, a označí, kto hovoril (Účastník 1, 2, …). AI zhrnutie naďalej píše zdroj AI nastavený vyššie.",
+                                  "A beszélők megkülönböztetve. A Tárgyaló a Sonioxon keresztül írja át a felvételeket, élőben és leállítás után is, és jelöli, ki beszélt (1., 2. résztvevő, …). Az AI-összefoglalót továbbra is a fent beállított AI forrás írja."
                                 )
                               : t(
-                                  "Speaker recognition needs a Soniox API key. Meetings are recorded and transcribed the same way without it, through OpenAI, but the transcript does not say who spoke. Soniox costs about $0.12 per hour live and $0.10 per hour after you stop. Create a key at soniox.com.",
-                                  "Rozlíšenie hovoriacich vyžaduje API kľúč Soniox. Bez neho sa stretnutia nahrávajú a prepisujú rovnako, cez OpenAI, ale v prepise nebude, kto hovoril. Soniox stojí približne 0,12 $ za hodinu naživo a 0,10 $ za hodinu po zastavení. Kľúč vytvoríte na soniox.com.",
-                                  "A beszélők felismeréséhez Soniox API-kulcs kell. Nélküle a megbeszélések ugyanúgy rögzülnek és átíródnak, az OpenAI-on keresztül, de az átirat nem jelzi, ki beszélt. A Soniox élőben kb. 0,12 $/óra, leállítás után 0,10 $/óra. Kulcsot a soniox.com oldalon hozhat létre."
+                                  "Speaker recognition needs a Soniox API key. Meetings are recorded and transcribed the same way without it, through OpenAI or a Gemini connector, but the transcript does not say who spoke. Soniox costs about $0.12 per hour live and $0.10 per hour after you stop. Create a key at soniox.com.",
+                                  "Rozlíšenie hovoriacich vyžaduje API kľúč Soniox. Bez neho sa stretnutia nahrávajú a prepisujú rovnako, cez OpenAI alebo konektor Gemini, ale v prepise nebude, kto hovoril. Soniox stojí približne 0,12 $ za hodinu naživo a 0,10 $ za hodinu po zastavení. Kľúč vytvoríte na soniox.com.",
+                                  "A beszélők felismeréséhez Soniox API-kulcs kell. Nélküle a megbeszélések ugyanúgy rögzülnek és átíródnak, az OpenAI-on vagy egy Gemini csatlakozón keresztül, de az átirat nem jelzi, ki beszélt. A Soniox élőben kb. 0,12 $/óra, leállítás után 0,10 $/óra. Kulcsot a soniox.com oldalon hozhat létre."
                                 )}
                           </p>
                         </div>
@@ -4418,52 +4749,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <SecretInput
                           className="max-w-2xl"
                           language={userLanguage}
-                          disabled={getPermission("ai_config") === "view"}
+                          disabled={aiReadOnly}
                           value={sonioxApiKey}
                           onChange={setSonioxApiKey}
                           placeholder="snx_..."
                         />
                       </div>
 
-                      <div className="space-y-4 pt-4 border-t border-slate-100">
-                        <p className="text-micro text-slate-400 font-semibold leading-relaxed max-w-2xl">
-                          {t(
-                            `Optional — these providers are only used by AI agent nodes in Automations & Workflows. Every other AI feature in ${PRODUCT_NAME} runs on OpenAI.`,
-                            `Voliteľné — títo poskytovatelia sa používajú iba v uzloch AI agenta v Automatizáciách a workflowoch. Všetky ostatné AI funkcie v ${PRODUCT_NAME} bežia na OpenAI.`,
-                            `Opcionális — ezeket a szolgáltatókat csak az Automatizálások és munkafolyamatok AI ügynök csomópontjai használják. A ${PRODUCT_NAME} összes többi AI funkciója OpenAI-t használ.`
-                          )}
-                        </p>
-        
-                        <div className="space-y-2">
-                          <label className="type-overline text-slate-500 block">
-                            {t("Anthropic API Secret Key", "Tajný API kľúč Anthropic", "Anthropic API titkos kulcs")}
-                          </label>
-                          <SecretInput
-                            className="max-w-2xl"
-                            language={userLanguage}
-                            disabled={getPermission("ai_config") === "view"}
-                            value={anthropicKey}
-                            onChange={setAnthropicKey}
-                            placeholder="sk-ant-..."
-                          />
-                        </div>
-        
-                        <div className="space-y-2">
-                          <label className="type-overline text-slate-500 block">
-                            {t("Google Gemini API Secret Key", "Tajný API kľúč Google Gemini", "Google Gemini API titkos kulcs")}
-                          </label>
-                          <SecretInput
-                            className="max-w-2xl"
-                            language={userLanguage}
-                            disabled={getPermission("ai_config") === "view"}
-                            value={geminiKey}
-                            onChange={setGeminiKey}
-                            placeholder="AIzaSy..."
-                          />
-                        </div>
-                      </div>
-        
-                      {!vectorDbValidated && openAiKey.trim() !== "" && (
+                      {!vectorDbValidated && canConfigureVectorDb && (
                         <div className="space-y-4 pt-4 border-t border-slate-100 animate-slide-up">
                           <div className="space-y-2">
                             <label className="type-overline text-slate-500 block">
@@ -4826,6 +5119,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     )}
                   </div>
         );
+      }
       case "integrations/social":
         return (
                   <div className="space-y-6 animate-fade-in">
@@ -7483,6 +7777,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         return <AiUsagePanel lang={userLanguage} />;
       case "integrations/waai":
         return <WaaiIntegrationSettings activeLang={userLanguage} />;
+      case "agency/workflow":
+        return (
+          <AgencySettingsSection
+            section="workflow"
+            lang={userLanguage}
+            canEdit={getPermission("general_config") !== "view"}
+            financialCategories={financialCategories}
+          />
+        );
+      case "agency/schema":
+        return (
+          <AgencySettingsSection
+            section="schema"
+            lang={userLanguage}
+            canEdit={getPermission("general_config") !== "view"}
+            financialCategories={financialCategories}
+          />
+        );
+      case "agency/shifts":
+        return (
+          <AgencySettingsSection
+            section="shifts"
+            lang={userLanguage}
+            canEdit={getPermission("general_config") !== "view"}
+            financialCategories={financialCategories}
+          />
+        );
       default:
         return null;
     }

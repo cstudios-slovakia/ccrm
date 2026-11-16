@@ -76,6 +76,12 @@ const withTasksSection = (layout: string[]): string[] => {
     const at = next.indexOf("time-tracking");
     next.splice(at === -1 ? next.length : at + 1, 0, "whatsapp");
   }
+  // Unified Communications (`email`) arrived as a top-level channel hub: slot it in behind WhatsApp.
+  if (!next.includes("email")) {
+    next = [...next];
+    const at = next.indexOf("whatsapp");
+    next.splice(at === -1 ? next.length : at + 1, 0, "email");
+  }
   // Newsletter: behind Mail. Only roles granted the `newsletter` permission see it (canOpenRoute), and admins
   // can hide it for everyone in Settings -> Visible modules.
   if (!next.includes("newsletter")) {
@@ -90,6 +96,13 @@ const withTasksSection = (layout: string[]): string[] => {
       const at = next.indexOf("tasks");
       next.splice(at === -1 ? next.length : at + 1, 0, "employees");
     }
+  }
+  // Agency & Workforce Leasing is opt-in (disabledModules includes "agency" by default);
+  // slot it behind Employees so enabling the module shows it without resetting layouts.
+  if (!next.includes("agency")) {
+    next = [...next];
+    const at = next.indexOf("employees");
+    next.splice(at === -1 ? next.length : at + 1, 0, "agency");
   }
   return next;
 };
@@ -411,6 +424,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       "tasks",
       "time-tracking",
       "whatsapp",
+      "email",
+      "newsletter",
       "overview",
       "projects",
       "tickets",
@@ -423,12 +438,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       "warehouse",
       "financial",
       "employees",
+      "agency",
       "meetings",
       ...dynamicUeItems.map((item) => item.id),
       ...dynamicDashItems.map((item) => item.id),
       "files",
-      "email",
-      "newsletter",
       "automation",
       "social_media",
       "updates"
@@ -479,11 +493,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "var(--color-blue-900)" },
       { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "var(--color-emerald-500)" },
       { id: "employees", label: getTranslation(systemLanguage, "sidebar.employees"), icon: EmployeeTieIcon, color: "#c29b62" },
+      { id: "agency", label: systemLanguage === "sk" ? "Personálna agentúra" : systemLanguage === "hu" ? "Munkaerő-közvetítés" : "Agency", icon: Icons.UserCheck || Users, color: "#5c6f28" },
       { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "var(--color-indigo-600)" },
       ...dynamicUeItems,
       ...dynamicDashItems,
       { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen, color: "var(--color-amber-700)" },
-      { id: "email", label: systemLanguage === "sk" ? "Pošta" : systemLanguage === "hu" ? "Levelezés" : "Mail Client", icon: Mail, color: "var(--color-pink-600)" },
+      { id: "email", label: systemLanguage === "sk" ? "Komunikácia" : systemLanguage === "hu" ? "Kommunikáció" : "Communications", icon: Mail, color: "var(--color-pink-600)" },
       { id: "newsletter", label: systemLanguage === "hu" ? "Hírlevél" : "Newsletter", icon: Icons.Send || Mail, color: "#0284c7" },
       { id: "automation", label: systemLanguage === "sk" ? "Automatizácia" : systemLanguage === "hu" ? "Automatizálás" : "Automation", icon: Icons.Workflow || Icons.Network || Icons.GitFork || FolderOpen, color: "var(--color-purple-800)" },
       { id: "social_media", label: systemLanguage === "sk" ? "Sociálne siete" : systemLanguage === "hu" ? "Közösségi média" : "Social Media", icon: Icons.Share2 || Icons.Globe, color: "var(--color-rose-500)" },

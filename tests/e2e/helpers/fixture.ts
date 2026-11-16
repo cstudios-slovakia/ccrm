@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { installTimeTrackingMock, timeTrackingSeed } from './timeTrackingMock';
+import { DEFAULT_AGENCY_SETTINGS } from '../../../src/types/agency';
 
 /**
  * Deterministic CRM dataset served to the app in place of the PHP backend.
@@ -1064,6 +1065,8 @@ export async function installBackendMocks(
     roles?: { name: string; permissions: Record<string, string> }[];
     /** Support tickets for specs that log time on one. Omitted means the workspace has none. */
     tickets?: Record<string, unknown>[];
+    /** Overrides `settings.integrationsConfig.disabledModules` for tests checking opt-in modules. */
+    disabledModules?: string[];
   } = {},
 ) {
   const baseUser = options.user ?? TEST_USER;
@@ -1109,9 +1112,17 @@ export async function installBackendMocks(
             .map((u) => (u.email === signedIn.email ? signedIn : u))
             .map((u) => (pushedUserMeta.has(u.email) ? { ...u, metadata_json: pushedUserMeta.get(u.email) } : u)),
           settings:
-            pushedIntegrationsConfig === undefined
-              ? payload.settings
-              : { ...payload.settings, integrationsConfig: pushedIntegrationsConfig },
+            pushedIntegrationsConfig !== undefined
+              ? { ...payload.settings, integrationsConfig: pushedIntegrationsConfig }
+              : options.disabledModules
+                ? {
+                    ...payload.settings,
+                    integrationsConfig: {
+                      ...payload.settings.integrationsConfig,
+                      disabledModules: options.disabledModules,
+                    },
+                  }
+                : payload.settings,
           ...(options.tickets ? { tickets: options.tickets } : {}),
           projectTypes: payload.projectTypes.map((pt) =>
             pushedListColumns.has(pt.id) ? { ...pt, listColumns: pushedListColumns.get(pt.id) } : pt,
@@ -1214,7 +1225,7 @@ export async function installBackendMocks(
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ success: true, data: [], items: [], agents: [], accounts: [], posts: [] }),
+      body: JSON.stringify({ success: true, data: [], items: [], agents: [], accounts: [], posts: [], client: null, tokens: [], users: [], mailboxes: [], userMailboxes: [], connectors: [] }),
     }),
   );
 
@@ -1554,6 +1565,71 @@ export async function installBackendMocks(
     });
   });
 
+  // Stateful in-memory mock for Weekly Plan cards & day notes.
+  const weeklyPlanCards = new Map<string, any>();
+  const weeklyPlanNotes = new Map<string, string>();
+  await page.route('**/api/weekly_plan.php**', async (route) => {
+    const req = route.request();
+    if (req.method() === 'GET') {
+      const url = new URL(req.url());
+      const from = url.searchParams.get('from');
+      const to = url.searchParams.get('to');
+      const cards = Array.from(weeklyPlanCards.values()).filter((c) =>
+        (!from || c.date >= from) && (!to || c.date <= to),
+      );
+      const notes = Array.from(weeklyPlanNotes.entries())
+        .filter(([date]) => (!from || date >= from) && (!to || date <= to))
+        .map(([date, note]) => ({ date, note }));
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ cards, notes }),
+      });
+    }
+    const body = JSON.parse(req.postData() || '{}');
+    if (body.action === 'save_card') {
+      const card = {
+        id: body.id || `wpc_${Date.now()}`,
+        date: body.date,
+        content: body.content,
+        position: Number(body.position ?? 0),
+        completed: Boolean(body.completed),
+        color: String(body.color || ''),
+        refs: Array.isArray(body.refs) ? body.refs : [],
+        createdBy: signedIn.id,
+      };
+      weeklyPlanCards.set(card.id, card);
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, card }),
+      });
+    }
+    if (body.action === 'reorder_cards') {
+      for (const item of body.items || []) {
+        const existing = weeklyPlanCards.get(item.id);
+        if (existing) {
+          weeklyPlanCards.set(item.id, { ...existing, date: item.date, position: Number(item.position ?? 0) });
+        }
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+    }
+    if (body.action === 'delete_card') {
+      weeklyPlanCards.delete(body.id);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+    }
+    if (body.action === 'save_note') {
+      if (body.note) weeklyPlanNotes.set(body.date, body.note);
+      else weeklyPlanNotes.delete(body.date);
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, date: body.date, note: body.note || '' }),
+      });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+  });
+
   await page.route('**/upload.php', (route) =>
     route.fulfill({
       status: 200,
@@ -1571,6 +1647,47 @@ export async function installBackendMocks(
       body: JSON.stringify({ current: { temperature_2m: 14.2, weather_code: 2, is_day: 1 } }),
     }),
   );
+
+  await page.route('**/api/holidays.php**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        country: 'SK',
+        year: 2026,
+        days: [
+          { date: '2026-01-01', localName: 'Deň vzniku Slovenskej republiky', name: 'Day of the Establishment of the Slovak Republic' },
+          { date: '2026-05-01', localName: 'Sviatok práce', name: 'Labour Day' },
+        ],
+      }),
+    }),
+  );
+
+  await page.route('**/api/agency.php**', (route) => {
+    const url = new URL(route.request().url());
+    const action = url.searchParams.get('action') || 'bootstrap';
+    if (action === 'bootstrap' && route.request().method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          settings: DEFAULT_AGENCY_SETTINGS,
+          workers: [],
+          workplaces: [],
+          placements: [],
+          checklists: [],
+          shifts: [],
+          payments: [],
+        }),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, settings: DEFAULT_AGENCY_SETTINGS }),
+    });
+  });
 
   await page.addInitScript((userJson: string) => {
     try {

@@ -17,6 +17,7 @@ import {
   Sliders,
   Sparkles,
   TableProperties,
+  UserCheck,
   Users,
   Workflow,
 } from "lucide-react";
@@ -359,6 +360,25 @@ export function buildModuleCatalog(
       icon: EmployeeTieIcon,
       color: "#c29b62",
       bgColor: "rgba(194, 155, 98, 0.12)",
+    },
+    {
+      id: "agency",
+      category: "operations",
+      title: t("Agency & Workforce Leasing", "Personálna agentúra", "Munkaerő-közvetítés"),
+      description: t(
+        "Candidates pipeline, rented employees, host placements, shifts & payouts",
+        "Kandidáti, prenajatí zamestnanci, umiestnenia vo firmách, zmeny a výplaty",
+        "Jelöltek, kölcsönzött munkavállalók, kihelyezések, műszakok és kifizetések"
+      ),
+      longDescription: t(
+        "Manage external staffing from candidate intake through active company placements without mixing rented workers into sales contacts. Customize worker profile fields, track compliance expiry and daily shift schedules with national holidays and sick leave, and calculate monthly worker payouts alongside client billing margins.",
+        "Spravujte agentúrne zamestnávanie od evidencie kandidáta až po aktívne umiestnenie vo firmách bez miešania prenajatých pracovníkov s obchodnými kontaktmi. Prispôsobte polia profilu, sledujte platnosť dokladov, denné rozvrhy zmien so sviatkami a PN a počítajte mesačné výplaty aj klientsku maržu.",
+        "Kezelje a munkaerő-kölcsönzést a jelöltfelvételtől az aktív céges kihelyezésekig anélkül, hogy a kölcsönzött munkavállalók keverednének az értékesítési partnerekkel. Testreszabható profilmezők, megfelelőségi határidők, munkaszüneti napokat és betegszabadságot is követő műszakbeosztás, valamint havi kifizetési és árrésszámítás."
+      ),
+      icon: UserCheck,
+      color: "#0f766e",
+      bgColor: "rgba(15, 118, 110, 0.12)",
+      badge: t("Add-on", "Doplnok", "Bővítmény"),
     },
 
     // 2. ANALYTICS & REGISTRIES
