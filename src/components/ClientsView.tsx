@@ -12,7 +12,7 @@ import {
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
   ChevronLeft, ChevronRight, Milestone, MessageCircle, Coins, Archive, ArchiveRestore, Settings,
-  AlertTriangle, CheckSquare, FileCheck, ExternalLink, Ticket as TicketIcon, Tag, Building2, Link2
+  AlertTriangle, CheckSquare, FileCheck, ExternalLink, Ticket as TicketIcon, Tag, Building2
 } from "lucide-react";
 import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project, Order, WarehouseItem, Warehouse, WarehouseMovement, InvoiceOffer, InvoiceOfferItem, CompanyBillingSettings, Ticket, TicketStatusDefinition } from "../types";
 import { DEFAULT_TICKET_STATUSES, ticketStatusColor, ticketStatusLabel, ticketTypeColor, ticketTypeLabel, PRIORITY_COLORS } from "../utils/tickets";
@@ -61,8 +61,6 @@ import { resolveAssigneeName, type TaskAccess } from "../utils/taskSelectors";
 import { isDoneTaskState } from "../utils/projectTasks";
 import { isSystemMailConfigured } from "../utils/taskReminders";
 import { todayLocal, todayLocalPlusDays, nowLocalStamp, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
-import { chartTheme, useAppearance } from "../utils/theme";
-import { chartFonts, useViewSize } from "../utils/viewSize";
 import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "../utils/financialRecordMerge";
 import { isRealMovement, movementAmounts, recurringOwnRowCharge } from "../utils/financialOverviewTable";
 import { markInvoiceMovementPaid } from "../utils/invoiceFinanceBridge";
@@ -73,7 +71,8 @@ import { FiledMailBody, MailAccountBadge } from "./FiledMail";
 import { fetchFiledMail, shouldReadStoredBody } from "../utils/filedMail";
 import { EntityHeader, PageHeader, Tabs } from "./layout";
 import { WhatsAppChip, OpenInChatLink } from "./WhatsAppChip";
-import { PROVIDERS, ProviderLogo } from "./CompanyMailboxSettings";
+import { ClientCompanyContacts } from "./clients/ClientCompanyContacts";
+import { ClientContactChats } from "./clients/ClientContactChats";
 import {
   getWhatsAppChats,
   inferConnectorType,
@@ -88,7 +87,8 @@ import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { runUndoable } from "../utils/undoable";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { detachTimelineFile, timelineEventFiles } from "../utils/timelineFiles";
-import { Chart as BundledChart } from "../utils/chartRuntime";
+import { FinancialReportView } from "./clients/FinancialReportView";
+export { FinancialReportView };
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { useListFilter } from "../hooks/useListFilter";
@@ -176,295 +176,6 @@ interface ClientsViewProps {
 /** The "without a category" row of the category filter. Not a real category id. */
 const NO_CLIENT_CATEGORY = "__none__";
 
-
-interface FinancialReportViewProps {
-  summary: string;
-  systemLanguage: string;
-}
-
-export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summary, systemLanguage }) => {
-  // chart.js paints to a canvas, so its axis, grid and legend colours cannot
-  // come from CSS — they are literals rebuilt whenever the appearance flips.
-  const appearance = useAppearance();
-  const { size: viewSize } = useViewSize();
-  const chart = chartTheme(appearance);
-  const chartRef = useRef<HTMLCanvasElement | null>(null);
-  const chartInstanceRef = useRef<any>(null);
-
-  // Parse the years, revenues, and profits from markdown table
-  const parsedData = useMemo(() => {
-    const lines = summary.split('\n');
-    const years: string[] = [];
-    const revenues: number[] = [];
-    const profits: number[] = [];
-
-    for (const line of lines) {
-      const parts = line.split('|').map(p => p.trim());
-      if (parts.length >= 4) {
-        const yearMatch = parts[1].match(/^\d{4}$/);
-        if (yearMatch) {
-          const year = parts[1];
-          const cleanNum = (str: string) => {
-            let cleaned = str.replace(/&euro;/g, '').replace(/[€\s]/g, '');
-            if (/, \d{3}/.test(cleaned) || /,\d{3}/.test(cleaned)) {
-              cleaned = cleaned.replace(/,/g, '');
-            }
-            return parseFloat(cleaned);
-          };
-          const revenue = cleanNum(parts[2]);
-          const profit = cleanNum(parts[3]);
-
-          if (!isNaN(revenue)) {
-            years.push(year);
-            revenues.push(revenue);
-            profits.push(isNaN(profit) ? 0 : profit);
-          }
-        }
-      }
-    }
-    return { years, revenues, profits };
-  }, [summary]);
-
-  useEffect(() => {
-    if (!chartRef.current || parsedData.years.length === 0) return;
-
-    if (chartInstanceRef.current) {
-      chartInstanceRef.current.destroy();
-    }
-
-    const ctx = chartRef.current.getContext('2d');
-    if (!ctx) return;
-
-    const ChartGlob: any = BundledChart;
-
-    const fonts = chartFonts();
-    chartInstanceRef.current = new ChartGlob(ctx, {
-      type: 'line',
-      data: {
-        labels: parsedData.years,
-        datasets: [
-          {
-            label: systemLanguage === 'sk' ? 'Celkové výnosy (€)' : systemLanguage === 'hu' ? 'Összes bevétel (€)' : 'Total Revenues (€)',
-            data: parsedData.revenues,
-            borderColor: 'rgb(79, 70, 229)',
-            backgroundColor: 'rgba(79, 70, 229, 0.05)',
-            borderWidth: 3,
-            pointBackgroundColor: 'rgb(79, 70, 229)',
-            pointRadius: 5,
-            fill: true,
-            tension: 0.3,
-            order: 2,
-          },
-          {
-            label: systemLanguage === 'sk' ? 'Výsledok hospodárenia (€)' : systemLanguage === 'hu' ? 'Nettó nyereség/veszteség (€)' : 'Net Profit/Loss (€)',
-            data: parsedData.profits,
-            borderColor: 'rgb(16, 185, 129)',
-            backgroundColor: 'rgba(16, 185, 129, 0.05)',
-            borderWidth: 3,
-            pointBackgroundColor: 'rgb(16, 185, 129)',
-            pointRadius: 5,
-            fill: true,
-            tension: 0.3,
-            order: 1,
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: 'top',
-            labels: {
-              font: {
-                family: 'Google Sans, sans-serif',
-                weight: 'bold',
-                size: fonts.label
-              },
-              color: chart.label
-            }
-          },
-          tooltip: {
-            titleFont: {
-              family: 'Google Sans, sans-serif',
-              weight: 'bold'
-            },
-            bodyFont: {
-              family: 'Google Sans, sans-serif'
-            }
-          }
-        },
-        scales: {
-          y: {
-            beginAtZero: true,
-            ticks: {
-              color: chart.tick,
-              font: {
-                family: 'Google Sans, sans-serif',
-                size: fonts.tick,
-                weight: 'bold'
-              },
-              callback: (value: any) => '€' + value.toLocaleString()
-            },
-            grid: {
-              color: chart.grid
-            }
-          },
-          x: {
-            ticks: {
-              color: chart.tick,
-              font: {
-                family: 'Google Sans, sans-serif',
-                size: fonts.tick,
-                weight: 'bold'
-              }
-            },
-            grid: {
-              display: false
-            }
-          }
-        }
-      }
-    });
-
-    return () => {
-      if (chartInstanceRef.current) {
-        chartInstanceRef.current.destroy();
-      }
-    };
-  }, [parsedData, systemLanguage, appearance, viewSize]);
-
-  const renderBeautifulReport = (text: string) => {
-    if (!text) return null;
-
-    const cleanedText = text.replace(/```markdown\s*/g, '').replace(/```\s*/g, '');
-    const lines = cleanedText.split('\n');
-    const elements: React.ReactNode[] = [];
-    let listItems: string[] = [];
-    let tableRows: string[][] = [];
-
-    const formatInlineMarkdown = (str: string) => {
-      if (!str) return '';
-      // Escape HTML first so any markup in AI/registry-sourced text is inert;
-      // only our own ** / * markers are then turned into <strong>/<em>.
-      const escaped = str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-      return escaped
-        .replace(/\*\*(.*?)\*\*/g, '<strong class="font-black text-slate-900 font-extrabold">$1</strong>')
-        .replace(/\*(.*?)\*/g, '<em class="italic text-slate-700">$1</em>');
-    };
-
-    const flushList = (key: string) => {
-      if (listItems.length > 0) {
-        elements.push(
-          <ul key={`list-${key}`} className="space-y-1 my-3 pl-5 list-disc text-slate-600 font-semibold leading-relaxed">
-            {listItems.map((item, idx) => (
-              <li key={idx} dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(item) }} />
-            ))}
-          </ul>
-        );
-        listItems = [];
-      }
-    };
-
-    const flushTable = (key: string) => {
-      if (tableRows.length > 0) {
-        elements.push(
-          <div key={`table-${key}`} className="overflow-x-auto my-4 rounded-xl border border-slate-200 shadow-sm bg-white">
-            <table className="min-w-full divide-y divide-slate-200 text-caption">
-              <thead className="bg-slate-50">
-                <tr>
-                  {tableRows[0].map((cell, idx) => (
-                    <th key={idx} className="px-4 py-2 text-left font-bold text-slate-700 uppercase tracking-wider" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(cell) }} />
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {tableRows.slice(1).map((row, rowIdx) => (
-                  <tr key={rowIdx} className="hover:bg-slate-50/50 transition-colors">
-                    {row.map((cell, cellIdx) => (
-                      <td key={cellIdx} className={`px-4 py-2 font-bold ${cellIdx === 0 ? 'text-slate-800 font-extrabold' : 'text-slate-600'}`} dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(cell) }} />
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        );
-        tableRows = [];
-      }
-    };
-
-    for (let i = 0; i < lines.length; i++) {
-      let line = lines[i].trim();
-
-      const h1Match = line.match(/^#\s+(.*$)/);
-      const h2Match = line.match(/^##\s+(.*$)/);
-      const h3Match = line.match(/^###\s+(.*$)/);
-      const listMatch = line.match(/^\s*[-\*]\s+(.*$)/);
-      const isTableLine = line.startsWith('|');
-
-      if (h1Match || h2Match || h3Match || listMatch || isTableLine === false) {
-        flushList(String(i));
-        flushTable(String(i));
-      }
-
-      if (h1Match) {
-        elements.push(
-          <h2 key={i} className="text-body font-bold text-slate-900 mt-6 mb-3 border-b border-slate-200 pb-1.5 flex items-center gap-1.5" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(h1Match[1]) }} />
-        );
-      } else if (h2Match) {
-        elements.push(
-          <h3 key={i} className="text-ui font-bold text-slate-800 mt-5 mb-2 flex items-center gap-1.5" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(h2Match[1]) }} />
-        );
-      } else if (h3Match) {
-        elements.push(
-          <h4 key={i} className="type-overline text-slate-600 mt-4 mb-1.5" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(h3Match[1]) }} />
-        );
-      } else if (listMatch) {
-        listItems.push(formatInlineMarkdown(listMatch[1]));
-      } else if (isTableLine) {
-        const cells = line.split('|').map(c => c.trim()).filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
-        const isSeparator = cells.every(c => /^[-:]+$/.test(c));
-        if (!isSeparator) {
-          tableRows.push(cells);
-        }
-      } else if (line !== "") {
-        elements.push(
-          <p key={i} className="my-2.5 leading-relaxed text-slate-600 font-semibold" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(line) }} />
-        );
-      }
-    }
-
-    flushList("end");
-    flushTable("end");
-
-    return <div className="space-y-1 text-caption">{elements}</div>;
-  };
-
-  return (
-    <div className="space-y-6">
-      {parsedData.years.length > 0 && (
-        <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h4 className="type-overline text-slate-500">
-              {systemLanguage === 'sk' ? 'Graf vývoja hospodárenia' : systemLanguage === 'hu' ? 'Pénzügyi trend diagram' : 'Financial Trend Chart'}
-            </h4>
-          </div>
-          <div className="h-48 relative w-full">
-            <canvas ref={chartRef} />
-          </div>
-        </div>
-      )}
-      
-      <div className="p-6 rounded-2xl bg-indigo-50/15 border-2 border-indigo-100/60 shadow-inner leading-relaxed text-ui">
-        {renderBeautifulReport(summary)}
-      </div>
-    </div>
-  );
-};
 
 export const ClientsView: React.FC<ClientsViewProps> = ({
   newsletterEnabled = false,
@@ -3936,160 +3647,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               </div>
 
               {/* Chats / Instant Messaging under Client Contact Profile */}
-              {(() => {
-                const clientLeadIds = new Set((activeClient.associatedLeads || []).map((l) => l.id));
-                const primaryLeadId =
-                  activeClient.associatedLeads.find((l) => (l.id || "").startsWith("client-"))?.id ??
-                  activeClient.associatedLeads[0]?.id ??
-                  "";
-                const clientDigits = (activeClient.phone || "").replace(/\D/g, "");
-                const clientNameLower = (activeClient.name || "").trim().toLowerCase();
-
-                const matchedChats: Array<{
-                  channelId: string;
-                  channelName: string;
-                  connectorType: ConnectorType;
-                  chat: WhatsAppChatSummary;
-                  linkKey: string;
-                  isExplicit: boolean;
-                }> = [];
-
-                for (const ch of messagingChannels) {
-                  for (const chat of ch.chats) {
-                    const linkKey = `${ch.id}::${chat.id}`;
-                    const explicitId = chatClientLinks[linkKey];
-                    const isExplicit = Boolean(explicitId && clientLeadIds.has(explicitId));
-                    const chatDigits = (chat.phone || "").replace(/\D/g, "");
-                    const isAutoMatch =
-                      !explicitId &&
-                      ((clientDigits && chatDigits && clientDigits === chatDigits) ||
-                        (chat.name || "").trim().toLowerCase() === clientNameLower);
-                    if (isExplicit || isAutoMatch) {
-                      matchedChats.push({
-                        channelId: ch.id,
-                        channelName: ch.name,
-                        connectorType: ch.connectorType,
-                        chat,
-                        linkKey,
-                        isExplicit,
-                      });
-                    }
-                  }
-                }
-
-                const availableUnlinkedChats = messagingChannels.flatMap((ch) =>
-                  ch.chats
-                    .filter((chat) => !matchedChats.some((m) => m.linkKey === `${ch.id}::${chat.id}`))
-                    .map((chat) => ({
-                      channelId: ch.id,
-                      channelName: ch.name,
-                      connectorType: ch.connectorType,
-                      chat,
-                      linkKey: `${ch.id}::${chat.id}`,
-                    })),
-                );
-
-                return (
-                  <div className="border-t-2 border-slate-100 pt-4 space-y-2.5" data-testid="client-contact-chats-section">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="type-overline text-emerald-600 flex items-center gap-1">
-                        <MessageCircle className="h-3.5 w-3.5" />
-                        {t("Chats & Instant Messaging", "Chaty a komunikátory", "Csevegések és üzenetküldők")}
-                      </span>
-                      {primaryLeadId && availableUnlinkedChats.length > 0 && (
-                        <select
-                          data-testid="client-link-chat-select"
-                          value=""
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              updateChatClientLink(e.target.value, primaryLeadId);
-                            }
-                          }}
-                          className="px-2.5 py-1 rounded-xl border border-slate-200 bg-slate-50 hover:bg-white text-caption font-bold text-slate-700 focus:outline-none cursor-pointer max-w-52 truncate"
-                        >
-                          <option value="">
-                            ➕ {t("Link existing chat...", "Prepojiť existujúci chat...", "Meglévő csevegés összekapcsolása...")}
-                          </option>
-                          {availableUnlinkedChats.map((item) => (
-                            <option key={item.linkKey} value={item.linkKey}>
-                              {PROVIDERS[item.connectorType]?.label || item.connectorType.toUpperCase()} · {item.chat.name} ({item.channelName})
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-
-                    {matchedChats.length === 0 ? (
-                      <div className="p-3 rounded-xl bg-slate-50/70 border border-slate-200/80 flex items-center justify-between gap-2 text-caption text-slate-500">
-                        <span>
-                          {t(
-                            "No linked chats yet. Select a chat above or start one from Communications.",
-                            "Zatiaľ žiadne prepojené chaty. Vyberte chat vyššie alebo začnite konverzáciu v Komunikácii.",
-                            "Még nincs összekapcsolt csevegés. Válasszon fentebb, vagy indítson egyet a Kommunikációban.",
-                          )}
-                        </span>
-                        <a
-                          href="#email"
-                          className="shrink-0 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold transition-colors"
-                        >
-                          {t("Open Chats", "Otvoriť chaty", "Csevegések megnyitása")}
-                        </a>
-                      </div>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {matchedChats.map((item) => {
-                          const pMeta = PROVIDERS[item.connectorType] ?? PROVIDERS.whatsapp;
-                          return (
-                            <div
-                              key={item.linkKey}
-                              className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50/80 border border-slate-200 hover:border-slate-300 transition-all"
-                            >
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <span
-                                  className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${pMeta.iconBg}`}
-                                >
-                                  <ProviderLogo type={item.connectorType} className="w-3.5 h-3.5" />
-                                </span>
-                                <div className="min-w-0">
-                                  <div className="text-ui font-bold text-slate-900 truncate flex items-center gap-1.5">
-                                    <span className="truncate">{item.chat.name}</span>
-                                    <span className={`px-1.5 py-0.5 rounded-md text-micro font-extrabold ${pMeta.badgeClass}`}>
-                                      {pMeta.label}
-                                    </span>
-                                  </div>
-                                  <div className="text-micro text-slate-500 truncate">
-                                    {item.channelName}
-                                    {item.chat.lastMessageText ? ` · ${item.chat.lastMessageText}` : ""}
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1 shrink-0">
-                                <a
-                                  href={`#email?channel=${encodeURIComponent(item.channelId)}&chat=${encodeURIComponent(item.chat.id)}`}
-                                  className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 text-caption font-bold flex items-center gap-1 transition-all shadow-2xs"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                  {t("Open Chat", "Otvoriť chat", "Megnyitás")}
-                                </a>
-                                {item.isExplicit && (
-                                  <button
-                                    type="button"
-                                    onClick={() => updateChatClientLink(item.linkKey, "")}
-                                    title={t("Unlink chat", "Odpojiť chat", "Leválasztás")}
-                                    className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                                  >
-                                    <X className="h-3.5 w-3.5" />
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
+              <ClientContactChats
+                activeClient={activeClient}
+                messagingChannels={messagingChannels}
+                chatClientLinks={chatClientLinks}
+                updateChatClientLink={updateChatClientLink}
+                t={t}
+              />
 
               {/* Address details */}
               <div className="border-t-2 border-slate-100 pt-4 space-y-3">
@@ -5580,169 +5144,23 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 </div>
               )}
 
-              {activeDetailTab === "contacts" && activeClient.clientType !== "person" && (() => {
-                const companyIdSet = new Set(activeClient.associatedLeads.map((l: Lead) => l.id));
-                const attachedContacts = clientProfiles.filter(
-                  c => c.clientType === "person" && !!c.companyClientId && companyIdSet.has(c.companyClientId)
-                );
-                const attachablePersons = clientProfiles.filter(
-                  c => c.clientType === "person" && !c.archived && (!c.companyClientId || !companyIdSet.has(c.companyClientId))
-                );
-                const linkPersonToCompany = (personName: string, companyId: string | null, role?: string) => {
-                  setLeads(prev => prev.map(l => {
-                    if (l.name.trim().toLowerCase() !== personName.trim().toLowerCase()) return l;
-                    return {
-                      ...l,
-                      companyClientId: companyId,
-                      contactRole: companyId ? ((role ?? l.contactRole) || null) : null,
-                    };
-                  }));
-                };
-                return (
-                  <div className="space-y-4 text-left" data-testid="company-attached-contacts">
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-slate-100 pb-3">
-                      <div>
-                        <h3 className="text-ui font-bold text-slate-700 flex items-center gap-1.5">
-                          <Users className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" />
-                          {t("Company Contact Persons", "Kontaktné osoby firmy", "Céges kapcsolattartók")}
-                        </h3>
-                        <p className="text-micro text-slate-400 mt-0.5">
-                          {t(
-                            "Client-side HR, dispatch, and billing contacts at this company.",
-                            "Kontaktné osoby klienta (HR, majstri, fakturácia) v tejto firme.",
-                            "Az ügyféloldali HR, üzemi és számlázási kapcsolattartók."
-                          )}
-                        </p>
-                      </div>
-                      {canEdit && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setNewClientType("person");
-                            setNewClientCompanyClientId(activeClient.primaryId);
-                            setNewClientContactRole("");
-                            setShowRegisterDrawer(true);
-                          }}
-                          className="h-9 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-ui font-semibold flex items-center gap-1.5 shadow-sm cursor-pointer"
-                        >
-                          <Plus className="h-4 w-4" />
-                          <span>{t("New contact person", "Nový kontakt", "Új kapcsolattartó")}</span>
-                        </button>
-                      )}
-                    </div>
-
-                    {canEdit && attachablePersons.length > 0 && (
-                      <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 grid grid-cols-1 ws-md:grid-cols-12 gap-2.5 items-end">
-                        <div className="ws-md:col-span-5 space-y-1">
-                          <label className="type-overline text-slate-500">
-                            {t("Attach existing person contact", "Priradiť existujúcu osobu", "Meglévő személy hozzárendelése")}
-                          </label>
-                          <CustomSelect
-                            value={attachExistingPersonId}
-                            onChange={setAttachExistingPersonId}
-                            options={[
-                              { value: "", label: t("Select person...", "Vyberte osobu...", "Válasszon személyt...") },
-                              ...attachablePersons.map(p => ({ value: p.name, label: p.name })),
-                            ]}
-                          />
-                        </div>
-                        <div className="ws-md:col-span-4 space-y-1">
-                          <label className="type-overline text-slate-500">
-                            {t("Role", "Pozícia", "Szerepkör")}
-                          </label>
-                          <input
-                            type="text"
-                            value={attachExistingRole}
-                            onChange={(e) => setAttachExistingRole(e.target.value)}
-                            placeholder={t("e.g. HR Manager", "napr. HR manažér", "pl. HR vezető")}
-                            className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui font-semibold focus:outline-none focus:border-emerald-500"
-                          />
-                        </div>
-                        <div className="ws-md:col-span-3">
-                          <button
-                            type="button"
-                            disabled={!attachExistingPersonId}
-                            onClick={() => {
-                              if (!attachExistingPersonId) return;
-                              linkPersonToCompany(attachExistingPersonId, activeClient.primaryId, attachExistingRole.trim());
-                              setAttachExistingPersonId("");
-                              setAttachExistingRole("");
-                              (window as any).showToast?.(t("Contact attached to company", "Kontakt priradený k firme", "Kapcsolattartó hozzárendelve"));
-                            }}
-                            className="w-full h-10 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white text-ui font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
-                          >
-                            <Link2 className="h-3.5 w-3.5" />
-                            <span>{t("Attach", "Priradiť", "Csatolás")}</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {attachedContacts.length === 0 ? (
-                      <div className="py-8 text-center text-slate-400 text-ui font-bold rounded-2xl border border-dashed border-slate-200 bg-slate-50/50">
-                        {t("No contacts attached to this company yet.", "K tejto firme zatiaľ nie sú priradené žiadne kontakty.", "Még nincsenek kapcsolattartók ehhez a céghez rendelve.")}
-                      </div>
-                    ) : (
-                      <div className="space-y-2.5">
-                        {attachedContacts.map(person => (
-                          <div
-                            key={person.primaryId}
-                            className="p-4 rounded-2xl border border-slate-200 bg-white hover:border-emerald-300 transition-all shadow-xs flex flex-wrap items-center justify-between gap-3"
-                          >
-                            <div className="min-w-0 space-y-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    window.location.hash = `client-${encodeURIComponent(person.name)}`;
-                                  }}
-                                  className="font-heading font-bold text-ui text-slate-900 hover:text-emerald-700 cursor-pointer flex items-center gap-1"
-                                >
-                                  <User className="h-3.5 w-3.5 text-emerald-600" />
-                                  <span>{person.name}</span>
-                                </button>
-                                {person.contactRole && (
-                                  <span className="px-2 py-0.5 rounded-full type-overline bg-sky-50 text-sky-700 border border-sky-200">
-                                    {person.contactRole}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex flex-wrap items-center gap-3 text-micro text-slate-500">
-                                {person.phone && (
-                                  <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-500" /> {person.phone}</span>
-                                )}
-                                {person.email && (
-                                  <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-emerald-500" /> {person.email}</span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => { window.location.hash = `client-${encodeURIComponent(person.name)}`; }}
-                                className="h-8 px-2.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-ui font-semibold text-slate-700 cursor-pointer flex items-center gap-1"
-                              >
-                                <ExternalLink className="h-3.5 w-3.5" />
-                                <span>{t("Open", "Otvoriť", "Megnyitás")}</span>
-                              </button>
-                              {canEdit && (
-                                <button
-                                  type="button"
-                                  onClick={() => linkPersonToCompany(person.name, null)}
-                                  className="h-8 px-2.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-ui font-semibold text-rose-700 cursor-pointer"
-                                  title={t("Unlink from company", "Odobrať z firmy", "Leválasztás a cégről")}
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
+              {activeDetailTab === "contacts" && activeClient.clientType !== "person" && (
+                <ClientCompanyContacts
+                  activeClient={activeClient}
+                  clientProfiles={clientProfiles}
+                  setLeads={setLeads}
+                  canEdit={canEdit}
+                  t={t}
+                  setNewClientType={setNewClientType}
+                  setNewClientCompanyClientId={setNewClientCompanyClientId}
+                  setNewClientContactRole={setNewClientContactRole}
+                  setShowRegisterDrawer={setShowRegisterDrawer}
+                  attachExistingPersonId={attachExistingPersonId}
+                  setAttachExistingPersonId={setAttachExistingPersonId}
+                  attachExistingRole={attachExistingRole}
+                  setAttachExistingRole={setAttachExistingRole}
+                />
+              )}
 
               {activeDetailTab === "agency_workers" && agencyEnabled && activeClient.clientType !== "person" && (
                 <ClientCompanyAgencyTab
