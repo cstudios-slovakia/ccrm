@@ -202,8 +202,15 @@ if (!function_exists('ccrm_marveen_google_oauth_constants')) {
      * (`package/dist/src/code_assist/oauth2.js` -> `authWithUserCode`).
      */
     function ccrm_marveen_google_oauth_constants(): array {
-        $envId = trim((string)(getenv('GEMINI_OAUTH_CLIENT_ID') ?: ''));
-        $envSecret = trim((string)(getenv('GEMINI_OAUTH_CLIENT_SECRET') ?: ''));
+        $readVar = static function (string $name): string {
+            foreach ([getenv($name), $_ENV[$name] ?? null, $_SERVER[$name] ?? null, defined($name) ? constant($name) : null] as $val) {
+                $s = trim((string)($val ?? ''));
+                if ($s !== '') return $s;
+            }
+            return '';
+        };
+        $envId = $readVar('GEMINI_OAUTH_CLIENT_ID');
+        $envSecret = $readVar('GEMINI_OAUTH_CLIENT_SECRET');
         if ($envId === '' || $envSecret === '') {
             $home = function_exists('ccrm_marveen_home_dir') ? ccrm_marveen_home_dir() : (string)(getenv('HOME') ?: '/tmp');
             $candidates = [
@@ -361,6 +368,12 @@ if (!function_exists('ccrm_marveen_login_start')) {
         // never hits an incomplete OAuth URL (`Error 400: invalid_request`).
         if ($provider === 'antigravity') {
             $g = ccrm_marveen_google_oauth_constants();
+            if ($g['client_id'] === '' || $g['client_secret'] === '') {
+                return [
+                    'ok' => false,
+                    'error' => 'Google OAuth credentials are not configured on this server (set GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET, install @google/gemini-cli, or use the Gemini API Key connector).',
+                ];
+            }
             $params = [
                 'redirect_uri' => $g['redirect_uri'],
                 'access_type' => 'offline',
@@ -504,6 +517,12 @@ if (!function_exists('ccrm_marveen_login_submit_code')) {
         // Exchange Google Antigravity / Gemini PKCE authorization code for OAuth refresh + access tokens
         if ($provider === 'antigravity' && is_array($pkce) && !empty($pkce['verifier'])) {
             $g = ccrm_marveen_google_oauth_constants();
+            if ($g['client_id'] === '' || $g['client_secret'] === '') {
+                return [
+                    'ok' => false,
+                    'error' => 'Google OAuth credentials are not configured on this server (set GEMINI_OAUTH_CLIENT_ID / GEMINI_OAUTH_CLIENT_SECRET).',
+                ];
+            }
             $ch = curl_init('https://oauth2.googleapis.com/token');
             curl_setopt_array($ch, [
                 CURLOPT_POST => true,
