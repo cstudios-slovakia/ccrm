@@ -24,6 +24,7 @@ import { runUndoable } from "../utils/undoable";
 import { reinsertAt } from "../utils/undoableList";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { PRODUCT_NAME } from "../utils/brand";
+import { CronSetupInstructions } from "./CronSetupInstructions";
 
 const SYSTEM_COLORS = [
   { name: "Purple", hex: "#7e22ce" },
@@ -1812,7 +1813,6 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   };
 
   // The token goes in a header, not the URL: URLs are written to access logs.
-  const cronUrl = `curl -s -H "X-Cron-Token: ${apiKeys.cronToken || "TOKEN"}" "${window.location.origin}/api/cron.php"`;
 
   return (
     <div className="w-full space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
@@ -3894,33 +3894,13 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                   </div>
                 </div>
 
-                {/* Cron integration link setup instructions */}
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mt-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="type-overline text-slate-400">{t("Cron Webhook Link", "Cron Webhook Link", "Cron Webhook Link")}</span>
-                    <button 
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(cronUrl);
-                        showToast(t("Copied to clipboard!", "Skopírované do schránky!", "Másolva a vágólapra!"));
-                      }}
-                      className="text-ui font-bold text-purple-700 hover:text-purple-900 flex items-center gap-1"
-                    >
-                      <Copy className="h-3 w-3" />
-                      {t("Copy command", "Kopírovať príkaz", "Parancs másolása")}
-                    </button>
-                  </div>
-                  <code className="text-micro font-mono block break-all bg-white p-2.5 border border-slate-200 rounded text-slate-600">
-                    {cronUrl}
-                  </code>
-                  <p className="text-micro text-slate-400 mt-2 leading-relaxed">
-                    {t(
-                      "To execute timer events and run queued workflows, add this command to a crontab on your host server and run it every minute (e.g. * * * * * followed by the command). The token is sent as a header so it does not end up in access logs.",
-                      "Pre spúšťanie časovačov a spracovanie frontu pridajte tento príkaz do crontabu na serveri a spúšťajte ho každú minútu (napr. * * * * * a príkaz). Token sa posiela v hlavičke, takže sa nezapíše do prístupových logov.",
-                      "A munkafolyamatok ütemezéséhez adja hozzá ezt a parancsot a szerver crontabjához, percenként futtatva. A token fejlécben megy, így nem kerül a hozzáférési naplóba."
-                    )}
-                  </p>
-                </div>
+                {/* How the host runs api/cron.php: crontab command, URL or PHP file */}
+                <CronSetupInstructions
+                  cronToken={apiKeys.cronToken}
+                  origin={window.location.origin}
+                  t={t}
+                  onCopied={() => showToast(t("Copied to clipboard!", "Skopírované do schránky!", "Másolva a vágólapra!"))}
+                />
 
                 <div className="pt-4 flex justify-end">
                   {canEdit && (

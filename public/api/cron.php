@@ -23,9 +23,28 @@ try {
     exit;
 }
 
+// Run as a PHP file (a host's "run a PHP script" cron, or `php api/cron.php`): there is
+// no HTTP request, so only someone already on the server can start it and no token is
+// asked for. A web request always sets REQUEST_METHOD, so this can't be reached over HTTP.
+$ccrmCronFromCli = !isset($_SERVER['REQUEST_METHOD'])
+    && (PHP_SAPI === 'cli' || strncmp(PHP_SAPI, 'cgi', 3) === 0);
+if ($ccrmCronFromCli) {
+    // Code below reads the host from the request (SMTP greeting name, links); give it the
+    // app's stored address so a CLI run behaves like the URL call.
+    require_once __DIR__ . '/auth.php';
+    $appBase = function_exists('ccrm_app_base_url') ? ccrm_app_base_url($pdo, false) : '';
+    $appHost = $appBase !== '' ? (string)parse_url($appBase, PHP_URL_HOST) : '';
+    if ($appHost !== '') {
+        $_SERVER['HTTP_HOST'] = $_SERVER['SERVER_NAME'] = $appHost;
+        if (parse_url($appBase, PHP_URL_SCHEME) === 'https') {
+            $_SERVER['HTTPS'] = 'on';
+        }
+    }
+}
+
 // The token may arrive in a header (preferred: `curl -H "X-Cron-Token: ..."`, or
-// Authorization: Bearer) or, for existing crontabs, as ?token= (VULN-07: URLs end up
-// in access logs, so new setups should use a header).
+// Authorization: Bearer) or as ?token= for hosts whose cron can only visit a URL
+// (VULN-07: URLs end up in access logs, so use a header where the host allows it).
 $token = trim((string)($_SERVER['HTTP_X_CRON_TOKEN'] ?? ''));
 if ($token === '') {
     $authHeader = trim((string)($_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '')));
@@ -40,7 +59,7 @@ $autoConfig = ccrm_load_automation_config($pdo);
 $configuredToken = (string)($autoConfig['cronToken'] ?? '');
 
 // Token verification (constant-time, and an unset token never matches).
-if ($configuredToken === '' || $token === '' || !hash_equals($configuredToken, $token)) {
+if (!$ccrmCronFromCli && ($configuredToken === '' || $token === '' || !hash_equals($configuredToken, $token))) {
     // Not the cron token: fall back to a signed-in ADMIN session. That path runs the
     // whole automation pipeline, so it is not open to every user, and it must be a
     // POST so a cross-site link or image cannot trigger it with the session cookie.
