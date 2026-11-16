@@ -9704,7 +9704,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             <div className="flex items-center gap-1.5">
                                 {!lead.owner ||
                                 lead.owner.toLowerCase() === "unassigned" ? (
-                                    <span className="px-2.5 py-0.5 ws-lg:py-1 rounded-full border type-overline flex items-center gap-1 transition-all shadow-sm bg-rose-50 border-rose-300 text-rose-600 animate-pulse">
+                                    <span className="px-2.5 py-0.5 ws-lg:py-1 rounded-full border type-overline flex items-center gap-1 transition-all shadow-sm bg-rose-50 border-rose-300 text-rose-600">
                                         <User className="h-2.5 w-2.5 shrink-0" />
                                         {systemLanguage === "sk"
                                             ? "Nepriradený"
@@ -12274,7 +12274,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 pmName.toLowerCase() ===
                                                                                     "unassigned" ? (
                                                                                     <div
-                                                                                        className={`rounded-full flex items-center justify-center font-bold text-white shadow-sm border border-white bg-rose-500 animate-pulse ${
+                                                                                        className={`rounded-full flex items-center justify-center font-bold text-white shadow-sm border border-white bg-rose-500 ${
                                                                                             compactMode
                                                                                                 ? "h-4.5 w-4.5 text-micro"
                                                                                                 : "h-5.5 w-5.5 text-micro"
