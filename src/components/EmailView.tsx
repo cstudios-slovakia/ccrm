@@ -184,6 +184,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
   // Composers and notifications
   const [composers, setComposers] = useState<any[]>([]);
   const [notification, setNotification] = useState<any | null>(null);
+  // A Microsoft 365 mailbox whose sign-in ran out: the server answers every mail request
+  // with `reconnect`, and only the owner can fix it (Personal settings → E-mail).
+  const [mailboxNeedsReconnect, setMailboxNeedsReconnect] = useState(false);
 
   // AI Email & Flow Summary States
   const [summaries, setSummaries] = useState<Record<string, string>>({});
@@ -252,7 +255,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
   const handleDownloadAttachment = async (uid: string, folder: string, att: any) => {
     try {
-      const res = await fetch(`/api/mail_broker.php?action=get_attachment&folder=${encodeURIComponent(folder)}&uid=${uid}&part=${att.part_num}&name=${encodeURIComponent(att.name)}${mbParam}`, {
+      const res = await fetch(`/api/mail_broker.php?action=get_attachment&folder=${encodeURIComponent(folder)}&uid=${encodeURIComponent(uid)}&part=${encodeURIComponent(att.part_num)}&name=${encodeURIComponent(att.name)}${mbParam}`, {
         headers: {
           "X-User-Email": currentUser.email
         }
@@ -281,7 +284,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       if (typeof (window as any).showToast === "function") {
         (window as any).showToast(t("Adding attachment to documents database...", "Pridáva sa príloha do databázy dokumentov...", "Melléklet hozzáadása a dokumentum-adatbázishoz..."));
       }
-      const res = await fetch(`/api/mail_broker.php?action=save_attachment&folder=${encodeURIComponent(folder)}&uid=${uid}&part=${att.part_num}&name=${encodeURIComponent(att.name)}&eventId=${eventId}${mbParam}`, {
+      const res = await fetch(`/api/mail_broker.php?action=save_attachment&folder=${encodeURIComponent(folder)}&uid=${encodeURIComponent(uid)}&part=${encodeURIComponent(att.part_num)}&name=${encodeURIComponent(att.name)}&eventId=${eventId}${mbParam}`, {
         method: "POST",
         headers: {
           "X-User-Email": currentUser.email
@@ -794,6 +797,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
         headers: { "X-User-Email": currentUser.email }
       });
       const dataInbox = await resInbox.json();
+      setMailboxNeedsReconnect(dataInbox?.reconnect === true);
       
       let inboxMails: any[] = [];
       if (dataInbox.success && Array.isArray(dataInbox.emails)) {
@@ -884,7 +888,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     setIsLoadingDetail(true);
     const folderToUse = email.isSent ? "Sent" : activeFolder;
     try {
-      const res = await fetch(`/api/mail_broker.php?action=get_email_detail&uid=${email.uid}&folder=${encodeURIComponent(folderToUse)}${mbParam}`, {
+      const res = await fetch(`/api/mail_broker.php?action=get_email_detail&uid=${encodeURIComponent(email.uid)}&folder=${encodeURIComponent(folderToUse)}${mbParam}`, {
         headers: { "X-User-Email": currentUser.email }
       });
       const data = await res.json();
@@ -1894,7 +1898,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       },
       failureMessage: t("Failed to remove email", "Nepodarilo sa odstrániť e-mail", "Az e-mail eltávolítása nem sikerült"),
       onCommit: async () => {
-        const res = await fetch(`/api/mail_broker.php?action=delete_email&uid=${uid}&folder=${encodeURIComponent(folder)}${mbParam}`, {
+        const res = await fetch(`/api/mail_broker.php?action=delete_email&uid=${encodeURIComponent(uid)}&folder=${encodeURIComponent(folder)}${mbParam}`, {
           method: "DELETE",
           headers: { "X-User-Email": currentUser.email }
         });
@@ -2032,7 +2036,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       setIsLoadingDetail(true);
       const folderToUse = email.isSent ? "Sent" : activeFolder;
       try {
-        const res = await fetch(`/api/mail_broker.php?action=get_email_detail&uid=${email.uid}&folder=${encodeURIComponent(folderToUse)}${mbParam}`, {
+        const res = await fetch(`/api/mail_broker.php?action=get_email_detail&uid=${encodeURIComponent(email.uid)}&folder=${encodeURIComponent(folderToUse)}${mbParam}`, {
           headers: { "X-User-Email": currentUser.email }
         });
         const data = await res.json();
@@ -6265,6 +6269,18 @@ export const EmailView: React.FC<EmailViewProps> = ({
         >
       {/* COLUMN 1: Conversation list */}
       <div className="ws-lg:col-span-5 ws-xl:col-span-4 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden">
+        {mailboxNeedsReconnect && (
+          <div role="alert" data-testid="mailbox-reconnect" className="m-4 mb-0 p-3 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-ui font-semibold flex items-start gap-2 shrink-0">
+            <CircleAlert size={16} className="mt-0.5 shrink-0" />
+            <span>
+              {t(
+                "The Microsoft sign-in for your mailbox has expired or was revoked. Open Personal settings → E-mail and sign in with Microsoft again.",
+                "Prihlásenie cez Microsoft pre vašu schránku vypršalo alebo bolo zrušené. Otvorte Osobné nastavenia → E-mail a prihláste sa cez Microsoft znova.",
+                "A postafiókjához tartozó Microsoft-bejelentkezés lejárt vagy visszavonták. Nyissa meg a Személyes beállítások → E-mail részt, és jelentkezzen be újra a Microsofttal.",
+              )}
+            </span>
+          </div>
+        )}
         {/* Search & filters */}
         <div className="p-4 space-y-3 border-b border-slate-100 shrink-0">
           <div className="relative">

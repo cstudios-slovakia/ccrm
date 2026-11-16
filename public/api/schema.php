@@ -3196,9 +3196,14 @@ if (!function_exists('ccrm_schema_statements')) {
                   `filed_count` INT NOT NULL DEFAULT 0,
                   `last_run_at` DATETIME NULL,
                   `last_error` TEXT NULL,
+                  `delta_link` TEXT NULL COMMENT 'Microsoft Graph delta / next link of the new-mail track',
                   PRIMARY KEY (`mailbox_key`, `folder`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
             );
+            // Microsoft 365 mailboxes (graph_filing.php) keep their delta link beside the IMAP marks.
+            if (!ccrm_column_exists($pdo, 'mail_sync_state', 'delta_link')) {
+                $pdo->exec("ALTER TABLE `mail_sync_state` ADD COLUMN `delta_link` TEXT NULL COMMENT 'Microsoft Graph delta / next link of the new-mail track'");
+            }
             $pdo->exec(
                 "CREATE TABLE IF NOT EXISTS `filed_mail_bodies` (
                   `event_id` VARCHAR(50) NOT NULL PRIMARY KEY,

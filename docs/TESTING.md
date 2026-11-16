@@ -462,6 +462,27 @@ docker exec -e CCRM_API_DIR=/var/www/html/api \
 
 The Dovecot config is the minimum (`protocols = imap`, `ssl = no`, a passwd-file `passdb`, a static `userdb` for `vmail`, `mail_location = maildir:/var/mail/%n/Maildir`, a `Sent` mailbox with `special_use = \Sent`). The script drops every table of the scratch database, so never point it at real data.
 
+### 5f-3. Microsoft 365 mailboxes (`npm run test:graph-mail`, `npm run test:graph-oauth`)
+
+An Exchange Online mailbox is read and sent from through Microsoft Graph after a "Sign in with Microsoft" (`api/graph_client.php`, `graph_mail.php`, `graph_filing.php`, `graph_oauth.php`; admin guide: [`MICROSOFT-365-MAIL.md`](MICROSOFT-365-MAIL.md)). Neither script ever contacts Microsoft: a fake of Graph and of the token endpoint replaces the network through `$GLOBALS['ccrm_graph_transport']`, and the real code runs against it.
+
+- `scripts/test-graph-mail.php` without a database (SQLite in memory): folder and id mapping, the app registration, the token store (encrypted, masked to the browser, kept across a sync), renewing an access token, a revoked sign-in, and every mailbox action in the shapes the mail screen expects. With `CCRM_TEST_DSN` it also runs the whole filing job in a scratch MySQL database: chunked backlog newest first, new mail through the delta query and ahead of a backlog, Sent Items, one message in two mailboxes, the removed-entry tombstone, attachments, a forgotten delta link, a mailbox switched from IMAP, and one mailbox that has to sign in again while the others are still read.
+- `scripts/test-graph-oauth.php` needs the scratch database. It builds a throw-away web root, starts PHP's built-in server on it and drives `graph_oauth.php` and `company_mailboxes.php` over HTTP with cookies: state and PKCE, a replayed or foreign answer, another user trying to complete a sign-in, a tenant that needs admin consent, cross-site requests, admin-only actions, and a shared mailbox the signed-in account cannot open.
+
+Both need PHP, so without a local install run them in the dev container. Both DROP every table of the database they are given and refuse a database whose name does not contain `scratch`:
+
+```bash
+docker exec ccrm-db-1 sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -e "CREATE DATABASE IF NOT EXISTS graph_scratch"'
+docker exec crm mkdir -p /tmp/graphtest && docker cp public/api crm:/tmp/graphtest/api
+docker exec crm sh -c 'echo "<?php" > /tmp/graphtest/config.php'
+docker cp scripts/test-graph-mail.php crm:/tmp/graphtest/t.php && docker cp scripts/test-graph-oauth.php crm:/tmp/graphtest/o.php
+docker exec -e CCRM_API_DIR=/tmp/graphtest/api \
+  -e "CCRM_TEST_DSN=mysql:host=db;dbname=graph_scratch;charset=utf8mb4" -e CCRM_TEST_USER=root -e CCRM_TEST_PASS=<root password> \
+  crm sh -c 'php /tmp/graphtest/t.php && php /tmp/graphtest/o.php'
+```
+
+(In Git Bash prefix the `docker exec` lines with `MSYS_NO_PATHCONV=1`, or the `/tmp/...` paths are rewritten to Windows ones.) The settings screens are covered in the browser by `tests/e2e/microsoftMail.spec.ts`, with the endpoints mocked and a stand-in for Microsoft's sign-in window. What no test covers is Microsoft itself: the first connection of a real tenant is a manual check (see the guide).
+
 ### 5h. AI price-offer template generator (`npm run test:pdf-template`)
 
 `api/generate_pdf_template.php` turns a sample offer PDF into a template. `scripts/test-pdf-template.php` checks, with no database and no OpenAI, the part that makes model output safe to store (enums, hex colours, heading length, the guaranteed block set) and that a client-supplied `pdfUrl` can only ever reach a `custom-template-pdf_*.pdf` inside the uploads directory. It needs PHP, so without a local install run it in the dev container: `docker cp scripts/test-pdf-template.php crm:/tmp/t.php && docker exec -e CCRM_API_DIR=/var/www/html/api crm php /tmp/t.php`. The call to OpenAI itself is only exercised live (needs a key in Settings → AI integration); the browser flow around it (error toast, no template added, rename dialog) is mocked in `tests/e2e/priceOfferInlineEditor.spec.ts`, and the `layout_json` round trip through `sync.php` is in `npm run test:rbac` (checks `T1`–`T6`).

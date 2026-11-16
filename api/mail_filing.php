@@ -326,6 +326,7 @@ function ccrm_mail_filing_sources(PDO $pdo): array {
         $sources[] = [
             'key' => 'c:' . $r['id'], 'kind' => 'company', 'id' => $r['id'], 'label' => $r['name'] !== '' ? $r['name'] : $r['address'],
             'address' => strtolower(trim((string)$r['address'])), 'settings' => $settings,
+            'backend' => ($settings['provider'] ?? '') === 'microsoft365' ? 'graph' : 'imap',
             // A company mailbox is nobody's personal mail: everyone reads its filed mail from the stored body.
             'owner_email' => null, 'owner_name' => $owner['name'] ?? null,
             'cutoff' => !empty($r['backfill_since']) ? (int)strtotime($r['backfill_since'] . ' 00:00:00') : null,
@@ -335,13 +336,27 @@ function ccrm_mail_filing_sources(PDO $pdo): array {
     foreach ($pdo->query("SELECT `id`, `name`, `email`, `metadata_json` FROM `users`")->fetchAll(PDO::FETCH_ASSOC) as $u) {
         $meta = !empty($u['metadata_json']) ? json_decode($u['metadata_json'], true) : null;
         $settings = ccrm_decrypt_email_settings(is_array($meta) ? ($meta['emailSettings'] ?? null) : null);
+        // A mailbox signed in with Microsoft is read through Graph. One whose sign-in ran out is
+        // still a source, so that the run records "sign in again" where an admin can see it.
+        if (($settings['provider'] ?? '') === 'microsoft365') {
+            if (!empty($settings['isValidated'])) {
+                $account = strtolower(trim((string)($settings['graphAccount'] ?? '')));
+                $sources[] = [
+                    'key' => 'u:' . $u['id'], 'kind' => 'user', 'id' => $u['id'], 'label' => $account !== '' ? $account : (string)$u['email'],
+                    'address' => '', 'settings' => $settings, 'backend' => 'graph',
+                    'owner_email' => strtolower((string)$u['email']), 'owner_name' => $u['name'], 'cutoff' => null,
+                ];
+            }
+            continue;
+        }
         $hasHost = !empty($settings['imapHost']) || (($settings['provider'] ?? '') === 'exchange' && !empty($settings['exchangeUrl']));
         if (!$settings || !$hasHost || empty($settings['imapUsername'] ?? $settings['username'] ?? '') || ccrm_demo_mailbox_active($pdo, $settings)) {
             continue;
         }
         $sources[] = [
             'key' => 'u:' . $u['id'], 'kind' => 'user', 'id' => $u['id'], 'label' => (string)($settings['imapUsername'] ?? $settings['username'] ?? $u['email']),
-            'address' => '', 'settings' => $settings, 'owner_email' => strtolower((string)$u['email']), 'owner_name' => $u['name'], 'cutoff' => null,
+            'address' => '', 'settings' => $settings, 'backend' => 'imap',
+            'owner_email' => strtolower((string)$u['email']), 'owner_name' => $u['name'], 'cutoff' => null,
         ];
     }
     return $sources;
@@ -471,8 +486,8 @@ function ccrm_mail_run_folder(PDO $pdo, array $source, string $folder, array $ct
     return $counts;
 }
 
-/** One mailbox: INBOX and Sent. Errors are recorded on the mailbox and rethrown to the caller. */
-function ccrm_mail_run_source(PDO $pdo, array $source, array $index, array $internal, array &$budget): array {
+/** The IMAP side of one mailbox: INBOX and Sent. Returns [counters, error messages]. */
+function ccrm_mail_run_source_imap(PDO $pdo, array $source, array $index, array $internal, array &$budget): array {
     $settings = $source['settings'];
     $own = ccrm_mailbox_addresses($settings);
     if ($source['address'] !== '') $own[] = $source['address'];
@@ -482,6 +497,9 @@ function ccrm_mail_run_source(PDO $pdo, array $source, array $index, array $inte
     ];
     $total = ['seen' => 0, 'filed' => 0, 'updated' => 0, 'duplicate' => 0, 'hidden' => 0];
     $errors = [];
+    if (!function_exists('imap_open')) {
+        return [$total, ['PHP IMAP extension is not available.']];
+    }
     $folders = ['INBOX'];
     try {
         $folders[] = ccrm_resolve_sent_folder($settings);
@@ -494,6 +512,21 @@ function ccrm_mail_run_source(PDO $pdo, array $source, array $index, array $inte
         } catch (\Throwable $e) {
             $errors[] = $e->getMessage();
         }
+    }
+    return [$total, $errors];
+}
+
+/**
+ * One mailbox, through the backend it lives on: IMAP, or Microsoft Graph for a mailbox signed
+ * in with Microsoft (graph_filing.php). Everything else is shared. Errors are recorded on the
+ * mailbox and returned to the caller.
+ */
+function ccrm_mail_run_source(PDO $pdo, array $source, array $index, array $internal, array &$budget): array {
+    if (($source['backend'] ?? 'imap') === 'graph') {
+        require_once __DIR__ . '/graph_filing.php';
+        list($total, $errors) = ccrm_graph_run_source($pdo, $source, $index, $internal, $budget);
+    } else {
+        list($total, $errors) = ccrm_mail_run_source_imap($pdo, $source, $index, $internal, $budget);
     }
     if ($source['kind'] === 'company') {
         $pdo->prepare("UPDATE `company_mailboxes` SET `last_run_at` = NOW(), `last_success_at` = IF(?, `last_success_at`, NOW()), `last_error` = ? WHERE `id` = ?")
@@ -508,8 +541,16 @@ function ccrm_mail_run_source(PDO $pdo, array $source, array $index, array $inte
  * Returns a summary with one entry per mailbox; never throws for a broken mailbox.
  */
 function ccrm_run_mail_filing(PDO $pdo, array $opts = []): array {
+    // Without the IMAP extension only the Microsoft 365 mailboxes can be read. With none of
+    // those either there is nothing to do, which is said as it always was.
     if (!function_exists('imap_open')) {
-        return ['success' => false, 'ran' => false, 'message' => 'PHP IMAP extension is not available.'];
+        $hasGraph = false;
+        foreach (ccrm_mail_filing_sources($pdo) as $s) {
+            if (($s['backend'] ?? 'imap') === 'graph') { $hasGraph = true; break; }
+        }
+        if (!$hasGraph) {
+            return ['success' => false, 'ran' => false, 'message' => 'PHP IMAP extension is not available.'];
+        }
     }
     $lock = (int)$pdo->query("SELECT GET_LOCK('ccrm_mail_filing', 0)")->fetchColumn();
     if ($lock !== 1) {

@@ -2066,6 +2066,7 @@ HTACCESS;
     function ccrm_email_secret_keys(): array {
         return [
             'imapPassword', 'smtpPassword', 'password', 'subscriptionToken', 'apiKey', 'graphClientSecret',
+            'graphRefreshToken', 'graphAccessToken',
             'botmanToken', 'botmanAppSecret', 'botmanSigningSecret', 'botmanVerifyToken',
         ];
     }
@@ -2664,6 +2665,18 @@ HTACCESS;
         $existingEmail = (is_array($existing) && isset($existing['emailSettings']) && is_array($existing['emailSettings']))
             ? $existing['emailSettings'] : [];
         $incoming['emailSettings'] = ccrm_merge_secrets($incoming['emailSettings'], $existingEmail, ccrm_email_secret_keys());
+        // A Microsoft 365 sign-in is made and undone on the server (graph_oauth.php). A browser copy
+        // loaded before either must not switch a signed-in mailbox back, nor revive a removed one.
+        $storedGraph = ($existingEmail['provider'] ?? '') === 'microsoft365';
+        if ($storedGraph && ($existingEmail['graphRefreshToken'] ?? '') !== '') {
+            foreach (['provider', 'graphAccount', 'isValidated'] as $k) {
+                $incoming['emailSettings'][$k] = $existingEmail[$k] ?? null;
+            }
+        } elseif (($incoming['emailSettings']['provider'] ?? '') === 'microsoft365'
+            && (!$storedGraph || ($existingEmail['graphAccount'] ?? '') === '')) {
+            $incoming['emailSettings']['isValidated'] = false;
+            $incoming['emailSettings']['graphAccount'] = '';
+        }
         // Encrypt mailbox secrets at rest. Values preserved from the stored copy
         // are already encrypted (ccrm_encrypt_secret is a no-op on them); only a
         // freshly supplied plaintext password gets encrypted here.

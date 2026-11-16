@@ -37,6 +37,8 @@ import {
   isApiKeyAgentConnector,
   isBotManConnector,
   isEmailConnector,
+  isMicrosoftDraft,
+  isMicrosoftMailbox,
   listMailboxes,
   registerBotManWebhook,
   runMailbox,
@@ -58,6 +60,8 @@ import {
 import { fetchModuleConfig, fetchSsoToken } from "./whatsapp/api/crmConnection";
 import { WaaiClient } from "./whatsapp/api/waaiClient";
 import { SectionCard } from "./settings/SectionCard";
+import { MicrosoftAppSettings } from "./MicrosoftAppSettings";
+import { MicrosoftMailConnect } from "./MicrosoftMailConnect";
 
 interface Props {
   userLanguage?: "sk" | "hu" | "en";
@@ -122,6 +126,13 @@ const COPY = {
     exchangeModeLabel: "Exchange Auth Mode",
     exchangeModeImap: "Exchange IMAP / SMTP",
     exchangeModeGraph: "Microsoft 365 Graph (OAuth2 App)",
+    exchangeModeSignIn: "Microsoft 365 / Exchange Online (sign in)",
+    msHint:
+      'No server and no password: save the mailbox, then use "Sign in with Microsoft" on its row. Sign in as the mailbox itself, or as someone with full access to a shared mailbox.',
+    msSavedSignIn: "Mailbox saved. Now sign it in with Microsoft.",
+    msSignedInAs: "Signed in as",
+    msExpired: "The Microsoft sign-in has expired or was revoked. Sign in again to keep reading this mailbox.",
+    msNotSignedIn: "Not signed in yet: this mailbox is not read until someone signs in with Microsoft.",
     exchangeUrlLabel: "Exchange / Office 365 Server URL",
     tenantId: "Azure Tenant ID",
     clientId: "App Client ID",
@@ -215,6 +226,13 @@ const COPY = {
     exchangeModeLabel: "Režim autentifikácie Exchange",
     exchangeModeImap: "Exchange IMAP / SMTP",
     exchangeModeGraph: "Microsoft 365 Graph (OAuth2 aplikácia)",
+    exchangeModeSignIn: "Microsoft 365 / Exchange Online (prihlásenie)",
+    msHint:
+      "Bez servera a hesla: schránku uložte a potom v jej riadku použite „Prihlásiť sa cez Microsoft“. Prihláste sa ako samotná schránka, alebo ako niekto s plným prístupom k zdieľanej schránke.",
+    msSavedSignIn: "Schránka bola uložená. Teraz ju prihláste cez Microsoft.",
+    msSignedInAs: "Prihlásené ako",
+    msExpired: "Prihlásenie cez Microsoft vypršalo alebo bolo zrušené. Prihláste sa znova, aby sa schránka ďalej načítavala.",
+    msNotSignedIn: "Zatiaľ neprihlásené: schránka sa nenačítava, kým sa niekto neprihlási cez Microsoft.",
     exchangeUrlLabel: "Adresa servera Exchange / Office 365",
     tenantId: "Azure Tenant ID",
     clientId: "App Client ID",
@@ -308,6 +326,13 @@ const COPY = {
     exchangeModeLabel: "Exchange hitelesítési mód",
     exchangeModeImap: "Exchange IMAP / SMTP",
     exchangeModeGraph: "Microsoft 365 Graph (OAuth2 alkalmazás)",
+    exchangeModeSignIn: "Microsoft 365 / Exchange Online (bejelentkezés)",
+    msHint:
+      "Nincs szerver és nincs jelszó: mentse a postafiókot, majd a sorában használja a „Bejelentkezés Microsofttal” gombot. Jelentkezzen be magaként a postafiókként, vagy olyan fiókkal, amelynek teljes hozzáférése van a megosztott postafiókhoz.",
+    msSavedSignIn: "A postafiók mentve. Most jelentkezzen be vele a Microsofttal.",
+    msSignedInAs: "Bejelentkezve mint",
+    msExpired: "A Microsoft-bejelentkezés lejárt vagy visszavonták. Jelentkezzen be újra, hogy a postafiók olvasása folytatódjon.",
+    msNotSignedIn: "Még nincs bejelentkezve: a postafiókot addig nem olvassuk, amíg valaki be nem jelentkezik a Microsofttal.",
     exchangeUrlLabel: "Exchange / Office 365 szerver URL",
     tenantId: "Azure Tenant ID",
     clientId: "App Client ID",
@@ -1285,10 +1310,10 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
     setBusy("save");
     setFormMsg(null);
     try {
-      await saveMailbox(editing);
+      const savedBox = (await saveMailbox(editing)).mailbox;
       setEditing(null);
       setWaQrModalOpen(false);
-      showToast?.(t.save, "success");
+      showToast?.(savedBox && isMicrosoftMailbox(savedBox) && !savedBox.connected ? t.msSavedSignIn : t.save, "success");
       await reload();
       window.dispatchEvent(new Event("ccrm:connectors-updated"));
     } catch (err: unknown) {
@@ -1531,6 +1556,10 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
           </div>
         )}
 
+        <div className="mb-4">
+          <MicrosoftAppSettings language={lang} onChanged={() => void reload()} />
+        </div>
+
         {/* Filter Bar & Add Connection Dropdown */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200/60 dark:border-slate-800">
           <div className="flex flex-wrap items-center gap-1.5">
@@ -1672,7 +1701,33 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                             {t.paused}
                           </span>
                         )}
+                        {isMicrosoftMailbox(box) && (
+                          <span className="px-2 py-0.5 rounded-full text-micro font-semibold border border-sky-200 bg-sky-50 text-sky-700">
+                            Microsoft 365
+                          </span>
+                        )}
                       </div>
+
+                      {isMicrosoftMailbox(box) && (
+                        <div className="flex flex-wrap items-center gap-3" data-testid="company-mailbox-microsoft">
+                          {box.connected ? (
+                            <span className="text-caption text-slate-600 dark:text-slate-300">
+                              {t.msSignedInAs} <strong className="text-slate-800 dark:text-slate-100">{box.account}</strong>
+                            </span>
+                          ) : (
+                            <span role="alert" className="text-caption font-semibold text-amber-800 dark:text-amber-300">
+                              {box.account ? t.msExpired : t.msNotSignedIn}
+                            </span>
+                          )}
+                          <MicrosoftMailConnect
+                            language={lang}
+                            target={{ kind: "company", mailboxId: box.id }}
+                            again={!!box.connected}
+                            onSignedIn={() => void reload()}
+                            className="flex flex-wrap items-center gap-3"
+                          />
+                        </div>
+                      )}
 
                       {/* Assigned Users Chips */}
                       <div className="pt-0.5 flex flex-wrap items-center gap-1.5">
@@ -2278,24 +2333,42 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="type-label text-blue-700 dark:text-blue-300">{t.exchangeModeLabel}</span>
                     <div className="flex items-center gap-1.5">
-                      {(["imap", "graph"] as const).map((m) => (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => setSetting("exchangeMode", m)}
-                          className={`px-2.5 py-1 rounded-lg text-micro font-semibold ${
-                            (editing.settings.exchangeMode ?? "imap") === m
-                              ? "bg-blue-600 text-white"
-                              : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
-                          }`}
-                        >
-                          {m === "imap" ? t.exchangeModeImap : t.exchangeModeGraph}
-                        </button>
-                      ))}
+                      {(["imap", "graph", "signin"] as const).map((m) => {
+                        // "signin" is the Microsoft 365 sign-in (provider "microsoft365"); the other two keep provider "exchange".
+                        const active = isMicrosoftDraft(editing)
+                          ? m === "signin"
+                          : m !== "signin" && (editing.settings.exchangeMode ?? "imap") === m;
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            data-testid={`exchange-mode-${m}`}
+                            onClick={() => {
+                              if (m === "signin") {
+                                setSetting("provider", "microsoft365");
+                              } else {
+                                setSetting("provider", "exchange");
+                                setSetting("exchangeMode", m);
+                              }
+                            }}
+                            className={`px-2.5 py-1 rounded-lg text-micro font-semibold ${
+                              active
+                                ? "bg-blue-600 text-white"
+                                : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                            }`}
+                          >
+                            {m === "imap" ? t.exchangeModeImap : m === "graph" ? t.exchangeModeGraph : t.exchangeModeSignIn}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
-                  {(editing.settings.exchangeMode ?? "imap") === "graph" ? (
+                  {isMicrosoftDraft(editing) ? (
+                    <p className="text-caption text-slate-600 dark:text-slate-300" data-testid="company-mailbox-microsoft-hint">
+                      {t.msHint}
+                    </p>
+                  ) : (editing.settings.exchangeMode ?? "imap") === "graph" ? (
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
                         <label className={lbl}>
@@ -2962,6 +3035,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
               {/* Active & Self-Signed Toggles */}
               <div className="flex flex-wrap items-center gap-4">
                 {isEmailConnector(editing.connectorType) &&
+                  !isMicrosoftDraft(editing) &&
                   (editing.settings.exchangeMode ?? "imap") !== "graph" && (
                     <label className="inline-flex items-center gap-2 text-caption text-slate-700 dark:text-slate-300 cursor-pointer">
                       <input
@@ -3005,7 +3079,8 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
               <button
                 type="button"
                 onClick={onTest}
-                disabled={busy !== null}
+                // A Microsoft 365 mailbox can only be tested once it is saved and signed in.
+                disabled={busy !== null || (isMicrosoftDraft(editing) && !editing.id)}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-caption font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40"
               >
                 {busy === "test" && <Loader2 className="w-3.5 h-3.5 animate-spin" />}

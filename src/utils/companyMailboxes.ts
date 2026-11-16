@@ -4,6 +4,9 @@
   and subscription-based AI agents (`claude`, `antigravity`, `chatgpt` via Marveen + CCRM MCP).
   Secrets never come back from the server in plaintext; the form shows a mask and sends it
   back unchanged, which the server reads as "keep the stored one".
+
+  A Microsoft 365 (Exchange Online) mailbox has no server and no password: it is saved with
+  its address only and then signed in with Microsoft (utils/microsoftMail.ts).
 */
 
 export const SECRET_MASK = "********";
@@ -80,7 +83,7 @@ export interface MailboxFolderState {
 export interface MailboxSettings {
   connectorType?: ConnectorType;
   userIds?: string[];
-  provider: "smtp" | "exchange";
+  provider: "smtp" | "exchange" | "microsoft365";
   imapHost: string;
   imapPort: string;
   imapSecure: "ssl" | "tls" | "none";
@@ -136,7 +139,20 @@ export interface CompanyMailbox {
   folders: MailboxFolderState[];
   subagents?: AgentSubagent[];
   triggers?: AgentEventTrigger[];
+  /** Microsoft 365 only: signed in or not, and as whom. null for an IMAP mailbox. */
+  connected?: boolean | null;
+  account?: string | null;
 }
+
+/** A Microsoft 365 mailbox: read through Microsoft Graph after a sign-in, never with a password. */
+export const isMicrosoftMailbox = (box: { settings: { provider?: string } }): boolean => box.settings.provider === "microsoft365";
+
+/**
+ * A draft that signs in with Microsoft: the "MS Exchange" connector in its sign-in mode. The
+ * other Exchange modes (IMAP/SMTP, Graph app credentials) keep provider "exchange".
+ */
+export const isMicrosoftDraft = (draft: MailboxDraft): boolean =>
+  (draft.connectorType || draft.settings.connectorType) === "exchange" && draft.settings.provider === "microsoft365";
 
 export interface MailboxDraft {
   id: string;
@@ -185,7 +201,7 @@ export const inferConnectorType = (
   ) {
     return explicit;
   }
-  if (settings?.provider === "exchange") return "exchange";
+  if (settings?.provider === "exchange" || settings?.provider === "microsoft365") return "exchange";
   const host = (settings?.imapHost || "").toLowerCase();
   if (host.includes("gmail.com") || host.includes("googlemail.com")) return "gmail";
   const addr = address.toLowerCase();
@@ -307,6 +323,7 @@ export const mailboxPayload = (draft: MailboxDraft) => {
     connectorType: cType,
     provider: cType === "exchange" || draft.settings.provider === "exchange" ? "exchange" : "smtp",
   };
+  if (isMicrosoftDraft(draft)) s.provider = "microsoft365";
   const cleanAddress = draft.address.trim().toLowerCase();
 
   if (cType === "gmail") {
@@ -345,7 +362,7 @@ export const mailboxPayload = (draft: MailboxDraft) => {
 
   const ownerUserId = draft.ownerUserId || userIds[0] || "";
 
-  return {
+  const common = {
     id: draft.id || undefined,
     name: draft.name.trim(),
     address: cleanAddress,
@@ -354,8 +371,15 @@ export const mailboxPayload = (draft: MailboxDraft) => {
     isActive: draft.isActive,
     ownerUserId,
     backfillSince: draft.backfillSince,
-    settings,
   };
+  // Nothing of a Microsoft 365 profile comes from the form; the sign-in fills it in on the server.
+  if (isMicrosoftDraft(draft)) {
+    return {
+      ...common,
+      settings: { connectorType: "exchange", provider: "microsoft365", userIds } as Partial<MailboxSettings>,
+    };
+  }
+  return { ...common, settings };
 };
 
 /** One line on the state of a mailbox's filing, from its folders. */

@@ -250,6 +250,7 @@ Shared IMAP / SMTP mailboxes an admin defines (Settings → E-mail → Company m
 * `id` VARCHAR(50) [PK] (`cmb-…`)
 * `name` VARCHAR(150), `address` VARCHAR(255) [UNIQUE]
 * `settings_json` MEDIUMTEXT (the IMAP / SMTP profile in the shape of a user's `emailSettings`; `imapPassword` / `smtpPassword` encrypted `enc:v1:`; never sent to the browser)
+  * A Microsoft 365 mailbox (`provider` = `microsoft365`, read through Microsoft Graph) has no host or password: `graphAccount` (the address that signed in) and the secrets `graphRefreshToken` / `graphAccessToken`, encrypted the same way. An empty `graphRefreshToken` means the sign-in ran out and has to be renewed. A user's `emailSettings` holds the same fields.
 * `is_active` TINYINT(1), `owner_user_id` VARCHAR(50) [NULLable] (optional person it belongs to)
 * `backfill_since` DATE [NULLable] (mail older than this is not filed; NULL = everything)
 * `last_run_at`, `last_success_at` DATETIME [NULLable], `last_error` TEXT [NULLable] (what an admin sees when a mailbox cannot be read)
@@ -262,6 +263,7 @@ Where the filing job stopped, per mailbox and folder, so a run is incremental.
 * `last_uid` BIGINT (high-water mark: everything above it is new)
 * `backfill_upper_uid` BIGINT [NULLable], `backfill_done` TINYINT(1) (the newest-first catch-up of mail that was already there; the next chunk is everything below the first)
 * `filed_count` INT, `last_run_at` DATETIME, `last_error` TEXT [NULLable]
+* `delta_link` TEXT [NULLable] (Microsoft 365 mailboxes only: the Graph delta / next link of the new-mail track. Such a row has `uid_validity` = -1, `last_uid` = the unix time the track started at and `backfill_upper_uid` = the unix time of the oldest message caught up so far)
 
 ### `filed_mail_bodies`
 The readable plain-text body of a filed message, apart from `timeline_events` because the sync reads that whole table on every load. Read on demand through `mail_broker.php?action=get_filed_mail` by anyone who may see e-mail on a timeline.

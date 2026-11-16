@@ -3,7 +3,10 @@
  * Unified External Connectors & Company Mailboxes (`#settings/email/mailboxes`).
  *
  * Supports all 7 external connector types in `company_mailboxes`:
- *   - Email: `gmail`, `smtp`, `exchange` (IMAP/SMTP + M365 Graph client-credentials)
+ *   - Email: `gmail`, `smtp`, `exchange` (IMAP/SMTP, M365 Graph client-credentials check, or
+ *     Microsoft 365 sign-in: `provider` = `microsoft365`, no host and no password; an admin signs
+ *     in with Microsoft (graph_oauth.php), which stores the tokens in the same profile, and the
+ *     mailbox is then read through Graph. Saving it again keeps the sign-in.)
  *   - Messaging: `whatsapp` (WAAI QR-code pairing)
  *   - Subscription AI Agents (Marveen runtime + CCRM MCP): `claude`, `antigravity`, `chatgpt`
  *
@@ -26,6 +29,7 @@ require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/mail_filing.php';
 require_once __DIR__ . '/botman/botman_lib.php';
 require_once __DIR__ . '/marveen/marveen_lib.php';
+require_once __DIR__ . '/graph_mail.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('GET, POST, OPTIONS');
@@ -96,7 +100,7 @@ function ccrm_infer_connector_type(array $s, string $address = ''): string {
     if (in_array($explicit, CCRM_CONNECTOR_TYPES, true)) {
         return $explicit;
     }
-    if (($s['provider'] ?? '') === 'exchange') {
+    if (($s['provider'] ?? '') === 'exchange' || ($s['provider'] ?? '') === 'microsoft365') {
         return 'exchange';
     }
     $imapHost = strtolower(trim((string)($s['imapHost'] ?? '')));
@@ -133,9 +137,13 @@ function ccrm_company_mailbox_clean(array $in, string $address = '', ?string $fa
     $str = fn($k, $max = 255) => mb_substr(trim((string)($in[$k] ?? '')), 0, $max, 'UTF-8');
     $secure = fn($k) => in_array(($in[$k] ?? 'ssl'), ['ssl', 'tls', 'none'], true) ? $in[$k] : 'ssl';
     $connectorType = ccrm_infer_connector_type($in, $address);
-    $provider = ($connectorType === 'exchange' || ($in['provider'] ?? 'smtp') === 'exchange') ? 'exchange' : 'smtp';
-
     $userIds = ccrm_normalize_user_ids($in['userIds'] ?? null, $fallbackOwner);
+    // A Microsoft 365 mailbox is the Exchange connector signed in with Microsoft. Nothing of its
+    // profile comes from the form but who it is assigned to: the sign-in fills in the rest.
+    if (($in['provider'] ?? '') === 'microsoft365') {
+        return ['connectorType' => 'exchange', 'provider' => 'microsoft365', 'userIds' => $userIds];
+    }
+    $provider = ($connectorType === 'exchange' || ($in['provider'] ?? 'smtp') === 'exchange') ? 'exchange' : 'smtp';
 
     $s = [
         'connectorType' => $connectorType,
@@ -249,7 +257,12 @@ function ccrm_company_mailbox_public(array $r, array $state): array {
     $userIds = ccrm_normalize_user_ids($settings['userIds'] ?? null, $r['owner_user_id'] ?? null);
     $settings['userIds'] = $userIds;
     $masked = ccrm_mask_secrets($settings, ccrm_email_secret_keys());
+    unset($masked['graphAccessToken']);
+    $isGraph = ($settings['provider'] ?? '') === 'microsoft365';
     $out = [
+        // Microsoft 365: is it signed in, and as whom. `connected` false on such a mailbox means "sign in (again)".
+        'connected' => $isGraph ? ($settings['graphRefreshToken'] ?? '') !== '' : null,
+        'account' => $isGraph ? (string)($settings['graphAccount'] ?? '') : null,
         'id' => $r['id'],
         'name' => $r['name'],
         'address' => $r['address'],
@@ -422,11 +435,17 @@ try {
                 $users[] = ['id' => $u['id'], 'name' => $u['name'], 'email' => $u['email'], 'folders' => $state['u:' . $u['id']]];
             }
         }
+        // The warning about the missing IMAP extension only matters where a mailbox needs it.
+        $needsImap = false;
+        foreach ($boxes as $b) {
+            if (in_array($b['connectorType'] ?? 'smtp', CCRM_EMAIL_CONNECTOR_TYPES, true)
+                && ($b['settings']['provider'] ?? 'smtp') !== 'microsoft365') { $needsImap = true; break; }
+        }
         echo json_encode([
             'success' => true,
             'mailboxes' => $boxes,
             'userMailboxes' => $users,
-            'imapAvailable' => function_exists('imap_open'),
+            'imapAvailable' => function_exists('imap_open') || !$needsImap,
             'environment' => ccrm_marveen_detect_env(),
         ]);
         exit;
@@ -897,7 +916,18 @@ try {
         $settings = ccrm_company_mailbox_clean($rawSettings, $rawAddress, $rawOwner);
         $connectorType = $settings['connectorType'];
 
-        if ($stored) {
+        // A password the browser echoes back masked (or leaves out) keeps the stored one. It is only
+        // reused for the host it was saved for (the same rule the personal "test connection" applies).
+        $isGraph = ($settings['provider'] ?? '') === 'microsoft365';
+        if ($isGraph) {
+            // The sign-in (account and tokens) belongs to the stored profile and survives a save.
+            $old = $stored ? ccrm_company_mailbox_settings($stored) : [];
+            if (($old['provider'] ?? '') === 'microsoft365') {
+                foreach (['graphAccount', 'graphRefreshToken', 'graphAccessToken'] as $keep) {
+                    if (isset($old[$keep])) $settings[$keep] = $old[$keep];
+                }
+            }
+        } elseif ($stored) {
             $old = ccrm_company_mailbox_settings($stored);
             if (in_array($connectorType, CCRM_EMAIL_CONNECTOR_TYPES, true)) {
                 $sameTarget = true;
@@ -920,9 +950,19 @@ try {
                 $settings = ccrm_merge_secrets($settings, $old, ccrm_email_secret_keys());
             }
         }
-        ccrm_company_mailbox_validate($settings);
+        if (!$isGraph) {
+            ccrm_company_mailbox_validate($settings);
+        }
 
         if ($action === 'test') {
+            if ($isGraph) {
+                if (!$stored || !ccrm_graph_is_connected($settings)) {
+                    echo json_encode(['success' => false, 'error' => 'This mailbox is not signed in with Microsoft yet.']);
+                    exit;
+                }
+                echo json_encode(ccrm_graph_test(ccrm_graph_mailbox($pdo, 'company', $id, $settings, (string)$stored['address'])));
+                exit;
+            }
             if (in_array($connectorType, CCRM_AGENT_CONNECTOR_TYPES, true)) {
                 $cred = trim((string)($settings['apiKey'] ?? '')) !== ''
                     ? (string)$settings['apiKey']
@@ -988,7 +1028,7 @@ try {
             if (!filter_var($address, FILTER_VALIDATE_EMAIL)) {
                 throw new \InvalidArgumentException('A valid mailbox address is required.');
             }
-            if (($settings['exchangeMode'] ?? 'imap') !== 'graph') {
+            if (!$isGraph && ($settings['exchangeMode'] ?? 'imap') !== 'graph') {
                 if ($settings['imapUsername'] === '' || (($settings['imapPassword'] ?? '') === '' && !$stored)) {
                     throw new \InvalidArgumentException('The IMAP login and password are required.');
                 }
@@ -1038,6 +1078,10 @@ try {
             $pdo->prepare(
                 "UPDATE `company_mailboxes` SET `name` = ?, `address` = ?, `settings_json` = ?, `is_active` = ?, `owner_user_id` = ?, `backfill_since` = ? WHERE `id` = ?"
             )->execute([$name, $address, $blob, $active, $owner !== '' ? $owner : null, $since !== '' ? $since : null, $id]);
+            // A Microsoft 365 delta link is tied to the mailbox it was opened for.
+            if ($isGraph && strtolower(trim((string)$stored['address'])) !== $address) {
+                $pdo->prepare("DELETE FROM `mail_sync_state` WHERE `mailbox_key` = ?")->execute(['c:' . $id]);
+            }
             $audit = 'updated';
         } else {
             $id = 'cmb-' . bin2hex(random_bytes(6));
