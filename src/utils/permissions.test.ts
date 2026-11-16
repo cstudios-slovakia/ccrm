@@ -400,3 +400,11 @@ test("agency: payroll/billing rates are opt-in and Employee role stays locked ou
   assert.equal(emp["agency.payments"], "nothing");
   assert.equal(permissionKeyForRoute("agency/worker/w1"), "agency");
 });
+
+test("agency: a role saved before the module existed gets nothing, not edit", () => {
+  // A stored role that has never seen the agency keys (every role on an install that updates into it).
+  const before = { tasks: "edit", leads: "edit", employees: "edit", "employees.personal": "edit" };
+  for (const key of ["agency", "agency.delete", "agency.personal", "agency.payments"]) {
+    assert.equal(resolvePermissionValue(before, key), "nothing", key);
+  }
+});

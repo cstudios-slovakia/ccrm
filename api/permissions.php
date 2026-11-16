@@ -108,9 +108,10 @@ if (!function_exists('ccrm_permission_sections')) {
                 $toggle('employees.personal', 'edit', 'nothing', ['key' => 'employees', 'level' => 'view']),
             ]],
             ['id' => 'agency', 'permissions' => [
-                $access('agency'),
-                $deleteToggle('agency'),
-                $toggle('agency.personal', 'edit', 'nothing', ['key' => 'agency', 'level' => 'view']),
+                // Added after roles existed: a stored role without these keys gets nothing until an admin grants it.
+                $access('agency', 'nothing', 'nothing'),
+                $deleteToggle('agency', 'nothing'),
+                $toggle('agency.personal', 'nothing', 'nothing', ['key' => 'agency', 'level' => 'view']),
                 $toggle('agency.payments', 'nothing', 'nothing', ['key' => 'agency', 'level' => 'view']),
             ]],
             ['id' => 'self_service', 'permissions' => [
