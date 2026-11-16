@@ -46,7 +46,6 @@ export const ClientCompanyContacts: React.FC<ClientCompanyContactsProps> = ({
   attachExistingRole,
   setAttachExistingRole,
 }) => {
-              {activeDetailTab === "contacts" && activeClient.clientType !== "person" && (() => {
                 const companyIdSet = new Set(activeClient.associatedLeads.map((l: Lead) => l.id));
                 const attachedContacts = clientProfiles.filter(
                   c => c.clientType === "person" && !!c.companyClientId && companyIdSet.has(c.companyClientId)
@@ -208,5 +207,4 @@ export const ClientCompanyContacts: React.FC<ClientCompanyContactsProps> = ({
                     )}
                   </div>
                 );
-              })()}
 };
