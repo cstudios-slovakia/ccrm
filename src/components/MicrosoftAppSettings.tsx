@@ -30,7 +30,8 @@ export const MicrosoftAppSettings: React.FC<{ language: Language; onChanged?: ()
   const load = useCallback(async () => {
     try {
       const next = await fetchMicrosoftApp();
-      setApp(next);
+      // An answer without the address is not this endpoint (an older backend): stay hidden.
+      setApp(next.redirectUri ? next : null);
       setForm({ clientId: next.clientId ?? "", tenantId: next.tenantId ?? "", clientSecret: next.clientSecret ?? "" });
     } catch {
       // An older backend, or not an admin: the block stays hidden.

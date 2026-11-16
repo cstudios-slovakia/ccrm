@@ -190,7 +190,8 @@ try {
         $res[0] === 200 && strlen((string)($q['state'] ?? '')) >= 32 && ($q['code_challenge_method'] ?? '') === 'S256' && ($q['redirect_uri'] ?? '') === $base . '/api/graph_oauth.php'
         && strpos((string)$q['scope'], 'Mail.ReadWrite') !== false && strpos((string)$q['scope'], '.Shared') === false, $res[1]);
     $check('an answer with a state that was never issued connects nothing', ($pageResult($jana('GET', '/api/graph_oauth.php?code=' . urlencode($code) . '&state=' . str_repeat('a', 48)))['ok'] ?? null) === false);
-    $check('...and uses the pending request up', ($pageResult($jana('GET', '/api/graph_oauth.php?code=' . urlencode($code) . '&state=' . urlencode($q['state'])))['ok'] ?? null) === false);
+    $check('...and does not cancel the sign-in that is really open', ($pageResult($jana('GET', '/api/graph_oauth.php?code=' . urlencode($code) . '&state=' . urlencode($q['state'])))['ok'] ?? null) === true);
+    $jana('POST', '/api/graph_oauth.php?action=disconnect', ['target' => 'user']);
 
     list($res, $q, $code) = $start($jana, ['target' => 'user'], 'jana@laminam.sk');
     $stolen = $pageResult($admin('GET', '/api/graph_oauth.php?code=' . urlencode($code) . '&state=' . urlencode($q['state'])));

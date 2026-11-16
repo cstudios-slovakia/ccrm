@@ -71,7 +71,8 @@ export const MicrosoftMailConnect: React.FC<MicrosoftMailConnectProps> = ({ lang
     }
   };
 
-  const notConfigured = status !== null && !status.configured;
+  // Only a clear "no": an answer without the flag (an older backend) leaves the button on.
+  const notConfigured = status?.configured === false;
 
   return (
     <div className={className ?? "space-y-3"} data-testid="microsoft-mail-connect">

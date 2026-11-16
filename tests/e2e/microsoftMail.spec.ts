@@ -42,7 +42,8 @@ async function mockOauth(page: Page, initial: Partial<OauthMock> = {}): Promise<
       </script>`,
     });
   });
-  await page.context().route('**/api/graph_oauth.php**', async (route) => {
+  // On the page, not the context: the suite's catch-all API mock is a page route and would win.
+  await page.route('**/api/graph_oauth.php**', async (route) => {
     const url = new URL(route.request().url());
     const action = url.searchParams.get('action') ?? '';
     const json = (body: object, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
@@ -72,23 +73,32 @@ async function mockOauth(page: Page, initial: Partial<OauthMock> = {}): Promise<
   return state;
 }
 
+/**
+ * Personal settings → E-mail with the form open on Microsoft 365. The fixture user already has
+ * a (password) mailbox, so that one is reset first; resetting it asks the server for nothing.
+ */
+async function chooseMicrosoft(page: Page) {
+  await gotoView(page, '#personal-settings/email');
+  await page.getByRole('button', { name: 'Resetovať nastavenia' }).click();
+  await page.getByRole('button', { name: 'IMAP / SMTP server' }).first().click();
+  await page.getByRole('option', { name: 'Microsoft 365 / Exchange Online' }).click();
+  await expect(page.getByTestId('microsoft-mailbox-panel')).toBeVisible();
+}
+
 test.describe('Microsoft 365 mailboxes', () => {
   test('a user connects their own mailbox by signing in, without a server or a password', async ({ page }) => {
     await startSession(page);
     const oauth = await mockOauth(page);
-    await gotoView(page, '#personal-settings/email');
-
     // choose Microsoft 365: the IMAP / SMTP fields and the save button give way to one button
-    await page.getByRole('button', { name: 'IMAP / SMTP server' }).first().click();
-    await page.getByRole('option', { name: 'Microsoft 365 / Exchange Online' }).click();
+    await chooseMicrosoft(page);
     const panel = page.getByTestId('microsoft-mailbox-panel');
-    await expect(panel).toBeVisible();
     await expect(page.getByPlaceholder('imap.domain.sk')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Uložiť integráciu' })).toBeHidden();
 
     await panel.getByTestId('microsoft-sign-in').click();
     await expect(page.getByTestId('microsoft-mailbox-account')).toContainText('erik@laminam.sk', { timeout: 15_000 });
     expect(oauth.started).toEqual([{ target: 'user' }]);
+    expect(oauth.disconnected).toEqual([]);
     await expect(page.getByTestId('microsoft-reconnect')).toHaveCount(0);
     await page.screenshot({ path: 'test-results/microsoft-mail-connected.png', fullPage: false });
 
@@ -101,9 +111,7 @@ test.describe('Microsoft 365 mailboxes', () => {
   test('a sign-in Microsoft refuses says why, and nothing is connected', async ({ page }) => {
     await startSession(page);
     await mockOauth(page, { outcome: { ok: false, error: 'Your Microsoft 365 administrator has to approve this application for your organisation first.' } });
-    await gotoView(page, '#personal-settings/email');
-    await page.getByRole('button', { name: 'IMAP / SMTP server' }).first().click();
-    await page.getByRole('option', { name: 'Microsoft 365 / Exchange Online' }).click();
+    await chooseMicrosoft(page);
     await page.getByTestId('microsoft-sign-in').click();
     await expect(page.getByTestId('microsoft-sign-in-error')).toContainText('administrator has to approve', { timeout: 15_000 });
     await expect(page.getByTestId('microsoft-mailbox-account')).toHaveCount(0);
@@ -112,9 +120,7 @@ test.describe('Microsoft 365 mailboxes', () => {
   test('without the app registration the button is off and says what is missing', async ({ page }) => {
     await startSession(page);
     await mockOauth(page, { configured: false });
-    await gotoView(page, '#personal-settings/email');
-    await page.getByRole('button', { name: 'IMAP / SMTP server' }).first().click();
-    await page.getByRole('option', { name: 'Microsoft 365 / Exchange Online' }).click();
+    await chooseMicrosoft(page);
     await expect(page.getByTestId('microsoft-mail-connect')).toContainText('ešte nie je nastavené');
     await expect(page.getByTestId('microsoft-sign-in')).toBeDisabled();
   });

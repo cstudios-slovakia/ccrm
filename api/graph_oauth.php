@@ -139,9 +139,14 @@ if ($isCallback) {
 
     ccrm_start_session();
     $pending = $_SESSION['ccrm_graph_oauth'] ?? null;
-    unset($_SESSION['ccrm_graph_oauth']); // single use, whatever happens next
     $state = (string)$_GET['state'];
-    if (!is_array($pending) || !hash_equals((string)($pending['state'] ?? ''), $state)
+    $stateMatches = is_array($pending) && hash_equals((string)($pending['state'] ?? ''), $state);
+    // Single use once it is the answer to this request. An answer with another state (a stray or
+    // hostile link) must not cancel a sign-in that is open in another window.
+    if ($stateMatches || (is_array($pending) && (int)($pending['started'] ?? 0) < time() - CCRM_GRAPH_OAUTH_TTL)) {
+        unset($_SESSION['ccrm_graph_oauth']);
+    }
+    if (!$stateMatches
         || (int)($pending['started'] ?? 0) < time() - CCRM_GRAPH_OAUTH_TTL || (string)($pending['user'] ?? '') !== (string)$userRow['id']) {
         ccrm_graph_oauth_page(['ok' => false, 'error' => 'This sign-in request has expired or was already used. Start it again from the e-mail settings.'], $appUrl, $lang);
     }
@@ -212,13 +217,26 @@ if ($isCallback) {
             $fail($account . ' cannot open the mailbox ' . $row['address'] . '. Sign in as that mailbox, or as someone with full access to it.');
         }
         unset($patch['isValidated']);
+        $before = strtolower(trim((string)($companySettings($row)['graphAccount'] ?? '')));
         ccrm_graph_store_profile($pdo, 'company', (string)$row['id'], $patch, true);
-        $pdo->prepare("DELETE FROM `mail_sync_state` WHERE `mailbox_key` = ? AND (`uid_validity` IS NULL OR `uid_validity` <> -1)")->execute(['c:' . $row['id']]);
+        // The filing state (a delta link) belongs to the sign-in it was made with.
+        if ($before !== $account) {
+            $pdo->prepare("DELETE FROM `mail_sync_state` WHERE `mailbox_key` = ?")->execute(['c:' . $row['id']]);
+        }
         $pdo->prepare("UPDATE `company_mailboxes` SET `last_error` = NULL WHERE `id` = ?")->execute([$row['id']]);
         ccrm_audit_log($pdo, $user, 'company_mailbox.microsoft_signin', 'Company mailbox ' . $row['address'] . ' signed in with Microsoft as ' . $account);
     } else {
         // A mailbox that was IMAP before must not keep its password beside the tokens.
+        $before = strtolower(trim((string)($ownSettings()['graphAccount'] ?? '')));
         ccrm_graph_store_profile($pdo, 'user', (string)$userRow['id'], $patch, true);
+        // Another account is another mailbox: its filing state (a delta link) starts over.
+        if ($before !== $account) {
+            try {
+                $pdo->prepare("DELETE FROM `mail_sync_state` WHERE `mailbox_key` = ?")->execute(['u:' . $userRow['id']]);
+            } catch (\Throwable $e) {
+                // no filing state yet
+            }
+        }
     }
     ccrm_graph_oauth_page($result + ['ok' => true, 'account' => $account], $appUrl, $lang);
 }

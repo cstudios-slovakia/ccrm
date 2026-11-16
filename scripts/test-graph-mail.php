@@ -111,7 +111,10 @@ $GLOBALS['ccrm_graph_transport'] = function (string $method, string $url, array 
         }
         $hits = array_values(array_filter($list, fn($m) => $m['seq'] > $sinceSeq && $m['received'] >= $ge));
         usort($hits, fn($a, $b) => $a['seq'] <=> $b['seq']);
-        $page = array_slice($hits, $offset, $fake->pageSize);
+        // Like Graph, a page is as large as the caller asked for (Prefer: odata.maxpagesize).
+        $asked = $fake->pageSize;
+        foreach ($headers as $h) if (preg_match('/odata\.maxpagesize=(\d+)/', $h, $pm)) $asked = min($asked, (int)$pm[1]);
+        $page = array_slice($hits, $offset, $asked);
         $base = CCRM_GRAPH_BASE . ($box === $who ? '/me' : '/users/' . rawurlencode($box)) . '/mailFolders/' . $fm[1] . '/messages/delta';
         $res = ['value' => array_map(fn($m) => $asGraph($m), $page)];
         if ($offset + count($page) < count($hits)) {
@@ -247,6 +250,17 @@ $check('...and reaches the browser only as a mask', $masked['emailSettings']['gr
 $clientPush = $masked; unset($clientPush['emailSettings']['graphAccessToken']);
 $merged = json_decode(ccrm_merge_user_metadata(json_encode($clientPush), json_encode($storedMeta)), true);
 $check('a sync from the browser (mask, or the key left out) keeps the stored tokens', ccrm_decrypt_email_settings($merged['emailSettings'])['graphRefreshToken'] === 'RT-' . $jana);
+
+$stale = $masked;
+$stale['emailSettings'] = ['provider' => 'smtp', 'imapHost' => '', 'isValidated' => false];
+$kept = json_decode(ccrm_merge_user_metadata(json_encode($stale), json_encode($storedMeta)), true)['emailSettings'];
+$check('a browser copy from before the sign-in cannot switch the mailbox back to IMAP',
+    $kept['provider'] === 'microsoft365' && $kept['isValidated'] === true && $kept['graphAccount'] === $jana && ccrm_decrypt_email_settings($kept)['graphRefreshToken'] === 'RT-' . $jana);
+$revived = json_decode(ccrm_merge_user_metadata(json_encode($masked), json_encode(['emailSettings' => ['provider' => 'microsoft365', 'graphAccount' => '', 'graphRefreshToken' => '', 'isValidated' => false]])), true)['emailSettings'];
+$check('...and a copy from before a disconnect cannot revive the removed mailbox', $revived['isValidated'] === false && $revived['graphAccount'] === '' && ($revived['graphRefreshToken'] ?? '') === '');
+$expiredMeta = ['emailSettings' => ['provider' => 'microsoft365', 'graphAccount' => $jana, 'graphRefreshToken' => '', 'isValidated' => true]];
+$waiting = json_decode(ccrm_merge_user_metadata(json_encode($expiredMeta), json_encode($expiredMeta)), true)['emailSettings'];
+$check('...while a mailbox that has to sign in again stays one', $waiting['isValidated'] === true && $waiting['graphAccount'] === $jana);
 
 $load = fn() => ccrm_decrypt_email_settings(json_decode($lite->query("SELECT metadata_json FROM users WHERE id = 'u-1'")->fetchColumn(), true)['emailSettings']);
 $mb = ccrm_graph_mailbox($lite, 'user', 'u-1', $load());
@@ -429,6 +443,15 @@ $bigNew = $addMessage($big, 'inbox', ['from' => 'novak@cust.sk', 'to' => [$big],
 ccrm_run_mail_filing($pdo, ['only' => 'c:cmb-big', 'max_messages' => 2]);
 $bigState = $pdo->query("SELECT `backfill_done` FROM `mail_sync_state` WHERE `mailbox_key` = 'c:cmb-big' AND `folder` = 'INBOX'")->fetchColumn();
 $check('new mail is filed before the rest of a long backlog', $count("`id` = ?", [$eid($bigNew, $big)]) === 1 && (int)$bigState === 0);
+
+// a share of the budget smaller than a page still gets through the new mail
+$fake->pageSize = 50;
+$burst = [];
+for ($i = 0; $i < 7; $i++) $burst[] = $addMessage($big, 'inbox', ['from' => ($i === 6 ? 'novak@cust.sk' : 'nobody@random.sk'), 'to' => [$big], 'subject' => 'Burst ' . $i, 'received' => time(), 'messageId' => '<burst' . $i . '@x>']);
+$pdo->exec("UPDATE `mail_sync_state` SET `backfill_done` = 1 WHERE `mailbox_key` = 'c:cmb-big'");
+for ($i = 0; $i < 6; $i++) ccrm_run_mail_filing($pdo, ['only' => 'c:cmb-big', 'max_messages' => 3]);
+$check('new mail that does not fit one run\'s budget is worked through across runs, not re-read from its start', $count("`id` = ?", [$eid($burst[6], $big)]) === 1);
+$fake->pageSize = 2;
 
 // one message in two mailboxes is filed once
 $both = $addMessage($info, 'inbox', ['from' => 'novak@cust.sk', 'to' => [$info, $peter], 'subject' => 'Both', 'received' => time(), 'messageId' => '<both@x>']);

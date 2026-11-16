@@ -241,6 +241,10 @@ try {
             $pdo->prepare(
                 "UPDATE `company_mailboxes` SET `name` = ?, `address` = ?, `settings_json` = ?, `is_active` = ?, `owner_user_id` = ?, `backfill_since` = ? WHERE `id` = ?"
             )->execute([$name, $address, $blob, $active, $owner !== '' ? $owner : null, $since !== '' ? $since : null, $id]);
+            // A Microsoft 365 delta link is tied to the mailbox it was opened for.
+            if ($isGraph && strtolower(trim((string)$stored['address'])) !== $address) {
+                $pdo->prepare("DELETE FROM `mail_sync_state` WHERE `mailbox_key` = ?")->execute(['c:' . $id]);
+            }
             $audit = 'updated';
         } else {
             $id = 'cmb-' . bin2hex(random_bytes(6));

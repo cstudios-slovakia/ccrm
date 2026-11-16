@@ -204,7 +204,12 @@ function ccrm_graph_run_folder(\PDO $pdo, CcrmGraphMailbox $mb, array $source, s
         $pdo->prepare("UPDATE `mail_sync_state` SET `delta_link` = ? WHERE `mailbox_key` = ? AND `folder` = ?")
             ->execute([($st['delta_link'] ?? '') !== '' ? $st['delta_link'] : null, $source['key'], $label]);
     };
-    $pageOpts = ['prefer' => ['odata.maxpagesize=' . CCRM_GRAPH_FILING_PAGE]];
+    // A page that is cut short is read again from its start by the next run, so a page is never
+    // asked for larger than what this run can still handle: otherwise a mailbox with a small
+    // share of the budget would read the same first messages for ever.
+    $pageOpts = function () use (&$budget): array {
+        return ['prefer' => ['odata.maxpagesize=' . max(1, min(CCRM_GRAPH_FILING_PAGE, (int)$budget['left']))]];
+    };
 
     try {
         // 1. New mail: follow the delta query from where the last run left it.
@@ -216,11 +221,14 @@ function ccrm_graph_run_folder(\PDO $pdo, CcrmGraphMailbox $mb, array $source, s
         }
         while ($url !== '' && !$outOfBudget()) {
             try {
-                $page = ccrm_graph_request($mb, 'GET', $url, $query, null, $pageOpts);
+                $page = ccrm_graph_request($mb, 'GET', $url, $query, null, $pageOpts());
             } catch (CcrmGraphException $e) {
-                // Graph forgot this sync state (it does after long silence): start a new one that
-                // looks back a week. What was already filed is recognised by its id.
-                if ($e->status === 410 || in_array($e->graphCode, ['SyncStateNotFound', 'syncStateNotFound', 'resyncRequired', 'SyncStateInvalid'], true)) {
+                // Graph forgot this sync state (it does after long silence), or refuses a stored
+                // link outright: start a new one that looks back a week. What was already filed
+                // is recognised by its id.
+                $storedLink = $query === [];
+                if ($e->status === 410 || ($storedLink && $e->status === 400)
+                    || in_array($e->graphCode, ['SyncStateNotFound', 'syncStateNotFound', 'resyncRequired', 'SyncStateInvalid'], true)) {
                     $st['delta_link'] = null;
                     $st['last_uid'] = $now - 7 * 86400;
                     break;
