@@ -105,6 +105,7 @@ import {
 } from "lucide-react";
 import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
 import { EntityTasksPanel } from "./EntityTasksPanel";
+import { LinkedTaskDrawer } from "./LinkedTaskDrawer";
 import type {
     Lead,
     TimelineEvent,
@@ -1128,6 +1129,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // answer rather than inheriting canEdit.
     const canCreateTask = taskAccess ? taskAccess.create : canEdit;
     const canEditGateTask = taskAccess ? taskAccess.edit : canEdit;
+    const leadTaskAccess: TaskAccess = taskAccess || {
+        view: true,
+        viewAll: true,
+        create: canCreateTask,
+        edit: canEditGateTask,
+        delete: canEditGateTask,
+    };
 
     // Shown at the top of the list and of the detail when the role only reads.
     const readOnlyNotice = !canEdit ? (
@@ -2388,8 +2396,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setActiveDetailTab(pinnedDetailTab);
     }, [activeLead?.id]);
     // Inline edit of a gate task in the lead's "Pipeline gate & tasks" card.
-    const [editingGateTaskId, setEditingGateTaskId] = useState<string | null>(null);
-    const [gateTaskDraft, setGateTaskDraft] = useState({ title: "", deadline: "", deadlineTime: "", isLocking: false });
+    // A gate task opened in the full task sidebar from the lead's gate card.
+    const [drawerGateTask, setDrawerGateTask] = useState<Task | null>(null);
 
     // Filter tasks belonging to the active lead
     const activeLeadTasks = useMemo(() => {
@@ -6849,6 +6857,24 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                             {conclusionDialog}
 
+                            {drawerGateTask && (
+                                <LinkedTaskDrawer
+                                    task={drawerGateTask}
+                                    tasks={tasks}
+                                    setTasks={setTasks}
+                                    leads={leads}
+                                    projects={projects}
+                                    users={_users}
+                                    language={systemLanguage}
+                                    taskStates={taskStates}
+                                    taskStateColors={taskStateColors}
+                                    taskAccess={leadTaskAccess}
+                                    currentUser={currentUser}
+                                    mailConfigured={isSystemMailConfigured(integrationsConfig)}
+                                    onClose={() => setDrawerGateTask(null)}
+                                />
+                            )}
+
                             {/* Tasks List */}
                             <span className="type-overline text-slate-500 block">
                                 {t("Linked tasks", "Prepojené úlohy", "Kapcsolódó feladatok")}
@@ -6984,68 +7010,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         </div>
 
                                                         <div className="space-y-1 min-w-0 flex-1">
-                                                            {editingGateTaskId === task.id ? (
-                                                                <div className="space-y-1.5">
-                                                                    <input
-                                                                        type="text"
-                                                                        autoFocus
-                                                                        value={gateTaskDraft.title}
-                                                                        onChange={(e) =>
-                                                                            setGateTaskDraft((d) => ({ ...d, title: e.target.value }))
-                                                                        }
-                                                                        className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 focus:border-violet-400 focus:outline-none font-bold text-ui"
-                                                                    />
-                                                                    <div className="grid grid-cols-2 gap-2">
-                                                                        <input
-                                                                            type="date"
-                                                                            value={gateTaskDraft.deadline}
-                                                                            min={todayStr()}
-                                                                            onChange={(e) =>
-                                                                                setGateTaskDraft((d) => ({ ...d, deadline: clampDeadline(e.target.value, todayStr()) }))
-                                                                            }
-                                                                            className="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 focus:border-violet-400 focus:outline-none font-bold text-caption"
-                                                                        />
-                                                                        <InlineDeadlineTimePicker
-                                                                            value={gateTaskDraft.deadlineTime}
-                                                                            onChange={(v) =>
-                                                                                setGateTaskDraft((d) => ({ ...d, deadlineTime: v }))
-                                                                            }
-                                                                            systemLanguage={systemLanguage}
-                                                                        />
-                                                                    </div>
-                                                                    <label
-                                                                        className={`flex items-start gap-2.5 px-3 py-2 rounded-xl border cursor-pointer select-none transition-colors ${
-                                                                            gateTaskDraft.isLocking
-                                                                                ? "bg-rose-50/60 border-rose-200"
-                                                                                : "bg-white border-slate-200 hover:border-slate-300"
-                                                                        }`}
-                                                                    >
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            checked={gateTaskDraft.isLocking}
-                                                                            onChange={(e) =>
-                                                                                setGateTaskDraft((d) => ({ ...d, isLocking: e.target.checked }))
-                                                                            }
-                                                                            className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 accent-rose-600 cursor-pointer"
-                                                                        />
-                                                                        <span
-                                                                            className={`text-caption font-bold leading-snug ${gateTaskDraft.isLocking ? "text-rose-700" : "text-slate-600"}`}
-                                                                        >
-                                                                            {t(
-                                                                                "Block moving to other phase until this task is done",
-                                                                                "Zablokovať presun do inej fázy, kým nie je táto úloha dokončená",
-                                                                                "A következő fázisba lépés tiltása, amíg ez a feladat el nem készül",
-                                                                            )}
-                                                                        </span>
-                                                                    </label>
-                                                                </div>
-                                                            ) : (
                                                             <span
                                                                 className={`text-ui font-extrabold tracking-wide block leading-tight ${isCompleted ? "line-through text-slate-400 font-bold" : "text-slate-700"}`}
                                                             >
                                                                 {task.title}
                                                             </span>
-                                                            )}
                                                             <div className="flex items-center gap-1.5 flex-wrap">
                                                                 {/* Archived badge — this list is the only screen
                                                                     that shows archived tasks at all, and without
@@ -7068,7 +7037,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     </span>
                                                                 )}
                                                                 {/* Locking badge */}
-                                                                {task.isLocking && editingGateTaskId !== task.id && (
+                                                                {task.isLocking && (
                                                                     <span
                                                                         title={t(
                                                                             "LOCKING: the lead cannot move to the next pipeline stage until this task is done.",
@@ -7088,7 +7057,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     </span>
                                                                 )}
                                                                 {/* Deadline */}
-                                                                {editingGateTaskId !== task.id && (
                                                                 <span className="text-caption text-slate-500 font-bold">
                                                                     {formatDateLocalized(
                                                                         task.deadline,
@@ -7098,7 +7066,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     {task.deadlineTime ||
                                                                         "23:59"}
                                                                 </span>
-                                                                )}
                                                                 {/* Assignee — the
                                                                     only calendar
                                                                     this task shows
@@ -7213,61 +7180,16 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     </div>
 
                                                     <div className="flex items-center gap-0.5 shrink-0">
-                                                    {/* Edit mode — title and deadline; status and assignee are always inline. */}
-                                                    {editingGateTaskId === task.id ? (
-                                                        <>
-                                                            <button
-                                                                type="button"
-                                                                title={t("Save", "Uložiť", "Mentés")}
-                                                                disabled={!gateTaskDraft.title.trim() || !gateTaskDraft.deadline}
-                                                                onClick={() => {
-                                                                    setTasks((prev) =>
-                                                                        prev.map((tk) =>
-                                                                            tk.id === task.id
-                                                                                ? {
-                                                                                      ...tk,
-                                                                                      title: gateTaskDraft.title.trim(),
-                                                                                      deadline: gateTaskDraft.deadline,
-                                                                                      deadlineTime: gateTaskDraft.deadlineTime,
-                                                                                      isLocking: gateTaskDraft.isLocking,
-                                                                                  }
-                                                                                : tk,
-                                                                        ),
-                                                                    );
-                                                                    setEditingGateTaskId(null);
-                                                                }}
-                                                                className="text-slate-400 hover:text-emerald-600 transition-colors p-1 disabled:opacity-40 disabled:cursor-not-allowed"
-                                                            >
-                                                                <Check className="h-4 w-4 stroke-[2.5]" />
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                title={t("Cancel", "Zrušiť", "Mégse")}
-                                                                onClick={() => setEditingGateTaskId(null)}
-                                                                className="text-slate-400 hover:text-slate-700 transition-colors p-1"
-                                                            >
-                                                                <X className="h-4 w-4 stroke-[2.5]" />
-                                                            </button>
-                                                        </>
-                                                    ) : (
-                                                        <button
-                                                            type="button"
-                                                            title={t("Edit task", "Upraviť úlohu", "Feladat szerkesztése")}
-                                                            disabled={!canEditGateTask}
-                                                            onClick={() => {
-                                                                setGateTaskDraft({
-                                                                    title: task.title,
-                                                                    deadline: task.deadline || "",
-                                                                    deadlineTime: task.deadlineTime || "23:59",
-                                                                    isLocking: !!task.isLocking,
-                                                                });
-                                                                setEditingGateTaskId(task.id);
-                                                            }}
-                                                            className="text-slate-400 hover:text-violet-600 transition-colors p-1 disabled:cursor-not-allowed disabled:opacity-35"
-                                                        >
-                                                            <Edit3 className="h-3.5 w-3.5" />
-                                                        </button>
-                                                    )}
+                                                    {/* Edit — opens the same task sidebar as the Tasks view. */}
+                                                    <button
+                                                        type="button"
+                                                        title={t("Edit task", "Upraviť úlohu", "Feladat szerkesztése")}
+                                                        disabled={!canEditGateTask}
+                                                        onClick={() => setDrawerGateTask(task)}
+                                                        className="text-slate-400 hover:text-violet-600 transition-colors p-1 disabled:cursor-not-allowed disabled:opacity-35"
+                                                    >
+                                                        <Edit3 className="h-3.5 w-3.5" />
+                                                    </button>
                                                     {/* Restore — the only way back for a task
                                                         archived from the Tasks view, which is
                                                         where it disappeared from. */}
@@ -9102,15 +9024,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         userLanguage={systemLanguage}
                                         taskStates={taskStates}
                                         taskStateColors={taskStateColors}
-                                        taskAccess={
-                                            taskAccess || {
-                                                view: true,
-                                                viewAll: true,
-                                                create: canCreateTask,
-                                                edit: canEditGateTask,
-                                                delete: canEditGateTask,
-                                            }
-                                        }
+                                        taskAccess={leadTaskAccess}
                                         currentUser={currentUser}
                                         mailConfigured={isSystemMailConfigured(integrationsConfig)}
                                         accentColor="blue"

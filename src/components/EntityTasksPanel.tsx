@@ -19,7 +19,7 @@ import {
 import type { Lead, Project, Task, UserProfile } from "../types";
 import type { Language } from "../utils/translations";
 import { CustomSelect } from "./ui/CustomSelect";
-import { TaskEditDrawer } from "./TaskEditDrawer";
+import { LinkedTaskDrawer } from "./LinkedTaskDrawer";
 import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
 import { needsConclusionToFinish } from "../utils/taskConclusion";
 import { TaskPillText } from "./TaskPillText";
@@ -40,7 +40,7 @@ import {
   type TaskDateFilter,
 } from "../utils/projectTasks";
 import { taskPriorityLabel, taskStateLabel, type Translate } from "../utils/taskLabels";
-import { archiveTasksWithUndo, deleteTasksWithUndo } from "../utils/taskActions";
+import { deleteTasksWithUndo } from "../utils/taskActions";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { TaskRecurringMark } from "./TaskRecurringMark";
 import { useRecurringTemplates } from "../hooks/useRecurringTemplates";
@@ -48,7 +48,6 @@ import { TaskDescriptionMark } from "./TaskDescriptionMark";
 import { DeadlinePostponedBadge } from "./TaskDeadlineExtras";
 import { clampDeadline, todayStr } from "../utils/taskDeadline";
 import {
-  canArchiveTask,
   canDeleteTask,
   canEditTask,
   isOnPersonalDashboard,
@@ -855,29 +854,19 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
 
       {/* Task Edit Drawer */}
       {editingTask && (
-        <TaskEditDrawer
-          key={editingTask.id}
+        <LinkedTaskDrawer
           task={editingTask}
+          tasks={tasks}
+          setTasks={setTasks}
           leads={leads}
           projects={projectsForPicker}
           users={users}
+          language={userLanguage}
           taskStates={taskStates}
           taskStateColors={taskStateColors}
-          systemLanguage={userLanguage}
-          recurringTemplates={recurringTemplates}
+          taskAccess={taskAccess}
           currentUser={currentUser}
-          currentUserName={myName}
           mailConfigured={mailConfigured}
-          canEdit={canEditTask(editingTask, currentUser, taskAccess)}
-          canArchive={taskAccess.edit && canArchiveTask(editingTask, currentUser)}
-          canDelete={canDeleteTask(editingTask, currentUser, taskAccess)}
-          onSave={(next) => setTasks((prev) => prev.map((tk) => (tk.id === next.id ? next : tk)))}
-          onToggleArchive={(next) =>
-            next.archived
-              ? setTasks((prev) => prev.map((tk) => (tk.id === next.id ? { ...tk, archived: false } : tk)))
-              : archiveTasksWithUndo({ targets: [next], setTasks, lang: userLanguage })
-          }
-          onDelete={deleteTask}
           onClose={() => setEditingTask(null)}
         />
       )}
