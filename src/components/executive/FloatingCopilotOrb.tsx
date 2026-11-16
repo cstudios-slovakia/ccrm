@@ -26,6 +26,9 @@ const CORNER_COORDINATES = (w: number, h: number, orbSize = 64, pad = 24) => {
   };
 };
 
+/** The avatar's eye glance and eye-shape animations (names from the blobatar stylesheet). */
+const COSTLY_AVATAR_ANIMATIONS = /^mo-(saccade|wrap)$/;
+
 export const FloatingCopilotOrb: React.FC<FloatingCopilotOrbProps> = ({
   isOpen,
   onOpen,
@@ -139,6 +142,35 @@ export const FloatingCopilotOrb: React.FC<FloatingCopilotOrbProps> = ({
     setPos(coords[closestCorner]);
   };
 
+  // The avatar keeps breathing, bobbing and blinking, but its eyes only glance
+  // around while the pointer is on it. The orb sits on every screen, and those
+  // two eye animations make the browser lay the page out again on every frame:
+  // on a 500-row list each frame took 200-300 ms (15-30 fps, against 60 with
+  // them paused), so hovering a row or opening a panel stuttered behind them.
+  // They are paused through the animation objects because the avatar library's
+  // animations did not respond to a CSS `animation-play-state` override.
+  useEffect(() => {
+    const apply = () => {
+      const el = orbRef.current;
+      if (!el || typeof el.getAnimations !== "function") return;
+      for (const animation of el.getAnimations({ subtree: true })) {
+        const name = (animation as CSSAnimation).animationName ?? "";
+        if (!COSTLY_AVATAR_ANIMATIONS.test(name)) continue;
+        if (isHovered) animation.play();
+        else animation.pause();
+      }
+    };
+    apply();
+    // The avatar starts its animations after it has drawn, and starts them
+    // again when its expression changes; catch those as well.
+    const soon = window.setTimeout(apply, 150);
+    const later = window.setTimeout(apply, 1000);
+    return () => {
+      window.clearTimeout(soon);
+      window.clearTimeout(later);
+    };
+  }, [isHovered, isDragging, isOpen, hasPositioned]);
+
   if (isOpen || !hasPositioned) {
     return null;
   }
@@ -179,11 +211,7 @@ export const FloatingCopilotOrb: React.FC<FloatingCopilotOrbProps> = ({
             name={`Executive Leader (${VERSION_CODENAME})`}
             roleColor="purple"
             size={64}
-            /* Still until hovered. The orb sits on every screen, and an avatar
-               that moves all the time makes the browser draw a new frame all
-               the time: on a long list each frame took 200-300 ms, so hovering
-               a row or opening a panel stuttered behind it. */
-            animate="hover"
+            animate="always"
             expression={isHovered ? "wink" : isDragging ? "surprised" : "idle"}
             frameless={true}
           />
