@@ -16,7 +16,6 @@ import {
   Plus,
   QrCode,
   RefreshCw,
-  Server,
   Sparkles,
   Terminal,
   Trash2,
@@ -70,7 +69,6 @@ import {
   PROVIDERS,
   ProviderLogo,
   getConnectorGroupTitle,
-  type ProviderMeta,
 } from "./companyMailboxProviders";
 
 interface Props {

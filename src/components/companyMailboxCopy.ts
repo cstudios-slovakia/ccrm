@@ -1,5 +1,4 @@
 export const COPY = {
-const COPY = {
   en: {
     title: "External Connectors & Mailboxes",
     subtitle:
