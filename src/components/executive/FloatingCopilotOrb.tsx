@@ -179,7 +179,11 @@ export const FloatingCopilotOrb: React.FC<FloatingCopilotOrbProps> = ({
             name={`Executive Leader (${VERSION_CODENAME})`}
             roleColor="purple"
             size={64}
-            animate="always"
+            /* Still until hovered. The orb sits on every screen, and an avatar
+               that moves all the time makes the browser draw a new frame all
+               the time: on a long list each frame took 200-300 ms, so hovering
+               a row or opening a panel stuttered behind it. */
+            animate="hover"
             expression={isHovered ? "wink" : isDragging ? "surprised" : "idle"}
             frameless={true}
           />
