@@ -6,6 +6,7 @@ import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback, useR
 import { SectionIcon } from "./icons/SectionIcon";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
+import { leadHoverVars, markLeadHover } from "../utils/leadRowHover";
 import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
 import { needsConclusionToFinish } from "../utils/taskConclusion";
 import { isDoneTaskState } from "../utils/projectTasks";
@@ -1304,7 +1305,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         return null;
     };
 
-    const [hoveredLeadId, setHoveredLeadId] = useState<string | null>(null);
 
     // Recording & transcription states for note logger
     const [recordingState, setRecordingState] = useState<
@@ -11030,28 +11030,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 return (
                                                                     <React.Fragment key={lead.id}>
                                                                         <tr
-                                                                            onMouseEnter={() =>
-                                                                                setHoveredLeadId(
-                                                                                    lead.id,
-                                                                                )
-                                                                            }
-                                                                            onMouseLeave={() =>
-                                                                                setHoveredLeadId(
-                                                                                    null,
-                                                                                )
-                                                                            }
-                                                                            className={`block ws-lg:table-row border-none ws-lg:border-b ws-lg:border-slate-100 p-0 ws-lg:p-0 transition-colors duration-150 group`}
-                                                                            style={{
-                                                                                backgroundColor:
-                                                                                    isInlineEditing
-                                                                                        ? `${leadColor}15`
-                                                                                        : isFavoritesGroup
-                                                                                          ? `${stateColor}${hoveredLeadId === lead.id ? "22" : "12"}`
-                                                                                          : hoveredLeadId ===
-                                                                                              lead.id
-                                                                                            ? `${leadColor}12`
-                                                                                            : `${leadColor}06`,
-                                                                            }}
+                                                                            data-lead-id={lead.id} onMouseEnter={(e) => markLeadHover(e.currentTarget, true)}
+                                                                            onMouseLeave={(e) => markLeadHover(e.currentTarget, false)}
+                                                                            className="lead-hover-row block ws-lg:table-row border-none ws-lg:border-b ws-lg:border-slate-100 p-0 ws-lg:p-0 transition-colors duration-150 group"
+                                                                            style={leadHoverVars(isInlineEditing ? `${leadColor}15` : isFavoritesGroup ? `${stateColor}12` : `${leadColor}06`, isInlineEditing ? `${leadColor}15` : isFavoritesGroup ? `${stateColor}22` : `${leadColor}12`)}
                                                                         >
                                                                             {/* ============================================================ */}
                                                                             {/* --- MOBILE DEDICATED LIST VIEW (< lg) --- */}
@@ -11365,23 +11347,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                                                             {/* --- COLUMN 8: ACTIONS --- */}
                                                                             <td
-                                                                                className={`hidden ws-lg:table-cell px-0 ws-lg:px-6 text-center pt-2.5 ws-lg:pt-3 sticky right-0 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-slate-100/80 ${cellPy}`}
-                                                                                style={{
-                                                                                    backgroundColor: "rgb(var(--card))",
-                                                                                    backgroundImage: `linear-gradient(${
-                                                                                        isInlineEditing
-                                                                                            ? `${leadColor}15`
-                                                                                            : hoveredLeadId === lead.id
-                                                                                              ? `${leadColor}12`
-                                                                                              : `${leadColor}06`
-                                                                                    }, ${
-                                                                                        isInlineEditing
-                                                                                            ? `${leadColor}15`
-                                                                                            : hoveredLeadId === lead.id
-                                                                                              ? `${leadColor}12`
-                                                                                              : `${leadColor}06`
-                                                                                    })`,
-                                                                                }}
+                                                                                className={`lead-hover-actions hidden ws-lg:table-cell px-0 ws-lg:px-6 text-center pt-2.5 ws-lg:pt-3 sticky right-0 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-slate-100/80 ${cellPy}`}
+                                                                                style={{ backgroundColor: "rgb(var(--card))", ...leadHoverVars(isInlineEditing ? `${leadColor}15` : `${leadColor}06`, isInlineEditing ? `${leadColor}15` : `${leadColor}12`) }}
                                                                             >
                                                                                 {isInlineEditing ? (
                                                                                     <div className="flex items-center justify-center gap-2">
@@ -11468,31 +11435,16 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         {/* --- RESPONSIVE STATE & SUBSTATE PROGRESS BAR ROW --- */}
                                                                         {!compactMode && (
                                                                             <tr
-                                                                                onMouseEnter={() =>
-                                                                                    setHoveredLeadId(
-                                                                                        lead.id,
-                                                                                    )
-                                                                                }
-                                                                                onMouseLeave={() =>
-                                                                                    setHoveredLeadId(
-                                                                                        null,
-                                                                                    )
-                                                                                }
+                                                                                data-lead-id={lead.id} onMouseEnter={(e) => markLeadHover(e.currentTarget, true)}
+                                                                                onMouseLeave={(e) => markLeadHover(e.currentTarget, false)}
                                                                                 className="hidden ws-lg:table-row border-none hover:bg-transparent"
                                                                             >
                                                                                 <td
                                                                                     colSpan={activeColumns.length + 2}
-                                                                                    className="p-0 border-none select-none block ws-lg:table-cell w-full ws-lg:w-auto"
+                                                                                    className="lead-hover-strip-cell p-0 border-none select-none block ws-lg:table-cell w-full ws-lg:w-auto"
                                                                                 >
                                                                                     <div
-                                                                                        className="w-full flex items-center gap-0.25 select-none bg-slate-200 transition-all duration-300 overflow-hidden"
-                                                                                        style={{
-                                                                                            height:
-                                                                                                hoveredLeadId ===
-                                                                                                lead.id
-                                                                                                    ? "16px"
-                                                                                                    : "3px",
-                                                                                        }}
+                                                                                        className="lead-hover-strip flex items-center gap-0.25 select-none bg-slate-200 overflow-hidden"
                                                                                     >
                                                                                         {(() => {
                                                                                             const isStateClosed =
@@ -11697,10 +11649,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                                 seg.tooltip
                                                                                                             }
                                                                                                         >
-                                                                                                            {hoveredLeadId ===
-                                                                                                                lead.id && (
-                                                                                                                <span
-                                                                                                                    className="type-overline px-1 truncate"
+                                                                                                            <span
+                                                                                                                    className="lead-hover-strip-label type-overline px-1 truncate"
                                                                                                                     style={{
                                                                                                                         fontSize:
                                                                                                                             "var(--text-micro)",
@@ -11716,7 +11666,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                                         seg.title
                                                                                                                     }
                                                                                                                 </span>
-                                                                                                            )}
                                                                                                         </div>
                                                                                                     );
                                                                                                 },
@@ -11730,24 +11679,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         {/* AI Summary Row (only in non-compact mode) */}
                                                                         {!compactMode && (
                                                                             <tr
-                                                                                className="block ws-lg:table-row transition-colors duration-150 shadow-sm/5 border-b border-slate-100"
-                                                                                style={{
-                                                                                    backgroundColor:
-                                                                                        hoveredLeadId ===
-                                                                                        lead.id
-                                                                                            ? `${leadColor}12`
-                                                                                            : `${leadColor}06`,
-                                                                                }}
-                                                                                onMouseEnter={() =>
-                                                                                    setHoveredLeadId(
-                                                                                        lead.id,
-                                                                                    )
-                                                                                }
-                                                                                onMouseLeave={() =>
-                                                                                    setHoveredLeadId(
-                                                                                        null,
-                                                                                    )
-                                                                                }
+                                                                                className="lead-hover-row block ws-lg:table-row transition-colors duration-150 shadow-sm/5 border-b border-slate-100"
+                                                                                style={leadHoverVars(`${leadColor}06`, `${leadColor}12`)}
+                                                                                data-lead-id={lead.id} onMouseEnter={(e) => markLeadHover(e.currentTarget, true)}
+                                                                                onMouseLeave={(e) => markLeadHover(e.currentTarget, false)}
                                                                             >
                                                                                 <td
                                                                                     colSpan={activeColumns.length + 2}

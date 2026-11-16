@@ -1983,3 +1983,47 @@ tr[data-offscreen-row] {
     visibility: visible;
   }
 }
+
+/* Leads list row hover, driven by an attribute instead of React state
+   (utils/leadRowHover.ts). Each element names its resting and hovered
+   background in --lead-bg / --lead-bg-hover. The stage strip opens with a
+   transform over the bottom padding of the row above it, so no row moves and
+   the table is not laid out again while it animates. */
+.lead-hover-row,
+.lead-hover-actions {
+  --lead-bg-now: var(--lead-bg);
+}
+.lead-hover-row[data-lead-hover],
+.lead-hover-row[data-lead-hover] > .lead-hover-actions {
+  --lead-bg-now: var(--lead-bg-hover);
+}
+.lead-hover-row {
+  background-color: var(--lead-bg-now);
+}
+.lead-hover-actions {
+  background-image: linear-gradient(var(--lead-bg-now), var(--lead-bg-now));
+}
+.lead-hover-strip-cell {
+  position: relative;
+  height: 3px;
+}
+.lead-hover-strip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 16px;
+  z-index: 11;
+  transform-origin: bottom;
+  transform: scaleY(0.1875);
+  transition: transform 300ms;
+}
+tr[data-lead-hover] .lead-hover-strip {
+  transform: none;
+}
+.lead-hover-strip-label {
+  visibility: hidden;
+}
+tr[data-lead-hover] .lead-hover-strip-label {
+  visibility: visible;
+}
