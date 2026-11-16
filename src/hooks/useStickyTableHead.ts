@@ -1,4 +1,5 @@
 import { useLayoutEffect, useState } from "react";
+import { useHideOffscreenRows } from "./useHideOffscreenRows";
 
 /**
  * Keeps a list table's head pinned to the top of the page scroller
@@ -247,5 +248,7 @@ export function useStickyTableHead(): [(el: HTMLElement | null) => void, HTMLEle
       delete wrap.dataset.hscroll;
     };
   }, [wrap]);
+  // Every page list table also stops painting its far-off-screen rows.
+  useHideOffscreenRows(wrap);
   return [setWrap, wrap];
 }

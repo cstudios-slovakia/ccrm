@@ -29,7 +29,7 @@ function verticalScroller(el: HTMLElement): HTMLElement | null {
  * and nothing has to be measured or re-created while scrolling. A row is painted
  * again before it comes within 900 px of the visible area.
  *
- * Pass the table's scrolling wrapper (the element `useStickyTableHead` returns).
+ * `useStickyTableHead` calls this for its wrapper, so every page list table has it.
  */
 export function useHideOffscreenRows(wrap: HTMLElement | null): void {
   useEffect(() => {

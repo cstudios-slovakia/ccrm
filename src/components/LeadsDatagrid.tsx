@@ -6,7 +6,6 @@ import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback, useR
 import { SectionIcon } from "./icons/SectionIcon";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
-import { useHideOffscreenRows } from "../hooks/useHideOffscreenRows";
 import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
 import { needsConclusionToFinish } from "../utils/taskConclusion";
 import { isDoneTaskState } from "../utils/projectTasks";
@@ -1732,7 +1731,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // the tab was closed and never followed the user to another device.
     const [viewMode, setViewMode] = useUserPref("leadsViewMode");
     const [tableWrapRef, tableWrapEl] = useStickyTableHead();
-    useHideOffscreenRows(tableWrapEl);
     // The board scrolls sideways; its proxy scrollbar needs the element.
     const [boardEl, setBoardEl] = useState<HTMLElement | null>(null);
 
