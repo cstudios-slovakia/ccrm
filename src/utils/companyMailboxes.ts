@@ -3,6 +3,9 @@
   once and the background job reads for the whole team (api/company_mailboxes.php).
   The password never comes back from the server; the form shows a mask and sends it
   back unchanged, which the server reads as "keep the stored one".
+
+  A Microsoft 365 (Exchange Online) mailbox has no server and no password: it is saved with
+  its address only and then signed in with Microsoft (utils/microsoftMail.ts).
 */
 
 export const SECRET_MASK = "********";
@@ -17,7 +20,7 @@ export interface MailboxFolderState {
 }
 
 export interface MailboxSettings {
-  provider: "smtp" | "exchange";
+  provider: "smtp" | "exchange" | "microsoft365";
   imapHost: string;
   imapPort: string;
   imapSecure: "ssl" | "tls" | "none";
@@ -44,7 +47,13 @@ export interface CompanyMailbox {
   lastSuccessAt: string | null;
   lastError: string | null;
   folders: MailboxFolderState[];
+  /** Microsoft 365 only: signed in or not, and as whom. null for an IMAP mailbox. */
+  connected?: boolean | null;
+  account?: string | null;
 }
+
+/** A Microsoft 365 mailbox: read through Microsoft Graph after a sign-in, never with a password. */
+export const isMicrosoftMailbox = (box: { settings: { provider?: string } }): boolean => box.settings.provider === "microsoft365";
 
 export interface MailboxDraft {
   id: string;
@@ -100,20 +109,24 @@ export const draftFromMailbox = (box: CompanyMailbox): MailboxDraft => {
  * the stored one rather than blanking it.
  */
 export const mailboxPayload = (draft: MailboxDraft) => {
-  const s = { ...draft.settings };
-  if (!s.smtpUsername.trim()) s.smtpUsername = s.imapUsername;
-  const settings: Partial<MailboxSettings> = { ...s };
-  if (!s.imapPassword) delete settings.imapPassword;
-  if (!s.smtpPassword) delete settings.smtpPassword;
-  return {
+  const common = {
     id: draft.id || undefined,
     name: draft.name.trim(),
     address: draft.address.trim().toLowerCase(),
     isActive: draft.isActive,
     ownerUserId: draft.ownerUserId,
     backfillSince: draft.backfillSince,
-    settings,
   };
+  // Nothing of a Microsoft 365 profile comes from the form; the sign-in fills it in on the server.
+  if (draft.settings.provider === "microsoft365") {
+    return { ...common, settings: { provider: "microsoft365" } as Partial<MailboxSettings> };
+  }
+  const s = { ...draft.settings };
+  if (!s.smtpUsername.trim()) s.smtpUsername = s.imapUsername;
+  const settings: Partial<MailboxSettings> = { ...s };
+  if (!s.imapPassword) delete settings.imapPassword;
+  if (!s.smtpPassword) delete settings.smtpPassword;
+  return { ...common, settings };
 };
 
 /** One line on the state of a mailbox's filing, from its folders. */

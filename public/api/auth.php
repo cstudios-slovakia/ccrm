@@ -2064,7 +2064,7 @@ HTACCESS;
 
     /** Per-user email secrets (users.metadata_json -> emailSettings). */
     function ccrm_email_secret_keys(): array {
-        return ['imapPassword', 'smtpPassword', 'password'];
+        return ['imapPassword', 'smtpPassword', 'password', 'graphRefreshToken', 'graphAccessToken'];
     }
 
     /**

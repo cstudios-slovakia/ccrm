@@ -11,6 +11,7 @@ import {
   deleteMailbox,
   draftFromMailbox,
   emptyMailboxDraft,
+  isMicrosoftMailbox,
   listMailboxes,
   runMailbox,
   saveMailbox,
@@ -20,6 +21,8 @@ import {
   type MailboxList,
 } from "../utils/companyMailboxes";
 import { PRODUCT_NAME } from "../utils/brand";
+import { MicrosoftAppSettings } from "./MicrosoftAppSettings";
+import { MicrosoftMailConnect } from "./MicrosoftMailConnect";
 
 /*
   ── COMPANY MAILBOXES ───────────────────────────────────
@@ -86,8 +89,12 @@ export const CompanyMailboxSettings: React.FC<CompanyMailboxSettingsProps> = ({ 
     setBusy("save");
     setFormError(null);
     try {
-      await saveMailbox(draft);
-      toast(t("Mailbox saved.", "Schránka bola uložená.", "A postafiók mentve."));
+      const savedBox = (await saveMailbox(draft)).mailbox;
+      toast(
+        savedBox && isMicrosoftMailbox(savedBox) && !savedBox.connected
+          ? t("Mailbox saved. Now sign it in with Microsoft.", "Schránka bola uložená. Teraz ju prihláste cez Microsoft.", "A postafiók mentve. Most jelentkezzen be vele a Microsofttal.")
+          : t("Mailbox saved.", "Schránka bola uložená.", "A postafiók mentve."),
+      );
       setDraft(null);
       await load();
     } catch (err) {
@@ -182,6 +189,8 @@ export const CompanyMailboxSettings: React.FC<CompanyMailboxSettingsProps> = ({ 
         </div>
       )}
 
+      <MicrosoftAppSettings language={userLanguage} onChanged={() => void load()} />
+
       {/* ---- the form ---- */}
       {draft && (
         <form onSubmit={handleSave} className="space-y-4 p-4 rounded-2xl border border-indigo-200 bg-indigo-50/30" data-testid="company-mailbox-form">
@@ -196,6 +205,30 @@ export const CompanyMailboxSettings: React.FC<CompanyMailboxSettingsProps> = ({ 
             </div>
           </div>
 
+          <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>{t("Mailbox type", "Typ schránky", "Postafiók típusa")}</label>
+              <CustomSelect
+                value={draft.settings.provider === "microsoft365" ? "microsoft365" : "smtp"}
+                onChange={(v) => patchSettings({ provider: v as "smtp" | "microsoft365" })}
+                options={[
+                  { value: "smtp", label: t("IMAP / SMTP (login and password)", "IMAP / SMTP (meno a heslo)", "IMAP / SMTP (felhasználónév és jelszó)") },
+                  { value: "microsoft365", label: t("Microsoft 365 / Exchange Online (sign in)", "Microsoft 365 / Exchange Online (prihlásenie)", "Microsoft 365 / Exchange Online (bejelentkezés)") },
+                ]}
+              />
+            </div>
+            {draft.settings.provider === "microsoft365" && (
+              <p className="text-caption text-slate-600 self-end pb-1" data-testid="company-mailbox-microsoft-hint">
+                {t(
+                  "No server and no password: save the mailbox, then use \"Sign in with Microsoft\" on its row. Sign in as the mailbox itself, or as someone with full access to a shared mailbox.",
+                  "Bez servera a hesla: schránku uložte a potom v jej riadku použite „Prihlásiť sa cez Microsoft“. Prihláste sa ako samotná schránka, alebo ako niekto s plným prístupom k zdieľanej schránke.",
+                  "Nincs szerver és nincs jelszó: mentse a postafiókot, majd a sorában használja a „Bejelentkezés Microsofttal” gombot. Jelentkezzen be magaként a postafiókként, vagy olyan fiókkal, amelynek teljes hozzáférése van a megosztott postafiókhoz.",
+                )}
+              </p>
+            )}
+          </div>
+
+          {draft.settings.provider !== "microsoft365" && (<>
           <div className="grid grid-cols-1 ws-md:grid-cols-4 gap-3">
             <div className="ws-md:col-span-2">
               <label className={labelClass} htmlFor="cmb-imap-host">{t("IMAP server", "Server IMAP", "IMAP szerver")}</label>
@@ -247,6 +280,7 @@ export const CompanyMailboxSettings: React.FC<CompanyMailboxSettingsProps> = ({ 
               <CustomSelect value={draft.settings.smtpSecure} onChange={(v) => patchSettings({ smtpSecure: v as "ssl" | "tls" | "none" })} options={secureOptions} />
             </div>
           </div>
+          </>)}
 
           <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-3">
             <div>
@@ -269,10 +303,12 @@ export const CompanyMailboxSettings: React.FC<CompanyMailboxSettingsProps> = ({ 
               <input type="checkbox" checked={draft.isActive} onChange={(e) => patch({ isActive: e.target.checked })} />
               {t("Active", "Aktívna", "Aktív")}
             </label>
+            {draft.settings.provider !== "microsoft365" && (
             <label className="flex items-center gap-2 text-ui font-semibold text-slate-700 cursor-pointer">
               <input type="checkbox" checked={draft.settings.imapAllowSelfSigned} onChange={(e) => patchSettings({ imapAllowSelfSigned: e.target.checked })} />
               {t("Accept a self-signed certificate", "Prijať certifikát podpísaný sebou samým", "Önaláírt tanúsítvány elfogadása")}
             </label>
+            )}
           </div>
 
           {formError && (
@@ -290,9 +326,11 @@ export const CompanyMailboxSettings: React.FC<CompanyMailboxSettingsProps> = ({ 
             <button type="submit" disabled={busy !== null} className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all disabled:opacity-60 cursor-pointer">
               {busy === "save" ? t("Saving…", "Ukladá sa…", "Mentés…") : t("Save mailbox", "Uložiť schránku", "Postafiók mentése")}
             </button>
+            {(draft.settings.provider !== "microsoft365" || draft.id) && (
             <button type="button" onClick={handleTest} disabled={busy !== null} className="px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-ui font-bold transition-all disabled:opacity-60 cursor-pointer">
               {busy === "test" ? t("Testing…", "Testuje sa…", "Tesztelés…") : t("Test connection", "Otestovať spojenie", "Kapcsolat tesztelése")}
             </button>
+            )}
             <button type="button" onClick={() => setDraft(null)} className="px-4 py-2.5 text-slate-500 hover:text-slate-700 rounded-xl text-ui font-bold cursor-pointer">
               {t("Cancel", "Zrušiť", "Mégse")}
             </button>
@@ -317,6 +355,7 @@ export const CompanyMailboxSettings: React.FC<CompanyMailboxSettingsProps> = ({ 
                     <span className="text-ui text-slate-500">{box.address}</span>
                     {!box.isActive && <span className="type-overline px-2 py-0.5 rounded-full border border-slate-200 bg-slate-100 text-slate-500">{t("Inactive", "Neaktívna", "Inaktív")}</span>}
                     {owner && <span className="type-overline px-2 py-0.5 rounded-full border border-indigo-200 bg-indigo-50 text-indigo-700">{owner}</span>}
+                    {isMicrosoftMailbox(box) && <span className="type-overline px-2 py-0.5 rounded-full border border-sky-200 bg-sky-50 text-sky-700">Microsoft 365</span>}
                   </div>
                   <p className="text-caption text-slate-500 mt-0.5">
                     {box.lastSuccessAt
@@ -345,6 +384,28 @@ export const CompanyMailboxSettings: React.FC<CompanyMailboxSettingsProps> = ({ 
                   </HoldToConfirmButton>
                 </div>
               </div>
+              {isMicrosoftMailbox(box) && (
+                <div className="flex flex-wrap items-center gap-3" data-testid="company-mailbox-microsoft">
+                  {box.connected ? (
+                    <span className="text-caption text-slate-600">
+                      {t("Signed in as", "Prihlásené ako", "Bejelentkezve mint")} <strong className="text-slate-800">{box.account}</strong>
+                    </span>
+                  ) : (
+                    <span role="alert" className="text-caption font-semibold text-amber-800">
+                      {box.account
+                        ? t("The Microsoft sign-in has expired or was revoked. Sign in again to keep reading this mailbox.", "Prihlásenie cez Microsoft vypršalo alebo bolo zrušené. Prihláste sa znova, aby sa schránka ďalej načítavala.", "A Microsoft-bejelentkezés lejárt vagy visszavonták. Jelentkezzen be újra, hogy a postafiók olvasása folytatódjon.")
+                        : t("Not signed in yet: this mailbox is not read until someone signs in with Microsoft.", "Zatiaľ neprihlásené: schránka sa nenačítava, kým sa niekto neprihlási cez Microsoft.", "Még nincs bejelentkezve: a postafiókot addig nem olvassuk, amíg valaki be nem jelentkezik a Microsofttal.")}
+                    </span>
+                  )}
+                  <MicrosoftMailConnect
+                    language={userLanguage}
+                    target={{ kind: "company", mailboxId: box.id }}
+                    again={!!box.connected}
+                    onSignedIn={() => void load()}
+                    className="flex flex-wrap items-center gap-3"
+                  />
+                </div>
+              )}
               {box.lastError && (
                 <div role="alert" data-testid="company-mailbox-error" className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-caption font-semibold flex items-start gap-2">
                   <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" /> <span>{box.lastError}</span>

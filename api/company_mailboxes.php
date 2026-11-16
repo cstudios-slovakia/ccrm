@@ -13,11 +13,16 @@
  * The profile is stored in `company_mailboxes.settings_json` in the shape of a user's
  * `emailSettings`, secrets encrypted exactly as theirs are, so mail_broker.php reads it
  * unchanged. A password is never sent back to the browser.
+ *
+ * A Microsoft 365 mailbox (`provider` = `microsoft365`) has no host and no password: it is
+ * saved with its address only and then connected by an admin signing in with Microsoft
+ * (graph_oauth.php), which stores the tokens in the same profile. Saving it again keeps them.
  */
 require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/mail_filing.php';
+require_once __DIR__ . '/graph_mail.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('GET, POST, OPTIONS');
@@ -46,6 +51,10 @@ ccrm_migrate_mail_filing($pdo);
 function ccrm_company_mailbox_clean(array $in): array {
     $str = fn($k, $max = 255) => mb_substr(trim((string)($in[$k] ?? '')), 0, $max, 'UTF-8');
     $secure = fn($k) => in_array(($in[$k] ?? 'ssl'), ['ssl', 'tls', 'none'], true) ? $in[$k] : 'ssl';
+    // Nothing of a Microsoft 365 profile comes from the form: the sign-in fills it in.
+    if (($in['provider'] ?? '') === 'microsoft365') {
+        return ['provider' => 'microsoft365'];
+    }
     $provider = (($in['provider'] ?? 'smtp') === 'exchange') ? 'exchange' : 'smtp';
     $s = [
         'provider' => $provider,
@@ -80,7 +89,12 @@ function ccrm_company_mailbox_validate(array $s): void {
 function ccrm_company_mailbox_public(array $r, array $state): array {
     $settings = ccrm_company_mailbox_settings($r);
     $masked = ccrm_mask_secrets($settings, ccrm_email_secret_keys());
+    unset($masked['graphAccessToken']);
+    $isGraph = ($settings['provider'] ?? '') === 'microsoft365';
     return [
+        // Microsoft 365: is it signed in, and as whom. `connected` false on such a mailbox means "sign in (again)".
+        'connected' => $isGraph ? ($settings['graphRefreshToken'] ?? '') !== '' : null,
+        'account' => $isGraph ? (string)($settings['graphAccount'] ?? '') : null,
         'id' => $r['id'], 'name' => $r['name'], 'address' => $r['address'],
         'isActive' => (bool)$r['is_active'], 'ownerUserId' => $r['owner_user_id'],
         'backfillSince' => $r['backfill_since'],
@@ -115,7 +129,12 @@ try {
                 $users[] = ['id' => $u['id'], 'name' => $u['name'], 'email' => $u['email'], 'folders' => $state['u:' . $u['id']]];
             }
         }
-        echo json_encode(['success' => true, 'mailboxes' => $boxes, 'userMailboxes' => $users, 'imapAvailable' => function_exists('imap_open')]);
+        // The warning about the missing IMAP extension only matters where a mailbox needs it.
+        $needsImap = false;
+        foreach ($boxes as $b) {
+            if (($b['settings']['provider'] ?? 'smtp') !== 'microsoft365') { $needsImap = true; break; }
+        }
+        echo json_encode(['success' => true, 'mailboxes' => $boxes, 'userMailboxes' => $users, 'imapAvailable' => function_exists('imap_open') || !$needsImap]);
         exit;
     }
 
@@ -154,7 +173,16 @@ try {
         $settings = ccrm_company_mailbox_clean(is_array($input['settings'] ?? null) ? $input['settings'] : $input);
         // A password the browser echoes back masked (or leaves out) keeps the stored one. It is only
         // reused for the host it was saved for (the same rule the personal "test connection" applies).
-        if ($stored) {
+        $isGraph = $settings['provider'] === 'microsoft365';
+        if ($isGraph) {
+            // The sign-in (account and tokens) belongs to the stored profile and survives a save.
+            $old = $stored ? ccrm_company_mailbox_settings($stored) : [];
+            if (($old['provider'] ?? '') === 'microsoft365') {
+                foreach (['graphAccount', 'graphRefreshToken', 'graphAccessToken'] as $keep) {
+                    if (isset($old[$keep])) $settings[$keep] = $old[$keep];
+                }
+            }
+        } elseif ($stored) {
             $old = ccrm_company_mailbox_settings($stored);
             $sameTarget = true;
             foreach (['provider', 'imapHost', 'imapPort', 'smtpHost', 'smtpPort', 'imapUsername', 'smtpUsername', 'exchangeUrl'] as $pin) {
@@ -163,16 +191,27 @@ try {
             if ($sameTarget) {
                 $settings = ccrm_merge_secrets($settings, $old, ccrm_email_secret_keys());
             } else {
-                foreach (ccrm_email_secret_keys() as $k) {
+                // Only the passwords this form has; a key it never carries is not "missing".
+                foreach (['imapPassword', 'smtpPassword'] as $k) {
                     if (($settings[$k] ?? '') === CCRM_SECRET_MASK || ($settings[$k] ?? '') === '') {
                         throw new \InvalidArgumentException('Please re-enter the password when changing the server, port or account.');
                     }
                 }
             }
         }
-        ccrm_company_mailbox_validate($settings);
+        if (!$isGraph) {
+            ccrm_company_mailbox_validate($settings);
+        }
 
         if ($action === 'test') {
+            if ($isGraph) {
+                if (!$stored || !ccrm_graph_is_connected($settings)) {
+                    echo json_encode(['success' => false, 'error' => 'This mailbox is not signed in with Microsoft yet.']);
+                    exit;
+                }
+                echo json_encode(ccrm_graph_test(ccrm_graph_mailbox($pdo, 'company', $id, $settings, (string)$stored['address'])));
+                exit;
+            }
             echo json_encode(test_mail_connections($settings));
             exit;
         }
@@ -181,7 +220,7 @@ try {
         $address = strtolower(trim((string)($input['address'] ?? '')));
         if ($name === '') throw new \InvalidArgumentException('A name is required.');
         if (!filter_var($address, FILTER_VALIDATE_EMAIL)) throw new \InvalidArgumentException('A valid mailbox address is required.');
-        if ($settings['imapUsername'] === '' || (($settings['imapPassword'] ?? '') === '' && !$stored)) {
+        if (!$isGraph && ($settings['imapUsername'] === '' || (($settings['imapPassword'] ?? '') === '' && !$stored))) {
             throw new \InvalidArgumentException('The IMAP login and password are required.');
         }
         $owner = trim((string)($input['ownerUserId'] ?? ''));

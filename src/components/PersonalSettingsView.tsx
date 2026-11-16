@@ -13,6 +13,14 @@ import { ThemeSettings } from "./ThemeSettings";
 import { SidebarSettings } from "./SidebarSettings";
 import { ViewSizeSettings } from "./ViewSizeSettings";
 import { SecretInput } from "./ui/SecretInput";
+import { MicrosoftMailConnect } from "./MicrosoftMailConnect";
+import {
+  MICROSOFT_PROVIDER,
+  disconnectMicrosoftMail,
+  isMicrosoftProfile,
+  microsoftProfileAfterSignIn,
+  microsoftProfileNeedsReconnect,
+} from "../utils/microsoftMail";
 import {
   requestBrowserNotificationPermission,
   getBrowserNotificationPermission,
@@ -192,6 +200,11 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
     exchangeMailbox: s?.exchangeMailbox || "",
     username: s?.username || "",
     password: s?.password || "",
+    // A Microsoft 365 mailbox: the account that signed in. Its token stays on the
+    // server and arrives as a mask; the key is left out when there is none, so a
+    // save from this form can never blank a token another tab just received.
+    graphAccount: s?.graphAccount || "",
+    ...(s?.graphRefreshToken ? { graphRefreshToken: s.graphRefreshToken } : {}),
     // Must be carried over, otherwise reloading the stored profile drops the
     // "already configured" flag and throws the user back into the form.
     isValidated: s?.isValidated === true
@@ -277,8 +290,36 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
     }, 100);
   };
 
+  // The mailbox was signed in with Microsoft: the server already holds the tokens. The
+  // profile kept here names the provider and the account, so the rest of the app sees a
+  // connected mailbox; the next sync sends it back with the token still masked.
+  const handleMicrosoftSignedIn = (account: string) => {
+    const updatedSettings = normalizeEmailSettings(microsoftProfileAfterSignIn(account));
+    setEmailSettings(updatedSettings);
+    loadedEmailSigRef.current = JSON.stringify(updatedSettings);
+    setTestResult(null);
+    setUsers(prev => prev.map(u => {
+      if (u.email !== currentUser.email) return u;
+      let meta = {};
+      try {
+        if (u.metadata_json) {
+          meta = typeof u.metadata_json === 'string' ? JSON.parse(u.metadata_json) : u.metadata_json;
+        }
+      } catch (err) {}
+      const updated = { ...u, metadata_json: JSON.stringify({ ...meta, emailSettings: updatedSettings }) };
+      sessionStorage.setItem("crm_current_user_rbac", JSON.stringify(updated));
+      return updated;
+    }));
+    setTimeout(() => {
+      onSync();
+      (window as any).showToast(t("Mailbox connected with Microsoft.", "Schránka je pripojená cez Microsoft.", "A postafiók csatlakoztatva a Microsofttal."));
+    }, 100);
+  };
+
   const handleSaveEmailSettings = (e: React.FormEvent) => {
     e.preventDefault();
+    // A Microsoft 365 mailbox is connected by signing in, never by saving this form.
+    if (isMicrosoftProfile(emailSettings)) return;
 
     const updatedSettings = normalizeEmailSettings({ ...emailSettings, isValidated: true });
     setEmailSettings(updatedSettings);
@@ -600,9 +641,14 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                       <div className="bg-white/80 border border-emerald-200 rounded-2xl p-4 space-y-2.5 text-ui text-slate-700 shadow-sm">
                         <div>
                           <span className="type-overline text-slate-400 block">{t("Service Provider / Protocol", "Poskytovateľ služby / Protokol", "Szolgáltató / Protokoll")}</span>
-                          <span className="font-bold uppercase text-emerald-950 font-heading">{emailSettings.provider === 'exchange' ? 'Microsoft Exchange' : t("IMAP / SMTP Server", "IMAP / SMTP server", "IMAP / SMTP szerver")}</span>
+                          <span className="font-bold uppercase text-emerald-950 font-heading">{isMicrosoftProfile(emailSettings) ? 'Microsoft 365' : emailSettings.provider === 'exchange' ? 'Microsoft Exchange' : t("IMAP / SMTP Server", "IMAP / SMTP server", "IMAP / SMTP szerver")}</span>
                         </div>
-                        {emailSettings.provider === 'smtp' ? (
+                        {isMicrosoftProfile(emailSettings) ? (
+                          <div data-testid="microsoft-mailbox-account">
+                            <span className="type-overline text-slate-400 block">{t("Signed in as", "Prihlásené ako", "Bejelentkezve mint")}</span>
+                            <span className="font-bold text-slate-800 break-all">{emailSettings.graphAccount}</span>
+                          </div>
+                        ) : emailSettings.provider === 'smtp' ? (
                           <>
                             <div className="grid grid-cols-2 gap-4">
                               <div>
@@ -638,6 +684,19 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                           </div>
                         )}
                       </div>
+
+                      {microsoftProfileNeedsReconnect(emailSettings) && (
+                        <div role="alert" data-testid="microsoft-reconnect" className="bg-amber-50 border border-amber-300 rounded-2xl p-4 space-y-3">
+                          <p className="text-ui font-semibold text-amber-900">
+                            {t(
+                              "The Microsoft sign-in has expired or was revoked, so this mailbox is not being read or sent from. Sign in again to reconnect it.",
+                              "Prihlásenie cez Microsoft vypršalo alebo bolo zrušené, preto sa z tejto schránky nečíta ani neodosiela. Prihláste sa znova a schránka sa opäť pripojí.",
+                              "A Microsoft-bejelentkezés lejárt vagy visszavonták, ezért ebből a postafiókból nem olvasunk és nem küldünk. Jelentkezzen be újra a csatlakoztatáshoz.",
+                            )}
+                          </p>
+                          <MicrosoftMailConnect language={activeLang} target={{ kind: "user" }} again onSignedIn={handleMicrosoftSignedIn} />
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -645,7 +704,12 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        const resetSettings = normalizeEmailSettings({ ...emailSettings, isValidated: false });
+                        // A Microsoft sign-in is forgotten on the server; the tokens never were here.
+                        if (isMicrosoftProfile(emailSettings)) {
+                          void disconnectMicrosoftMail({ kind: "user" }).catch(() => undefined);
+                        }
+                        const { graphRefreshToken: _droppedToken, ...withoutToken } = emailSettings;
+                        const resetSettings = normalizeEmailSettings({ ...withoutToken, graphAccount: "", isValidated: false });
                         setEmailSettings(resetSettings);
                         loadedEmailSigRef.current = JSON.stringify(resetSettings);
                         setUsers((prev: any) => prev.map((u: any) => {
@@ -694,7 +758,8 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                           onChange={(v) => setEmailSettings((prev: any) => ({ ...prev, provider: v }))}
                           options={[
                             { value: "smtp", label: t("IMAP / SMTP Server", "IMAP / SMTP server", "IMAP / SMTP szerver") },
-                            { value: "exchange", label: "MS Exchange" },
+                            { value: MICROSOFT_PROVIDER, label: t("Microsoft 365 / Exchange Online", "Microsoft 365 / Exchange Online", "Microsoft 365 / Exchange Online") },
+                            { value: "exchange", label: t("MS Exchange (own server, password)", "MS Exchange (vlastný server, heslo)", "MS Exchange (saját szerver, jelszó)") },
                           ]}
                         />
                       </div>
@@ -713,7 +778,19 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                       )}
                     </div>
 
-                    {emailSettings.provider === "smtp" ? (
+                    {isMicrosoftProfile(emailSettings) ? (
+                      <div className="border-t border-slate-100 pt-4 space-y-3" data-testid="microsoft-mailbox-panel">
+                        <span className="type-overline text-indigo-600 block">{t("Microsoft 365 / Exchange Online", "Microsoft 365 / Exchange Online", "Microsoft 365 / Exchange Online")}</span>
+                        <p className="text-ui text-slate-600 leading-relaxed">
+                          {t(
+                            "A Microsoft 365 mailbox is connected without a password: sign in with your Microsoft account and allow access to your mail. You can take the access back at any time, here or in your Microsoft account.",
+                            "Schránka Microsoft 365 sa pripája bez hesla: prihláste sa svojím účtom Microsoft a povoľte prístup k pošte. Prístup môžete kedykoľvek zrušiť, tu alebo vo svojom účte Microsoft.",
+                            "A Microsoft 365 postafiók jelszó nélkül csatlakozik: jelentkezzen be Microsoft-fiókjával, és engedélyezze a hozzáférést a leveleihez. A hozzáférést bármikor visszavonhatja, itt vagy a Microsoft-fiókjában.",
+                          )}
+                        </p>
+                        <MicrosoftMailConnect language={activeLang} target={{ kind: "user" }} onSignedIn={handleMicrosoftSignedIn} />
+                      </div>
+                    ) : emailSettings.provider === "smtp" ? (
                       <>
                         {/* IMAP Config Panel */}
                         <div className="border-t border-slate-100 pt-4 space-y-3">
@@ -912,7 +989,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                       </div>
                     )}
 
-                    <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                    <div className={isMicrosoftProfile(emailSettings) ? "hidden" : "flex items-center justify-between pt-3 border-t border-slate-100"}>
                       <button
                         type="button"
                         onClick={handleTestConnection}
@@ -943,6 +1020,9 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                         {t("Microsoft Exchange Instructions", "Pokyny pre Microsoft Exchange", "Microsoft Exchange útmutató")}
                       </h4>
                       <ul className="text-micro leading-relaxed text-slate-600 space-y-2.5 font-medium list-disc pl-4.5">
+                        <li>
+                          <strong className="text-slate-800">{t("Microsoft 365 / Exchange Online:", "Microsoft 365 / Exchange Online:", "Microsoft 365 / Exchange Online:")}</strong> {t("Microsoft no longer accepts a password for these mailboxes. Choose Microsoft 365 / Exchange Online above and sign in with Microsoft.", "Microsoft pre tieto schránky už neprijíma heslo. Vyberte vyššie Microsoft 365 / Exchange Online a prihláste sa cez Microsoft.", "A Microsoft ezekhez a postafiókokhoz már nem fogad el jelszót. Válassza fent a Microsoft 365 / Exchange Online lehetőséget, és jelentkezzen be a Microsofttal.")}
+                        </li>
                         <li>
                           <strong className="text-slate-800">{t("Server Endpoints:", "Koncové body servera:", "Szerver végpontok:")}</strong> {t("Autodiscovery URL is recommended, e.g.,", "Odporúča sa adresa URL automatického zisťovania, napr.,", "Az automatikus felderítési URL ajánlott, pl.,")} <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 font-mono text-micro">https://outlook.office365.com/EWS/Exchange.asmx</code>.
                         </li>

@@ -62,6 +62,7 @@ try {
 // broker returns early when included from another endpoint, so only its helpers
 // are picked up here.
 require_once __DIR__ . '/mail_broker.php';
+require_once __DIR__ . '/graph_mail.php';
 
 // Plain text of one message, for the AI prompt only. Never marks it read.
 function ccrm_summary_body_from_mailbox($settings, $folder, $uid) {
@@ -90,6 +91,19 @@ if (empty($body) && $folder !== 'thread') {
         require_once __DIR__ . '/demo_mailbox.php';
         if ($emailSettings && ccrm_demo_mailbox_active($pdo, $emailSettings)) {
             $body = ccrm_demo_mailbox_body_text($pdo, strtolower((string)$emailSettings['imapUsername']), $folder, $emailUid);
+        } elseif ($emailSettings && ($emailSettings['provider'] ?? '') === 'microsoft365') {
+            // A Microsoft 365 mailbox is read through Graph; the uid is the message's Graph id.
+            try {
+                $userIdStmt = $pdo->prepare("SELECT `id` FROM `users` WHERE `email` = ?");
+                $userIdStmt->execute([$userEmail]);
+                $graphMailbox = ccrm_graph_mailbox($pdo, 'user', (string)$userIdStmt->fetchColumn(), $emailSettings);
+                $graphBody = ccrm_graph_body_text($graphMailbox, ccrm_graph_resolve_id($graphMailbox, $emailUid));
+                if ($graphBody !== '') {
+                    $body = $graphBody;
+                }
+            } catch (\Exception $ex) {
+                // fallback
+            }
         } elseif ($emailSettings && ($emailSettings['isValidated'] ?? false)) {
             try {
                 $imapBody = ccrm_summary_body_from_mailbox($emailSettings, $folder, $emailUid);
@@ -102,6 +116,10 @@ if (empty($body) && $folder !== 'thread') {
         }
     }
 }
+
+// The key the summary is stored under. A Microsoft 365 message id (or a thread key made of
+// several) can be longer than `email_uid`; ccrm_mail_uid_key() leaves an IMAP uid as it is.
+$emailUid = ccrm_mail_uid_key($emailUid);
 
 // 1. Check if summary already exists in database
 try {

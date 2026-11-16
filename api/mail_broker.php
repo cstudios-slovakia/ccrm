@@ -47,6 +47,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'test_credentials') {
         echo json_encode(['success' => false, 'error' => 'Invalid settings payload.']);
         exit;
     }
+    // A Microsoft 365 mailbox has no host or password to test: it is connected by signing in.
+    if (($settings['provider'] ?? '') === 'microsoft365') {
+        echo json_encode(['success' => false, 'error' => 'Use "Sign in with Microsoft" to connect a Microsoft 365 mailbox.']);
+        exit;
+    }
 
     // The client never receives real passwords (they are masked in the sync GET),
     // so when it re-tests already-saved settings it posts the mask. Substitute the
@@ -274,6 +279,14 @@ if (!$emailSettings) {
 require_once __DIR__ . '/demo_mailbox.php';
 if (ccrm_demo_mailbox_active($pdo, $emailSettings)) {
     ccrm_demo_mailbox_handle($pdo, $action, $emailSettings, $userEmail);
+    exit;
+}
+
+// An Exchange Online mailbox has no password to log in with (Microsoft switched basic auth
+// off): it is signed in with Microsoft and every action goes through Graph (graph_mail.php).
+if (($emailSettings['provider'] ?? '') === 'microsoft365') {
+    require_once __DIR__ . '/graph_mail.php';
+    ccrm_graph_broker_handle($pdo, $action, $emailSettings, $userEmail);
     exit;
 }
 
@@ -1749,6 +1762,15 @@ function save_imap_attachment_to_uploads($settings, $folder, $uid, $partNum, $na
 
     @imap_close($imapStream);
 
+    return ccrm_store_mail_attachment_upload($data, $safeName, $eventId);
+}
+
+/**
+ * Writes the bytes of a mail attachment into uploads/ as a document of a timeline entry and
+ * reads what text it can out of it. Shared by the IMAP and the Microsoft 365 mailbox; the
+ * caller has already validated the name with ccrm_safe_upload_name().
+ */
+function ccrm_store_mail_attachment_upload($data, string $safeName, string $eventId): array {
     if (!is_string($data) || $data === '') {
         return ['success' => false, 'error' => 'This attachment came back empty from the mail server.'];
     }
