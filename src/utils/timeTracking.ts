@@ -30,6 +30,11 @@ export type TimeEntrySource =
   | "clockify"
   | "ticket_legacy";
 
+/** The outside tool an entry was imported from, or null when it was recorded in this app.
+ *  An imported entry's `recordedByUserId` is whoever ran the import, not whoever did the work. */
+export const importedFrom = (source: TimeEntrySource): string | null =>
+  source === "toggl" ? "Toggl" : source === "clockify" ? "Clockify" : null;
+
 export type TimeTitleSource = "task" | "ticket" | "entry";
 
 export interface TimeEntry {

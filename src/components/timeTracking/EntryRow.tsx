@@ -5,6 +5,7 @@ import {
   endsNextDay,
   entrySeconds,
   formatDuration,
+  importedFrom,
   projectColor,
   type TimeEntry,
 } from "../../utils/timeTracking.ts";
@@ -29,6 +30,8 @@ export function EntryRow({ entry, count = 1, deps, showPerson, selected, onSelec
   const money = useMoney(deps);
   const person = lookups.userById.get(entry.userId);
   const projectName = lookups.projectName(entry.projectId, entry.projectName);
+  // An imported entry's recorder ran the import; saying "Recorded by" made it look like their time.
+  const importTool = importedFrom(entry.source);
   const sec = entrySeconds(entry, nowMs);
   const range = entry.startAt
     ? `${clockTime(entry.startAt)}–${entry.endAt ? clockTime(entry.endAt) : "…"}${endsNextDay(entry) ? " +1" : ""}`
@@ -59,8 +62,11 @@ export function EntryRow({ entry, count = 1, deps, showPerson, selected, onSelec
         {entry.note && <span className="block truncate type-meta text-slate-500" data-testid="time-entry-note">{entry.note}</span>}
         {entry.legacyNote && <span className="block truncate type-meta text-slate-400">{entry.legacyNote}</span>}
         {entry.recordedByUserId !== entry.userId && (
-          <span className="block type-meta text-slate-400">
-            {t("Recorded by", "Zaznamenal", "Rögzítette")} {lookups.userById.get(entry.recordedByUserId)?.name ?? "—"}
+          <span className="block type-meta text-slate-400" data-testid="time-entry-recorded-by">
+            {importTool
+              ? t(`Imported from ${importTool} by`, `Z ${importTool} importoval`, `${importTool}-importot végezte:`)
+              : t("Recorded by", "Zaznamenal", "Rögzítette")}{" "}
+            {lookups.userById.get(entry.recordedByUserId)?.name ?? "—"}
           </span>
         )}
       </button>

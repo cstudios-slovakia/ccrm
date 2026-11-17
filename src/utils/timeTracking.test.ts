@@ -7,6 +7,7 @@ import {
   elapsedSeconds,
   formatDuration,
   groupByDay,
+  importedFrom,
   needsLinkConfirmation,
   parseDurationInput,
   projectColor,
@@ -46,6 +47,14 @@ const entry = (over: Partial<TimeEntry> = {}): TimeEntry => ({
   approvalStatus: null,
   createdAt: "2026-10-26 09:00:00",
   ...over,
+});
+
+test("only Toggl and Clockify entries count as imported", () => {
+  assert.equal(importedFrom("toggl"), "Toggl");
+  assert.equal(importedFrom("clockify"), "Clockify");
+  for (const s of ["timer", "manual", "day", "calendar", "timesheet", "extension", "activity", "ticket_legacy"] as const) {
+    assert.equal(importedFrom(s), null, s);
+  }
 });
 
 test("durations format as h:mm and h:mm:ss", () => {

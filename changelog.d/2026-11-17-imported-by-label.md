@@ -1,0 +1,2 @@
+- **Imported time entries say who imported them** (`src/utils/timeTracking.ts`, `timeTracking/EntryRow.tsx`, `EntryDrawer.tsx`): a Toggl or Clockify entry imported by someone else now reads "Imported from Toggl by Erik" instead of "Recorded by Erik", which made the person's own time look like the importer's. The entry drawer's provenance line says the same.
+- **Tests**: `timeTracking.test.ts` (`importedFrom`: only Toggl and Clockify count as imports).

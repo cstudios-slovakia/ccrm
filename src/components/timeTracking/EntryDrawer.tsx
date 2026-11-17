@@ -12,6 +12,7 @@ import { isAdminRoleName } from "../../utils/permissions.ts";
 import {
   clockTime,
   formatDuration,
+  importedFrom,
   isoFromLocal,
   needsLinkConfirmation,
   parseDurationInput,
@@ -40,8 +41,6 @@ const SOURCE_LABEL: Record<string, [string, string, string]> = {
   timesheet: ["timesheet", "výkaz", "munkalap"],
   extension: ["Chrome extension", "rozšírenie pre Chrome", "Chrome-bővítmény"],
   activity: ["activity capture", "zachytená aktivita", "rögzített tevékenység"],
-  toggl: ["Toggl import", "import z Toggl", "Toggl-import"],
-  clockify: ["Clockify import", "import z Clockify", "Clockify-import"],
   ticket_legacy: ["old ticket time", "starý čas tiketu", "régi jegyidő"],
 };
 
@@ -210,6 +209,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
   const person_ = deps.users.find((u) => u.id === entry.userId);
   const recordedBy = deps.users.find((u) => u.id === entry.recordedByUserId);
   const sourceText = SOURCE_LABEL[entry.source] ? t(...SOURCE_LABEL[entry.source]) : entry.source;
+  const importTool = importedFrom(entry.source);
   const originTask = entry.originType === "task" && entry.originId ? lookups.taskById.get(entry.originId) : null;
   const isAdmin = isAdminRoleName(deps.currentUser.role);
   const lockSettings = {
@@ -449,7 +449,9 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
 
           {/* Provenance */}
           <p className="type-meta text-slate-500" data-testid="entry-provenance">
-            {t("Recorded by", "Zaznamenal", "Rögzítette")} {recordedBy?.name ?? "—"} {t("with", "cez", "ezzel:")} {sourceText}
+            {importTool
+              ? `${t(`Imported from ${importTool} by`, `Z ${importTool} importoval`, `${importTool}-importot végezte:`)} ${recordedBy?.name ?? "—"}`
+              : `${t("Recorded by", "Zaznamenal", "Rögzítette")} ${recordedBy?.name ?? "—"} ${t("with", "cez", "ezzel:")} ${sourceText}`}
             {entry.createdAt ? ` ${t("on", "dňa", "ekkor:")} ${new Date(entry.createdAt.replace(" ", "T")).toLocaleDateString(locale)}` : ""}
             {originTask ? `, ${t("started from task", "spustené z úlohy", "feladatból indítva:")} “${originTask.title}”` : ""}
             {person_ && entry.userId !== entry.recordedByUserId ? ` · ${t("time of", "čas používateľa", "személy:")} ${person_.name}` : ""}
