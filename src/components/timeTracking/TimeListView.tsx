@@ -120,10 +120,10 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
   return (
     <div className="grid gap-4" data-testid="time-list">
       <StatGrid count={weekCost !== null ? 4 : 3}>
-        <StatTile label={t("Today", "Dnes", "Ma")} value={<ClockDigits value={formatDuration(totalSeconds(todays, nowMs))} data-testid="stat-today" />} />
+        <StatTile label={t("Today", "Dnes", "Ma")} value={<ClockDigits value={formatDuration(totalSeconds(todays, nowMs), true)} data-testid="stat-today" />} />
         <StatTile
           label={days.length > 7 ? t("This period", "Toto obdobie", "Ez az időszak") : t("This week", "Tento týždeň", "Ez a hét")}
-          value={<ClockDigits value={formatDuration(totalSeconds(week, nowMs))} data-testid="stat-week" />}
+          value={<ClockDigits value={formatDuration(totalSeconds(week, nowMs), true)} data-testid="stat-week" />}
           delta={target !== null ? <span data-testid="stat-target">{t("of", "z", "ennyiből:")} {formatDuration(target)} {t("target", "cieľ", "cél")}</span> : undefined}
         />
         <StatTile label={t("Billable", "Fakturovateľné", "Számlázható")} value={<span className="tabular-nums">{billable === null ? "—" : `${billable} %`}</span>} />
@@ -178,7 +178,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
                   </span>
                 )}
               </div>
-              <ClockDigits value={formatDuration(totalSeconds(list, nowMs))} className="font-semibold text-slate-900" />
+              <ClockDigits value={formatDuration(totalSeconds(list, nowMs), true)} className="font-semibold text-slate-900" />
             </div>
             <div role="table" className="divide-y divide-slate-100">
               {rows.map(({ entry, members }) => {

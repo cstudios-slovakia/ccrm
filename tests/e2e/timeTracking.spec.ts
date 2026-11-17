@@ -57,7 +57,7 @@ test.describe('Time tracking', () => {
     await expect(page.getByTestId('timer-bar')).toBeVisible();
     await expect(row(page, 'Návrh cenovej ponuky')).toBeVisible();
     // 1:30 + 0:45 logged by Erik today; Mária's hour is not his.
-    await expect(page.getByTestId('stat-today')).toHaveText('2:15');
+    await expect(page.getByTestId('stat-today')).toHaveText('2:15:00');
     await expect(row(page, 'Fakturácia')).toHaveCount(0);
   });
 
@@ -493,10 +493,10 @@ test.describe('Time tracking', () => {
     await page.reload();
     const group = row(page, 'Oprava od zákazníka');
     await expect(group).toHaveCount(1);
-    await expect(group.getByTestId('time-entry-duration')).toHaveText('1:22');
+    await expect(group.getByTestId('time-entry-duration')).toHaveText('1:22:00');
 
     await group.getByTestId('time-entry-group-toggle').click();
     await expect(row(page, 'Oprava od zákazníka')).toHaveCount(3);
-    await expect(row(page, 'Oprava od zákazníka').getByTestId('time-entry-duration')).toHaveText(['1:22', '0:37', '0:45']);
+    await expect(row(page, 'Oprava od zákazníka').getByTestId('time-entry-duration')).toHaveText(['1:22:00', '0:37:00', '0:45:00']);
   });
 });

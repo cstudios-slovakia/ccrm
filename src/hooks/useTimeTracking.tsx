@@ -238,16 +238,16 @@ export function TimeTrackingProvider({
     return () => window.clearInterval(id);
   }, [running?.id]);
 
-  // The browser tab shows the timer: "▶ 1:12 · CCRM".
+  // The browser tab shows the timer: "▶ 1:12:05 · CCRM". The prefix pattern also strips the
+  // older "▶ 1:12 · " form, in case a title was set before this version loaded.
   useEffect(() => {
     if (typeof document === "undefined") return;
-    const base = document.title.replace(/^▶ \d+:\d{2} · /, "");
+    const base = document.title.replace(/^▶ \d+:\d{2}(?::\d{2})? · /, "");
     if (!running) {
       if (document.title !== base) document.title = base;
       return;
     }
-    const mins = Math.floor(elapsedSeconds(running.startAt, nowMs) / 60);
-    document.title = `▶ ${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, "0")} · ${base}`;
+    document.title = `▶ ${formatDuration(elapsedSeconds(running.startAt, nowMs), true)} · ${base}`;
   }, [running, nowMs]);
 
   const ensureHolidayYears = useCallback(

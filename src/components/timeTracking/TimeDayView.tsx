@@ -191,8 +191,8 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
             {new Date(`${selected}T12:00:00`).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
           </h3>
           <p className="type-meta text-slate-500">
-            {wholeTeam && <>{t("Team logged", "Tím zaznamenal", "A csapat rögzített")} <ClockDigits value={formatDuration(teamTotal)} className="font-bold" /> · </>}
-            {t("you", "vy", "Ön")} <ClockDigits value={formatDuration(myTotal)} className="font-bold" data-testid="day-mine" /> {t("of", "z", "ennyiből:")} {formatDuration(perDayTarget(selected) / (wholeTeam ? people : 1))}
+            {wholeTeam && <>{t("Team logged", "Tím zaznamenal", "A csapat rögzített")} <ClockDigits value={formatDuration(teamTotal, true)} className="font-bold" /> · </>}
+            {t("you", "vy", "Ön")} <ClockDigits value={formatDuration(myTotal, true)} className="font-bold" data-testid="day-mine" /> {t("of", "z", "ennyiből:")} {formatDuration(perDayTarget(selected) / (wholeTeam ? people : 1))}
             {holiday && <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-micro font-semibold text-slate-600" data-testid="holiday-chip">{t("State holiday", "Štátny sviatok", "Állami ünnep")} · {holidayName(holiday, tt.workCountry, deps.language)}</span>}
           </p>
         </div>
@@ -289,7 +289,7 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
                 )}
                 <span className="ml-auto flex items-center gap-4">
                   {cost !== null && <span className="tabular-nums text-violet-700">{money(cost)}</span>}
-                  <ClockDigits value={formatDuration(totalSeconds(list, nowMs))} className="font-semibold text-slate-900" />
+                  <ClockDigits value={formatDuration(totalSeconds(list, nowMs), true)} className="font-semibold text-slate-900" />
                 </span>
               </div>
               <div role="table" className="divide-y divide-slate-100">
