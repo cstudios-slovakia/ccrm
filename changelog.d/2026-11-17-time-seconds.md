@@ -1,2 +1,0 @@
-- **Time tracking shows seconds everywhere the timer counts** (`hooks/useTimeTracking.tsx`, `timeTracking/EntryRow.tsx`, `TimeListView.tsx`, `TimeDayView.tsx`): the browser tab title (`▶ 0:01:28 · …`), the List's Today and This week tiles, each day's total, every entry row's duration and the Day view's totals now read `H:MM:SS`, so they tick together with the running timer instead of jumping once a minute. Targets, the day strip and the Timesheet and Team grids keep `H:MM`.
-- **Tests**: `timeTracking.spec.ts` duration assertions now expect seconds.
