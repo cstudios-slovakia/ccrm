@@ -145,6 +145,16 @@ test("identical consecutive entries collapse into one row with a count", () => {
   assert.deepEqual(rows.map((r) => [r.entry.id, r.members.length]), [["1", 2], ["3", 1], ["4", 1]]);
 });
 
+test("entries recorded by different people, or with different descriptions, stay separate rows", () => {
+  // The grouped row shows the first entry's "Recorded by" and description, so mixing them misled.
+  const byOther = collapseIdentical([entry({ id: "1", recordedByUserId: "u2" }), entry({ id: "2" })]);
+  assert.deepEqual(byOther.map((r) => r.members.length), [1, 1]);
+  const notes = collapseIdentical([entry({ id: "1", note: "A" }), entry({ id: "2", note: "B" })]);
+  assert.deepEqual(notes.map((r) => r.members.length), [1, 1]);
+  const blank = collapseIdentical([entry({ id: "1", note: null }), entry({ id: "2", note: "" })]);
+  assert.deepEqual(blank.map((r) => r.members.length), [2]);
+});
+
 test("a project keeps one colour from a fixed palette of eight", () => {
   assert.equal(projectColor("proj-1"), projectColor("proj-1"));
   const colours = new Set(Array.from({ length: 200 }, (_, i) => projectColor(`proj-${i}`)));

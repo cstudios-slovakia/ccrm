@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { SectionIcon } from "../icons/SectionIcon";
 import { Calendar, CalendarDays, LayoutGrid, List, Settings as SettingsIcon } from "lucide-react";
 import { Page, PageHeader, Tabs } from "../layout";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
-import { useTimeEntries } from "../../hooks/useTimeEntries";
-import { addDays } from "../../utils/holidays.ts";
-import { todayIso, type TimeEntry } from "../../utils/timeTracking.ts";
+import { useRecentProjects } from "../../hooks/useRecentProjects";
+import { type TimeEntry } from "../../utils/timeTracking.ts";
 import { EntryDrawer } from "./EntryDrawer";
 import { extraTimeTrackingTabs, type ExtraTimeTrackingTab } from "./extraTabs";
 import { TimeCalendarView } from "./TimeCalendarView";
@@ -50,19 +49,7 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
   const [open, setOpen] = useState<TimeEntry | null>(null);
   const remove = useEntryDeletion();
 
-  // Recent projects and per-project totals come from the last 30 days of the caller's own entries.
-  const today = todayIso();
-  const { entries: recentEntries } = useTimeEntries({ from: addDays(today, -30), to: today });
-  const { recentProjectIds, secondsByProject } = useMemo(() => {
-    const ids: string[] = [];
-    const seconds: Record<string, number> = {};
-    for (const e of [...recentEntries].sort((a, b) => (b.startAt ?? b.createdAt).localeCompare(a.startAt ?? a.createdAt))) {
-      if (!e.projectId) continue;
-      if (!ids.includes(e.projectId)) ids.push(e.projectId);
-      seconds[e.projectId] = (seconds[e.projectId] ?? 0) + (e.durationSec ?? 0);
-    }
-    return { recentProjectIds: ids, secondsByProject: seconds };
-  }, [recentEntries]);
+  const { recentProjectIds, secondsByProject } = useRecentProjects();
 
   useEffect(() => {
     setTab(tabFromRoute(route));

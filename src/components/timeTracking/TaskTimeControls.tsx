@@ -5,6 +5,7 @@ import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { isClosedProjectStatus } from "../../utils/projects";
 import { clientForTask, resolveTaskProject } from "../../utils/timeLinks.ts";
 import { elapsedSeconds, formatDuration } from "../../utils/timeTracking.ts";
+import { ClockDigits } from "./ClockDigits";
 import { TimeApiError, timeErrorMessage, updateEntry } from "../../utils/timeTrackingApi.ts";
 import type { Lead, Project, Task } from "../../types";
 import { readTimeCreate } from "./timeCreateBridge";
@@ -117,7 +118,7 @@ export function TaskTimeControls({
 
   const chip = (
     <span data-testid="task-time-chip" className="inline-flex items-center rounded-md bg-teal-50 px-1.5 py-0.5 type-overline tabular-nums text-teal-800">
-      {formatDuration(tracked)}
+      <ClockDigits value={formatDuration(tracked)} />
       {task.estimateMinutes ? <span className="text-teal-600"> / {formatDuration(task.estimateMinutes * 60)}</span> : null}
     </span>
   );

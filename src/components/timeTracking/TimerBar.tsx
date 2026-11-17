@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Euro, Play, Plus, Square, X } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { matchOpenTasks, matchOpenTickets } from "../../utils/timeLinks.ts";
@@ -13,6 +13,7 @@ import {
 import { TimeApiError, createEntry, timeErrorMessage, updateEntry } from "../../utils/timeTrackingApi.ts";
 import type { Task, Ticket } from "../../types";
 import { isClosedTicketStatus } from "../../utils/tickets";
+import { ClockDigits } from "./ClockDigits";
 import { ProjectPicker } from "./ProjectPicker";
 import { canRenameTitle, renameHint, useTimeLookups, type TimeDeps } from "./shared";
 
@@ -20,6 +21,8 @@ interface Props {
   deps: TimeDeps;
   recentProjectIds: string[];
   secondsByProject?: Record<string, number>;
+  /** A full-width last row (the header panel puts its "Open time tracking" link here). */
+  footer?: ReactNode;
 }
 
 /**
@@ -32,7 +35,7 @@ interface Props {
  * Under the row sits an optional Description of the work. It is typed before Start (or in manual
  * mode) and travels with the new entry; while a timer runs the same field edits the running entry.
  */
-export function TimerBar({ deps, recentProjectIds, secondsByProject }: Props) {
+export function TimerBar({ deps, recentProjectIds, secondsByProject, footer }: Props) {
   const tt = useTimeTracking();
   const { t, running, nowMs, settings } = tt;
   const lookups = useTimeLookups(deps);
@@ -216,7 +219,7 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject }: Props) {
   const canPick = deps.canPickProject && !(running && running.taskId && running.projectId && !deps.canPickProject);
 
   const titleField = running ? (
-    <div className="min-w-0 flex-1">
+    <div className="min-w-0 flex-1 basis-60">
       <input
         value={runningTitle}
         onChange={(e) => setRunningTitle(e.target.value)}
@@ -231,7 +234,7 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject }: Props) {
       {hint && rename.can && <div className="px-3 type-meta text-slate-400">{hint}</div>}
     </div>
   ) : (
-    <div ref={box} className="relative min-w-0 flex-1">
+    <div ref={box} className="relative min-w-0 flex-1 basis-60">
       {task || ticket ? (
         <div className="flex h-10 items-center gap-2 rounded-xl bg-teal-50 px-3 text-ui font-semibold text-teal-800" data-testid="timer-linked-task">
           <span className="truncate">{task?.title || ticket?.title || ticket?.subject}</span>
@@ -316,9 +319,7 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject }: Props) {
         </>
       ) : (
         <>
-          <span className="min-w-20 text-center text-title font-bold tabular-nums text-slate-900" data-testid="timer-elapsed">
-            {formatDuration(elapsed, true)}
-          </span>
+          <ClockDigits value={formatDuration(elapsed, true)} className="min-w-20 justify-center text-title font-bold text-slate-900" data-testid="timer-elapsed" />
           {running ? (
             <button type="button" onClick={onStop} disabled={busy} data-testid="timer-stop" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-rose-600 px-4 text-ui font-semibold text-white transition-all hover:bg-rose-700 active:scale-95 disabled:opacity-60 cursor-pointer">
               <Square className="size-4 fill-current" />
@@ -358,6 +359,7 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject }: Props) {
         data-testid="timer-note"
         className="h-9 w-full basis-full rounded-xl border border-transparent bg-transparent px-3 text-ui text-slate-700 outline-none placeholder:text-slate-400 hover:border-slate-200 focus:border-primary focus:bg-white"
       />
+      {footer}
     </div>
   );
 }

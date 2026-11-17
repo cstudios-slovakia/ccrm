@@ -5048,6 +5048,7 @@ ${log.payload || ''}
             canCreateTask={access.canEdit("tasks")}
             canCreateMeeting={access.canEdit("meetings")}
             canRunWorkflows={access.canEdit("automation")}
+            timeDeps={timeEnabled ? timeDeps : null}
           />
           {quickTaskOpen && taskAccess.create && (
             <QuickTaskModal

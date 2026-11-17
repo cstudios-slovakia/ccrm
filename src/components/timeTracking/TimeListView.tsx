@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { Surface } from "../layout";
 import { StatGrid, StatTile } from "../layout/StatGrid";
@@ -21,6 +21,7 @@ import {
 import { addDays } from "../../utils/holidays.ts";
 import { TimeApiError, deleteEntry, restoreEntry, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
 import { withoutHiddenCost } from "../../utils/timeTeam.ts";
+import { ClockDigits } from "./ClockDigits";
 import { EntryRow } from "./EntryRow";
 import { continueInput } from "./TimerBar";
 import { UnsortedListChip } from "./UnsortedInbox";
@@ -43,6 +44,8 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
   const money = useMoney(deps);
   const [anchor, setAnchor] = useState(todayIso());
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  /** Grouped rows the user opened, by the group's first entry id. */
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   /* PHASE4-VIEWING-AS */
   const providedView = useViewingAsOptional();
   const entriesFocus = useEntriesFocus();
@@ -117,10 +120,10 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
   return (
     <div className="grid gap-4" data-testid="time-list">
       <StatGrid count={weekCost !== null ? 4 : 3}>
-        <StatTile label={t("Today", "Dnes", "Ma")} value={<span className="tabular-nums" data-testid="stat-today">{formatDuration(totalSeconds(todays, nowMs))}</span>} />
+        <StatTile label={t("Today", "Dnes", "Ma")} value={<ClockDigits value={formatDuration(totalSeconds(todays, nowMs))} data-testid="stat-today" />} />
         <StatTile
           label={days.length > 7 ? t("This period", "Toto obdobie", "Ez az időszak") : t("This week", "Tento týždeň", "Ez a hét")}
-          value={<span className="tabular-nums" data-testid="stat-week">{formatDuration(totalSeconds(week, nowMs))}</span>}
+          value={<ClockDigits value={formatDuration(totalSeconds(week, nowMs))} data-testid="stat-week" />}
           delta={target !== null ? <span data-testid="stat-target">{t("of", "z", "ennyiből:")} {formatDuration(target)} {t("target", "cieľ", "cél")}</span> : undefined}
         />
         <StatTile label={t("Billable", "Fakturovateľné", "Számlázható")} value={<span className="tabular-nums">{billable === null ? "—" : `${billable} %`}</span>} />
@@ -175,28 +178,57 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
                   </span>
                 )}
               </div>
-              <span className="font-semibold tabular-nums text-slate-900">{formatDuration(totalSeconds(list, nowMs))}</span>
+              <ClockDigits value={formatDuration(totalSeconds(list, nowMs))} className="font-semibold text-slate-900" />
             </div>
             <div role="table" className="divide-y divide-slate-100">
-              {rows.map(({ entry, members }) => (
-                <EntryRow
-                  key={entry.id}
-                  entry={withoutHiddenCost(entry, tt.userId || "", tt.viewer.canCosts)}
-                  count={members.length}
-                  deps={deps}
-                  showPerson={wholeTeam}
-                  selected={selected.has(entry.id)}
-                  onSelect={(checked) =>
-                    setSelected((prev) => {
-                      const next = new Set(prev);
-                      for (const m of members) (checked ? next.add(m.id) : next.delete(m.id));
-                      return next;
-                    })
-                  }
-                  onOpen={onOpen}
-                  onContinue={viewScope === "me" || entry.userId === tt.userId ? (e) => void tt.start(continueInput(e)) : undefined}
-                />
-              ))}
+              {rows.map(({ entry, members }) => {
+                const visible = members.map((m) => withoutHiddenCost(m, tt.userId || "", tt.viewer.canCosts));
+                const isOpen = members.length > 1 && expanded.has(entry.id);
+                const toggleSelect = (ids: string[]) => (checked: boolean) =>
+                  setSelected((prev) => {
+                    const next = new Set(prev);
+                    for (const id of ids) (checked ? next.add(id) : next.delete(id));
+                    return next;
+                  });
+                const onContinue = viewScope === "me" || entry.userId === tt.userId ? (e: TimeEntry) => void tt.start(continueInput(e)) : undefined;
+                return (
+                  <Fragment key={entry.id}>
+                    <EntryRow
+                      entry={visible[0]}
+                      members={visible}
+                      expanded={isOpen}
+                      onToggleGroup={() =>
+                        setExpanded((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(entry.id)) next.delete(entry.id);
+                          else next.add(entry.id);
+                          return next;
+                        })
+                      }
+                      deps={deps}
+                      showPerson={wholeTeam}
+                      selected={members.every((m) => selected.has(m.id))}
+                      onSelect={toggleSelect(members.map((m) => m.id))}
+                      onOpen={onOpen}
+                      onContinue={onContinue}
+                    />
+                    {isOpen &&
+                      visible.map((m) => (
+                        <EntryRow
+                          key={m.id}
+                          entry={m}
+                          nested
+                          deps={deps}
+                          showPerson={wholeTeam}
+                          selected={selected.has(m.id)}
+                          onSelect={toggleSelect([m.id])}
+                          onOpen={onOpen}
+                          onContinue={onContinue}
+                        />
+                      ))}
+                  </Fragment>
+                );
+              })}
             </div>
           </Surface>
         );

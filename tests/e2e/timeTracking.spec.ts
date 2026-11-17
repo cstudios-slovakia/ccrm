@@ -455,4 +455,48 @@ test.describe('Time tracking', () => {
     await expect(button).toContainText(/Zastaviť|Stop|leállítása/);
     await expect(page.getByTestId('project-time-entry').filter({ hasText: /beží|running|fut/ })).toHaveCount(1);
   });
+
+  test('clicking the running header pill opens the timer bar under it; Stop only stops', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#tasks');
+    await page.getByTestId('header-timer-start').click();
+    await expect(page.getByTestId('header-timer-running')).toBeVisible();
+    await expect(page.getByTestId('header-timer-panel')).toHaveCount(0);
+
+    await page.getByTestId('header-timer-elapsed').click();
+    const panel = page.getByTestId('header-timer-panel');
+    await expect(panel).toBeVisible();
+    await expect(panel.getByTestId('timer-title')).toBeVisible();
+    await expect(panel.getByTestId('timer-note')).toBeVisible();
+    await expect(panel.getByTestId('timer-stop')).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+
+    // The QA workspace requires a project, so Stop asks for one first; the panel stays shut.
+    await page.getByTestId('header-timer-stop').click();
+    await expect(page.getByTestId('header-timer-panel')).toHaveCount(0);
+    await page.getByRole('button', { name: /Strecha Silvia — etapa 1/ }).click();
+    await expect(page.getByTestId('header-timer-start')).toBeVisible();
+    await expect(page.getByTestId('header-timer-panel')).toHaveCount(0);
+  });
+
+  test('a grouped row sums its entries and expands to list each one', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking');
+    await page.evaluate(async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      for (const durationSec of [37 * 60, 45 * 60]) {
+        await fetch('/api/time_entries.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', description: 'Oprava od zákazníka', projectId: 'project-1', entryDate: today, durationSec, billable: true, source: 'manual' }) });
+      }
+    });
+    await page.reload();
+    const group = row(page, 'Oprava od zákazníka');
+    await expect(group).toHaveCount(1);
+    await expect(group.getByTestId('time-entry-duration')).toHaveText('1:22');
+
+    await group.getByTestId('time-entry-group-toggle').click();
+    await expect(row(page, 'Oprava od zákazníka')).toHaveCount(3);
+    await expect(row(page, 'Oprava od zákazníka').getByTestId('time-entry-duration')).toHaveText(['1:22', '0:37', '0:45']);
+  });
 });

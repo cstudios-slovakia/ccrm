@@ -250,9 +250,21 @@ export const groupByDay = (entries: readonly TimeEntry[]): Map<string, TimeEntry
   return out;
 };
 
-/** What makes two entries "the same work" for the count badge in the List view. */
+/**
+ * What makes two entries "the same work" for the count badge in the List view. The grouped row
+ * shows the first entry's description and "Recorded by", so entries that differ there stay apart.
+ */
 const sameWork = (a: TimeEntry, b: TimeEntry): boolean =>
-  a.title === b.title && a.projectId === b.projectId && a.taskId === b.taskId && a.ticketId === b.ticketId && a.billable === b.billable && a.userId === b.userId && !a.running && !b.running;
+  a.title === b.title &&
+  a.projectId === b.projectId &&
+  a.taskId === b.taskId &&
+  a.ticketId === b.ticketId &&
+  a.billable === b.billable &&
+  a.userId === b.userId &&
+  a.recordedByUserId === b.recordedByUserId &&
+  (a.note ?? "") === (b.note ?? "") &&
+  !a.running &&
+  !b.running;
 
 /** Consecutive identical entries collapsed into one row with a count. */
 export const collapseIdentical = (entries: readonly TimeEntry[]): { entry: TimeEntry; members: TimeEntry[] }[] => {

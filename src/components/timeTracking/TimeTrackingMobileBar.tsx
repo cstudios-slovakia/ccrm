@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { CalendarDays, ListTodo, Plus, Square, Timer } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { elapsedSeconds, formatDuration } from "../../utils/timeTracking.ts";
+import { ClockDigits } from "./ClockDigits";
 
 interface Props {
   onNavigate: (route: string) => void;
@@ -34,7 +35,7 @@ export function TimeTrackingMobileBar({ onNavigate }: Props) {
       {running && (
         <div data-testid="mobile-running-card" className="fixed inset-x-3 bottom-20 z-40 rounded-3xl border border-rose-200 bg-white p-4 shadow-xl">
           <p className="type-overline text-rose-600">{t("Timer running", "Časovač beží", "Az időzítő fut")}</p>
-          <p className="text-metric tabular-nums text-slate-900">{elapsed}</p>
+          <ClockDigits value={elapsed} className="text-metric text-slate-900" />
           <p className="truncate text-body text-slate-700">{running.title || t("No title", "Bez názvu", "Nincs cím")}</p>
           <button
             type="button"

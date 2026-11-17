@@ -35,6 +35,7 @@ import { useUserPref } from "../utils/userPrefs";
 import { useFavorites } from "../utils/favorites";
 import { FavoritesDrawer } from "./FavoritesDrawer";
 import { HeaderTimerPill } from "./timeTracking/HeaderTimerPill";
+import type { TimeDeps } from "./timeTracking/shared";
 import { SidebarSettings } from "./SidebarSettings";
 import { ViewSizeSettings } from "./ViewSizeSettings";
 import {
@@ -65,6 +66,8 @@ interface HeaderProps {
     canCreateMeeting?: boolean;
     /** Manual workflow triggers run automations, so they follow automation edit rights. */
     canRunWorkflows?: boolean;
+    /** Lets the running-timer pill open the full timer bar under itself. */
+    timeDeps?: TimeDeps | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -83,6 +86,7 @@ export const Header: React.FC<HeaderProps> = ({
     canCreateTask = true,
     canCreateMeeting = true,
     canRunWorkflows = true,
+    timeDeps,
 }) => {
     const t = (en: string, sk: string, hu: string) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -801,7 +805,7 @@ export const Header: React.FC<HeaderProps> = ({
 
                     {/* Utilities */}
                     <div className="flex items-center gap-1 xs:gap-1.5 sm:gap-2.5 md:gap-4 shrink-0">
-                        <HeaderTimerPill />
+                        <HeaderTimerPill deps={timeDeps} />
 
                         {/* Mobile Search Button */}
                         <button
