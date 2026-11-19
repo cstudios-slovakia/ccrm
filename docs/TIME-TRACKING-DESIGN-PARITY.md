@@ -317,8 +317,11 @@ Commits on `css-main` (the same changes were cherry-picked to `1.13-nectarine`).
 | E | `4e22c843` | E3, E5, E6, K3, K4, P1 | E4: the picker has no "this week" seconds (needs a new prop from its callers); E8: search does not match a project code, wording kept |
 | G | `4ad809d3` | X2, X3, X4, X6, X9 | X7 held: showing project names needs `projects` passed from `TimeTrackingSettingsPanel.tsx` (held file) |
 | Review | `efd1c277`, `f6f77498` | Calendar totals count worked time; translated week labels; dark-mode project names; selected project keeps a check (accessibility, over the canvas); extension switches toggle from their text; task-drawer costs slate (SC5) | |
-| D | — | — | held: tt2 phase 9 was editing `TimeReportsView.tsx` / `TimeSalaryReport.tsx` during this pass |
-| held | — | — | E1, E9–E11, E13, E14, S2, S4, S5, S7, H2, X7, X16b, all of D (R2, R4, R7, R8, R12–R15), drawer cost colour (SC5) |
+| D | `5610a556` | R2, R4, R7, R8 (project dot and client line), R12–R15 | R8 Billable value / Margin columns: the report carries no billable value |
+| H1 | `14d8781a` | E1, E9, E10, E11, E13, E14, drawer cost slate (SC5) | |
+| H2 | `1261b3ee` | S2, S4, S5 (new `RateCardPreview`), S7, X7, H2 | |
+| K (owner approved, 2026-11-20) | `a55d077f` | K5 "+ Add time manually" in the task drawer, P2 "Add time" on the project Time tab | |
+| Review 2 | `aa5addc5`, `97530bb7`, `19817db9` | cost formula uses worked time (≈ when rounded), Margin hidden for parallel entries, honest hints and setting notes, rate-freeze wording per V2 D4.3, preview filters and "before paid leave", company-wide salary basis, project names in watched sites, salary title casing | |
 
 ## Checks and QA (2026-11-19)
 
