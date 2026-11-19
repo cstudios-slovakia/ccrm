@@ -47,6 +47,13 @@ export interface StartOptions {
   anchor?: Element | DOMRect | null;
   /** Skip the preference: the caller already chose. */
   mode?: StartMode;
+  /** An Undo toast with this text even when nothing was stopped (a status-driven start, D10.2). */
+  notice?: (entry: TimeEntry) => string;
+}
+
+/** Options of a stop or pause; `reason: 'status'` = fired by a task status change (D10.2). */
+export interface EndOptions {
+  reason?: "status";
 }
 
 /**
@@ -94,11 +101,11 @@ export interface TimeTrackingContextValue {
    * Stops one running entry (`id`), or the only one when `id` is omitted. Resolves null when the
    * user cancelled the "pick a project" step or the stop failed (the running set is then re-read).
    */
-  stop: (id?: string) => Promise<TimeEntry | null>;
+  stop: (id?: string, opts?: EndOptions) => Promise<TimeEntry | null>;
   /** Stops every running entry; resolves the stopped ones, or null when cancelled or failed. */
   stopAll: () => Promise<TimeEntry[] | null>;
   /** Pauses one running entry (`id`), or the only one when omitted; resolves false when nothing was paused. */
-  pause: (id?: string) => Promise<boolean>;
+  pause: (id?: string, opts?: EndOptions) => Promise<boolean>;
   pauseAll: () => Promise<boolean>;
   /** Resumes one paused entry (`id`), or the only one when omitted: a new running entry continues it. */
   resume: (id?: string) => Promise<boolean>;
@@ -111,7 +118,9 @@ export interface TimeTrackingContextValue {
   reloadSettings: () => Promise<void>;
   setSettingsLocal: (s: TimeTrackingSettings) => void;
   /** Raised by the module when the "pick a project" step is needed (rendered by the provider's owner). */
-  projectRequest: { resolve: (projectId: string | null | undefined) => void } | null;
+  projectRequest: { resolve: (projectId: string | null | undefined) => void; purpose?: "start" | "stop" } | null;
+  /** Opens that dialog for a start (a status-driven start on a task with several projects, D10.2). */
+  requestProject: (purpose: "start" | "stop") => Promise<string | null | undefined>;
   notify: (message: string, variant?: "error" | "warning") => void;
 }
 
@@ -152,6 +161,7 @@ const Ctx = createContext<TimeTrackingContextValue>({
   reloadSettings: async () => {},
   setSettingsLocal: () => {},
   projectRequest: null,
+  requestProject: async () => null,
   notify: () => {},
 });
 
@@ -404,9 +414,10 @@ export function TimeTrackingProvider({
   const holidaysFallback = useMemo(() => Object.values(holidayYears).some((y) => y.fallback), [holidayYears]);
 
   const askProject = useCallback(
-    () =>
+    (purpose: "start" | "stop" = "stop") =>
       new Promise<string | null | undefined>((resolve) => {
         setProjectRequest({
+          purpose,
           resolve: (id) => {
             setProjectRequest(null);
             resolve(id);
@@ -478,11 +489,13 @@ export function TimeTrackingProvider({
 
   /** "Timer started on X. Y was stopped at 0:42." with Undo, which reopens every stopped entry. */
   const offerUndo = useCallback(
-    (entry: TimeEntry, stopped: TimeEntry[]) => {
-      if (!stopped.length || typeof window === "undefined" || !window.showUndoToast) return;
+    (entry: TimeEntry, stopped: TimeEntry[], notice?: (entry: TimeEntry) => string) => {
+      if ((!stopped.length && !notice) || typeof window === "undefined" || !window.showUndoToast) return;
       const name = entry.title || "…";
       let message: string;
-      if (stopped.length === 1) {
+      if (!stopped.length && notice) {
+        message = notice(entry);
+      } else if (stopped.length === 1) {
         const was = formatDuration(stopped[0].durationSec, true);
         const old = stopped[0].title || "…";
         message = t(
@@ -519,7 +532,7 @@ export function TimeTrackingProvider({
   );
 
   const runStart = useCallback(
-    async (input: EntryInput, mode: StartMode | undefined, anchor: DOMRect | null): Promise<TimeEntry | null> => {
+    async (input: EntryInput, mode: StartMode | undefined, anchor: DOMRect | null, notice?: StartOptions["notice"]): Promise<TimeEntry | null> => {
       try {
         const res = await startTimer({ billable: settingsRef.current.billableByDefault, ...input }, mode);
         if (res.alreadyRunning) {
@@ -536,7 +549,7 @@ export function TimeTrackingProvider({
             : [res.entry],
         );
         bumpTimers();
-        offerUndo(res.entry, res.stoppedAll);
+        offerUndo(res.entry, res.stoppedAll, notice);
         return res.entry;
       } catch (e) {
         if (e instanceof TimeApiError && e.code === "already_running" && e.entry) {
@@ -556,7 +569,7 @@ export function TimeTrackingProvider({
             runningCount: runningRef.current.length,
             message: timeErrorMessage(e.code, t, e.details),
           });
-          return choice ? runStart(input, "switch", anchor) : null;
+          return choice ? runStart(input, "switch", anchor, notice) : null;
         }
         if (e instanceof TimeApiError && (e.code === "same_project" || e.code === "parallel_limit")) void refreshRunning();
         fail(e);
@@ -584,7 +597,7 @@ export function TimeTrackingProvider({
         if (choice.remember) void saveStartWhileRunning(choice.mode);
         resolved = choice.mode;
       }
-      return runStart(input, resolved === "plain" ? undefined : resolved, anchor);
+      return runStart(input, resolved === "plain" ? undefined : resolved, anchor, opts.notice);
     },
     [askMode, runStart, saveStartWhileRunning],
   );
@@ -599,25 +612,28 @@ export function TimeTrackingProvider({
   );
 
   const stop = useCallback(
-    async (id?: string): Promise<TimeEntry | null> => {
+    async (id?: string, opts: EndOptions = {}): Promise<TimeEntry | null> => {
       const current = runningRef.current;
       if (!id && !current.length) return null;
       const targetId = id ?? (current.length === 1 ? current[0].id : undefined);
+      const reason = opts.reason ? { reason: opts.reason } : {};
       try {
         let stopped: TimeEntry;
         try {
-          stopped = await stopTimer(targetId ? { id: targetId } : {});
+          stopped = await stopTimer({ ...(targetId ? { id: targetId } : {}), ...reason });
         } catch (e) {
           if (e instanceof TimeApiError && e.code === "project_required") {
             // "Require a project before Stop": open the picker instead of failing.
             const projectId = await askProject();
             if (!projectId) return null;
-            stopped = await stopTimer({ ...(targetId ? { id: targetId } : {}), projectId });
+            stopped = await stopTimer({ ...(targetId ? { id: targetId } : {}), projectId, ...reason });
           } else {
             throw e;
           }
         }
         applyRunning(runningRef.current.filter((e) => e.id !== stopped.id));
+        // A paused item lost its marker: the paused list changed on the server too.
+        if (pausedRef.current.some((e) => e.id === stopped.id)) void refreshRunning();
         bumpTimers();
         return stopped;
       } catch (e) {
@@ -625,7 +641,7 @@ export function TimeTrackingProvider({
         return null;
       }
     },
-    [applyRunning, askProject, bumpTimers, failStop],
+    [applyRunning, askProject, bumpTimers, failStop, refreshRunning],
   );
 
   const stopAll = useCallback(async (): Promise<TimeEntry[] | null> => {
@@ -668,11 +684,11 @@ export function TimeTrackingProvider({
   }, [bumpTimers, refreshRunning]);
 
   const pause = useCallback(
-    async (id?: string): Promise<boolean> => {
+    async (id?: string, opts: EndOptions = {}): Promise<boolean> => {
       const targetId = id ?? (runningRef.current.length === 1 ? runningRef.current[0].id : undefined);
       if (!targetId) return false;
       try {
-        const done = await pauseEntries({ id: targetId });
+        const done = await pauseEntries({ id: targetId, ...(opts.reason ? { reason: opts.reason } : {}) });
         await afterPauseChange();
         return done.length > 0;
       } catch (e) {
@@ -763,6 +779,7 @@ export function TimeTrackingProvider({
     reloadSettings,
     setSettingsLocal: setSettings,
     projectRequest,
+    requestProject: askProject,
     notify: notifyToast,
   };
   return (

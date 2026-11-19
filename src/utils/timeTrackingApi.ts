@@ -291,7 +291,8 @@ export const startTimer = async (input: EntryInput, mode?: StartMode): Promise<S
 };
 
 /** Stops one entry; without `id` the single running one (409 `ambiguous` while several run). */
-export const stopTimer = async (opts: { id?: string; projectId?: string | null } = {}): Promise<TimeEntry> =>
+/** `reason: 'status'`: fired by a task status change (D10.2), the entry records end_reason 'status'. */
+export const stopTimer = async (opts: { id?: string; projectId?: string | null; reason?: "status" } = {}): Promise<TimeEntry> =>
   (await post("stop", opts)).entry as TimeEntry;
 
 /** Stops every running entry of the caller; resolves the stopped ones (empty when nothing ran). */
@@ -309,7 +310,7 @@ export const undoStart = async (newId: string, stoppedIds: string[] = []): Promi
 };
 
 /** D6: pause one running item (`id`) or every one (`all`). The entries end now and keep a resumable marker. */
-export const pauseEntries = async (opts: { id: string } | { all: true }): Promise<TimeEntry[]> =>
+export const pauseEntries = async (opts: ({ id: string } | { all: true }) & { reason?: "status" }): Promise<TimeEntry[]> =>
   ((await post("pause", opts)).paused as TimeEntry[] | undefined) ?? [];
 
 export interface ResumeResult {

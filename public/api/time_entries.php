@@ -1223,6 +1223,8 @@ if ($action === 'start') {
 if ($action === 'stop') {
     $id = ccrm_tt_nullable_id($body['id'] ?? null);
     $all = $id === null && !empty($body['all']);
+    // D10.2: a stop fired by a task status change records end_reason 'status'; anything else is 'user'.
+    $stopReason = ($body['reason'] ?? null) === 'status' ? 'status' : 'user';
     if ($id !== null) {
         $s = $pdo->prepare("SELECT * FROM `time_entries` WHERE `id` = ? AND `deleted_at` IS NULL");
         $s->execute([$id]);
@@ -1241,7 +1243,7 @@ if ($action === 'stop') {
                 try {
                     $pdo->beginTransaction();
                     ccrm_tt_lock_user($pdo, (string)$row['user_id']);
-                    ccrm_tt_clear_pause($pdo, (string)$row['id'], 'user');
+                    ccrm_tt_clear_pause($pdo, (string)$row['id'], $stopReason);
                     $pdo->commit();
                 } catch (\Throwable $e) {
                     if ($pdo->inTransaction()) {
@@ -1353,8 +1355,8 @@ if ($action === 'stop') {
                 $endUtc = $given;
             }
         }
-        // end_reason 'user'; a row stopped meanwhile is left as it is; settled inside.
-        ccrm_tt_end_entries($pdo, $owner, array_column($rows, 'id'), $endUtc, 'user', null, $projectId);
+        // end_reason 'user' ('status' from a status change); a row stopped meanwhile is left as it is; settled inside.
+        ccrm_tt_end_entries($pdo, $owner, array_column($rows, 'id'), $endUtc, $stopReason, null, $projectId);
         ccrm_tt_presence_touch($pdo, $owner, $nowUtc); // stopping one of several: anchor = now; the last one: NULL
         $pdo->commit();
     } catch (\Throwable $e) {
@@ -1375,7 +1377,7 @@ if ($action === 'stop') {
  * Time tracking v2, phase 6 (D6, C8, C17): POST action=pause and action=resume.
  * Ending entries, markers and expiry live in time_pause_lib.php.
  *
- *   POST pause  {id} | {all: true}
+ *   POST pause  {id} | {all: true}, reason?: 'manual' (default) | 'status' (a task status change, D10.2)
  *       Under the owner's lock, end the running item(s) now and keep a resumable marker:
  *       `paused_at` = the end, `pause_reason` = 'manual', `resume_until` = NULL (= until the day's
  *       autoStopAt, C17). `end_reason` stays NULL (a pause is not a stop, see time_pause_lib.php).
@@ -1402,6 +1404,8 @@ if ($action === 'stop') {
 
 if ($action === 'pause') {
     $id = ccrm_tt_nullable_id($body['id'] ?? null);
+    // D10.2: a pause fired by a task status change keeps pause_reason 'status' (manual otherwise).
+    $pauseReason = ($body['reason'] ?? null) === 'status' ? 'status' : 'manual';
     if ($id === null && empty($body['all'])) {
         ccrm_te_fail('bad_request', 400);
     }
@@ -1429,7 +1433,7 @@ if ($action === 'pause') {
         $pdo->beginTransaction();
         ccrm_tt_lock_user($pdo, $owner);
         $ids = $id !== null ? [$id] : array_column(ccrm_tt_running_rows($pdo, $owner, true), 'id');
-        $ended = ccrm_tt_end_entries($pdo, $owner, $ids, ccrm_tt_now_utc(), null, ['reason' => 'manual', 'until' => null]);
+        $ended = ccrm_tt_end_entries($pdo, $owner, $ids, ccrm_tt_now_utc(), null, ['reason' => $pauseReason, 'until' => null]);
         $pausedIds = array_map('strval', array_column($ended, 'id'));
         if ($ended) {
             ccrm_tt_presence_touch($pdo, $owner, ccrm_tt_now_utc()); // a deliberate action; nothing left running: NULL

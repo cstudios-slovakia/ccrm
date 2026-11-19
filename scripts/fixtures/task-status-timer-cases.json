@@ -1,0 +1,20 @@
+{
+  "_comment": "Shared by src/utils/taskStatusTimer.test.ts and scripts/test-task-status-timer.php (D10.2). timerActionForStatusChange(old, new, map) / ccrm_tt_timer_action_for_status_change(): the new status's mapped action, only when the status really changed (trimmed); null otherwise. Invalid map values are ignored.",
+  "map": { "In progress": "start", "Waiting": "pause", "Done": "stop" },
+  "cases": [
+    { "name": "To do -> In progress starts", "old": "To do", "new": "In progress", "expect": "start" },
+    { "name": "In progress -> Waiting pauses", "old": "In progress", "new": "Waiting", "expect": "pause" },
+    { "name": "In progress -> Done stops", "old": "In progress", "new": "Done", "expect": "stop" },
+    { "name": "Waiting -> Done stops", "old": "Waiting", "new": "Done", "expect": "stop" },
+    { "name": "unchanged status: nothing", "old": "In progress", "new": "In progress", "expect": null },
+    { "name": "only whitespace differs: nothing", "old": "Done", "new": " Done ", "expect": null },
+    { "name": "trimmed new status still matches", "old": "To do", "new": "In progress ", "expect": "start" },
+    { "name": "unmapped status: nothing", "old": "In progress", "new": "Review", "expect": null },
+    { "name": "empty new status: nothing", "old": "Done", "new": "", "expect": null },
+    { "name": "missing old status (null) counts as a change", "old": null, "new": "Done", "expect": "stop" },
+    { "name": "names are case-sensitive", "old": "To do", "new": "done", "expect": null },
+    { "name": "empty map: nothing", "old": "To do", "new": "In progress", "map": {}, "expect": null },
+    { "name": "invalid action value is ignored", "old": "To do", "new": "In progress", "map": { "In progress": "run", "Done": "stop" }, "expect": null },
+    { "name": "non-string action value is ignored", "old": "To do", "new": "Done", "map": { "Done": 1 }, "expect": null }
+  ]
+}

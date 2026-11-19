@@ -9,6 +9,8 @@ import { WhatsAppModule } from "./components/whatsapp/WhatsAppModule";
 import { buildDemoDirectory } from "./components/whatsapp/demo/demoDirectory";
 import { crmHashForRecord } from "./components/whatsapp/lib/routes";
 import { ProjectRequestDialog } from "./components/timeTracking/ProjectRequestDialog";
+import { TaskStatusTimerBridge } from "./components/timeTracking/TaskStatusTimerBridge";
+import { reportLocalTaskEdit } from "./utils/taskStatusTimerHook";
 import type { TimeDeps } from "./components/timeTracking/shared";
 import { canEditTask as userMayEditTask } from "./utils/taskSelectors";
 import { QuickTaskModal, composerOriginFrom, type ComposerOrigin } from "./components/QuickTaskModal";
@@ -1978,6 +1980,7 @@ ${log.payload || ''}
     setTasks(prev => {
       const nextTasks = typeof newTasks === "function" ? newTasks(prev) : newTasks;
       tasksRef.current = nextTasks;
+      reportLocalTaskEdit(prev, nextTasks); // D10.2: status -> the current user's own timer
       pushStateToServer(undefined, nextTasks);
       return nextTasks;
     });
@@ -4903,7 +4906,7 @@ ${log.payload || ''}
       leadSources={leadSources}
       canCreate={access.canEdit("leads") || access.canEdit("clients")}
     >
-    {timeDeps && timeEnabled && <ProjectRequestDialog deps={timeDeps} />}
+    {timeDeps && timeEnabled && <><ProjectRequestDialog deps={timeDeps} /><TaskStatusTimerBridge deps={timeDeps} /></>}
     <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50 transition-colors duration-[230ms]">
       {/* Dynamic Aurora Ambient Background Blobs (Themed per active view) */}
       <AuroraBackground

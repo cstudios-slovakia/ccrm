@@ -43,6 +43,7 @@
     "test:rbac": "node --experimental-strip-types scripts/probe-rbac/run.mjs",
     "test:time-tracking": "node --experimental-strip-types scripts/probe-time-tracking/run.mjs",
     "test:time-cost": "php scripts/test-time-cost.php",
+    "test:task-status-timer": "php scripts/test-task-status-timer.php",
     "test:time-presence-push": "php scripts/test-time-presence-push.php",
     "test:time-allocation": "php scripts/test-time-allocation.php",
     "test:recurring-tasks": "php scripts/test-recurring-tasks.php",
