@@ -36,7 +36,7 @@ if (!function_exists('ccrm_tt_default_settings')) {
             'weeklyApproval' => false,
             'rounding' => ['minutes' => 0, 'mode' => 'nearest'],
             'extension' => ['enabled' => true, 'activityCaptureAllowed' => true, 'unsortedRetentionDays' => 30],
-            'parallel' => ['enabled' => false, 'maxParallel' => 4, 'sameProject' => 'differentTasks'],
+            'parallel' => ['enabled' => true, 'maxParallel' => 4, 'sameProject' => 'differentTasks'],
             // TT2 D7.1: the presence cycle (question after promptAfter, automatic pause at the deadline).
             'presence' => ['enabled' => true, 'promptAfterMinutes' => 50, 'confirmWindowMinutes' => 10, 'resumeWindowMinutes' => 10, 'trimTo' => 'prompt'],
             'ticketTimeVisibleToClients' => false,

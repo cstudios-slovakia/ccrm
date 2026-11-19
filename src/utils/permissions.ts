@@ -193,14 +193,15 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
     permissions: [access("meetings"), deleteToggle("meetings")],
   },
   {
-    // Everyone who may use the module tracks their own time; the other three are what a manager adds.
+    // Everyone who may use the module tracks their own time, in parallel too (C4: on by default);
+    // team, costs and the salary report are what a manager adds.
     id: "time_tracking",
     permissions: [
       access("time_tracking", "edit", "nothing"),
       toggle("time_tracking_team", "nothing", "nothing", { key: "time_tracking", level: "view" }),
       toggle("time_tracking_costs", "nothing", "nothing", { key: "time_tracking", level: "view" }),
       toggle("time_tracking_salary_report", "nothing", "nothing", { key: "time_tracking", level: "view" }),
-      toggle("time_tracking_parallel", "nothing", "nothing", { key: "time_tracking", level: "edit" }),
+      toggle("time_tracking_parallel", "edit", "edit", { key: "time_tracking", level: "edit" }),
     ],
   },
   {
@@ -391,7 +392,7 @@ export const employeeRolePermissions = (): Record<string, PermissionValue> => ({
   time_tracking_team: "nothing",
   time_tracking_costs: "nothing",
   time_tracking_salary_report: "nothing",
-  time_tracking_parallel: "nothing",
+  time_tracking_parallel: "edit",
   whatsapp: "nothing",
   newsletter: "nothing",
   newsletter_send: "nothing",

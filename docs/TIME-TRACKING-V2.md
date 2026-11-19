@@ -316,7 +316,7 @@ so a later change of mind is a setting change, not a rebuild.
 | C1 | ✅ | Each parallel project receives the **full** tracked time (billing, budgets, retainers). The person's working time and cost count each real minute **once**, split equally between the entries running in that minute. | 1 |
 | C2 | ✅ | A monthly salary's hourly cost is derived from the days the person can actually work that month: working days minus public holidays minus leave. Replaces TIME-TRACKING C6.6. | 3 |
 | C3 | ✅ | **Parallel is always deliberate.** A second Start while something runs asks "Switch" or "Run in parallel" (remembered per user: ask / switch / parallel). It never adds silently. | 4, 5 |
-| C4 | ✅ | Parallel tracking is off until a company turns it on, is a role permission (`time_tracking_parallel`), and has a cap `maxParallel` (default 4). | 4 |
+| C4 | ✅ | Parallel tracking is **on by default** (a company can turn it off), is a role permission (`time_tracking_parallel`, granted to every role by default; an administrator can take it away per role), and has a cap `maxParallel` (default 4). The permission is the timer **owner's**, also when a manager acts for them. Changed 2026-11-19 (was: off until a company turns it on, no role has it). | 4 |
 | C5 | ✅ | The same project may run in parallel only for **different tasks or tickets** (setting `sameProject`: `differentTasks` \| `never` \| `always`). The identical target never runs twice. | 4 |
 | C6 | ✅ | **One presence cycle per user,** not per entry. Any deliberate timer action (start, resume, stop one of several, edit a running entry) counts as an answer and restarts the 50 minutes. | 6, 7 |
 | C7 | ✅ | When nobody answers, the entries end at **the moment of the question** (minute 50). The unanswered ten minutes are not kept. Setting `trimTo`: `prompt` \| `deadline`. | 6 |
@@ -520,12 +520,12 @@ using the presence ones.
 ### D5.2 Settings and permission
 
 ```ts
-parallel: { enabled: boolean;                       // false (C4)
+parallel: { enabled: boolean;                       // true (C4)
             maxParallel: number;                    // 4
             sameProject: 'differentTasks' | 'never' | 'always' }   // C5
 ```
 
-RBAC toggle `time_tracking_parallel` (needs `time_tracking` ≥ edit; follow "Adding a permission"
+RBAC toggle `time_tracking_parallel`, default `edit` for every role, stored or new (needs `time_tracking` ≥ edit; follow "Adding a permission"
 in `docs/db_integration_notes/RBAC_SYSTEM.md`). Per-user preference `startWhileRunning`:
 `ask | switch | parallel` (default `ask`), stored next to the user's other time-tracking
 preferences.

@@ -155,7 +155,7 @@ export const DEFAULT_TIME_TRACKING_SETTINGS: TimeTrackingSettings = {
   weeklyApproval: false,
   rounding: { minutes: 0, mode: "nearest" },
   extension: { enabled: true, activityCaptureAllowed: true, unsortedRetentionDays: 30 },
-  parallel: { enabled: false, maxParallel: 4, sameProject: "differentTasks" },
+  parallel: { enabled: true, maxParallel: 4, sameProject: "differentTasks" },
   presence: { enabled: true, promptAfterMinutes: 50, confirmWindowMinutes: 10, resumeWindowMinutes: 10, trimTo: "prompt" },
   ticketTimeVisibleToClients: false,
 };

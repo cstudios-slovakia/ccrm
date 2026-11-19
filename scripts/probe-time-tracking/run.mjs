@@ -573,14 +573,14 @@ async function main() {
     }
     section('T15: parallel timers (phase 4)');
     {
-      // D5.1–D5.3. Erik (role Employee, index 2 of ROLES_RBAC in setup) gets `time_tracking_parallel` here and loses it at the end;
+      // D5.1–D5.3. Erik (role Employee, index 2 of ROLES_RBAC in setup) gets `time_tracking_parallel` here and has it set to `nothing` at the end (the default is now `edit`, so removing the key would grant it);
       // `parallel` settings are written straight into TIME_TRACKING_SETTINGS and removed at the end. requireProjectToStop is still
       // false (T13 switched it off; restored after this section).
       const runningRows = () => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL ORDER BY start_at, id`);
       const setParallel = (p) => sql(`UPDATE system_settings SET value = JSON_SET(value, '$.parallel', CAST(${q(JSON.stringify(p))} AS JSON)) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
       const grant = (on) => sql(on
         ? `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'edit') WHERE \`key\` = 'ROLES_RBAC'`
-        : `UPDATE system_settings SET value = JSON_REMOVE(value, '$[2].permissions.time_tracking_parallel') WHERE \`key\` = 'ROLES_RBAC'`);
+        : `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'nothing') WHERE \`key\` = 'ROLES_RBAC'`);
       const iso = (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
       const ON = { enabled: true, maxParallel: 4, sameProject: 'differentTasks' };
 
@@ -697,7 +697,7 @@ async function main() {
       await te(S.erik, { action: 'stop', all: true });
       const grantPm = (on) => sql(on
         ? `UPDATE system_settings SET value = JSON_SET(value, '$[1].permissions.time_tracking_parallel', 'edit') WHERE \`key\` = 'ROLES_RBAC'`
-        : `UPDATE system_settings SET value = JSON_REMOVE(value, '$[1].permissions.time_tracking_parallel') WHERE \`key\` = 'ROLES_RBAC'`);
+        : `UPDATE system_settings SET value = JSON_SET(value, '$[1].permissions.time_tracking_parallel', 'nothing') WHERE \`key\` = 'ROLES_RBAC'`);
       grant(false);
       grantPm(true);
       const c1 = await te(S.erik, { action: 'start', description: 'T15b Erik own' });
@@ -798,7 +798,7 @@ async function main() {
       const setParallel = (p) => sql(`UPDATE system_settings SET value = JSON_SET(value, '$.parallel', CAST(${q(JSON.stringify(p))} AS JSON)) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
       const grant = (on) => sql(on
         ? `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'edit') WHERE \`key\` = 'ROLES_RBAC'`
-        : `UPDATE system_settings SET value = JSON_REMOVE(value, '$[2].permissions.time_tracking_parallel') WHERE \`key\` = 'ROLES_RBAC'`);
+        : `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'nothing') WHERE \`key\` = 'ROLES_RBAC'`);
       const iso = (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
       const ext = (method, action, body, key) =>
         fetch(`${BASE}/ttprobe/api/time_tracker_ext.php${method === 'GET' ? `?action=${action}` : ''}`, {
@@ -858,7 +858,7 @@ async function main() {
       const setParallel = (p) => sql(`UPDATE system_settings SET value = JSON_SET(value, '$.parallel', CAST(${q(JSON.stringify(p))} AS JSON)) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
       const grant = (on) => sql(on
         ? `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'edit') WHERE \`key\` = 'ROLES_RBAC'`
-        : `UPDATE system_settings SET value = JSON_REMOVE(value, '$[2].permissions.time_tracking_parallel') WHERE \`key\` = 'ROLES_RBAC'`);
+        : `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'nothing') WHERE \`key\` = 'ROLES_RBAC'`);
       const ON = { enabled: true, maxParallel: 4, sameProject: 'differentTasks' };
       const token = 'ccrm_mcp_probe_tt_erik18_' + '0'.repeat(38);
       sql(`INSERT INTO mcp_keys (id, user_id, key_hash, key_prefix, name, created_at) VALUES ('pk-tt-erik18', 'tt-erik', SHA2(${q(token)}, 256), 'ccrm_mcp_p...', 'probe T18', NOW() - INTERVAL 1 DAY);`);
@@ -939,7 +939,7 @@ async function main() {
       const setParallel = (p) => sql(`UPDATE system_settings SET value = JSON_SET(value, '$.parallel', CAST(${q(JSON.stringify(p))} AS JSON)) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
       const grant = (on) => sql(on
         ? `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'edit') WHERE \`key\` = 'ROLES_RBAC'`
-        : `UPDATE system_settings SET value = JSON_REMOVE(value, '$[2].permissions.time_tracking_parallel') WHERE \`key\` = 'ROLES_RBAC'`);
+        : `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'nothing') WHERE \`key\` = 'ROLES_RBAC'`);
       const runningNow = () => api(S.erik, 'time_entries.php', { query: '?running=1' });
 
       await te(S.erik, { action: 'stop', all: true }); // also clears any pause left over

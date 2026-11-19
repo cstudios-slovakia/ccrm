@@ -358,7 +358,7 @@ test("SAI follows leads: a role with no sales access is not offered it, and it i
   assert.equal(employee.canOpenRoute("tasks"), true);
 });
 
-test("time tracking: everyone who may use the module tracks their own time; team, costs and the salary report are opt-in", () => {
+test("time tracking: everyone who may use the module tracks their own time, in parallel too; team, costs and the salary report are opt-in", () => {
   const sectionKeys = PERMISSION_SECTIONS.find((sec) => sec.id === "time_tracking")!.permissions.map((p) => p.key);
   assert.deepEqual(sectionKeys, ["time_tracking", "time_tracking_team", "time_tracking_costs", "time_tracking_salary_report", "time_tracking_parallel"]);
   // A role stored before the module existed: tracks own time, sees nothing of anyone else's.
@@ -367,7 +367,7 @@ test("time tracking: everyone who may use the module tracks their own time; team
   assert.equal(legacy.time_tracking_team, "nothing");
   assert.equal(legacy.time_tracking_costs, "nothing");
   assert.equal(legacy.time_tracking_salary_report, "nothing");
-  assert.equal(legacy.time_tracking_parallel, "nothing");
+  assert.equal(legacy.time_tracking_parallel, "edit");
   // A role created in the matrix starts with the whole section off.
   const fresh = newRolePermissions();
   assert.equal(fresh.time_tracking, "nothing");
