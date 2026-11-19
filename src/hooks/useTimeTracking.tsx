@@ -25,6 +25,8 @@ import {
   getRunningState,
   getSettings,
   getTotals,
+  pauseEntries,
+  resumeEntries,
   savePrefs,
   startTimer,
   stopAllTimers,
@@ -37,6 +39,7 @@ import {
   type TimeViewer,
 } from "../utils/timeTrackingApi.ts";
 import { isRunningTarget as runningHas, resolveStartMode, sameRunningIds, type RunningTarget } from "../utils/timeTrackingRunning.ts";
+import { stripTimerTitle, timerTabTitle, workedClockSeconds } from "../utils/timeContainer.ts";
 import { StartModePopover } from "../components/timeTracking/StartModePopover.tsx";
 
 export interface StartOptions {
@@ -94,6 +97,12 @@ export interface TimeTrackingContextValue {
   stop: (id?: string) => Promise<TimeEntry | null>;
   /** Stops every running entry; resolves the stopped ones, or null when cancelled or failed. */
   stopAll: () => Promise<TimeEntry[] | null>;
+  /** Pauses one running entry (`id`), or the only one when omitted; resolves false when nothing was paused. */
+  pause: (id?: string) => Promise<boolean>;
+  pauseAll: () => Promise<boolean>;
+  /** Resumes one paused entry (`id`), or the only one when omitted: a new running entry continues it. */
+  resume: (id?: string) => Promise<boolean>;
+  resumeAll: () => Promise<boolean>;
   /** Public holidays of a country; the built-in rules until the server answered. */
   calendarFor: (country: HolidayCountry, overrides?: HolidayOverride[]) => HolidayCalendar;
   ensureHolidayYears: (country: HolidayCountry, years: number[]) => void;
@@ -133,6 +142,10 @@ const Ctx = createContext<TimeTrackingContextValue>({
   start: NOOP,
   stop: NOOP,
   stopAll: NOOP,
+  pause: async () => false,
+  pauseAll: async () => false,
+  resume: async () => false,
+  resumeAll: async () => false,
   calendarFor: (c) => makeHolidayCalendar(c, builtinHolidays(c, new Date().getFullYear())),
   ensureHolidayYears: () => {},
   holidaysFallback: false,
@@ -202,6 +215,8 @@ export function TimeTrackingProvider({
   const [holidayYears, setHolidayYears] = useState<Record<string, { days: HolidayDay[]; fallback: boolean }>>({});
   const requestedYears = useRef(new Set<string>());
   const runningRef = useRef<TimeEntry[]>(running);
+  const pausedRef = useRef<TimeEntry[]>(paused);
+  pausedRef.current = paused;
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const prefRef = useRef(startWhileRunning);
@@ -344,13 +359,15 @@ export function TimeTrackingProvider({
   // older "▶ 1:12 · " form, in case a title was set before this version loaded.
   useEffect(() => {
     if (typeof document === "undefined") return;
-    const base = document.title.replace(/^▶ \d+:\d{2}(?::\d{2})? · /, "");
+    const base = stripTimerTitle(document.title);
     if (!primaryRunning) {
       if (document.title !== base) document.title = base;
       return;
     }
-    document.title = `▶ ${formatDuration(elapsedSeconds(primaryRunning.startAt, nowMs), true)} · ${base}`;
-  }, [primaryRunning, nowMs]);
+    // One item: its own elapsed time. Several: the worked clock of the stretch and "∥N" (D5.4).
+    const seconds = running.length > 1 ? workedClockSeconds(running, nowMs) : elapsedSeconds(primaryRunning.startAt, nowMs);
+    document.title = timerTabTitle(base, running.length, seconds);
+  }, [primaryRunning, running, nowMs]);
 
   const ensureHolidayYears = useCallback(
     (country: HolidayCountry, years: number[]) => {
@@ -644,6 +661,72 @@ export function TimeTrackingProvider({
     }
   }, [applyRunning, askProject, bumpTimers, failStop, refreshRunning]);
 
+  /** Pause and resume change both lists on the server: re-read them instead of guessing. */
+  const afterPauseChange = useCallback(async () => {
+    await refreshRunning();
+    bumpTimers();
+  }, [bumpTimers, refreshRunning]);
+
+  const pause = useCallback(
+    async (id?: string): Promise<boolean> => {
+      const targetId = id ?? (runningRef.current.length === 1 ? runningRef.current[0].id : undefined);
+      if (!targetId) return false;
+      try {
+        const done = await pauseEntries({ id: targetId });
+        await afterPauseChange();
+        return done.length > 0;
+      } catch (e) {
+        fail(e);
+        void refreshRunning();
+        return false;
+      }
+    },
+    [afterPauseChange, fail, refreshRunning],
+  );
+
+  const pauseAll = useCallback(async (): Promise<boolean> => {
+    if (!runningRef.current.length) return false;
+    try {
+      const done = await pauseEntries({ all: true });
+      await afterPauseChange();
+      return done.length > 0;
+    } catch (e) {
+      fail(e);
+      void refreshRunning();
+      return false;
+    }
+  }, [afterPauseChange, fail, refreshRunning]);
+
+  const resume = useCallback(
+    async (id?: string): Promise<boolean> => {
+      const targetId = id ?? (pausedRef.current.length === 1 ? pausedRef.current[0].id : undefined);
+      if (!targetId) return false;
+      try {
+        const res = await resumeEntries({ id: targetId });
+        await afterPauseChange();
+        return res.entries.length > 0;
+      } catch (e) {
+        fail(e);
+        void refreshRunning();
+        return false;
+      }
+    },
+    [afterPauseChange, fail, refreshRunning],
+  );
+
+  const resumeAll = useCallback(async (): Promise<boolean> => {
+    if (!pausedRef.current.length) return false;
+    try {
+      const res = await resumeEntries({ all: true });
+      await afterPauseChange();
+      return res.entries.length > 0;
+    } catch (e) {
+      fail(e);
+      void refreshRunning();
+      return false;
+    }
+  }, [afterPauseChange, fail, refreshRunning]);
+
   const isRunningTarget = useCallback((target: RunningTarget) => runningHas(running, target), [running]);
 
   const value: TimeTrackingContextValue = {
@@ -670,6 +753,10 @@ export function TimeTrackingProvider({
     start,
     stop,
     stopAll,
+    pause,
+    pauseAll,
+    resume,
+    resumeAll,
     calendarFor,
     ensureHolidayYears,
     holidaysFallback,

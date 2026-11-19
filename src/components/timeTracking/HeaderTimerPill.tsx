@@ -7,6 +7,7 @@ import { ClockDigits } from "./ClockDigits";
 import { TimerBar } from "./TimerBar";
 import type { TimeDeps } from "./shared";
 import { elapsedSeconds, formatDuration, projectColor } from "../../utils/timeTracking.ts";
+import { extraItemsLabel, workedClockSeconds } from "../../utils/timeContainer.ts";
 
 /**
  * The global timer in the header: while a timer runs it shows what, how long, and a Stop button;
@@ -16,7 +17,8 @@ import { elapsedSeconds, formatDuration, projectColor } from "../../utils/timeTr
  * billable, description), so the running entry can be edited from any page.
  */
 export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
-  const { enabled, ready, primaryRunning: running, nowMs, t, start, stop } = useTimeTracking();
+  const { enabled, ready, primaryRunning: running, running: runningAll, nowMs, t, start, stop } = useTimeTracking();
+  const several = runningAll.length > 1;
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
 
@@ -82,13 +84,20 @@ export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
                 data-testid="header-timer-dot"
               />
               <span className="hidden min-w-0 truncate font-semibold text-slate-800 md:inline">{running.title || t("Timer running", "Časovač beží", "Az időzítő fut")}</span>
+              {several && (
+                <span className="shrink-0 rounded-md bg-rose-100 px-1.5 type-meta font-bold text-rose-700" data-testid="header-timer-extra" title={t(`${runningAll.length} running`, `beží ${runningAll.length}`, `${runningAll.length} fut`)}>
+                  {extraItemsLabel(runningAll.length)}
+                </span>
+              )}
               <ClockDigits
-                value={formatDuration(elapsedSeconds(running.startAt, nowMs), true)}
+                value={formatDuration(several ? workedClockSeconds(runningAll, nowMs) : elapsedSeconds(running.startAt, nowMs), true)}
                 className="shrink-0 font-bold text-rose-700"
                 data-testid="header-timer-elapsed"
               />
+              {/* Phase 7: the cycle ring goes here. */}
+              <span data-slot="cycle-ring" className="empty:hidden" />
             </button>
-            <button
+            {!several && <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
@@ -99,7 +108,8 @@ export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
               className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-rose-600 text-white transition-all hover:bg-rose-700 active:scale-95 cursor-pointer"
             >
               <Square className="size-3 fill-current" />
-            </button>
+            </button>}
+            {several && <span className="w-1" aria-hidden />}
           </div>
           {open && deps && <HeaderTimerPanel deps={deps} onClose={() => setOpen(false)} />}
         </div>

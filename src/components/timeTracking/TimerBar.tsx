@@ -15,6 +15,7 @@ import type { Task, Ticket } from "../../types";
 import { isClosedTicketStatus } from "../../utils/tickets";
 import { ClockDigits } from "./ClockDigits";
 import { ProjectPicker } from "./ProjectPicker";
+import { TimerContainer } from "./TimerContainer";
 import { canRenameTitle, renameHint, useTimeLookups, type TimeDeps } from "./shared";
 
 interface Props {
@@ -23,6 +24,10 @@ interface Props {
   secondsByProject?: Record<string, number>;
   /** A full-width last row (the header panel puts its "Open time tracking" link here). */
   footer?: ReactNode;
+  /** The container's "+ Add timer": the bar starts a NEW timer instead of editing the running one. */
+  adding?: boolean;
+  /** Called after a start from this bar succeeded. */
+  onStarted?: () => void;
 }
 
 /**
@@ -35,9 +40,26 @@ interface Props {
  * Under the row sits an optional Description of the work. It is typed before Start (or in manual
  * mode) and travels with the new entry; while a timer runs the same field edits the running entry.
  */
-export function TimerBar({ deps, recentProjectIds, secondsByProject, footer }: Props) {
+export function TimerBar(props: Props) {
   const tt = useTimeTracking();
-  const { t, primaryRunning: running, nowMs, settings } = tt;
+  const lookups = useTimeLookups(props.deps);
+  // Two or more items (running or paused): the bar becomes a container (D5.4).
+  if (!props.adding && tt.running.length + tt.paused.length >= 2) {
+    return (
+      <TimerContainer
+        projectName={lookups.projectName}
+        footer={props.footer}
+        renderAdd={(done) => <SingleTimerBar {...props} adding onStarted={done} footer={undefined} />}
+      />
+    );
+  }
+  return <SingleTimerBar {...props} />;
+}
+
+function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, adding, onStarted }: Props) {
+  const tt = useTimeTracking();
+  const { t, nowMs, settings } = tt;
+  const running = adding ? null : tt.primaryRunning;
   const lookups = useTimeLookups(deps);
   const [mode, setMode] = useState<"timer" | "manual">("timer");
   const [text, setText] = useState("");
@@ -114,6 +136,7 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject, footer }: P
     });
     setBusy(false);
     if (started) {
+      onStarted?.();
       setText("");
       setNote("");
       setTask(null);
