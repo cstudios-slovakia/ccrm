@@ -5,7 +5,7 @@
   "files": {
     "src/components/LeadsDatagrid.tsx": 13406,
     "src/components/FinancialManagementView.tsx": 9077,
-    "src/components/SettingsView.tsx": 7455,
+    "src/components/SettingsView.tsx": 7425,
     "public/sync.php": 7394,
     "src/components/ClientsView.tsx": 7139,
     "src/components/WarehouseView.tsx": 7017,

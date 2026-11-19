@@ -78,8 +78,9 @@ import { deleteRecordsWithUndo, archiveRecordsWithUndo } from "../utils/recordAc
 import { runUndoable } from "../utils/undoable";
 import { reinsertAt } from "../utils/undoableList";
 import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
-import { addTaskState, isDoneMarkerState } from "../utils/projectTasks";
+import { addTaskState } from "../utils/projectTasks";
 import { removeTimerActionKey, renameTimerActionKey, type TaskStateTimerActions } from "../utils/taskStateTimerActions";
+import { deleteTaskState } from "./settings/deleteTaskState";
 import { TaskStateTimerActionSelect, TaskStateTimerActionsHint } from "./settings/TaskStateTimerActionSelect";
 import { clearErrorLogsWithUndo } from "../utils/errorLogs";
 import { useUserPref } from "../utils/userPrefs";
@@ -5965,50 +5966,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           tone="danger"
                                           lang={userLanguage}
                                           what={state}
-                                          onConfirm={() => {
-                                          if (taskStates.length <= 1) {
-                                            (window as any).showToast(
-                                              userLanguage === "sk" 
-                                                ? "Pre správne fungovanie je potrebný aspoň jeden stav úlohy!" 
-                                                : "At least one task state is required!"
-                                            );
-                                            return;
-                                          }
-                                          // The last state is what marks a task done. Deleting it
-                                          // would make the state before it "done" and reopen every
-                                          // finished task, so it can only be renamed.
-                                          if (isDoneMarkerState(state, taskStates)) {
-                                            (window as any).showToast(
-                                              t(
-                                                "This state marks tasks as done. Rename it instead of deleting it.",
-                                                "Tento stav označuje úlohy ako hotové. Namiesto vymazania ho premenujte.",
-                                                "Ez az állapot jelöli a feladatokat késznek. Törlés helyett nevezze át."
-                                              )
-                                            );
-                                            return;
-                                          }
-                                          const taskStateIndex = taskStates.indexOf(state);
-                                          const taskStateColor = taskStateColors[state];
-                                          const taskStateAction = taskStateTimerActions[state];
-                                          runUndoable({
-                                            message: singleMessage(userLanguage, "status", "delete", state),
-                                            undoLabel: undoLabel(userLanguage),
-                                            apply: () => {
-                                              setTaskStates(taskStates.filter(s => s !== state));
-                                              setTaskStateColors(prev => {
-                                                const next = { ...prev };
-                                                delete next[state];
-                                                return next;
-                                              });
-                                              setTaskStateTimerActions(prev => removeTimerActionKey(prev, state));
-                                            },
-                                            revert: () => {
-                                              setTaskStates(prev => (prev.includes(state) ? prev : reinsertAt(prev, [{ item: state, index: taskStateIndex }], s => s)));
-                                              if (taskStateColor !== undefined) setTaskStateColors(prev => ({ ...prev, [state]: taskStateColor }));
-                                              if (taskStateAction) setTaskStateTimerActions(prev => ({ ...prev, [state]: taskStateAction }));
-                                            },
-                                          });
-                                        }}
+                                          onConfirm={() => deleteTaskState({ state, taskStates, taskStateColors, taskStateTimerActions, setTaskStates,
+                                            setTaskStateColors, setTaskStateTimerActions, lang: userLanguage, t })}
                                           className="text-slate-400 hover:text-rose-600 transition-colors p-1"
                                       >
                                         <Trash2 className="h-4.5 w-4.5" />

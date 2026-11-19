@@ -1,0 +1,1 @@
+- **Settings: deleting a task state moved into its own module** (`settings/deleteTaskState.ts`): same guards, undo and colour/timer-action cascade; `SettingsView.tsx` is 41 lines shorter.
