@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ExternalLink, Plus, Trash2 } from "lucide-react";
 import { Surface } from "../layout";
 import { Switch } from "../ui/Switch";
-import type { Employee, Project } from "../../types";
+import type { Employee, Lead, Project } from "../../types";
 import { RateCardPreview } from "./RateCardPreview";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
 import { CustomSelect } from "../ui/CustomSelect";
@@ -32,7 +32,7 @@ const OFFICIAL_SOURCE: Record<HolidayCountry, { label: string; href: string }> =
 const num = (v: string, fallback: number) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : fallback);
 
 /** Settings → Time tracking: cost basis, working days and holidays, rules, extension, re-pricing. */
-export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency, projects, employees }: { language: Language; canEdit: boolean; isAdmin: boolean; currency: string; projects?: Project[]; employees?: Employee[] }) {
+export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency, projects, employees, leads }: { language: Language; canEdit: boolean; isAdmin: boolean; currency: string; projects?: Project[]; employees?: Employee[]; leads?: Lead[] }) {
   const brand = PRODUCT_NAME;
   const tt = useTimeTracking();
   const { t, settings, ready, enabled } = tt;
@@ -127,7 +127,7 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
       {/* Cost */}
       <Surface className="space-y-4">
         <h3 className="type-card-title text-slate-900">{t("Cost rate from salary", "Nákladová sadzba z mzdy", "Költségdíj a fizetésből")}</h3>
-        <p className="text-body text-slate-500">{t("Every entry is priced from the employee's salary when it is saved, and the rate is frozen on that entry once its month closes. A monthly salary is divided by that month's real working days in the person's country.", "Každý záznam sa pri uložení ocení podľa mzdy zamestnanca a sadzba sa na ňom zafixuje po uzavretí mesiaca. Mesačná mzda sa delí skutočným počtom pracovných dní mesiaca v krajine danej osoby.", "Minden bejegyzést mentéskor a munkatárs fizetéséből áraz a rendszer, és a díj a hónap lezárása után rögzül a bejegyzésen. A havi fizetést az adott ország hónapjának valós munkanapjaival osztja.")}</p>
+        <p className="text-body text-slate-500">{t("Every entry is priced from the employee's salary when it is saved, and the rate stays provisional until the month's payroll is closed or the month after next begins; then it is frozen. A monthly salary is divided by that month's real working days in the person's country.", "Každý záznam sa pri uložení ocení podľa mzdy zamestnanca a sadzba ostáva predbežná, kým sa neuzavrie výplata mesiaca alebo nezačne nasledujúci mesiac po ňom; potom sa zafixuje. Mesačná mzda sa delí skutočným počtom pracovných dní mesiaca v krajine danej osoby.", "Minden bejegyzést mentéskor a munkatárs fizetéséből áraz a rendszer, és a díj ideiglenes marad, amíg a hónap bérszámfejtése le nem zárul vagy el nem kezdődik a rá következő második hónap; utána rögzül. A havi fizetést az adott ország hónapjának valós munkanapjaival osztja.")}</p>
         <div className="grid gap-4 ws-sm:grid-cols-2 ws-md:grid-cols-3">
           <label className="grid gap-1">
             <span className={label}>{t("Monthly hours basis", "Základ mesačných hodín", "Havi óraalap")}</span>
@@ -277,8 +277,8 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
       <Surface className="space-y-4">
         <h3 className="type-card-title text-slate-900">{t("Rules", "Pravidlá", "Szabályok")}</h3>
         <div className="grid gap-3">
-          {toggle("requireProjectToStop", t("Require a project before stopping the timer", "Vyžadovať projekt pred zastavením časovača", "Projekt megkövetelése az időzítő leállítása előtt"), t("A timer without a project cannot be stopped until one is chosen.", "Časovač bez projektu sa nedá zastaviť, kým sa nevyberie projekt.", "Projekt nélküli időzítő nem állítható le, amíg nincs projekt kiválasztva."))}
-          {toggle("requireTask", t("Require a task on every entry", "Vyžadovať úlohu pri každom zázname", "Feladat megkövetelése minden bejegyzésnél"), t("An entry cannot be saved without a task.", "Záznam sa nedá uložiť bez úlohy.", "Feladat nélkül a bejegyzés nem menthető."))}
+          {toggle("requireProjectToStop", t("Require a project before stopping the timer", "Vyžadovať projekt pred zastavením časovača", "Projekt megkövetelése az időzítő leállítása előtt"), t("For people who can pick a project, a timer cannot be stopped until one is chosen.", "Pre ľudí, ktorí môžu vybrať projekt, sa časovač nedá zastaviť, kým sa nevyberie projekt.", "Azoknál, akik projektet választhatnak, az időzítő nem állítható le, amíg nincs projekt kiválasztva."))}
+          {toggle("requireTask", t("Require a task on every entry", "Vyžadovať úlohu pri každom zázname", "Feladat megkövetelése minden bejegyzésnél"), t("A timer cannot be stopped without a task.", "Časovač sa nedá zastaviť bez úlohy.", "Feladat nélkül az időzítő nem állítható le."))}
           {toggle("billableByDefault", t("New entries are billable by default", "Nové záznamy sú predvolene fakturovateľné", "Az új bejegyzések alapból számlázhatók"), t("The Billable switch starts on; you can still change it on each entry.", "Prepínač Fakturovateľné je predvolene zapnutý; na každom zázname ho môžete zmeniť.", "A Számlázható kapcsoló alapból be van kapcsolva; bejegyzésenként továbbra is módosítható."))}
         </div>
         <div className="grid gap-4 ws-sm:grid-cols-2">
@@ -360,6 +360,7 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
         canEdit={canEdit}
         isAdmin={isAdmin}
         projects={projects}
+        leads={leads}
         extension={draft.extension ?? DEFAULT_TIME_TRACKING_SETTINGS.extension}
         onExtension={(extension) => setDraft((d) => ({ ...d, extension }))}
       />

@@ -10,7 +10,7 @@ import { loadActivityRules, saveActivityRules, searchTrackerProjects, type Activ
 import { PairedBrowsers } from "./PairedBrowsers";
 import { ProjectLabel } from "./ProjectLabel";
 import { projectDisplayName } from "../../utils/projects.ts";
-import type { Project } from "../../types";
+import type { Lead, Project } from "../../types";
 
 interface Props {
   language: Language;
@@ -21,10 +21,12 @@ interface Props {
   onExtension: (next: TimeTrackingSettings["extension"]) => void;
   /** The company's projects, to show a watched site's project by name. */
   projects?: Project[];
+  /** Client names for projects that have no name of their own. */
+  leads?: Lead[];
 }
 
 /** Download, pairing, watched sites. Activity capture stays off until the user opts in. */
-export function ExtensionSettings({ language, t, canEdit, isAdmin, extension, onExtension, projects: knownProjects = [] }: Props) {
+export function ExtensionSettings({ language, t, canEdit, isAdmin, extension, onExtension, projects: knownProjects = [], leads = [] }: Props) {
   const [enabled, setEnabled] = useState(false);
   const [minMinutes, setMinMinutes] = useState(5);
   const [sites, setSites] = useState<ActivitySite[]>([]);
@@ -169,9 +171,9 @@ export function ExtensionSettings({ language, t, canEdit, isAdmin, extension, on
                 if (!site.projectId) return <span className="type-meta text-slate-500">{t("no project", "bez projektu", "nincs projekt")}</span>;
                 const known = knownProjects.find((p) => p.id === site.projectId);
                 return known ? (
-                  <ProjectLabel projectId={known.id} name={projectDisplayName(known, [], t("Untitled project", "Projekt bez názvu", "Névtelen projekt"))} compact className="type-meta" />
+                  <ProjectLabel projectId={known.id} name={projectDisplayName(known, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt"))} compact className="type-meta" />
                 ) : (
-                  <span className="type-meta text-amber-700">{t("project not found", "projekt sa nenašiel", "a projekt nem található")}</span>
+                  <span className="type-meta text-slate-400">{site.projectId}</span>
                 );
               })()}
               <button type="button" onClick={() => setSites((curr) => curr.filter((_, i) => i !== index))} className="ml-auto text-ui font-semibold text-slate-400 hover:text-rose-600 cursor-pointer">

@@ -711,7 +711,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setProjectTypes,
   projectStatuses,
   setProjectStatuses,
-  projects = [],
+  projects = [], leads,
   setProjects,
   orderStatuses,
   setOrderStatuses,
@@ -4051,7 +4051,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               language={userLanguage}
               canEdit={getPermission("general_config") === "edit"}
               isAdmin={isAdminRoleName(currentUser?.role)}
-              currency={systemCurrency || "EUR"} projects={projects} employees={employees}
+              currency={systemCurrency || "EUR"} projects={projects} employees={employees} leads={leads}
             />
           </div>
         );

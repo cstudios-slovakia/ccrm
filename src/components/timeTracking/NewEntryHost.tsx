@@ -12,7 +12,6 @@ import { NEW_TIME_ENTRY_EVENT, type NewTimeEntryRequest } from "./timeCreateBrid
  */
 export function NewEntryHost({ deps }: { deps: TimeDeps }) {
   const tt = useTimeTracking();
-  const { recentProjectIds, secondsByProject } = useRecentProjects();
   const [draft, setDraft] = useState<(TimeEntry & { nonce: number }) | null>(null);
   useEffect(() => {
     const onNew = (e: Event) => {
@@ -51,6 +50,12 @@ export function NewEntryHost({ deps }: { deps: TimeDeps }) {
     return () => window.removeEventListener(NEW_TIME_ENTRY_EVENT, onNew);
   }, [deps.tasks, tt.userId, tt.settings.billableByDefault]);
   if (!draft) return null;
+  return <OpenDraft draft={draft} deps={deps} onClose={() => setDraft(null)} />;
+}
+
+/** Inner component so the recent-projects fetch only runs while a draft is open. */
+function OpenDraft({ draft, deps, onClose }: { draft: TimeEntry & { nonce: number }; deps: TimeDeps; onClose: () => void }) {
+  const { recentProjectIds, secondsByProject } = useRecentProjects();
   return (
     <EntryDrawer
       key={draft.nonce}
@@ -59,8 +64,8 @@ export function NewEntryHost({ deps }: { deps: TimeDeps }) {
       deps={deps}
       recentProjectIds={recentProjectIds}
       secondsByProject={secondsByProject}
-      onClose={() => setDraft(null)}
-      onDelete={() => setDraft(null)}
+      onClose={onClose}
+      onDelete={onClose}
     />
   );
 }

@@ -218,7 +218,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
   const sourceText = SOURCE_LABEL[entry.source] ? t(...SOURCE_LABEL[entry.source]) : entry.source;
   const importTool = importedFrom(entry.source);
   const hoursOnly = !entry.running && !entry.startAt && !entry.endAt;
-  const sourceChip = importTool
+  const sourceChip = isNew ? null : importTool
     ? t("Imported", "Importované", "Importált")
     : entry.source === "timer"
       ? t("Timer", "Časovač", "Időzítő")
@@ -325,7 +325,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
           <div className="grid gap-1">
             <span className="type-label text-slate-600">
               {t("Task", "Úloha", "Feladat")}
-              <span className="type-meta ml-1 font-normal text-slate-400">{t("· optional, tasks of this project", "· voliteľné, úlohy tohto projektu", "· nem kötelező, a projekt feladatai")}</span>
+              <span className="type-meta ml-1 font-normal text-slate-400">{!tt.settings.requireTask && t("· optional", "· voliteľné", "· nem kötelező")}</span>
             </span>
             {taskId ? (
               <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-ui font-semibold text-slate-800" data-testid="entry-linked-task">
@@ -463,7 +463,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
                   </div>
                   {entry.cost !== null && entry.cost !== undefined && !!entry.durationSec && (
                     <div className="mt-1 text-ui tabular-nums text-slate-600" data-testid="entry-cost-formula">
-                      {formatDuration(entry.durationSec)} × {money(entry.costRate)}/h = {money(entry.cost)}
+                      {formatDuration(entry.durationSec)} × {money(entry.costRate)}/h {Math.abs((entry.durationSec / 3600) * Number(entry.costRate) - Number(entry.cost)) < 0.005 ? "=" : "≈"} {money(entry.cost)}
                     </div>
                   )}
                   <div className="mt-1 type-meta text-slate-500" data-testid="entry-rate-basis">
