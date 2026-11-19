@@ -8,6 +8,9 @@ import type { TFn, TimeTrackingSettings } from "../../utils/timeTracking.ts";
 import { TimeApiError, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
 import { loadActivityRules, saveActivityRules, searchTrackerProjects, type ActivitySite, type TrackerProject } from "../../utils/timeTrackerApi.ts";
 import { PairedBrowsers } from "./PairedBrowsers";
+import { ProjectLabel } from "./ProjectLabel";
+import { projectDisplayName } from "../../utils/projects.ts";
+import type { Project } from "../../types";
 
 interface Props {
   language: Language;
@@ -16,10 +19,12 @@ interface Props {
   isAdmin: boolean;
   extension: TimeTrackingSettings["extension"];
   onExtension: (next: TimeTrackingSettings["extension"]) => void;
+  /** The company's projects, to show a watched site's project by name. */
+  projects?: Project[];
 }
 
 /** Download, pairing, watched sites. Activity capture stays off until the user opts in. */
-export function ExtensionSettings({ language, t, canEdit, isAdmin, extension, onExtension }: Props) {
+export function ExtensionSettings({ language, t, canEdit, isAdmin, extension, onExtension, projects: knownProjects = [] }: Props) {
   const [enabled, setEnabled] = useState(false);
   const [minMinutes, setMinMinutes] = useState(5);
   const [sites, setSites] = useState<ActivitySite[]>([]);
@@ -160,7 +165,15 @@ export function ExtensionSettings({ language, t, canEdit, isAdmin, extension, on
           {sites.map((site, index) => (
             <li key={`${site.pattern}-${index}`} className="flex items-center gap-2 text-ui text-slate-700">
               <span className="font-semibold">{site.pattern}</span>
-              <span className="type-meta text-slate-500">{site.projectId ?? t("no project", "bez projektu", "nincs projekt")}</span>
+              {(() => {
+                if (!site.projectId) return <span className="type-meta text-slate-500">{t("no project", "bez projektu", "nincs projekt")}</span>;
+                const known = knownProjects.find((p) => p.id === site.projectId);
+                return known ? (
+                  <ProjectLabel projectId={known.id} name={projectDisplayName(known, [], t("Untitled project", "Projekt bez názvu", "Névtelen projekt"))} compact className="type-meta" />
+                ) : (
+                  <span className="type-meta text-amber-700">{t("project not found", "projekt sa nenašiel", "a projekt nem található")}</span>
+                );
+              })()}
               <button type="button" onClick={() => setSites((curr) => curr.filter((_, i) => i !== index))} className="ml-auto text-ui font-semibold text-slate-400 hover:text-rose-600 cursor-pointer">
                 {t("Remove", "Odstrániť", "Eltávolítás")}
               </button>

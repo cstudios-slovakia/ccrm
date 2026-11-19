@@ -54,9 +54,9 @@ export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
           onClick={() => void start()}
           data-testid="header-timer-start"
           title={t("Start timer", "Spustiť časovač", "Időzítő indítása")}
-          className="inline-flex h-8.5 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white/80 px-2.5 text-ui font-semibold text-slate-700 shadow-sm transition-colors hover:border-teal-300 hover:bg-teal-50 hover:text-teal-700 cursor-pointer xs:h-9"
+          className="inline-flex h-8.5 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white/80 px-2.5 text-ui font-semibold text-slate-700 shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary cursor-pointer xs:h-9"
         >
-          <Play className="size-3.5 fill-current text-teal-600" />
+          <Play className="size-3.5 fill-current text-primary" />
           <span className="hidden md:inline">{t("Start timer", "Spustiť časovač", "Időzítő indítása")}</span>
         </button>
       ) : (

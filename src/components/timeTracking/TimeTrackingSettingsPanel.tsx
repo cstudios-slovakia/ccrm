@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ExternalLink, Plus, Trash2 } from "lucide-react";
 import { Surface } from "../layout";
+import { Switch } from "../ui/Switch";
+import type { Employee, Project } from "../../types";
+import { RateCardPreview } from "./RateCardPreview";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
 import { CustomSelect } from "../ui/CustomSelect";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
@@ -29,7 +32,7 @@ const OFFICIAL_SOURCE: Record<HolidayCountry, { label: string; href: string }> =
 const num = (v: string, fallback: number) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : fallback);
 
 /** Settings → Time tracking: cost basis, working days and holidays, rules, extension, re-pricing. */
-export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency }: { language: Language; canEdit: boolean; isAdmin: boolean; currency: string }) {
+export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency, projects, employees }: { language: Language; canEdit: boolean; isAdmin: boolean; currency: string; projects?: Project[]; employees?: Employee[] }) {
   const brand = PRODUCT_NAME;
   const tt = useTimeTracking();
   const { t, settings, ready, enabled } = tt;
@@ -109,10 +112,13 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
 
   const field = "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-ui outline-none focus:border-primary disabled:bg-slate-50";
   const label = "type-label text-slate-600";
-  const toggle = (key: "requireProjectToStop" | "requireTask" | "billableByDefault" | "weeklyApproval", text: string) => (
-    <label className="flex cursor-pointer items-center gap-3 text-ui text-slate-800">
-      <input type="checkbox" disabled={!canEdit} checked={draft[key]} onChange={(e) => set(key, e.target.checked)} className="size-4 accent-teal-600" data-testid={`tt-${key}`} />
-      {text}
+  const toggle = (key: "requireProjectToStop" | "requireTask" | "billableByDefault" | "weeklyApproval", text: string, note: string) => (
+    <label className="flex cursor-pointer items-start gap-3 text-ui text-slate-800">
+      <Switch checked={draft[key]} disabled={!canEdit} onChange={(next) => set(key, next)} testId={`tt-${key}`} className="mt-0.5" />
+      <span className="grid gap-0.5">
+        {text}
+        <span className="type-meta text-slate-500">{note}</span>
+      </span>
     </label>
   );
 
@@ -120,9 +126,9 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
     <div className="space-y-6" data-testid="tt-settings">
       {/* Cost */}
       <Surface className="space-y-4">
-        <h3 className="type-card-title text-slate-900">{t("Hourly cost of a worker", "Hodinový náklad pracovníka", "A munkatárs óraköltsége")}</h3>
-        <p className="text-body text-slate-500">{t("Every entry is priced when it is saved from the employee's salary. A monthly salary is divided by that month's real working days in the person's country.", "Každý záznam sa pri uložení ocení podľa mzdy zamestnanca. Mesačná mzda sa delí skutočným počtom pracovných dní mesiaca v krajine danej osoby.", "Minden bejegyzést mentéskor a munkatárs fizetéséből áraz a rendszer. A havi fizetést az adott ország hónapjának valós munkanapjaival osztja.")}</p>
-        <div className="grid gap-4 ws-sm:grid-cols-2">
+        <h3 className="type-card-title text-slate-900">{t("Cost rate from salary", "Nákladová sadzba z mzdy", "Költségdíj a fizetésből")}</h3>
+        <p className="text-body text-slate-500">{t("Every entry is priced from the employee's salary when it is saved, and the rate is frozen on that entry once its month closes. A monthly salary is divided by that month's real working days in the person's country.", "Každý záznam sa pri uložení ocení podľa mzdy zamestnanca a sadzba sa na ňom zafixuje po uzavretí mesiaca. Mesačná mzda sa delí skutočným počtom pracovných dní mesiaca v krajine danej osoby.", "Minden bejegyzést mentéskor a munkatárs fizetéséből áraz a rendszer, és a díj a hónap lezárása után rögzül a bejegyzésen. A havi fizetést az adott ország hónapjának valós munkanapjaival osztja.")}</p>
+        <div className="grid gap-4 ws-sm:grid-cols-2 ws-md:grid-cols-3">
           <label className="grid gap-1">
             <span className={label}>{t("Monthly hours basis", "Základ mesačných hodín", "Havi óraalap")}</span>
             <div data-testid="tt-hours-basis">
@@ -159,6 +165,7 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
           <b className="tabular-nums">{exampleDays} {t("working days", "pracovných dní", "munkanap")}</b> →{" "}
           <b className="tabular-nums text-violet-700">{example.rate !== null ? `${money(example.rate)}/h` : "—"}</b>
         </div>
+        <RateCardPreview t={t} employees={employees} draft={draft} tt={tt} money={money} locale={locale} />
       </Surface>
 
       {/* Holidays */}
@@ -270,9 +277,9 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
       <Surface className="space-y-4">
         <h3 className="type-card-title text-slate-900">{t("Rules", "Pravidlá", "Szabályok")}</h3>
         <div className="grid gap-3">
-          {toggle("requireProjectToStop", t("Require a project before stopping the timer", "Vyžadovať projekt pred zastavením časovača", "Projekt megkövetelése az időzítő leállítása előtt"))}
-          {toggle("requireTask", t("Require a task on every entry", "Vyžadovať úlohu pri každom zázname", "Feladat megkövetelése minden bejegyzésnél"))}
-          {toggle("billableByDefault", t("New entries are billable by default", "Nové záznamy sú predvolene fakturovateľné", "Az új bejegyzések alapból számlázhatók"))}
+          {toggle("requireProjectToStop", t("Require a project before stopping the timer", "Vyžadovať projekt pred zastavením časovača", "Projekt megkövetelése az időzítő leállítása előtt"), t("A timer without a project cannot be stopped until one is chosen.", "Časovač bez projektu sa nedá zastaviť, kým sa nevyberie projekt.", "Projekt nélküli időzítő nem állítható le, amíg nincs projekt kiválasztva."))}
+          {toggle("requireTask", t("Require a task on every entry", "Vyžadovať úlohu pri každom zázname", "Feladat megkövetelése minden bejegyzésnél"), t("An entry cannot be saved without a task.", "Záznam sa nedá uložiť bez úlohy.", "Feladat nélkül a bejegyzés nem menthető."))}
+          {toggle("billableByDefault", t("New entries are billable by default", "Nové záznamy sú predvolene fakturovateľné", "Az új bejegyzések alapból számlázhatók"), t("The Billable switch starts on; you can still change it on each entry.", "Prepínač Fakturovateľné je predvolene zapnutý; na každom zázname ho môžete zmeniť.", "A Számlázható kapcsoló alapból be van kapcsolva; bejegyzésenként továbbra is módosítható."))}
         </div>
         <div className="grid gap-4 ws-sm:grid-cols-2">
           <label className="grid gap-1">
@@ -323,7 +330,7 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
           "Záznamy staršie ako zámok, v uhradenom mzdovom mesiaci alebo v odoslanom týždni môže zmeniť len administrátor. Zmena sa zapíše do auditu. Prázdne pole pravidlo vypne. Pripomenutie nečinnosti sa zobrazí, kým beží časovač.",
           "A zárolásnál régebbi, kifizetett bérhónapba eső vagy beküldött heti bejegyzést csak adminisztrátor módosíthatja. A módosítás az auditnaplóba kerül. Az üres mező kikapcsolja a szabályt. A tétlenségi emlékeztető futó időzítő mellett jelenik meg.",
         )}</p>
-        {toggle("weeklyApproval", t("Weekly approval of timesheets", "Týždenné schvaľovanie výkazov", "Heti munkalap-jóváhagyás"))}
+        {toggle("weeklyApproval", t("Weekly approval of timesheets", "Týždenné schvaľovanie výkazov", "Heti munkalap-jóváhagyás"), t("People submit each week for approval; a submitted week is locked for them.", "Ľudia odosielajú každý týždeň na schválenie; odoslaný týždeň sa im zamkne.", "A munkatársak hetente beküldik jóváhagyásra; a beküldött hét számukra zárolt."))}
         <div className="grid gap-4 ws-sm:grid-cols-2">
           <label className="grid gap-1">
             <span className={label}>{t("Idle reminder after (minutes)", "Pripomenutie nečinnosti po (minútach)", "Tétlenségi emlékeztető ennyi perc után")}</span>
@@ -352,6 +359,7 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
         t={t}
         canEdit={canEdit}
         isAdmin={isAdmin}
+        projects={projects}
         extension={draft.extension ?? DEFAULT_TIME_TRACKING_SETTINGS.extension}
         onExtension={(extension) => setDraft((d) => ({ ...d, extension }))}
       />
