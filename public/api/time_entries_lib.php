@@ -536,6 +536,7 @@ if (!function_exists('ccrm_tt_default_settings')) {
             'startAt' => ccrm_tt_iso($r['start_at']),
             'endAt' => ccrm_tt_iso($r['end_at']),
             'durationSec' => $r['duration_sec'] === null ? null : (int)$r['duration_sec'],
+            'workedMs' => $running || ($r['worked_ms'] ?? null) === null ? null : (int)$r['worked_ms'],
             'running' => $running,
             'billable' => (bool)$r['billable'],
             'tags' => ccrm_tt_decode_tags($r['tags'] ?? null),

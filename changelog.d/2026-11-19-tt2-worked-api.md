@@ -1,0 +1,1 @@
+Time tracking: the API now returns worked time (`workedMs` per entry, per project and per user per day), the extension's "today" counts worked time, and Settings shows how many entries overlap per month next to "Re-price a period".

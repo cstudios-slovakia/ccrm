@@ -5,6 +5,8 @@
  *   GET  ?from&to&userId&projectId&taskId&ticketId   list (userId: omitted = me, <id> or "all" need time_tracking_team)
  *   GET  ?running=1                                  the caller's running entry
  *   GET  ?action=settings                            TimeTrackingSettings + the caller's work calendar
+ *   GET  ?action=totals                              byTask/byTicket/byProject{seconds,workedMs,cost}, workedByUserDay{userId:{date:ms}}
+ *   GET  ?action=overlaps&from=YYYY-MM&to=YYYY-MM    admin/general_config: {months:[{month,entries,users}]} closed timed entries overlapping another of the same user
  *   GET  ?action=taskPeople&taskId=                  per-person seconds on one task; cost follows B8
  *   POST action=start        in ONE transaction stop the caller's running entry and start a new one
  *   POST action=stop         {id?, projectId?}
@@ -265,7 +267,7 @@ if ($method === 'GET') {
     // own always, anyone else's only with time_tracking_costs — so a partial sum
     // is never presented as the project's labour.
     if ($action === 'totals') {
-        $stmt = $pdo->query("SELECT `task_id`, `ticket_id`, `project_id`, `user_id`, COALESCE(SUM(`duration_sec`), 0) AS `sec`, SUM(`cost`) AS `cost`, SUM(`cost` IS NULL) AS `missing`
+        $stmt = $pdo->query("SELECT `task_id`, `ticket_id`, `project_id`, `user_id`, COALESCE(SUM(`duration_sec`), 0) AS `sec`, COALESCE(SUM(`worked_ms`), 0) AS `worked`, SUM(`cost`) AS `cost`, SUM(`cost` IS NULL) AS `missing`
             FROM `time_entries` WHERE `deleted_at` IS NULL AND `duration_sec` IS NOT NULL
             GROUP BY `task_id`, `ticket_id`, `project_id`, `user_id`");
         $byTask = [];
@@ -282,9 +284,10 @@ if ($method === 'GET') {
             }
             if ($r['project_id']) {
                 if (!isset($byProject[$r['project_id']])) {
-                    $byProject[$r['project_id']] = ['seconds' => 0, 'cost' => 0.0, 'complete' => true];
+                    $byProject[$r['project_id']] = ['seconds' => 0, 'workedMs' => 0, 'cost' => 0.0, 'complete' => true];
                 }
                 $byProject[$r['project_id']]['seconds'] += $sec;
+                $byProject[$r['project_id']]['workedMs'] += (int)$r['worked'];
                 if ($own || $canCosts) {
                     if ((int)$r['missing'] > 0) {
                         $byProject[$r['project_id']]['complete'] = false;
@@ -301,7 +304,44 @@ if ($method === 'GET') {
             unset($proj['complete']);
         }
         unset($proj);
-        ccrm_te_respond(['byTask' => $byTask ?: new stdClass(), 'byTicket' => $byTicket ?: new stdClass(), 'byProject' => $byProject ?: new stdClass()]);
+        // Worked time per user per day (D5.3), same visibility as the hours above (hours are not private).
+        $workedByUserDay = [];
+        $wstmt = $pdo->query("SELECT `user_id`, `entry_date`, SUM(`worked_ms`) AS `w` FROM `time_entries`
+            WHERE `deleted_at` IS NULL AND `worked_ms` IS NOT NULL GROUP BY `user_id`, `entry_date`");
+        foreach ($wstmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $workedByUserDay[(string)$r['user_id']][(string)$r['entry_date']] = (int)$r['w'];
+        }
+        ccrm_te_respond(['byTask' => $byTask ?: new stdClass(), 'byTicket' => $byTicket ?: new stdClass(), 'byProject' => $byProject ?: new stdClass(), 'workedByUserDay' => $workedByUserDay ?: new stdClass()]);
+    }
+
+    // Overlap count per month for the Settings panel (read-only, admin / general_config like settings).
+    // A closed timed entry counts when another live closed timed entry of the same user overlaps it.
+    if ($action === 'overlaps') {
+        if (!ccrm_is_admin($sessionUser) && !ccrm_can($scope, 'general_config', 'edit')) {
+            ccrm_te_fail('forbidden', 403);
+        }
+        $from = (string)($_GET['from'] ?? '');
+        $to = (string)($_GET['to'] ?? $from);
+        if (!preg_match('/^\d{4}-\d{2}$/', $from) || !preg_match('/^\d{4}-\d{2}$/', $to) || $to < $from) {
+            ccrm_te_fail('bad_request', 400);
+        }
+        $lo = $from . '-01';
+        $hi = date('Y-m-d', strtotime($to . '-01 +1 month'));
+        $ostmt = $pdo->prepare("SELECT DATE_FORMAT(a.`entry_date`, '%Y-%m') AS `m`, COUNT(DISTINCT a.`id`) AS `entries`, COUNT(DISTINCT a.`user_id`) AS `users`
+            FROM `time_entries` a
+            JOIN `time_entries` b ON b.`user_id` = a.`user_id` AND b.`id` <> a.`id`
+                AND b.`entry_date` BETWEEN DATE_SUB(a.`entry_date`, INTERVAL 1 DAY) AND DATE_ADD(a.`entry_date`, INTERVAL 1 DAY)
+                AND b.`deleted_at` IS NULL AND b.`start_at` IS NOT NULL AND b.`end_at` IS NOT NULL
+                AND b.`start_at` < a.`end_at` AND b.`end_at` > a.`start_at`
+            WHERE a.`entry_date` >= ? AND a.`entry_date` < ? AND a.`deleted_at` IS NULL
+                AND a.`start_at` IS NOT NULL AND a.`end_at` IS NOT NULL
+            GROUP BY `m` ORDER BY `m`");
+        $ostmt->execute([$lo, $hi]);
+        $months = [];
+        foreach ($ostmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $months[] = ['month' => $r['m'], 'entries' => (int)$r['entries'], 'users' => (int)$r['users']];
+        }
+        ccrm_te_respond(['months' => $months]);
     }
 
     /* PHASE2-TASK-PEOPLE-START — phase 2 task drawer. Do not delete this block. */

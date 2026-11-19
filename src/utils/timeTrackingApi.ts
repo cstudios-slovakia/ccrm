@@ -103,7 +103,9 @@ export interface ListParams {
 export interface TimeTotals {
   byTask: Record<string, number>;
   byTicket: Record<string, number>;
-  byProject: Record<string, { seconds: number; cost: number | null }>;
+  byProject: Record<string, { seconds: number; workedMs?: number; cost: number | null }>;
+  /** Worked milliseconds per user per entry date (overlaps counted once). */
+  workedByUserDay?: Record<string, Record<string, number>>;
 }
 
 export const EMPTY_TIME_TOTALS: TimeTotals = { byTask: {}, byTicket: {}, byProject: {} };
@@ -115,7 +117,16 @@ export const getTotals = async (): Promise<TimeTotals> => {
     byTask: body.byTask && typeof body.byTask === "object" ? body.byTask : {},
     byTicket: body.byTicket && typeof body.byTicket === "object" ? body.byTicket : {},
     byProject: body.byProject && typeof body.byProject === "object" ? body.byProject : {},
+    workedByUserDay: body.workedByUserDay && typeof body.workedByUserDay === "object" ? body.workedByUserDay : {},
   };
+};
+
+export interface OverlapMonth { month: string; entries: number; users: number }
+
+/** Per month (YYYY-MM): closed timed entries that overlap another entry of the same user. Admin / general_config only. */
+export const getOverlaps = async (from: string, to: string): Promise<OverlapMonth[]> => {
+  const body = await get({ action: "overlaps", from, to });
+  return Array.isArray(body.months) ? body.months : [];
 };
 
 /** Hours per person on one task. `cost` is present only when the viewer may see it (B8). */

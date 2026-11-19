@@ -606,9 +606,10 @@ function ccrm_ttx_recent(\PDO $pdo, string $userId, array $viewer): array {
         $entries[] = ccrm_tt_entry_json($row, $viewer);
     }
     $today = ccrm_tt_local_date(ccrm_tt_now_utc());
-    $sum = $pdo->prepare("SELECT COALESCE(SUM(`duration_sec`), 0) FROM `time_entries` WHERE `user_id` = ? AND `entry_date` = ? AND `deleted_at` IS NULL AND `end_at` IS NOT NULL");
+    $sum = $pdo->prepare("SELECT COALESCE(SUM(COALESCE(`worked_ms`, `duration_sec` * 1000)), 0) FROM `time_entries` WHERE `user_id` = ? AND `entry_date` = ? AND `deleted_at` IS NULL AND (`end_at` IS NOT NULL OR `start_at` IS NULL)");
     $sum->execute([$userId, $today]);
-    return ['entries' => $entries, 'todaySeconds' => (int)$sum->fetchColumn()];
+    // Worked time (D9): overlapping entries are not double counted; hours-only entries count.
+    return ['entries' => $entries, 'todaySeconds' => (int)round((float)$sum->fetchColumn() / 1000)];
 }
 
 function ccrm_ttx_search_projects(\PDO $pdo, string $userId, string $q, ?string $host, array $rules): array {

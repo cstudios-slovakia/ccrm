@@ -171,20 +171,24 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       if (url.searchParams.get('action') === 'totals') {
         const byTask: Record<string, number> = {};
         const byTicket: Record<string, number> = {};
-        const byProject: Record<string, { seconds: number; cost: number | null }> = {};
+        const byProject: Record<string, { seconds: number; workedMs: number; cost: number | null }> = {};
         for (const e of entries) {
           if (e.deletedAt || !e.durationSec) continue;
           if (e.taskId) byTask[e.taskId] = (byTask[e.taskId] ?? 0) + e.durationSec;
           if (e.ticketId) byTicket[e.ticketId] = (byTicket[e.ticketId] ?? 0) + e.durationSec;
           if (e.projectId) {
-            const row = byProject[e.projectId] ?? { seconds: 0, cost: 0 };
+            const row = byProject[e.projectId] ?? { seconds: 0, workedMs: 0, cost: 0 };
             row.seconds += e.durationSec;
+            row.workedMs += e.workedMs ?? e.durationSec * 1000;
             if (e.userId === caller || canCosts) row.cost = (row.cost ?? 0) + (e.cost ?? 0);
             else row.cost = null;
             byProject[e.projectId] = row;
           }
         }
-        return route.fulfill(ok({ byTask, byTicket, byProject }));
+        return route.fulfill(ok({ byTask, byTicket, byProject, workedByUserDay: {} }));
+      }
+      if (url.searchParams.get('action') === 'overlaps') {
+        return route.fulfill(ok({ months: [] }));
       }
       if (url.searchParams.get('action') === 'usage') {
         if (!access.can('tickets.time')) return route.fulfill(fail('forbidden', 403));

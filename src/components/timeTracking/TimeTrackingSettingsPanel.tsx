@@ -14,7 +14,8 @@ import {
 } from "../../utils/holidays.ts";
 import { computeCostRate } from "../../utils/timeCost.ts";
 import { DEFAULT_TIME_TRACKING_SETTINGS, type TimeTrackingSettings } from "../../utils/timeTracking.ts";
-import { TimeApiError, repriceEntries, saveSettings, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
+import type { OverlapMonth } from "../../utils/timeTrackingApi.ts";
+import { TimeApiError, getOverlaps, repriceEntries, saveSettings, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
 import { ExtensionSettings } from "./ExtensionSettings";
 import { TogglImportPanel } from "./TogglImportPanel";
 import { formatMoney } from "../../utils/currency";
@@ -41,6 +42,14 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
   const [ovKind, setOvKind] = useState<HolidayOverride["kind"]>("extraDayOff");
   const [ovName, setOvName] = useState("");
   const [repriceMonth, setRepriceMonth] = useState(new Date().toISOString().slice(0, 7));
+
+  const [overlaps, setOverlaps] = useState<OverlapMonth[]>([]);
+  useEffect(() => {
+    if (!isAdmin) return;
+    const now = new Date();
+    const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    getOverlaps(ym(new Date(now.getFullYear(), now.getMonth() - 5, 1)), ym(now)).then(setOverlaps).catch(() => setOverlaps([]));
+  }, [isAdmin]);
 
   useEffect(() => setDraft(settings), [settings]);
   useEffect(() => setCountry(tt.defaultCountry), [tt.defaultCountry]);
@@ -360,13 +369,22 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
       {isAdmin && (
         <Surface className="space-y-3">
           <h3 className="type-card-title text-slate-900">{t("Re-price a period", "Prepočítať obdobie", "Időszak újraárazása")}</h3>
-          <p className="text-body text-slate-500">{t("Rates are frozen when an entry is saved. Re-pricing recomputes every entry of a month with the current salaries and calendar, and fills in entries that had no rate once an employee is linked.", "Sadzby sa pri uložení záznamu zafixujú. Prepočet znovu vypočíta všetky záznamy mesiaca podľa aktuálnych miezd a kalendára a doplní záznamy bez sadzby po pripojení zamestnanca.", "A díjak a bejegyzés mentésekor rögzülnek. Az újraárazás a hónap minden bejegyzését a jelenlegi fizetésekkel és naptárral számolja újra, és kitölti a díj nélküli bejegyzéseket, ha már van hozzárendelt munkatárs.")}</p>
+          <p className="text-body text-slate-500">{t("Rates are frozen when an entry is saved. Re-pricing recomputes every entry of a month with the current salaries and calendar, and fills in entries that had no rate once an employee is linked. It also re-allocates worked time between overlapping entries.", "Sadzby sa pri uložení záznamu zafixujú. Prepočet znovu vypočíta všetky záznamy mesiaca podľa aktuálnych miezd a kalendára a doplní záznamy bez sadzby po pripojení zamestnanca. Zároveň znovu rozdelí odpracovaný čas medzi prekrývajúcimi sa záznamami.", "A díjak a bejegyzés mentésekor rögzülnek. Az újraárazás a hónap minden bejegyzését a jelenlegi fizetésekkel és naptárral számolja újra, és kitölti a díj nélküli bejegyzéseket, ha már van hozzárendelt munkatárs. Emellett újraosztja a ledolgozott időt az egymást átfedő bejegyzések között.")}</p>
           <div className="flex flex-wrap items-center gap-3">
             <input type="month" value={repriceMonth} onChange={(e) => setRepriceMonth(e.target.value)} className="h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui" data-testid="tt-reprice-month" />
             <HoldToConfirmButton onConfirm={() => void reprice()} tone="archive" lang={language} what={repriceMonth} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-ui font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer" icon={<span className="size-4" />}>
               {t("Hold to re-price", "Podržte pre prepočet", "Tartsa az újraárazáshoz")}
             </HoldToConfirmButton>
           </div>
+          {overlaps.filter((o) => o.entries > 0).map((o) => {
+            const [y, m] = o.month.split("-").map(Number);
+            const label = new Date(y, m - 1, 1).toLocaleDateString(language, { month: "short", year: "numeric" });
+            return (
+              <p key={o.month} className="type-meta text-slate-500" data-testid="tt-overlap-month">
+                {t(`${label}: ${o.entries} entries overlap (${o.users} people)`, `${label}: ${o.entries} záznamov sa prekrýva (${o.users} ľudí)`, `${label}: ${o.entries} bejegyzés fedi egymást (${o.users} fő)`)}
+              </p>
+            );
+          })}
         </Surface>
       )}
 
