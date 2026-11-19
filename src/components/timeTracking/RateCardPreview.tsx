@@ -42,7 +42,7 @@ export function RateCardPreview({
 
   const per = (type?: string | null) => (type === "daily" ? t("day", "deň", "nap") : type === "hourly" ? t("h", "h", "óra") : t("month", "mesiac", "hó"));
   const calc = (row: (typeof rows)[number]) => {
-    const { r, e } = row;
+    const { r } = row;
     if (r.rate === null) return "—";
     const parts: string[] = [];
     if (r.basisDays !== null) parts.push(`${r.basisDays} ${t("working days", "pracovných dní", "munkanap")}`);
