@@ -23,6 +23,7 @@ import {
 } from "../../utils/timeTeam.ts";
 import { entrySeconds, formatDuration, todayIso, weekStart, type TFn } from "../../utils/timeTracking.ts";
 import { viewSizeScale } from "../../utils/viewSize";
+import { isoWeekNumber } from "../../utils/isoWeek.ts";
 import { MoneyText } from "./MoneyText";
 import { RoleBadge } from "./RoleBadge";
 import { requestOpenList } from "./ViewingAsContext";
@@ -193,10 +194,14 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
                 ...deps.projects.map((p) => ({ value: p.id, label: lookups.projectName(p.id) })),
               ]}
             />
-            <label className="flex h-9 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-ui text-slate-700">
-              <input type="checkbox" checked={activeOnly} onChange={(e) => setActiveOnly(e.target.checked)} className="size-4 accent-teal-600" />
+            <button
+              type="button"
+              aria-pressed={activeOnly}
+              onClick={() => setActiveOnly(!activeOnly)}
+              className={`inline-flex h-9 items-center rounded-xl border px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${activeOnly ? "border-teal-600 bg-teal-600 text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
+            >
               {t("Active projects only", "Len aktívne projekty", "Csak aktív projektek")}
-            </label>
+            </button>
           </>
         }
         trailing={
@@ -247,7 +252,7 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
           <ChevronLeft className="size-4" />
         </button>
         <span className="min-w-40 text-center text-ui font-semibold text-slate-800">
-          {kind === "week" ? `${dayLabel(from)} – ${dayLabel(to)}` : `${monthName(buckets[0].id)} – ${monthName(buckets[buckets.length - 1].id)}`}
+          {kind === "week" ? `W${isoWeekNumber(from)} – W${isoWeekNumber(buckets[buckets.length - 1].from)}` : `${monthName(buckets[0].id)} – ${monthName(buckets[buckets.length - 1].id)}`}
         </span>
         <button
           type="button"
@@ -281,7 +286,12 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
                   const current = today >= b.from && today <= b.to;
                   return (
                     <th key={b.id} className={`min-w-24 px-3 py-3 type-overline ${current ? "bg-teal-50 text-teal-800" : "text-slate-500"}`}>
-                      {kind === "week" ? dayLabel(b.from) : monthName(b.id)}
+                      {kind === "week" ? (
+                        <>
+                          <span className="block">W{isoWeekNumber(b.from)}</span>
+                          <span className="block font-normal normal-case">{dayLabel(b.from)} – {dayLabel(b.to)}</span>
+                        </>
+                      ) : monthName(b.id)}
                     </th>
                   );
                 })}
@@ -326,7 +336,7 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
                     return (
                       <td key={cell.bucketId} className={`px-3 py-3 ${current ? "bg-teal-50/70" : ""}`}>
                         {cell.seconds === 0 && cell.vacation ? (
-                          <span className="text-micro font-semibold text-slate-500">{t("vacation", "dovolenka", "szabadság")}</span>
+                          <span className="text-micro font-semibold text-teal-700">{t("vacation", "dovolenka", "szabadság")}</span>
                         ) : cell.seconds === 0 ? (
                           <span className="text-slate-300">—</span>
                         ) : (
@@ -360,7 +370,7 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
             </tbody>
             <tfoot>
               <tr className="bg-slate-50 font-semibold" data-testid="team-totals">
-                <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-left">{t("Totals", "Spolu", "Összesen")}</th>
+                <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-left">{t("Totals", "Súčet", "Végösszeg")}</th>
                 {matrix.buckets.map((b, i) => (
                   <td key={b.id} className="px-3 py-3">
                     <span className="block tabular-nums text-teal-700">{formatDuration(matrix.totals.seconds[i])}</span>
@@ -376,6 +386,20 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
           </table>
         )}
       </Surface>
+
+      <div className="grid gap-1 type-meta text-slate-500" data-testid="team-legend">
+        <p className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-1 w-6 rounded-full bg-teal-600" />
+            {t("bar = hours vs the working hours of that period", "pruh = hodiny voči pracovným hodinám obdobia", "sáv = órák és az időszak munkaóráinak aránya")}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-1 w-6 rounded-full bg-amber-500" />
+            {t("under 75 %", "pod 75 %", "75 % alatt")}
+          </span>
+        </p>
+        <p>{t("“no rate” = the user has no linked employee or no salary, so cost cannot be calculated.", "„bez sadzby“ = používateľ nemá pripojeného zamestnanca alebo mzdu, takže náklady sa nedajú vypočítať.", "„nincs díj” = a felhasználóhoz nincs munkatárs vagy bér rendelve, ezért a költség nem számolható.")}</p>
+      </div>
 
       {pop && popCell && popRow &&
         createPortal(
@@ -398,6 +422,11 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
                 </li>
               ))}
             </ul>
+            {popCell.basisSeconds > 0 && (
+              <p className="mt-2 border-t border-slate-100 pt-2 type-meta tabular-nums text-slate-500" data-testid="team-pop-basis">
+                {formatDuration(popCell.seconds)} {t("of", "z", "ennyiből:")} {formatDuration(popCell.basisSeconds)} h · {Math.round((popCell.seconds / popCell.basisSeconds) * 100)} %
+              </p>
+            )}
             <button
               type="button"
               onClick={() => {

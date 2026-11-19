@@ -157,7 +157,7 @@ export function UnsortedInbox({ deps }: { deps: TimeDeps }) {
       <Surface className="grid gap-3 border border-amber-200 bg-amber-50/60">
         <div>
           <h3 className="type-card-title text-amber-950">{t("Unsorted", "Nezaradené", "Rendezetlen")}</h3>
-          <p className="type-meta text-amber-800">{t("Sites you visited while no timer was running. Only the domain, the page title and the times are kept.", "Stránky, ktoré ste navštívili, kým nebežal časovač. Uchováva sa len doména, názov stránky a časy.", "Oldalak, amiket időzítő nélkül nézett. Csak a domain, az oldal címe és az idők maradnak meg.")}</p>
+          <p className="type-meta text-amber-800">{t("Captured by your Chrome extension while no timer was running. Only you see these. Assign one to turn it into a time entry.", "Zachytené vaším rozšírením pre Chrome, kým nebežal časovač. Vidíte ich len vy. Priraďte záznam k projektu a vznikne z neho časový záznam.", "A Chrome-bővítmény rögzítette, amíg nem futott időzítő. Csak Ön látja őket. Rendeljen hozzá egy projektet, és időbejegyzés lesz belőle.")}</p>
         </div>
         {items.length === 0 ? (
           <p className="text-body text-amber-800/80">{t("Nothing waiting.", "Nič nečaká.", "Nincs várakozó elem.")}</p>
