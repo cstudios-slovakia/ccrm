@@ -8,7 +8,7 @@ React + TypeScript + Vite SPA with a PHP/MySQL backend. Start with
 **[`docs/TESTING.md`](docs/TESTING.md) is the single source of truth.**
 
 ```bash
-npm run check         # THE verification: app + QA type-check, unit tests, backend mirror,
+npm run check         # THE verification: app + QA + extension type-check, unit tests, backend mirror,
                       # undefined-symbol audit (~15 s warm; --fast skips unit tests)
 npm run test:unit     # node --test over src/**/*.test.ts and scripts/**/*.test.mjs
 node scripts/qa/run-qa.mjs --files <files>   # scoped browser QA (see below)

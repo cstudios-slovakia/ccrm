@@ -3,11 +3,12 @@
  * The one local verification command (`npm run check`). Runs what CI runs, in one go:
  *   app      tsc --noEmit on tsconfig.app.json   (incremental, cache in .cache/tsc)
  *   qa       tsc --noEmit on tsconfig.qa.json    (CI checks this too; `npm run typecheck` does not)
+ *   ext      tsc --noEmit on tsconfig.extension.json (the Chrome time-tracker extension)
  *   unit     node --test over src/ tests         (same command as `npm run test:unit`)
  *   backend  sync-backend.mjs --check            (repo-root copies mirror public/)
  *   audit    audit-undefined-symbols.mjs --sql --requires, minus scripts/agent/undefined-symbols-baseline.json
  *
- *   node scripts/agent/check.mjs [--fast] [--only app,qa,unit,backend,audit] [--update-baseline]
+ *   node scripts/agent/check.mjs [--fast] [--only app,qa,ext,unit,backend,audit] [--update-baseline]
  *
  * --fast skips the unit tests. All selected steps always run; exit 1 if any failed.
  * Never launches a browser: the QA suite stays a separate, scoped command (docs/TESTING.md).
@@ -78,6 +79,7 @@ function auditStep() {
 const STEPS = [
   { id: 'app', title: 'app type-check', fn: () => tsc('tsconfig.app.json', 'app') },
   { id: 'qa', title: 'QA-suite type-check', fn: () => tsc('tsconfig.qa.json', 'qa') },
+  { id: 'ext', title: 'extension type-check', fn: () => tsc('tsconfig.extension.json', 'ext') },
   { id: 'unit', title: 'unit tests', skipFast: true, fn: () => node('--test', '--experimental-strip-types', 'src/**/*.test.ts') },
   { id: 'backend', title: 'backend mirror', fn: () => node('scripts/sync-backend.mjs', '--check') },
   { id: 'audit', title: 'undefined-symbol audit', fn: auditStep },
