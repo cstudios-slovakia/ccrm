@@ -42,6 +42,7 @@ import {
 } from "../../utils/timeCalendar.ts";
 import { isEntryLocked, lockReason, paidMonthsForOwner } from "../../utils/timeLock";
 import { formatDuration, localIsoDate, projectColor, todayIso, type TimeEntry } from "../../utils/timeTracking.ts";
+import { totalWorkedSeconds } from "../../utils/timeWorked.ts";
 import { TimeApiError, createEntry, timeErrorMessage, updateEntry, type EntryInput } from "../../utils/timeTrackingApi.ts";
 import { ProjectLabel } from "./ProjectLabel";
 import { ProjectPicker } from "./ProjectPicker";
@@ -533,8 +534,11 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
       : `${new Date(`${days[0]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })} – ${new Date(`${days[6]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })}`;
 
   const daySeconds = useMemo(() => {
+    // Worked time, like List and the Timesheet Worked row: parallel timers in one hour count once.
+    const byDay = new Map<string, TimeEntry[]>();
+    for (const entry of entries) byDay.set(entry.entryDate, [...(byDay.get(entry.entryDate) ?? []), entry]);
     const map = new Map<string, number>();
-    for (const entry of entries) map.set(entry.entryDate, (map.get(entry.entryDate) ?? 0) + entryDurationSec(entry, nowMs));
+    for (const [day, list] of byDay) map.set(day, totalWorkedSeconds(list, nowMs));
     return map;
   }, [entries, nowMs]);
   const rangeSeconds = days.reduce((sum, day) => sum + (zoom === "month" && day.slice(0, 7) !== anchor.slice(0, 7) ? 0 : daySeconds.get(day) ?? 0), 0);
@@ -808,7 +812,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
 
       <aside className="ws-lg:w-64 ws-lg:shrink-0" data-testid="calendar-task-rail">
         <Surface className="flex max-h-[36rem] flex-col gap-2">
-          <h3 className="type-label text-slate-800">{t("Your tasks this week", "Vaše úlohy tento týždeň", "Az Ön feladatai ezen a héten")}</h3>
+          <h3 className="type-label text-slate-800">{t("Your tasks", "Vaše úlohy", "Az Ön feladatai")}</h3>
           <p className="type-meta text-slate-500">{t("Drag a task onto the calendar, or press play to start the timer.", "Úlohu pretiahnite do kalendára alebo spustite časovač.", "Húzza a feladatot a naptárra, vagy indítsa az időzítőt.")}</p>
           <div className="flex flex-col gap-1 overflow-y-auto">
             {myTasks.length === 0 && <p className="text-ui text-slate-500">{t("No open tasks.", "Žiadne otvorené úlohy.", "Nincs nyitott feladat.")}</p>}

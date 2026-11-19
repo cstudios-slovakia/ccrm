@@ -61,6 +61,8 @@ const downloadText = (filename: string, text: string) => {
 export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate: (route: string) => void }) {
   const tt = useTimeTracking();
   const { t, viewer, settings, nowMs } = tt;
+  /** ISO week label: "W37" / "T37" / "37. hét". */
+  const weekLabel = (week: number) => t(`W${week}`, `T${week}`, `${week}. hét`);
   const lookups = useTimeLookups(deps);
   const statuses = useProjectStatuses();
   const [kind, setKind] = useState<"week" | "month">("week");
@@ -252,7 +254,7 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
           <ChevronLeft className="size-4" />
         </button>
         <span className="min-w-40 text-center text-ui font-semibold text-slate-800">
-          {kind === "week" ? `W${isoWeekNumber(from)} – W${isoWeekNumber(buckets[buckets.length - 1].from)}` : `${monthName(buckets[0].id)} – ${monthName(buckets[buckets.length - 1].id)}`}
+          {kind === "week" ? `${weekLabel(isoWeekNumber(from))} – ${weekLabel(isoWeekNumber(buckets[buckets.length - 1].from))}` : `${monthName(buckets[0].id)} – ${monthName(buckets[buckets.length - 1].id)}`}
         </span>
         <button
           type="button"
@@ -288,7 +290,7 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
                     <th key={b.id} className={`min-w-24 px-3 py-3 type-overline ${current ? "bg-teal-50 text-teal-800" : "text-slate-500"}`}>
                       {kind === "week" ? (
                         <>
-                          <span className="block">W{isoWeekNumber(b.from)}</span>
+                          <span className="block">{weekLabel(isoWeekNumber(b.from))}</span>
                           <span className="block font-normal normal-case">{dayLabel(b.from)} – {dayLabel(b.to)}</span>
                         </>
                       ) : monthName(b.id)}

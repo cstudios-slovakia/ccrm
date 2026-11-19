@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, Plus, Search, X } from "lucide-react";
+import { Check, ChevronDown, Plus, Search, X } from "lucide-react";
 import type { Lead, Project, ProjectType } from "../../types";
 import { useProjectStatuses } from "../../hooks/useProjectStatuses";
 import {
@@ -206,7 +206,8 @@ export function ProjectPicker({
                   type="button"
                   onClick={() => choose(p.id)}
                   data-testid="project-option"
-                  className={`flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-slate-50 cursor-pointer ${p.id === value ? "bg-primary/10" : ""}`}
+                  aria-current={p.id === value ? "true" : undefined}
+                  className={`flex w-full items-center gap-2.5 px-3 py-2 text-left cursor-pointer ${p.id === value ? "bg-primary/10 hover:bg-primary/15" : "hover:bg-slate-50"}`}
                 >
                   <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: projectColor(p.id) }} />
                   <span className="min-w-0 flex-1">
@@ -216,6 +217,7 @@ export function ProjectPicker({
                   <span className="shrink-0 rounded-full px-2 py-0.5 text-micro font-semibold" style={{ color: projectStatusColor(p.status, statuses), backgroundColor: `${projectStatusColor(p.status, statuses)}1a` }}>
                     {projectStatusLabel(p.status, t, statuses)}
                   </span>
+                  {p.id === value && <Check className="size-4 shrink-0 text-primary" aria-hidden />}
                 </button>
               );
             })}

@@ -56,13 +56,13 @@ export function TaskTimeBreakdown({ taskId, users }: { taskId?: string; users: U
       {figure.total !== null && (
         <div className="flex items-baseline justify-between gap-3">
           <span className="type-overline text-slate-500">{t("Cost", "Náklad", "Költség")}</span>
-          <span className="text-ui font-semibold tabular-nums text-violet-700" data-testid="task-time-cost">{money(figure.total)}</span>
+          <span className="text-ui font-semibold tabular-nums text-slate-900" data-testid="task-time-cost">{money(figure.total)}</span>
         </div>
       )}
       {figure.total === null && figure.own !== null && others && (
         <div className="flex items-baseline justify-between gap-3">
           <span className="type-overline text-slate-500">{t("Your cost", "Váš náklad", "Az Ön költsége")}</span>
-          <span className="text-ui font-semibold tabular-nums text-violet-700" data-testid="task-time-own-cost">{money(figure.own)}</span>
+          <span className="text-ui font-semibold tabular-nums text-slate-900" data-testid="task-time-own-cost">{money(figure.own)}</span>
         </div>
       )}
       {figure.total === null && figure.own === null && figure.ownUnrated && (
@@ -78,7 +78,7 @@ export function TaskTimeBreakdown({ taskId, users }: { taskId?: string; users: U
               {"cost" in p && p.cost === null ? (
                 <span className="text-amber-700" title={noRate}>—</span>
               ) : typeof p.cost === "number" ? (
-                <span className="text-violet-700">{money(p.cost)}</span>
+                <span className="text-slate-500">{money(p.cost)}</span>
               ) : null}
             </span>
           </li>
