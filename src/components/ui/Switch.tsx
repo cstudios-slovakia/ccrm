@@ -1,4 +1,7 @@
-/** An on/off switch (`role="switch"`), drawn like the one in project settings; `tone` picks the on colour. */
+/**
+ * An on/off switch (`role="switch"`), drawn like the one in project settings; `tone` picks the on colour.
+ * Put it inside a `<label>` with visible text and the text toggles it too (a button is labelable).
+ */
 export function Switch({
   checked,
   onChange,
@@ -6,6 +9,7 @@ export function Switch({
   disabled,
   tone = "primary",
   className = "",
+  testId,
 }: {
   checked: boolean;
   onChange: (next: boolean) => void;
@@ -14,6 +18,7 @@ export function Switch({
   disabled?: boolean;
   tone?: "primary" | "emerald";
   className?: string;
+  testId?: string;
 }) {
   const on = tone === "emerald" ? "bg-emerald-600" : "bg-primary";
   return (
@@ -22,6 +27,7 @@ export function Switch({
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      data-testid={testId}
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-all duration-150 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40 focus-visible:ring-offset-2 ${checked ? on : "bg-slate-300"} ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:opacity-90"} ${className}`}

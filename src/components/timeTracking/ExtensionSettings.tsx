@@ -111,14 +111,14 @@ export function ExtensionSettings({ language, t, canEdit, isAdmin, extension, on
       {isAdmin && (
         <div className="grid gap-3 rounded-xl border border-slate-200 p-3">
           <p className="type-label text-slate-600">{t("Company", "Firma", "Cég")}</p>
-          <div className="flex items-center gap-3 text-ui text-slate-800">
-            <Switch checked={extension.enabled} disabled={!canEdit} onChange={(next) => onExtension({ ...extension, enabled: next })} label={t("Extension can pair", "Rozšírenie sa môže spárovať", "A bővítmény párosíthat")} />
+          <label className="flex items-center gap-3 text-ui text-slate-800 cursor-pointer">
+            <Switch checked={extension.enabled} disabled={!canEdit} onChange={(next) => onExtension({ ...extension, enabled: next })} />
             {t("Extension can pair", "Rozšírenie sa môže spárovať", "A bővítmény párosíthat")}
-          </div>
-          <div className="flex items-center gap-3 text-ui text-slate-800">
-            <Switch checked={extension.activityCaptureAllowed} disabled={!canEdit} onChange={(next) => onExtension({ ...extension, activityCaptureAllowed: next })} label={t("Allow activity capture", "Povoliť zaznamenávanie aktivity", "Tevékenység rögzítésének engedélyezése")} />
+          </label>
+          <label className="flex items-center gap-3 text-ui text-slate-800 cursor-pointer">
+            <Switch checked={extension.activityCaptureAllowed} disabled={!canEdit} onChange={(next) => onExtension({ ...extension, activityCaptureAllowed: next })} />
             {t("Allow activity capture", "Povoliť zaznamenávanie aktivity", "Tevékenység rögzítésének engedélyezése")}
-          </div>
+          </label>
           <label className="grid max-w-48 gap-1">
             <span className="type-label text-slate-600">{t("Keep unsorted items (days)", "Ponechať nezaradené (dni)", "Rendezetlen elemek megőrzése (nap)")}</span>
             <input
@@ -148,12 +148,10 @@ export function ExtensionSettings({ language, t, canEdit, isAdmin, extension, on
             <span>{t("Off until you turn it on. It records the domain, the page title and the times — never the address path or the page itself — and only while no timer is running. Unsorted activity is private: managers never see it.", "Vypnuté, kým to nezapnete. Zaznamenáva doménu, názov stránky a časy — nikdy nie cestu adresy ani samotnú stránku — a len kým nebeží časovač. Nezaradená aktivita je súkromná: manažéri ju nikdy nevidia.", "Kikapcsolva, amíg be nem kapcsolja. A domaint, az oldal címét és az időket rögzíti — soha nem a cím elérési útját vagy magát az oldalt — és csak akkor, ha nem fut időzítő. A rendezetlen tevékenység privát: a vezetők soha nem látják.")}</span>
           </p>
         </div>
-        <div className="flex items-center gap-3 text-ui text-slate-800">
-          <span data-testid="tt-activity-opt-in" className="inline-flex">
-            <Switch checked={enabled} onChange={setEnabled} label={t("Capture watched sites", "Sledovať vybrané stránky", "Figyelt oldalak rögzítése")} />
-          </span>
+        <label className="flex items-center gap-3 text-ui text-slate-800 cursor-pointer">
+          <Switch checked={enabled} onChange={setEnabled} testId="tt-activity-opt-in" />
           {t("Capture watched sites", "Sledovať vybrané stránky", "Figyelt oldalak rögzítése")}
-        </div>
+        </label>
         <label className="grid max-w-48 gap-1">
           <span className="type-label text-slate-600">{t("Ignore visits shorter than (minutes)", "Ignorovať návštevy kratšie ako (minúty)", "Ennél rövidebb látogatások kihagyása (perc)")}</span>
           <input type="number" min={1} max={120} value={minMinutes} onChange={(e) => setMinMinutes(Math.max(1, Math.min(120, Number(e.target.value) || 5)))} className={field} />
