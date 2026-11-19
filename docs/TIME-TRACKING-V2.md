@@ -112,8 +112,8 @@ Legend: ⬜ not started · 🟡 built, not finished (see Left over) · ✅ done
 
 | # | Phase | Needs | Status | Commit | Date |
 |---|---|---|---|---|---|
-| 1 | Foundation, server: allocation engine, worked time, one pricing path | — | ⬜ | | |
-| 2 | Foundation, client: worked time in every personal sum | 1 | ⬜ | | |
+| 1 | Foundation, server: allocation engine, worked time, one pricing path | — | ✅ | `1936c4dc` | 2026-11-19 |
+| 2 | Foundation, client: worked time in every personal sum | 1 | ✅ | `264ebee5` | 2026-11-19 |
 | 3 | Leave-aware monthly rate and the rate card | 1 | ⬜ | | |
 | 4 | Parallel timers, server and API | 1 | ⬜ | | |
 | 5 | Parallel timers, UI (the container) | 2, 4 | ⬜ | | |
@@ -174,6 +174,20 @@ Symptom → root cause → proposed fix. Fixed only in the phase named.
    fire no timer action (C14).
 10. **The idle reminder sees one browser page only** (`IdleReminder.tsx`) and has no server side.
     Replaced in phase 7.
+11. **The dev container drops the `Authorization` header** for `api/time_tracker_ext.php`
+    (`public/.htaccess` forwards it only for `api/v1`), so the extension's Bearer key never
+    reaches PHP there and every device call answers 401 `not_paired`. The probe forwards it in
+    its scratch copy (`SetEnvIf Authorization`). Proposed fix (not made): the same `SetEnvIf`
+    line in `public/.htaccess`. Found in phase 4 (probe T14).
+12. **Pre-existing probe failures** (identical on the untouched `e321ff33`): T5 "an Employee who
+    cannot pick a project is not blocked by require a project" and "stopping twice is
+    idempotent" — Erik works on `proj-tt-1` through a task, so he *can* pick a project and the
+    stop is refused. Not fixed.
+13. **The probe was date-bound**: its T2 fixtures (May/Oct 2026) fell behind `lockAfterDays` and
+    the probe crashed before T5. Its setup now turns the age lock off in the scratch database.
+14. **Never merge while a browser QA run is in progress:** the QA dev server serves the main
+    checkout live, a merge reloads the page mid-test and fails unrelated specs (seen in phase 1:
+    two time-tracking specs failed, then passed 32/32 on a stable tree).
 
 ---
 
@@ -800,25 +814,39 @@ runners ∥ (b) schema, migration and the `entities_overview.md` section. Then *
 do not split them) ∥ (d) the guard test and the probe cases, written against D3.3. Last: (e)
 the API fields and the Settings count.
 
-- [ ] `src/utils/timeAllocation.ts` + tests; `public/api/time_allocation.php`;
+- [x] `src/utils/timeAllocation.ts` + tests; `public/api/time_allocation.php`;
       `scripts/fixtures/time-allocation-cases.json` (the four examples of D2, the invariants,
       a running entry, a 5-entry random case checked against I1); `scripts/test-time-allocation.php`
       wired like `test:time-cost`
-- [ ] Schema: `worked_ms`, `cost` widened; migration backfill (C16); `entities_overview.md`
+- [x] Schema: `worked_ms`, `cost` widened; migration backfill (C16); `entities_overview.md`
       gets a `time_entries` section
-- [ ] `public/api/time_settle.php` with `ccrm_tt_settle()`; `time_cost.php` / `timeCost.ts`
+- [x] `public/api/time_settle.php` with `ccrm_tt_settle()`; `time_cost.php` / `timeCost.ts`
       cost from `worked_ms`, four decimals; fixtures extended
-- [ ] Every write site calls `ccrm_tt_settle()` and stops computing cost itself (list in D3.3);
+- [x] Every write site calls `ccrm_tt_settle()` and stops computing cost itself (list in D3.3);
       a grep-based guard test fails when a new site writes `cost` or `worked_ms` directly
-- [ ] Lock rule for overlapping a locked neighbour (D3.3)
-- [ ] API: `workedMs` on entries; `totals` returns worked sums (D5.3, last row)
-- [ ] Settings: a read-only count "N existing entries overlap" per month; "Re-price a period"
+- [x] Lock rule for overlapping a locked neighbour (D3.3)
+- [x] API: `workedMs` on entries; `totals` returns worked sums (D5.3, last row)
+- [x] Settings: a read-only count "N existing entries overlap" per month; "Re-price a period"
       also re-allocates
-- [ ] Server probe (`scripts/probe-time-tracking/run.mjs`): two overlapping manual entries cost
+- [x] Server probe (`scripts/probe-time-tracking/run.mjs`): two overlapping manual entries cost
       the same as one; delete one and the other returns to full cost; sums reconcile to the cent
-- [ ] `npm run sync:backend`
+- [x] `npm run sync:backend`
 
-**Left over:**
+**Left over:** none. Notes from the build:
+- Built on branch `css-main` (the owner moved TT2 off `1.13-nectarine` on 2026-11-19).
+- Settle never rewrites a **locked** row (approved week, paid month, older than `lockAfterDays`):
+  it stays an engine input but keeps its stored values; only the admin "Re-price a period"
+  (`force`) rewrites it. Exempt: rows the caller itself wrote, and rows never settled
+  (`worked_ms` NULL, e.g. imported). The refusal (`entry_locked`, 403) covers REST create,
+  update, delete, restore and MCP log/update over the old **and** the new interval; activity
+  assignment, the extension, back-dated starts and imports rely on the settle rule instead.
+- Settle reads timed rows by `entry_date` (window − 2 days … + 1 day, index `idx_te_user_date`):
+  an entry whose typed `entry_date` is far from its real start is invisible to its neighbours'
+  settle (it is still settled itself).
+- `time_settle.php` / `time_allocation.php` are required by `ticket_time_migration.php` but not
+  in `ccrm_schema_fingerprint()` (schema.php is capped; their edits never need a migration re-run).
+- New API: `workedMs` on every entry; `totals.byProject[id].workedMs`, `totals.workedByUserDay`;
+  `GET action=overlaps&from=YYYY-MM&to=YYYY-MM`.
 
 ### Phase 2. Foundation, client
 
@@ -828,16 +856,23 @@ Spec: D9, D5.5 (totals only). Needs 1.
 tests. Then (b) List, Day, the drawer line and the approval totals ∥ (c) Team, Reports and the
 salary report utilities ∥ (d) Timesheet, the QA mock and the e2e case.
 
-- [ ] `TimeEntry.workedMs`; helpers `entryWorkedSeconds`, `totalWorkedSeconds`, `leverage` in
+- [x] `TimeEntry.workedMs`; helpers `entryWorkedSeconds`, `totalWorkedSeconds`, `leverage` in
       `timeTracking.ts` (a running entry's live share comes from `timeAllocation.ts`)
-- [ ] Every row of the left column of D9 switched to worked time; unit tests per helper
-- [ ] Day and week totals show "Worked · Delivered" when they differ; one number when equal
-- [ ] Entry drawer: the "Your time" line (D5.5)
-- [ ] Timesheet: the second totals row "Worked"
-- [ ] QA mock (`tests/e2e/helpers/timeTrackingMock.ts`) returns `workedMs`; e2e: two overlapping
+- [x] Every row of the left column of D9 switched to worked time; unit tests per helper
+- [x] Day and week totals show "Worked · Delivered" when they differ; one number when equal
+- [x] Entry drawer: the "Your time" line (D5.5)
+- [x] Timesheet: the second totals row "Worked"
+- [x] QA mock (`tests/e2e/helpers/timeTrackingMock.ts`) returns `workedMs`; e2e: two overlapping
       seeded entries show 1:00 worked and 2:00 delivered in the day total
 
-**Left over:**
+**Left over:** none. Notes from the build:
+- Week approval (`timeApproval.ts`, `SubmitWeekButton`) shows counts and status only, no time
+  totals, so it had nothing to switch.
+- The drawer's "in parallel with" line fetches the entry's day for its user (one extra list
+  request per drawer open).
+- One component renders "Worked · Delivered": `WorkedTotal` in `WorkedLine.tsx`.
+- The e2e (`tests/e2e/timeTrackingWorked.spec.ts`) asserts 3:15 worked / 4:15 delivered: the
+  seed already holds 2:15 of Erik's time today, on top of the 1:00 / 2:00 overlap.
 
 ### Phase 3. Leave-aware monthly rate and the rate card
 
