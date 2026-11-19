@@ -1185,6 +1185,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     if (!is_array($taskStateColors) || !$taskStateColors) {
         $taskStateColors = ccrm_default_task_state_colors(is_array($taskStates) ? $taskStates : []);
     }
+    $taskStateTimerActions = ccrm_normalize_task_state_timer_actions(isset($settings['TASK_STATE_TIMER_ACTIONS']) ? json_decode($settings['TASK_STATE_TIMER_ACTIONS'], true) : null, is_array($taskStates) ? $taskStates : null);
     $integrationsConfig = isset($settings['INTEGRATIONS_CONFIG']) ? json_decode($settings['INTEGRATIONS_CONFIG'], true) : (object)[];
     // SECURITY: never send real secret values to the browser — mask them. The
     // frontend only needs to know a secret is set (e.g. "OpenAI configured");
@@ -2695,6 +2696,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'projectAutoCreate' => $projectAutoCreate,
             'taskStates' => $taskStates,
             'taskStateColors' => $taskStateColors,
+            'taskStateTimerActions' => $taskStateTimerActions ?: (object)[],
             'taskSettings' => $taskSettings,
             'projectStatuses' => $projectStatuses,
             'offerStatuses' => $offerStatuses,
@@ -3387,6 +3389,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : null,
                 'TASK_STATES' => ccrm_settings_list_value($s, 'taskStates', false),
                 'TASK_STATE_COLORS' => ccrm_settings_list_value($s, 'taskStateColors', true),
+                'TASK_STATE_TIMER_ACTIONS' => ccrm_task_state_timer_actions_value($s),
                 // Omitted means unchanged: a client that predates Settings → Tasks
                 // must not switch the option off for everyone by saving an
                 // unrelated setting.
@@ -3434,7 +3437,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($canSettingsGeneral) {
                 $settingsAllowedKeys = array_merge($settingsAllowedKeys, [
                     'SYSTEM_NAME', 'SYSTEM_LANGUAGE', 'SYSTEM_CURRENCY',
-                    'TASK_STATES', 'TASK_STATE_COLORS', 'CUSTOM_LABELS',
+                    'TASK_STATES', 'TASK_STATE_COLORS', 'TASK_STATE_TIMER_ACTIONS', 'CUSTOM_LABELS',
                     'COMPANY_BILLING_SETTINGS', 'INVOICING_INTEGRATIONS',
                     'PROJECT_AUTO_CREATE', 'PROJECT_STATUSES', 'OFFER_STATUSES', 'INVOICE_STATUSES', 'ORDER_STATUSES', 'PRICE_LEVELS', 'TASK_SETTINGS',
                     'TICKET_STATUSES', 'TICKET_SETTINGS',
@@ -3456,7 +3459,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // getPermission("traffic_sources")). Refusing them here while the
                     // UI accepted the edit made the rename revert on the next reload
                     // with no message at all.
-                    'TASK_STATES', 'TASK_STATE_COLORS',
+                    'TASK_STATES', 'TASK_STATE_COLORS', 'TASK_STATE_TIMER_ACTIONS',
                     'LEAD_CATEGORIES', 'LEAD_CATEGORY_IDS', 'LEAD_CATEGORY_COLORS',
                     // Divisions live on the same screen behind the same gate.
                     // Missing from every list, they were refused even for an

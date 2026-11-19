@@ -79,6 +79,8 @@ import { runUndoable } from "../utils/undoable";
 import { reinsertAt } from "../utils/undoableList";
 import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
 import { addTaskState, isDoneMarkerState } from "../utils/projectTasks";
+import { removeTimerActionKey, renameTimerActionKey, type TaskStateTimerActions } from "../utils/taskStateTimerActions";
+import { TaskStateTimerActionSelect, TaskStateTimerActionsHint } from "./settings/TaskStateTimerActionSelect";
 import { clearErrorLogsWithUndo } from "../utils/errorLogs";
 import { useUserPref } from "../utils/userPrefs";
 import { PROJECT_AUTO_CREATE_ENABLED } from "../utils/featureFlags";
@@ -558,6 +560,8 @@ interface SettingsViewProps {
   setTaskStates: React.Dispatch<React.SetStateAction<string[]>>;
   taskStateColors: Record<string, string>;
   setTaskStateColors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  taskStateTimerActions: TaskStateTimerActions;
+  setTaskStateTimerActions: React.Dispatch<React.SetStateAction<TaskStateTimerActions>>;
   /** Settings → Tasks: whether the "Requires conclusion" checkbox is offered. */
   taskSettings?: TaskSettings;
   setTaskSettings?: React.Dispatch<React.SetStateAction<TaskSettings>>;
@@ -695,6 +699,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setTaskStates,
   taskStateColors,
   setTaskStateColors,
+  taskStateTimerActions,
+  setTaskStateTimerActions,
   taskSettings,
   setTaskSettings,
   unifiedEntries = [],
@@ -954,6 +960,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (taskStates.some((s) => s.toLowerCase() === next.toLowerCase())) { toastNameExists(); return; }
     setTaskStates((prev) => prev.map((s) => (s === oldName ? next : s)));
     setTaskStateColors((prev) => migrateMapKey(prev, oldName, next));
+    setTaskStateTimerActions((prev) => renameTimerActionKey(prev, oldName, next));
     setTasks?.((prev) => prev.map((tk) => (tk.status === oldName ? { ...tk, status: next } : tk)));
   };
 
@@ -5906,7 +5913,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       title={userLanguage === "sk" ? "Stavy úloh" : userLanguage === "hu" ? "Feladat állapotok" : "Task States"}
                       description={userLanguage === "sk" ? "Definujte rôzne stavy pre úlohy, priraďte im farby a prispôsobte si pracovný postup." : userLanguage === "hu" ? "Határozzon meg különböző állapotokat a feladatokhoz, rendeljen hozzájuk színeket, és szabja személyre a munkafolyamatot." : "Define different states for tasks, assign colors to them, and customize your workflow."}
                     >
-        
+                      <TaskStateTimerActionsHint taskStates={taskStates} actions={taskStateTimerActions} onApply={setTaskStateTimerActions} canEdit={getPermission("traffic_sources") === "edit"} lang={userLanguage} />
                       <ScrollFade axis="x" className="border border-slate-200/80 rounded-2xl shadow-inner bg-white/50">
                         <table className="w-full text-left border-collapse">
                           <thead>
@@ -5948,6 +5955,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     >
                                       <span>{state}</span>
                                     </InlineRenameName>
+                                    <div className="mt-1 font-normal"><TaskStateTimerActionSelect value={taskStateTimerActions[state]} canEdit={getPermission("traffic_sources") === "edit"} lang={userLanguage} onChange={(a) => setTaskStateTimerActions((prev) => a ? { ...prev, [state]: a } : removeTimerActionKey(prev, state))} /></div>
                                   </td>
         
                                   {/* ACTIONS */}
@@ -5981,6 +5989,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           }
                                           const taskStateIndex = taskStates.indexOf(state);
                                           const taskStateColor = taskStateColors[state];
+                                          const taskStateAction = taskStateTimerActions[state];
                                           runUndoable({
                                             message: singleMessage(userLanguage, "status", "delete", state),
                                             undoLabel: undoLabel(userLanguage),
@@ -5991,10 +6000,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                                 delete next[state];
                                                 return next;
                                               });
+                                              setTaskStateTimerActions(prev => removeTimerActionKey(prev, state));
                                             },
                                             revert: () => {
                                               setTaskStates(prev => (prev.includes(state) ? prev : reinsertAt(prev, [{ item: state, index: taskStateIndex }], s => s)));
                                               if (taskStateColor !== undefined) setTaskStateColors(prev => ({ ...prev, [state]: taskStateColor }));
+                                              if (taskStateAction) setTaskStateTimerActions(prev => ({ ...prev, [state]: taskStateAction }));
                                             },
                                           });
                                         }}

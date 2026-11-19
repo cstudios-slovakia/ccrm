@@ -36,6 +36,7 @@ import {
   registerWebPushSubscription,
 } from "./utils/browserNotifications";
 import { isDoneTaskState } from "./utils/projectTasks";
+import { sanitizeTimerActions, type TaskStateTimerActions } from "./utils/taskStateTimerActions";
 import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listIds";
 import { agencyRightsFrom } from "./utils/agencyRights";
 import { VERSION } from "./utils/version";
@@ -258,6 +259,7 @@ const computeSettingsSig = (s: any): string => {
     normalizeProjectAutoCreate(s.projectAutoCreate),
     s.taskStates ?? [],
     s.taskStateColors && Object.keys(s.taskStateColors).length ? s.taskStateColors : null,
+    sanitizeTimerActions(s.taskStateTimerActions),
     // Normalized on both sides, like the project auto-creation blob above. See
     // normalizeTaskSettings / ccrm_normalize_task_settings.
     normalizeTaskSettings(s.taskSettings),
@@ -886,6 +888,9 @@ function App() {
     "Done": "#10b981"
   });
 
+  // Status → timer action (TT2 D10.1). Nothing is mapped on an existing install.
+  const [taskStateTimerActions, setTaskStateTimerActions] = useState<TaskStateTimerActions>({});
+
   // The project statuses, configured in Settings → Project settings. Handed to
   // every view through ProjectStatusesProvider.
   const [projectStatuses, setProjectStatuses] = useState<ProjectStatusDef[]>(() => normalizeProjectStatusDefs(null));
@@ -1513,6 +1518,7 @@ ${log.payload || ''}
         projectAutoCreate,
         taskStates,
         taskStateColors,
+        taskStateTimerActions,
         taskSettings,
         projectStatuses,
         offerStatuses,
@@ -2748,7 +2754,7 @@ ${log.payload || ''}
       leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds,
       systemName: systemNameOverride, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
-      leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, taskSettings,
+      leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, taskStateTimerActions, taskSettings,
       projectStatuses,
       offerStatuses,
       invoiceStatuses,
@@ -2784,7 +2790,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemNameOverride, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, offerStatuses, invoiceStatuses, priceLevels, orderStatuses, ticketStatuses, ticketSettings, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
+  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemNameOverride, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, taskStateTimerActions, projectStatuses, offerStatuses, invoiceStatuses, priceLevels, orderStatuses, ticketStatuses, ticketSettings, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -3150,6 +3156,7 @@ ${log.payload || ''}
         });
         setTaskStates((prev) => Array.isArray(s.taskStates) && s.taskStates.length > 0 && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
         setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
+        setTaskStateTimerActions((prev) => { const next = sanitizeTimerActions(s.taskStateTimerActions); return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev; });
         setTaskSettings((prev) => {
           const next = normalizeTaskSettings(s.taskSettings);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
@@ -3653,6 +3660,8 @@ ${log.payload || ''}
           setTaskStates={setTaskStates}
           taskStateColors={taskStateColors}
           setTaskStateColors={setTaskStateColors}
+          taskStateTimerActions={taskStateTimerActions}
+          setTaskStateTimerActions={setTaskStateTimerActions}
           taskSettings={taskSettings}
           setTaskSettings={setTaskSettings}
           isDemoMode={isDemoMode}
@@ -3932,6 +3941,8 @@ ${log.payload || ''}
           setTaskStates={setTaskStates}
           taskStateColors={taskStateColors}
           setTaskStateColors={setTaskStateColors}
+          taskStateTimerActions={taskStateTimerActions}
+          setTaskStateTimerActions={setTaskStateTimerActions}
           taskSettings={taskSettings}
           setTaskSettings={setTaskSettings}
           setLeads={updateLeadsAndSync}

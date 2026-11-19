@@ -1038,6 +1038,29 @@ if (!function_exists('ccrm_send_cors')) {
     }
 
     /**
+     * Status -> timer action map (TT2 D10.1): only start|pause|stop survive, and with
+     * `$states` only names that are a configured status. PHP twin of
+     * sanitizeTimerActions() in src/utils/taskStateTimerActions.ts.
+     */
+    function ccrm_normalize_task_state_timer_actions($raw, ?array $states = null): array {
+        $out = [];
+        if (!is_array($raw)) return $out;
+        foreach ($raw as $name => $action) {
+            if (!in_array($action, ['start', 'pause', 'stop'], true)) continue;
+            if ($states !== null && !in_array((string)$name, $states, true)) continue;
+            $out[(string)$name] = $action;
+        }
+        return $out;
+    }
+
+    /** The JSON to store for `taskStateTimerActions`, or null (keep what is stored) when not sent. */
+    function ccrm_task_state_timer_actions_value(array $s): ?string {
+        if (!isset($s['taskStateTimerActions']) || !is_array($s['taskStateTimerActions'])) return null;
+        $states = isset($s['taskStates']) && is_array($s['taskStates']) && $s['taskStates'] ? $s['taskStates'] : null;
+        return json_encode((object)ccrm_normalize_task_state_timer_actions($s['taskStateTimerActions'], $states), JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
      * A stored status list (offers, or proformas and invoices), cleaned up the same
      * way normalizeOfferStatusDefs() does it in src/utils/offerStatuses.ts: unique
      * non-empty keys, a known group, a hex colour, kept in group order — and the
