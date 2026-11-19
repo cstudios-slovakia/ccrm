@@ -838,6 +838,42 @@ Logged support hours (billable and non-billable) against a ticket.
 * `logged_at` DATE
 * `created_at` TIMESTAMP
 
+### `time_entries`
+Time tracking: one row per stretch of work, owned by the login that did it. No foreign keys on purpose (an entry outlives its task, ticket, project and user). Not written by `sync.php`; written by `public/api/time_entries.php`. Vocabulary: **project time** = `duration_sec` (what the client is billed), **worked time** = `worked_ms` (the person's real clock time, shared between parallel timers). Bill project time; pay and measure worked time.
+* `id` VARCHAR(64) [PK]
+* `user_id` VARCHAR(50) (Owner: the login whose time this is)
+* `recorded_by_user_id` VARCHAR(50) (Who typed it in)
+* `employee_id` VARCHAR(50) [NULLable] (Resolved from `user_id`; supplies the salary for the cost rate)
+* `project_id` VARCHAR(50) [NULLable] (NULL = Assign project state)
+* `task_id` VARCHAR(50) [NULLable]
+* `ticket_id` VARCHAR(50) [NULLable]
+* `description` VARCHAR(500) [NULLable] (Title ONLY for entries with no task and no ticket)
+* `title_snapshot` VARCHAR(500) [NULLable]
+* `legacy_note` VARCHAR(500) [NULLable] (Read-only note migrated from `ticket_time_entries`)
+* `note` VARCHAR(1000) [NULLable] (The Description the person typed)
+* `entry_date` DATE (Company-timezone date)
+* `start_at` DATETIME [NULLable] (UTC; NULL for hours-only entries)
+* `end_at` DATETIME [NULLable] (UTC; NULL while running or hours-only)
+* `duration_sec` INT [NULLable] (Project time, billed)
+* `worked_ms` INT UNSIGNED [NULLable] (Worked time in ms; NULL while running; written only by `ccrm_tt_settle()`; backfilled `duration_sec * 1000` for closed entries)
+* `billable` TINYINT(1) (default 1)
+* `billable_rate` DECIMAL(10,2) [NULLable]
+* `cost_rate` DECIMAL(10,4) [NULLable] (Snapshot of the hourly cost rate)
+* `cost_rate_source` VARCHAR(32) (default `none`)
+* `cost_rate_basis_days` TINYINT [NULLable]
+* `cost` DECIMAL(14,4) [NULLable] (Widened from DECIMAL(12,2))
+* `tags` TEXT [NULLable] (JSON array of strings)
+* `source` VARCHAR(16) (default `manual`)
+* `origin_type` VARCHAR(16) [NULLable]
+* `origin_id` VARCHAR(64) [NULLable]
+* `device_id` VARCHAR(64) [NULLable]
+* `external_id` VARCHAR(100) [NULLable] (Toggl/Clockify id, or `tte:<id>` for migrated ticket time)
+* `approval_status` VARCHAR(16) [NULLable]
+* `running_guard` VARCHAR(50) (Generated: `user_id` while running and not deleted; UNIQUE, one running timer per user)
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+* `deleted_at` DATETIME [NULLable]
+
 ### `weekly_plan_cards`
 Standalone planning cards displayed on the Weekly Plan board (by day date and vertical position). Cards are independent of `tasks` (no automatic sync), while their `refs_json` can reference projects, leads, clients, employees, tickets, tasks, and `#tags`.
 * `id` VARCHAR(64) [PK]

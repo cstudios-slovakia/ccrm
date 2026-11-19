@@ -61,6 +61,8 @@ export interface TimeEntry {
   startAt: string | null;
   endAt: string | null;
   durationSec: number | null;
+  /** Worked time in ms: the share of the person's real clock time; null while running. Pay and measure this, bill durationSec. */
+  workedMs?: number | null;
   running: boolean;
   billable: boolean;
   tags: string[];

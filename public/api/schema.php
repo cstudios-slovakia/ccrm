@@ -1334,12 +1334,13 @@ if (!function_exists('ccrm_schema_statements')) {
               `start_at` DATETIME NULL COMMENT 'UTC; NULL for hours-only entries',
               `end_at` DATETIME NULL COMMENT 'UTC; NULL while running or hours-only',
               `duration_sec` INT NULL,
+              `worked_ms` INT UNSIGNED NULL COMMENT 'Share of the person''s real clock time (ms); NULL while running. Written only by ccrm_tt_settle()',
               `billable` TINYINT(1) NOT NULL DEFAULT 1,
               `billable_rate` DECIMAL(10,2) NULL,
               `cost_rate` DECIMAL(10,4) NULL COMMENT 'Snapshot of the hourly cost rate',
               `cost_rate_source` VARCHAR(32) NOT NULL DEFAULT 'none' COMMENT 'monthly | daily | hourly | contractor_hourly | contractor_daily | contractor_monthly | none',
               `cost_rate_basis_days` TINYINT NULL COMMENT 'Working days of the month the rate was divided by',
-              `cost` DECIMAL(12,2) NULL,
+              `cost` DECIMAL(14,4) NULL,
               `tags` TEXT NULL COMMENT 'JSON array of strings',
               `source` VARCHAR(16) NOT NULL DEFAULT 'manual' COMMENT 'timer | manual | day | calendar | timesheet | extension | activity | toggl | clockify | ticket_legacy',
               `origin_type` VARCHAR(16) NULL COMMENT 'task | ticket | project | calendar | activity',
@@ -2600,6 +2601,8 @@ if (!function_exists('ccrm_schema_statements')) {
         if (ccrm_table_exists($pdo, 'time_entries') && !ccrm_column_exists($pdo, 'time_entries', 'note')) {
             $pdo->exec("ALTER TABLE `time_entries` ADD COLUMN `note` VARCHAR(1000) NULL COMMENT 'The Description the person typed; allowed on linked entries too' AFTER `legacy_note`");
         }
+        require_once __DIR__ . '/time_worked_ms_migration.php'; // listed in ccrm_schema_fingerprint()
+        ccrm_migrate_time_worked_ms($pdo);
         require_once __DIR__ . '/ticket_time_migration.php';
         ccrm_migrate_ticket_time_entries($pdo);
     }
@@ -3625,7 +3628,7 @@ if (!function_exists('ccrm_schema_statements')) {
      */
     function ccrm_schema_fingerprint(): string {
         $parts = [];
-        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php'] as $file) {
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/time_worked_ms_migration.php'] as $file) {
             $parts[] = is_file($file) ? md5_file($file) : '-';
         }
         return md5(implode('|', $parts));
