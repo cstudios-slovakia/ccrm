@@ -90,10 +90,8 @@ function setup() {
   // TT2 phase 6b: the test clock (ccrm_tt_now_utc reads system_settings TT_TEST_NOW only with this constant).
   // Defined right after the opening tag, so it does not matter whether config.php ends in a closing tag.
   docker('exec', WEB, 'sh', '-c', `sed -i "1s/^<?php/<?php define('CCRM_TT_TEST_CLOCK', true);/" ${SCRATCH_DIR}/config.php && grep -q CCRM_TT_TEST_CLOCK ${SCRATCH_DIR}/config.php`);
-  // The dev container's Apache drops the Authorization header (public/.htaccess forwards it only for api/v1);
-  // the extension authenticates with a Bearer key, so forward it in the scratch copy.
-  docker('exec', WEB, 'sh', '-c', `printf '%s
-' 'SetEnvIf Authorization "(.+)" HTTP_AUTHORIZATION=$1' >> ${SCRATCH_DIR}/.htaccess`);
+  // The extension authenticates with a Bearer key: the scratch copy's .htaccess (copied from public/) forwards the
+  // Authorization header that the dev container's Apache would otherwise drop (A4 finding 11, fixed 2026-11-19).
   docker('exec', WEB, 'chown', '-R', 'www-data:www-data', SCRATCH_DIR);
   // A fresh database: the real schema code builds every table.
   docker('exec', '-u', 'www-data', WEB, 'php', '-r',

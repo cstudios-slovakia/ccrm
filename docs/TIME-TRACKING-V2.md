@@ -176,9 +176,10 @@ Symptom → root cause → proposed fix. Fixed only in the phase named.
     Replaced in phase 7.
 11. **The dev container drops the `Authorization` header** for `api/time_tracker_ext.php`
     (`public/.htaccess` forwards it only for `api/v1`), so the extension's Bearer key never
-    reaches PHP there and every device call answers 401 `not_paired`. The probe forwards it in
-    its scratch copy (`SetEnvIf Authorization`). Proposed fix (not made): the same `SetEnvIf`
-    line in `public/.htaccess`. Found in phase 4 (probe T14).
+    reaches PHP there and every device call answers 401 `not_paired`. Found in phase 4 (probe T14).
+    **Fixed 2026-11-19:** `public/.htaccess` (and the root copy) now carries
+    `SetEnvIf Authorization "(.+)" HTTP_AUTHORIZATION=$1` for every request, so the probe no
+    longer patches its scratch copy.
 12. **Pre-existing probe failures** (identical on the untouched `e321ff33`): T5 "an Employee who
     cannot pick a project is not blocked by require a project" and "stopping twice is
     idempotent" — Erik works on `proj-tt-1` through a task, so he *can* pick a project and the
@@ -1078,8 +1079,9 @@ probe case. Last: the e2e cases.
       user's timer on it running
 
 **Left over:** notes from the build:
-- `SettingsView.tsx` (size-capped) grew by about 12 lines for the rename/delete cascade — inside
-  the ratchet's slack, but A2 says capped files must not grow; trim it in a later pass.
+- `SettingsView.tsx` (size-capped) grew by about 12 lines for the rename/delete cascade. **Trimmed
+  2026-11-19:** the task-state delete (guards + undo) moved to `settings/deleteTaskState.ts`;
+  the file is 41 lines shorter and the baseline was lowered to match.
 - Status names are matched trimmed and case-sensitive; a task counts as changed only when its
   content differs, so a writer that rebuilds every row does not turn one edit into a bulk edit.
 - The start path may open the "Which project?" dialog for a task with several projects;
@@ -1127,8 +1129,8 @@ container and the ring on the bottom bar.
 - The extension (1.1.0, `idle` permission) has a device-authenticated `confirm` (the phase 10
   checklist allows **Still working** inside the popup) and `resume {id}` (always a switch).
 - The extension has no i18n: its new strings are English only.
-- `npm run check` does not type-check the extension sources (checked by hand with `tsc --strict`);
-  worth adding to the check.
+- The extension sources are type-checked by `npm run check` (step `ext`, `tsconfig.extension.json`,
+  strict) since 2026-11-19.
 
 
 ---
