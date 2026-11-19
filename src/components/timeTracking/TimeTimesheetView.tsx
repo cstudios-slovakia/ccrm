@@ -375,6 +375,15 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
               ))}
               <td className="px-2 py-2 text-right text-ui font-bold tabular-nums text-teal-700">{model.grandTotal > 0 ? formatDuration(model.grandTotal) : "–"}</td>
             </tr>
+            {model.showsWorked && (
+              <tr className="bg-slate-50" data-testid="timesheet-worked">
+                <th className="sticky left-0 bg-slate-50 px-3 py-1 text-left text-ui font-semibold text-slate-600">{t("Worked", "Odpracované", "Ledolgozott")}</th>
+                {model.workedColumnTotals.map((sec, i) => (
+                  <td key={model.days[i]} className="px-1 py-1 text-center text-ui tabular-nums text-slate-600">{sec > 0 ? formatDuration(sec) : "–"}</td>
+                ))}
+                <td className="px-2 py-1 text-right text-ui font-semibold tabular-nums text-teal-700">{model.workedGrandTotal > 0 ? formatDuration(model.workedGrandTotal) : "–"}</td>
+              </tr>
+            )}
           </tfoot>
         </table>
       </Surface>

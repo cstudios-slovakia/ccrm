@@ -8,6 +8,7 @@
  */
 
 import { isEntryLocked, lockReason, type LockableEntry, type LockReasonCode, type LockSettings } from "./timeLock.ts";
+import { showsWorkedAndDelivered, totalWorkedSeconds } from "./timeWorked.ts";
 import { entrySeconds, weekDays, type TimeEntry } from "./timeTracking.ts";
 
 export interface TimesheetRowKey {
@@ -45,6 +46,11 @@ export interface TimesheetModel {
   rows: TimesheetRow[];
   columnTotals: number[];
   grandTotal: number;
+  /** Worked time per day (parallel entries share their clock time), same order as `days`. */
+  workedColumnTotals: number[];
+  workedGrandTotal: number;
+  /** True when any day's worked time differs from its project time: the "Worked" row appears. */
+  showsWorked: boolean;
 }
 
 const cmpId = (a: string | null | undefined, b: string | null | undefined): number => {
@@ -118,11 +124,15 @@ export const buildTimesheet = (
     });
 
   const columnTotals = days.map((_, index) => rows.reduce((sum, row) => sum + row.cells[index].seconds, 0));
+  const workedColumnTotals = days.map((day) => totalWorkedSeconds(entries.filter((e) => e.entryDate === day), nowMs));
   return {
     days,
     rows,
     columnTotals,
     grandTotal: columnTotals.reduce((sum, n) => sum + n, 0),
+    workedColumnTotals,
+    workedGrandTotal: workedColumnTotals.reduce((sum, n) => sum + n, 0),
+    showsWorked: workedColumnTotals.some((sec, i) => showsWorkedAndDelivered(columnTotals[i], sec)),
   };
 };
 

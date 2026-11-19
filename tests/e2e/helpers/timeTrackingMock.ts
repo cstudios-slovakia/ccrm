@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import { buildAccess } from '../../../src/utils/permissions';
 import { builtinHolidays, builtinWorkingDays, resolveWorkCountry, type HolidayCountry } from '../../../src/utils/holidays';
+import { allocateWorkedMs, workedMsForHoursOnly, type AllocationEntry } from '../../../src/utils/timeAllocation';
 import { computeCostRate, computeEntryCost, DEFAULT_COST_SETTINGS } from '../../../src/utils/timeCost';
 import { DEFAULT_TIME_TRACKING_SETTINGS, type TimeTrackingSettings } from '../../../src/utils/timeTracking';
 
@@ -79,6 +80,25 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
   // The seeded entries are priced like any saved entry (the frozen rate of their own month).
   for (const e of entries) if (e.endAt || !e.startAt) Object.assign(e, price(e.userId, e.entryDate, e.durationSec));
 
+  // Like the server's settle: closed timed entries share their person's clock time (allocateWorkedMs),
+  // hours-only entries are worked for their duration, a running entry has no worked time yet.
+  const settleWorked = () => {
+    const byUser = new Map<string, AllocationEntry[]>();
+    for (const e of entries) {
+      if (e.deletedAt) continue;
+      if (!e.startAt) { e.workedMs = workedMsForHoursOnly(e.durationSec ?? 0); continue; }
+      if (!e.endAt) { e.workedMs = null; continue; }
+      const list = byUser.get(e.userId) ?? [];
+      list.push({ id: e.id, startMs: Date.parse(e.startAt), endMs: Date.parse(e.endAt) });
+      byUser.set(e.userId, list);
+    }
+    for (const list of byUser.values()) {
+      const shares = allocateWorkedMs(list);
+      for (const e of list) entries.find((x) => x.id === e.id)!.workedMs = shares.get(e.id) ?? 0;
+    }
+  };
+  settleWorked();
+
   // The server trims the Description and stores an empty one as NULL.
   const cleanNote = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 1000) : null);
 
@@ -140,6 +160,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
     const url = new URL(req.url());
 
     if (req.method() === 'GET') {
+      settleWorked();
       if (url.searchParams.get('action') === 'settings') {
         return route.fulfill(ok({ settings, defaultCountry: 'SK', me: { userId: caller, employeeId: ctx.employees[caller]?.id ?? null, workCountry: country(caller) }, viewer: { canEdit, canTeam, canCosts } }));
       }
@@ -211,6 +232,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
         costRate: null, costRateSource: 'none', costRateBasisDays: null, cost: null,
       };
       entries.push(entry);
+      settleWorked();
       return route.fulfill(ok({ entry: view(entry), stopped: prev ? view(prev) : null }, 201));
     }
 
@@ -221,6 +243,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       if (body.projectId) e.projectId = body.projectId;
       if (settings.requireProjectToStop && !e.projectId && access.can('projects')) return route.fulfill(fail('project_required', 422));
       finish(e, new Date().toISOString());
+      settleWorked();
       return route.fulfill(ok({ entry: view(e) }));
     }
 
@@ -229,6 +252,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       if (i >= 0) entries.splice(i, 1);
       const old = entries.find((e) => e.id === body.stoppedId);
       if (old) Object.assign(old, { endAt: null, durationSec: null, costRate: null, costRateSource: 'none', costRateBasisDays: null, cost: null });
+      settleWorked();
       return route.fulfill(ok({ entry: old ? view(old) : null }));
     }
 
@@ -274,6 +298,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       }
       if (existing) Object.assign(existing, next);
       else entries.push(next);
+      settleWorked();
       return route.fulfill(ok({ entry: view(existing ?? next) }, existing ? 200 : 201));
     }
 
@@ -282,6 +307,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       if (!e) return route.fulfill(fail('not_found', 404));
       if (e.userId !== caller && !canTeam) return route.fulfill(fail('forbidden', 403));
       e.deletedAt = action === 'delete' ? new Date().toISOString() : undefined;
+      settleWorked();
       return route.fulfill(ok(action === 'delete' ? { id: e.id } : { entry: view(e) }));
     }
 

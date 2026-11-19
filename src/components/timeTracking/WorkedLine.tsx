@@ -1,13 +1,30 @@
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
 import { clockTime, entrySeconds, formatDuration, type TimeEntry } from "../../utils/timeTracking.ts";
-import { entryWorkedSeconds } from "../../utils/timeWorked.ts";
+import { entryWorkedSeconds, showsWorkedAndDelivered } from "../../utils/timeWorked.ts";
 import { ofYourTimeLabel, parallelWith, workedAndDeliveredLabel } from "../../utils/timeWorkedView.ts";
 import { ClockDigits } from "./ClockDigits";
 
-/** A day or week total: one number, or "Worked 2:00 · Delivered 6:00" when parallel work made them differ. */
-export function WorkedTotal({ projectSec, workedSec, className = "" }: { projectSec: number; workedSec: number; className?: string }) {
+/**
+ * A total: one number, or both when parallel work made worked and delivered (project) time differ
+ * (docs/TIME-TRACKING-V2.md, D9). `labelled` (List, Day) reads "Worked 2:00 · Delivered 6:00" in
+ * the parent's type; `compact` (Team, Salary report) shows worked in teal with delivered muted
+ * after it, and `plain` drops the bold.
+ */
+export function WorkedTotal({ projectSec, workedSec, className = "", compact, plain }: { projectSec: number; workedSec: number; className?: string; compact?: boolean; plain?: boolean }) {
   const { t } = useTimeTracking();
+  if (compact) {
+    const cls = `block tabular-nums text-teal-700${plain ? "" : " font-bold"}`;
+    if (!showsWorkedAndDelivered(projectSec, workedSec)) return <span className={cls}>{formatDuration(workedSec)}</span>;
+    const wl = t("Worked", "Odpracované", "Ledolgozott");
+    const dl = t("Delivered", "Dodané", "Leszállított");
+    return (
+      <span className={cls} title={`${wl} · ${dl}`} data-testid="worked-delivered">
+        {formatDuration(workedSec)}
+        <span className="type-meta font-normal text-slate-500"> · {formatDuration(projectSec)}</span>
+      </span>
+    );
+  }
   const both = workedAndDeliveredLabel(t, projectSec, workedSec, true);
   return both ? (
     <span className={`tabular-nums ${className}`} data-testid="worked-delivered">{both}</span>

@@ -1,0 +1,1 @@
+- **Time tracking: Timesheet "Worked" row** (`src/utils/timeTimesheet.ts`, `TimeTimesheetView.tsx`, `WorkedLine.tsx`): a second totals row shows per-day and week worked time whenever parallel entries make it differ from project time; the two "Worked · Delivered" components are now one `WorkedTotal`.
