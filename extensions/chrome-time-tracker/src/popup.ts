@@ -1,6 +1,7 @@
 import "./popup.css";
 import { EXTENSION_VERSION, badgeLabel, hostOnly } from "../../../src/utils/timeTrackerRules.ts";
 import { TrackerError, trackerCall } from "./client.ts";
+import { PRODUCT_NAME, t } from "./i18n.ts";
 import { loadLocal, saveLocal, type QueueItem } from "./storage.ts";
 
 declare const chrome: any;
@@ -46,20 +47,20 @@ async function enqueue(item: Omit<QueueItem, "id">, optimistic: { startedAt: str
 }
 
 function footer(unsorted: number, ccrmUrl: string): string {
-  const link = `<a href="${esc(ccrmUrl)}/#time-tracking" target="_blank" rel="noreferrer">Open CCRM</a>`;
-  const count = unsorted > 0 ? `<span class="amber">${esc(unsorted)} unsorted</span>` : "<span></span>";
+  const link = `<a href="${esc(ccrmUrl)}/#time-tracking" target="_blank" rel="noreferrer">${esc(t(`Open ${PRODUCT_NAME}`, `Otvoriť ${PRODUCT_NAME}`, `${PRODUCT_NAME} megnyitása`))}</a>`;
+  const count = unsorted > 0 ? `<span class="amber">${esc(unsorted)} ${esc(t("unsorted", "nezaradených", "besorolatlan"))}</span>` : "<span></span>";
   return `<div class="footer">${link}${count}</div>`;
 }
 
 function renderPair(error = ""): void {
   app.innerHTML = `
     <div class="stack">
-      <h1>Connect CCRM</h1>
-      <p class="muted">Enter the address of your CCRM and the one-time code from Time tracking → Settings.</p>
-      <label>CCRM address<input id="url" placeholder="https://crm.example.com" autocomplete="url" /></label>
-      <label>Pairing code<input id="code" placeholder="K7Q4-9MZT" autocapitalize="characters" /></label>
+      <h1>${esc(t(`Connect ${PRODUCT_NAME}`, `Pripojiť ${PRODUCT_NAME}`, `${PRODUCT_NAME} csatlakoztatása`))}</h1>
+      <p class="muted">${esc(t(`Enter the address of your ${PRODUCT_NAME} and the one-time code from Time tracking → Settings.`, `Zadajte adresu vášho ${PRODUCT_NAME} a jednorazový kód z Sledovanie času → Nastavenia.`, `Adja meg a ${PRODUCT_NAME} címét és az Időkövetés → Beállítások oldalon kapott egyszeri kódot.`))}</p>
+      <label>${esc(t(`${PRODUCT_NAME} address`, `Adresa ${PRODUCT_NAME}`, `${PRODUCT_NAME} címe`))}<input id="url" placeholder="https://crm.example.com" autocomplete="url" /></label>
+      <label>${esc(t("Pairing code", "Párovací kód", "Párosítási kód"))}<input id="code" placeholder="K7Q4-9MZT" autocapitalize="characters" /></label>
       ${error ? `<p class="error">${esc(error)}</p>` : ""}
-      <button id="connect" class="primary" type="button">Connect</button>
+      <button id="connect" class="primary" type="button">${esc(t("Connect", "Pripojiť", "Csatlakozás"))}</button>
     </div>`;
   void loadLocal().then((state) => {
     const url = app.querySelector("#url") as HTMLInputElement;
@@ -72,7 +73,7 @@ async function connect(): Promise<void> {
   const url = originOf((app.querySelector("#url") as HTMLInputElement).value.trim());
   const code = (app.querySelector("#code") as HTMLInputElement).value.trim();
   if (!url) {
-    renderPair("Enter a full CCRM address.");
+    renderPair(t(`Enter a full ${PRODUCT_NAME} address.`, `Zadajte celú adresu ${PRODUCT_NAME}.`, `Adja meg a ${PRODUCT_NAME} teljes címét.`));
     return;
   }
   const button = app.querySelector("#connect") as HTMLButtonElement;
@@ -80,7 +81,7 @@ async function connect(): Promise<void> {
   try {
     const granted = await chrome.permissions.request({ origins: [`${url}/*`] });
     if (!granted) {
-      renderPair("Chrome needs permission to reach that address.");
+      renderPair(t("Chrome needs permission to reach that address.", "Chrome potrebuje povolenie na prístup k tejto adrese.", "A Chrome-nak engedély kell a cím eléréséhez."));
       return;
     }
     const paired = await trackerCall(url, "", "POST", "pair", {
@@ -95,12 +96,12 @@ async function connect(): Promise<void> {
     await showTracker();
   } catch (error) {
     const codeName = error instanceof TrackerError ? error.code : "offline";
-    const message = codeName === "code_expired" ? "That code has expired. Ask for a new one."
-      : codeName === "code_used" ? "That code was already used."
-      : codeName === "rate_limited" ? "Too many attempts. Wait and try again."
-      : codeName === "extension_disabled" ? "The extension is turned off for this company."
-      : codeName === "offline" ? "Could not reach CCRM."
-      : "That code was not accepted.";
+    const message = codeName === "code_expired" ? t("That code has expired. Ask for a new one.", "Platnosť kódu vypršala. Požiadajte o nový.", "A kód lejárt. Kérjen újat.")
+      : codeName === "code_used" ? t("That code was already used.", "Tento kód už bol použitý.", "Ezt a kódot már felhasználták.")
+      : codeName === "rate_limited" ? t("Too many attempts. Wait and try again.", "Príliš veľa pokusov. Počkajte a skúste znova.", "Túl sok próbálkozás. Várjon, majd próbálja újra.")
+      : codeName === "extension_disabled" ? t("The extension is turned off for this company.", "Rozšírenie je pre túto firmu vypnuté.", "A bővítmény ki van kapcsolva ennél a cégnél.")
+      : codeName === "offline" ? t(`Could not reach ${PRODUCT_NAME}.`, `${PRODUCT_NAME} sa nepodarilo kontaktovať.`, `A ${PRODUCT_NAME} nem érhető el.`)
+      : t("That code was not accepted.", "Kód nebol prijatý.", "A kódot nem fogadta el a rendszer.");
     renderPair(message);
   }
 }
@@ -108,7 +109,7 @@ async function connect(): Promise<void> {
 async function showTracker(): Promise<void> {
   const state = await loadLocal();
   if (!state.deviceKey || !state.ccrmUrl) {
-    renderPair(state.lost.length ? "This browser is not paired. The actions below were not saved." : "");
+    renderPair(state.lost.length ? t("This browser is not paired. The actions below were not saved.", "Tento prehliadač nie je spárovaný. Akcie nižšie sa neuložili.", "Ez a böngésző nincs párosítva. Az alábbi műveletek nem lettek mentve.") : "");
     if (state.lost.length) renderLost(state.lost);
     return;
   }
@@ -128,7 +129,7 @@ async function showTracker(): Promise<void> {
     if (error instanceof TrackerError && error.code === "not_paired") {
       const lost = (await loadLocal()).lost;
       await saveLocal({ deviceKey: "", userName: "", optimistic: null });
-      renderPair("This browser was revoked. Pair it again.");
+      renderPair(t("This browser was revoked. Pair it again.", "Tento prehliadač bol odobraný. Spárujte ho znova.", "Ez a böngésző vissza lett vonva. Párosítsa újra."));
       if (lost.length) renderLost(lost);
       return;
     }
@@ -137,13 +138,13 @@ async function showTracker(): Promise<void> {
       else renderIdle({ entries: [], todaySeconds: 0 }, 0, { enabled: false }, state.ccrmUrl, true);
       return;
     }
-    renderPair(error instanceof TrackerError ? error.code : "Could not reach CCRM.");
+    renderPair(error instanceof TrackerError ? error.code : t(`Could not reach ${PRODUCT_NAME}.`, `${PRODUCT_NAME} sa nepodarilo kontaktovať.`, `A ${PRODUCT_NAME} nem érhető el.`));
   }
 }
 
 function renderLost(lost: QueueItem[]): void {
   const list = lost.map((item) => `<li>${esc(item.kind)} · ${esc(new Date(item.at).toLocaleString())}</li>`).join("");
-  app.insertAdjacentHTML("beforeend", `<div class="amber" style="margin-top:8px"><strong>Not sent</strong><ul>${list}</ul><button id="clear-lost" class="tiny" type="button">Dismiss</button></div>`);
+  app.insertAdjacentHTML("beforeend", `<div class="amber" style="margin-top:8px"><strong>${esc(t("Not sent", "Neodoslané", "Nem elküldve"))}</strong><ul>${list}</ul><button id="clear-lost" class="tiny" type="button">${esc(t("Dismiss", "Zavrieť", "Elvetés"))}</button></div>`);
   app.querySelector("#clear-lost")?.addEventListener("click", () => {
     void saveLocal({ lost: [] }).then(() => showTracker());
   });
@@ -163,14 +164,14 @@ function renderRunning(entry: any, recent: any, unsorted: number, rules: { enabl
   const today = (recent.todaySeconds || 0) + (Number.isFinite(started) ? Math.max(0, Math.floor((Date.now() - started) / 1000)) : 0);
   app.innerHTML = `
     <div class="stack">
-      ${offline ? `<p class="amber">Offline. Stop will be sent when you are back.</p>` : ""}
+      ${offline ? `<p class="amber">${esc(t("Offline. Stop will be sent when you are back.", "Offline. Zastavenie sa odošle po obnovení pripojenia.", "Offline. A leállítás a kapcsolat visszatértekor megy el."))}</p>` : ""}
       <div>
-        <h1>${esc(entry.title || "Running")}</h1>
-        <p class="muted">${esc(subtitle || "No project yet")}</p>
+        <h1>${esc(entry.title || t("Running", "Beží", "Fut"))}</h1>
+        <p class="muted">${esc(subtitle || t("No project yet", "Zatiaľ bez projektu", "Még nincs projekt"))}</p>
       </div>
       <div class="elapsed" id="elapsed">0:00</div>
-      <button id="stop" class="stop" type="button">Stop</button>
-      <p class="muted">Today <strong id="today"></strong></p>
+      <button id="stop" class="stop" type="button">${esc(t("Stop", "Zastaviť", "Leállítás"))}</button>
+      <p class="muted">${esc(t("Today", "Dnes", "Ma"))} <strong id="today"></strong></p>
       ${recentRows(recent.entries || [])}
       ${captureRow(!!rules.enabled)}
       ${footer(unsorted, ccrmUrl)}
@@ -190,15 +191,15 @@ function renderIdle(recent: any, unsorted: number, rules: { enabled?: boolean },
   window.clearInterval(clock);
   app.innerHTML = `
     <div class="stack">
-      ${offline ? `<p class="amber">Offline. A start is queued and sent later.</p>` : ""}
-      <h1>What are you working on?</h1>
-      <label>Title<input id="title" placeholder="Title" /></label>
-      <label>Project<input id="project" placeholder="Search projects" /></label>
+      ${offline ? `<p class="amber">${esc(t("Offline. A start is queued and sent later.", "Offline. Spustenie sa zaradí a odošle neskôr.", "Offline. Az indítás sorba kerül, és később megy el."))}</p>` : ""}
+      <h1>${esc(t("What are you working on?", "Na čom pracujete?", "Min dolgozik?"))}</h1>
+      <label>${esc(t("Title", "Názov", "Cím"))}<input id="title" placeholder="${esc(t("Title", "Názov", "Cím"))}" /></label>
+      <label>${esc(t("Project", "Projekt", "Projekt"))}<input id="project" placeholder="${esc(t("Search projects", "Hľadať projekty", "Projektek keresése"))}" /></label>
       <div id="project-list"></div>
-      <label>Task<select id="task"><option value="">No task</option></select></label>
+      <label>${esc(t("Task", "Úloha", "Feladat"))}<select id="task"><option value="">${esc(t("No task", "Bez úlohy", "Nincs feladat"))}</option></select></label>
       <p id="form-error" class="error" hidden></p>
-      <button id="start" class="primary" type="button">Start</button>
-      <p class="muted">Today <strong>${esc(badgeLabel(recent.todaySeconds || 0))}</strong></p>
+      <button id="start" class="primary" type="button">${esc(t("Start", "Spustiť", "Indítás"))}</button>
+      <p class="muted">${esc(t("Today", "Dnes", "Ma"))} <strong>${esc(badgeLabel(recent.todaySeconds || 0))}</strong></p>
       ${recentRows(recent.entries || [])}
       ${captureRow(!!rules.enabled)}
       ${footer(unsorted, ccrmUrl)}
@@ -234,14 +235,14 @@ function recentRows(entries: any[]): string {
   if (!entries.length) return "";
   const rows = entries.slice(0, 3).map((entry, index) => `
     <div class="card spread">
-      <span>${esc(entry.title || "Untitled")}<br /><span class="muted">${esc(entry.projectName || "")}</span></span>
-      <button class="tiny continue" type="button" data-index="${index}">Continue</button>
+      <span>${esc(entry.title || t("Untitled", "Bez názvu", "Névtelen"))}<br /><span class="muted">${esc(entry.projectName || "")}</span></span>
+      <button class="tiny continue" type="button" data-index="${index}">${esc(t("Continue", "Pokračovať", "Folytatás"))}</button>
     </div>`).join("");
   return `<div class="stack">${rows}</div>`;
 }
 
 function captureRow(enabled: boolean): string {
-  return `<label class="check"><input id="capture" type="checkbox" ${enabled ? "checked" : ""} /> Remember watched sites while no timer is running</label>`;
+  return `<label class="check"><input id="capture" type="checkbox" ${enabled ? "checked" : ""} /> ${esc(t("Remember watched sites while no timer is running", "Pamätať si sledované stránky, kým nebeží časovač", "Figyelt oldalak megjegyzése, amíg nem fut időzítő"))}</label>`;
 }
 
 function wireContinue(entries: any[]): void {
@@ -299,7 +300,7 @@ async function searchProjects(q: string, pick: (id: string, name: string) => voi
     if (!list) return;
     const projects = res.projects || [];
     list.innerHTML = projects.slice(0, 6).map((project: any, index: number) =>
-      `<button class="tiny project" type="button" data-index="${index}" style="margin:2px">${esc(project.suggested ? "Suggested · " : "")}${esc(project.name)}</button>`,
+      `<button class="tiny project" type="button" data-index="${index}" style="margin:2px">${esc(project.suggested ? t("Suggested · ", "Navrhnuté · ", "Javasolt · ") : "")}${esc(project.name)}</button>`,
     ).join("");
     list.querySelectorAll(".project").forEach((button) => {
       button.addEventListener("click", () => {
@@ -319,9 +320,9 @@ async function loadTasks(projectId: string): Promise<void> {
   const state = await loadLocal();
   try {
     const res = await trackerCall(state.ccrmUrl, state.deviceKey, "GET", "tasks", {}, { projectId });
-    select.innerHTML = `<option value="">No task</option>` + (res.tasks || []).map((task: any) => `<option value="${esc(task.id)}">${esc(task.title)}</option>`).join("");
+    select.innerHTML = `<option value="">${esc(t("No task", "Bez úlohy", "Nincs feladat"))}</option>` + (res.tasks || []).map((task: any) => `<option value="${esc(task.id)}">${esc(task.title)}</option>`).join("");
   } catch {
-    select.innerHTML = `<option value="">No task</option>`;
+    select.innerHTML = `<option value="">${esc(t("No task", "Bez úlohy", "Nincs feladat"))}</option>`;
   }
 }
 
@@ -356,7 +357,7 @@ async function start(input: { description: string; projectId: string; projectNam
   if (input.projectId) body.projectId = input.projectId;
   if (input.taskId) body.taskId = input.taskId;
   if (input.ticketId) body.ticketId = input.ticketId;
-  const optimistic = { startedAt: at, title: input.description || input.taskTitle || "Running", projectName: input.projectName, taskTitle: input.taskTitle };
+  const optimistic = { startedAt: at, title: input.description || input.taskTitle || t("Running", "Beží", "Fut"), projectName: input.projectName, taskTitle: input.taskTitle };
   if (!navigator.onLine) {
     await enqueue({ kind: "start", at, body }, optimistic);
     await showTracker();
@@ -375,13 +376,13 @@ async function start(input: { description: string; projectId: string; projectNam
     }
     if (error instanceof TrackerError && error.code === "not_paired") {
       await saveLocal({ deviceKey: "", optimistic: null });
-      renderPair("Pair this browser again.");
+      renderPair(t("Pair this browser again.", "Spárujte tento prehliadač znova.", "Párosítsa újra ezt a böngészőt."));
       return;
     }
     const node = app.querySelector("#form-error") as HTMLElement | null;
     if (node) {
       node.hidden = false;
-      node.textContent = error instanceof TrackerError ? error.code : "Could not start.";
+      node.textContent = error instanceof TrackerError ? error.code : t("Could not start.", "Nepodarilo sa spustiť.", "Az indítás nem sikerült.");
     }
   }
 }
@@ -409,7 +410,7 @@ async function stop(entry: any): Promise<void> {
     }
     if (error instanceof TrackerError && error.code === "project_required") {
       const node = app.querySelector(".stack");
-      node?.insertAdjacentHTML("beforeend", `<p class="error">Pick a project in CCRM before stopping, or add one and stop again.</p><label>Project id<input id="stop-project" /></label><button id="stop-retry" class="stop" type="button">Stop</button>`);
+      node?.insertAdjacentHTML("beforeend", `<p class="error">${esc(t(`Pick a project in ${PRODUCT_NAME} before stopping, or add one and stop again.`, `Pred zastavením vyberte projekt v ${PRODUCT_NAME} alebo ho pridajte a zastavte znova.`, `Leállítás előtt válasszon projektet a ${PRODUCT_NAME}ben, vagy adjon hozzá egyet, és állítsa le újra.`))}</p><label>${esc(t("Project id", "ID projektu", "Projektazonosító"))}<input id="stop-project" /></label><button id="stop-retry" class="stop" type="button">${esc(t("Stop", "Zastaviť", "Leállítás"))}</button>`);
       app.querySelector("#stop-retry")?.addEventListener("click", () => {
         body.projectId = (app.querySelector("#stop-project") as HTMLInputElement).value.trim();
         void trackerCall(state.ccrmUrl, state.deviceKey, "POST", "stop", { ...body, stoppedAt: at })
@@ -420,7 +421,7 @@ async function stop(entry: any): Promise<void> {
     }
     if (error instanceof TrackerError && error.code === "not_paired") {
       await saveLocal({ deviceKey: "", optimistic: null, lost: [...state.lost, { id: crypto.randomUUID(), kind: "stop", at, body }] });
-      renderPair("Pair this browser again. The stop was kept on this device.");
+      renderPair(t("Pair this browser again. The stop was kept on this device.", "Spárujte tento prehliadač znova. Zastavenie zostalo uložené v tomto zariadení.", "Párosítsa újra ezt a böngészőt. A leállítás ezen az eszközön megmaradt."));
     }
   }
 }
