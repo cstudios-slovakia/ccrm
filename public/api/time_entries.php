@@ -33,6 +33,7 @@ require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/read_scope.php';
 require_once __DIR__ . '/time_entries_lib.php';
 require_once __DIR__ . '/time_settle.php';
+require_once __DIR__ . '/time_locks.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
@@ -154,88 +155,7 @@ function ccrm_te_origin($v): ?string {
 }
 
 /* PHASE6-LOCK-START */
-/**
- * Calendar age in days of an entry date against a company-timezone today.
- * Mirrors entryAgeDays() in src/utils/timeLock.ts (strictly greater than lockAfterDays locks).
- */
-function ccrm_te_age_days(string $entryDate, string $today): ?int {
-    $a = \DateTimeImmutable::createFromFormat('!Y-m-d', substr($entryDate, 0, 10));
-    $b = \DateTimeImmutable::createFromFormat('!Y-m-d', substr($today, 0, 10));
-    if (!$a || !$b || $a->format('Y-m-d') !== substr($entryDate, 0, 10) || $b->format('Y-m-d') !== substr($today, 0, 10)) {
-        return null;
-    }
-    return (int)$a->diff($b)->format('%r%a');
-}
-
-/** True when a paid salary period key covers this entry's YYYY-MM. */
-function ccrm_te_month_is_paid(string $entryDate, array $keys): bool {
-    $month = substr($entryDate, 0, 7);
-    if (!preg_match('/^\d{4}-\d{2}$/', $month)) {
-        return false;
-    }
-    foreach ($keys as $key) {
-        $key = (string)$key;
-        if ($key === $month || str_starts_with($key, $month . '-') || str_starts_with($key, $month . 'W')) {
-            return true;
-        }
-    }
-    return false;
-}
-
-/**
- * SQL condition for a closed payroll month. The close is a recorded fact (`closed_at`, stamped when
- * the month was first paid in full), so a later edit that makes it partially paid again does not
- * unlock its entries. Before the column exists the live status is the only signal.
- */
-function ccrm_te_closed_sql(\PDO $pdo): string {
-    static $sql = null;
-    if ($sql === null) {
-        $sql = ccrm_column_exists($pdo, 'employee_salaries', 'closed_at') ? '`closed_at` IS NOT NULL' : "`status` = 'paid'";
-    }
-    return $sql;
-}
-
-/** Closed payroll period keys for one employee. A missing table does not lock anyone. */
-function ccrm_te_paid_keys(\PDO $pdo, ?string $employeeId): array {
-    if ($employeeId === null || $employeeId === '') {
-        return [];
-    }
-    try {
-        $stmt = $pdo->prepare("SELECT `period_key`, `period_type`, `year`, `period_number` FROM `employee_salaries` WHERE `employee_id` = ? AND " . ccrm_te_closed_sql($pdo));
-        $stmt->execute([$employeeId]);
-        // A legacy key without its year (`M05`) is rebuilt, so the right year locks
-        return array_map('ccrm_salary_period_key', $stmt->fetchAll(\PDO::FETCH_ASSOC));
-    } catch (\Throwable $e) {
-        return [];
-    }
-}
-
-/**
- * Why a stored (or about-to-be-written) row is locked: age, paid payroll month, or approved.
- * A running timer skips the age rule. Null means a non-admin may still edit it.
- */
-function ccrm_te_lock_reason_of(\PDO $pdo, array $row, array $settings, string $today): ?string {
-    $running = !empty($row['start_at']) && empty($row['end_at']);
-    $lockAfter = $settings['lockAfterDays'] ?? null;
-    if (!$running && $lockAfter !== null) {
-        $age = ccrm_te_age_days((string)($row['entry_date'] ?? ''), $today);
-        if ($age !== null && $age > (int)$lockAfter) {
-            return 'age';
-        }
-    }
-    $employeeId = $row['employee_id'] ?? null;
-    if (($employeeId === null || $employeeId === '') && !empty($row['user_id'])) {
-        $emp = ccrm_tt_employee_for_user($pdo, (string)$row['user_id']);
-        $employeeId = $emp['id'] ?? null;
-    }
-    if (ccrm_te_month_is_paid((string)($row['entry_date'] ?? ''), ccrm_te_paid_keys($pdo, $employeeId !== null ? (string)$employeeId : null))) {
-        return 'paid_payroll';
-    }
-    if (strtolower(trim((string)($row['approval_status'] ?? ''))) === 'approved') {
-        return 'approved';
-    }
-    return null;
-}
+// The lock rules (age, paid payroll month, approved) live in time_locks.php: ccrm_tt_settle() uses them too.
 
 /**
  * Non-admins cannot create, edit, delete or restore a locked entry.
@@ -263,6 +183,24 @@ function ccrm_te_refuse_locked(\PDO $pdo, array $sessionUser, array $rows, array
         return;
     }
     ccrm_te_fail('entry_locked', 403, ['reason' => $reason]);
+}
+
+/** D3.3 for REST: refuse (entry_locked, 403) when an interval of $userId overlaps a locked entry; admins pass. */
+function ccrm_te_refuse_neighbours(\PDO $pdo, array $sessionUser, string $userId, array $intervals, array $settings, ?string $excludeId = null): void {
+    $hit = ccrm_te_refuse_locked_neighbours($pdo, $sessionUser, $userId, $intervals, $settings, $excludeId);
+    if ($hit !== null) {
+        ccrm_te_fail('entry_locked', 403, ['reason' => $hit['reason']]);
+    }
+}
+
+/** [startUtc, endUtc|null] of a stored row by the D2 interval (start + duration); null end = running. */
+function ccrm_te_interval_of(array $row): array {
+    $start = $row['start_at'] ?? null;
+    if ($start === null || $start === '' || empty($row['end_at'])) {
+        return [$start ?: null, null];
+    }
+    $dur = $row['duration_sec'] ?? null;
+    return [$start, is_numeric($dur) ? gmdate('Y-m-d H:i:s', strtotime($start . ' UTC') + (int)$dur) : $row['end_at']];
 }
 
 /** Flag each listed entry whose employee has a paid salary for that month. */
@@ -828,7 +766,7 @@ if ($action === 'import') {
                 $failTx('save_failed', 500);
             }
             $touched[] = $f['stored'];
-            $touched[] = ['user_id' => $f['userId'], 'start_at' => $f['start'], 'end_at' => $f['end'], 'duration_sec' => $f['seconds'], 'entry_date' => $f['entryDate']];
+            $touched[] = ['id' => $f['id'], 'user_id' => $f['userId'], 'start_at' => $f['start'], 'end_at' => $f['end'], 'duration_sec' => $f['seconds'], 'entry_date' => $f['entryDate']];
             if ($repStmt->rowCount() > 0) {
                 $repaired++;
                 if ($f['projectChanged']) {
@@ -976,7 +914,7 @@ if ($action === 'reprice') {
         $fromDay = ccrm_ts_local_day_ms($from);
         $toDay = ccrm_ts_local_day_ms($to);
         foreach (array_keys($users) as $u) {
-            ccrm_tt_settle($pdo, (string)$u, ccrm_ts_utc($fromDay[0]), ccrm_ts_utc($toDay[1]));
+            ccrm_tt_settle($pdo, (string)$u, ccrm_ts_utc($fromDay[0]), ccrm_ts_utc($toDay[1]), true); // admin: may rewrite locked rows
         }
         $pdo->commit();
     } catch (\Throwable $e) {
@@ -1051,7 +989,7 @@ if ($action === 'start') {
             ccrm_tt_nullable_id($body['deviceId'] ?? null),
         ]);
         // The stopped entry (its running interval reaches now) and the new one, which may be back-dated.
-        ccrm_tt_settle_rows($pdo, [$old, ['user_id' => $owner, 'start_at' => $startUtc, 'end_at' => null, 'entry_date' => ccrm_tt_local_date($startUtc)]]);
+        ccrm_tt_settle_rows($pdo, [$old, ['id' => $newId, 'user_id' => $owner, 'start_at' => $startUtc, 'end_at' => null, 'entry_date' => ccrm_tt_local_date($startUtc)]]);
         $pdo->commit();
     } catch (\PDOException $e) {
         if ($pdo->inTransaction()) {
@@ -1158,8 +1096,8 @@ if ($action === 'undo_start') {
                 $touched[] = $stoppedRow;
                 $touched[] = ['end_at' => null] + $stoppedRow;
             }
-            // Only the end goes; ccrm_tt_settle() clears worked time and cost of the running entry.
-            $reopen = $pdo->prepare("UPDATE `time_entries` SET `end_at` = NULL, `duration_sec` = NULL WHERE `id` = ? AND `user_id` = ? AND `deleted_at` IS NULL AND `start_at` IS NOT NULL");
+            // The end and the frozen rate go (stop re-freezes it); ccrm_tt_settle() clears worked time and cost.
+            $reopen = $pdo->prepare("UPDATE `time_entries` SET `end_at` = NULL, `duration_sec` = NULL, `cost_rate` = NULL, `cost_rate_source` = 'none', `cost_rate_basis_days` = NULL WHERE `id` = ? AND `user_id` = ? AND `deleted_at` IS NULL AND `start_at` IS NOT NULL");
             $reopen->execute([$stoppedId, $new['user_id']]);
         }
         ccrm_tt_settle_rows($pdo, $touched);
@@ -1190,6 +1128,8 @@ if ($action === 'delete' || $action === 'restore') {
     }
     /* PHASE6-LOCK-START */
     ccrm_te_refuse_locked($pdo, $sessionUser, [$row], $settings);
+    // Its neighbours' worked time changes when it goes or comes back.
+    ccrm_te_refuse_neighbours($pdo, $sessionUser, (string)$row['user_id'], [ccrm_te_interval_of($row)], $settings, (string)$row['id']);
     /* PHASE6-LOCK-END */
     if ($action === 'delete') {
         try {
@@ -1301,7 +1241,7 @@ if ($action === 'create') {
     [$startUtc, $endUtc, $duration, $entryDate] = $time;
     /* PHASE6-LOCK-START */
     // An entry that overlaps a locked one changes its worked time and cost: refused like editing it (D3.3).
-    ccrm_te_refuse_locked($pdo, $sessionUser, array_merge([[
+    ccrm_te_refuse_locked($pdo, $sessionUser, [[
         'id' => null,
         'user_id' => $owner,
         'employee_id' => null,
@@ -1309,7 +1249,8 @@ if ($action === 'create') {
         'approval_status' => null,
         'start_at' => $startUtc,
         'end_at' => $endUtc,
-    ]], ccrm_tt_overlapping_entries($pdo, $owner, $startUtc, $endUtc)), $settings);
+    ]], $settings);
+    ccrm_te_refuse_neighbours($pdo, $sessionUser, $owner, [[$startUtc, $endUtc]], $settings);
     /* PHASE6-LOCK-END */
     $price = ccrm_tt_price($pdo, $owner, $entryDate, $duration, $settings, true);
     $billable = array_key_exists('billable', $body) ? (int)(bool)$body['billable'] : (int)$settings['billableByDefault'];
@@ -1331,7 +1272,7 @@ if ($action === 'create') {
             ccrm_te_source($body['source'] ?? null, 'manual'), ccrm_te_origin($body['originType'] ?? null), ccrm_tt_nullable_id($body['originId'] ?? null),
             ccrm_tt_nullable_id($body['deviceId'] ?? null),
         ]);
-        ccrm_tt_settle_rows($pdo, [['user_id' => $owner, 'start_at' => $startUtc, 'end_at' => $endUtc, 'duration_sec' => $duration, 'entry_date' => $entryDate]]);
+        ccrm_tt_settle_rows($pdo, [['id' => $id, 'user_id' => $owner, 'start_at' => $startUtc, 'end_at' => $endUtc, 'duration_sec' => $duration, 'entry_date' => $entryDate]]);
         $pdo->commit();
     } catch (\PDOException $e) {
         if ($pdo->inTransaction()) {
@@ -1416,13 +1357,15 @@ if ($action === 'update') {
             'end_at' => $endUtc,
         ];
     }
-    // Moving it (or handing it to someone else) onto a locked entry of the owner is refused like editing that entry (D3.3).
+    ccrm_te_refuse_locked($pdo, $sessionUser, $lockedRows, $settings);
+    // Moving it (or handing it to someone else) off or onto a locked entry is refused like editing that entry (D3.3).
     $moved = $owner !== (string)$row['user_id'] || $startUtc !== $row['start_at'] || $endUtc !== $row['end_at']
         || (string)($duration ?? '') !== (string)($row['duration_sec'] ?? '');
     if ($moved) {
-        $lockedRows = array_merge($lockedRows, ccrm_tt_overlapping_entries($pdo, $owner, $startUtc, $endUtc, $id));
+        // Both the interval it leaves (old owner) and the one it lands on (new owner).
+        ccrm_te_refuse_neighbours($pdo, $sessionUser, (string)$row['user_id'], [ccrm_te_interval_of($row)], $settings, $id);
+        ccrm_te_refuse_neighbours($pdo, $sessionUser, $owner, [[$startUtc, $endUtc]], $settings, $id);
     }
-    ccrm_te_refuse_locked($pdo, $sessionUser, $lockedRows, $settings);
     /* PHASE6-LOCK-END */
 
     // The frozen rate is never recomputed silently: only when the owner or the month changes,
@@ -1465,7 +1408,7 @@ if ($action === 'update') {
             $startUtc, $endUtc, $duration, $billable, $billableRate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $tags, $id,
         ]);
         // The old and the new interval (an owner change settles both people).
-        ccrm_tt_settle_rows($pdo, [$row, ['user_id' => $owner, 'start_at' => $startUtc, 'end_at' => $endUtc, 'duration_sec' => $duration, 'entry_date' => $entryDate]]);
+        ccrm_tt_settle_rows($pdo, [$row, ['id' => $id, 'user_id' => $owner, 'start_at' => $startUtc, 'end_at' => $endUtc, 'duration_sec' => $duration, 'entry_date' => $entryDate]]);
         $pdo->commit();
     } catch (\PDOException $e) {
         if ($pdo->inTransaction()) {

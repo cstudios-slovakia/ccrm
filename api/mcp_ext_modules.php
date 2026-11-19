@@ -15,6 +15,7 @@
 require_once __DIR__ . '/recurring_tasks.php';
 require_once __DIR__ . '/time_entries_lib.php';
 require_once __DIR__ . '/time_settle.php';
+require_once __DIR__ . '/time_locks.php';
 require_once __DIR__ . '/tickets.php';
 
 /**
@@ -530,6 +531,14 @@ function mcp_mod_assert_te_unlocked(\PDO $pdo, array $user, string $entryDate, s
     }
 }
 
+/** D3.3: an interval that overlaps a locked entry of $ownerUserId is refused like editing it; admins pass. */
+function mcp_mod_assert_te_neighbours_unlocked(\PDO $pdo, array $user, string $ownerUserId, array $intervals, array $settings, ?string $excludeId = null): void {
+    $hit = ccrm_te_refuse_locked_neighbours($pdo, $user, $ownerUserId, $intervals, $settings, $excludeId);
+    if ($hit !== null) {
+        throw new \InvalidArgumentException("This time overlaps a locked time entry ({$hit['id']}, {$hit['reason']}).");
+    }
+}
+
 /** Check user access to task/ticket/project referenced by a time entry link set. */
 function mcp_mod_check_te_link_access(\PDO $pdo, array $user, array $links): void {
     $scope = ccrm_read_scope($pdo, $user);
@@ -751,6 +760,7 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             $settings = ccrm_tt_load_settings($pdo);
             $timing = mcp_mod_resolve_te_timing($args);
             mcp_mod_assert_te_unlocked($pdo, $user, $timing['entry_date'], $uid, null, $settings);
+            mcp_mod_assert_te_neighbours_unlocked($pdo, $user, $uid, [[$timing['start_at'], $timing['end_at']]], $settings);
 
             $links = ccrm_tt_resolve_links($pdo, [
                 'taskId' => $args['task_id'] ?? null,
@@ -782,7 +792,7 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
                     $timing['entry_date'], $timing['start_at'], $timing['end_at'], $timing['duration_sec'],
                     $billable, $billRate, $pricing['cost_rate'], $pricing['cost_rate_source'], $pricing['cost_rate_basis_days'],
                 ]);
-                ccrm_tt_settle_rows($pdo, [['user_id' => $uid, 'start_at' => $timing['start_at'], 'end_at' => $timing['end_at'], 'duration_sec' => $timing['duration_sec'], 'entry_date' => $timing['entry_date']]]);
+                ccrm_tt_settle_rows($pdo, [['id' => $id, 'user_id' => $uid, 'start_at' => $timing['start_at'], 'end_at' => $timing['end_at'], 'duration_sec' => $timing['duration_sec'], 'entry_date' => $timing['entry_date']]]);
             });
 
             mcp_audit($pdo, $user, 'time_entry_log', "Logged time entry {$id} ({$timing['duration_sec']}s on {$timing['entry_date']})");
@@ -938,6 +948,16 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             $isRunning = $cur['start_at'] !== null && $cur['end_at'] === null;
             if (!$isRunning && ($dur < 1 || $dur > 86400)) {
                 throw new \InvalidArgumentException('Duration must be between 1 second and 24 hours.');
+            }
+            if ($entryDate !== (string)$cur['entry_date']) {
+                // Moving it to another day: that day's lock applies too.
+                mcp_mod_assert_te_unlocked($pdo, $user, $entryDate, (string)$cur['user_id'], $cur['approval_status'] ?? null, $settings);
+            }
+            if (!$isRunning && $cur['start_at'] !== null && $dur !== (int)$cur['duration_sec']) {
+                // A new duration moves the end (start + duration): old and new interval.
+                $oldEnd = gmdate('Y-m-d H:i:s', strtotime($cur['start_at'] . ' UTC') + (int)$cur['duration_sec']);
+                $newEnd = gmdate('Y-m-d H:i:s', strtotime($cur['start_at'] . ' UTC') + $dur);
+                mcp_mod_assert_te_neighbours_unlocked($pdo, $user, (string)$cur['user_id'], [[$cur['start_at'], $oldEnd], [$cur['start_at'], $newEnd]], $settings, $id);
             }
 
             $billable = array_key_exists('billable', $args) ? ($args['billable'] ? 1 : 0) : (int)$cur['billable'];

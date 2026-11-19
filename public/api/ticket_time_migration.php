@@ -54,6 +54,9 @@ if (!function_exists('ccrm_migrate_ticket_time_entries')) {
         // before publish, when the copy on disk may not parse; require_once
         // would then refuse to read the fixed file later in the same process.
         include __DIR__ . '/time_entries_lib.php';
+        // time_settle.php (and time_allocation.php, which it requires) are deliberately NOT listed in
+        // ccrm_schema_fingerprint(): editing them never needs this migration to run again (it only
+        // copies legacy rows once), and schema.php is size-capped.
         include __DIR__ . '/time_settle.php';
         $settings = ccrm_tt_load_settings($pdo);
         $rows = $pdo->query("SELECT * FROM `ticket_time_entries`")->fetchAll(\PDO::FETCH_ASSOC);
