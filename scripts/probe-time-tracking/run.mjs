@@ -564,8 +564,7 @@ async function main() {
       // The identical target never runs twice.
       const same = await te(S.erik, { action: 'start', taskId: 'task-tt-p1', mode: 'parallel' });
       check('T15: parallel start of the running target is 409 already_running with that entry', same.status === 409 && same.data?.code === 'already_running' && same.data?.entry?.id === p1.data?.entry?.id && runningRows().length === 2, same.raw);
-      const sameSwitch = await te(S.erik, { action: 'start', taskId: 'task-tt-p2' });
-      check('T15: switch start of a target among several running is 409 already_running too (nothing stopped)', sameSwitch.status === 409 && sameSwitch.data?.code === 'already_running' && sameSwitch.data?.entry?.id === p2.data?.entry?.id && runningRows().length === 2, sameSwitch.raw);
+      // A switch to a target among several running stops the others (T15b checks it).
 
       // sameProject 'never'.
       setParallel({ ...ON, sameProject: 'never' });
@@ -628,6 +627,41 @@ async function main() {
       ]);
       check('T15: race: two concurrent switch starts both answer 201', race.every((r) => r.status === 201), race.map((r) => r.raw).join(' / '));
       check('T15: race: exactly one running entry afterwards', runningRows().length === 1, JSON.stringify(runningRows()));
+
+      // T15b: concurrency fixes from review (undo, switch among several, the owner's permission).
+      await te(S.erik, { action: 'stop', all: true });
+      setParallel({ ...ON, sameProject: 'always' });
+      const eid = (r) => r.data?.entry?.id;
+      // (a) Undo of an old start after a later one: nothing was undone, so nothing is reopened.
+      const u1 = await te(S.erik, { action: 'start', description: 'T15b undo A' });
+      const u2 = await te(S.erik, { action: 'start', description: 'T15b undo B' }); // stops A
+      const u3 = await te(S.erik, { action: 'start', description: 'T15b undo C' }); // stops B
+      const oldUndo = await te(S.erik, { action: 'undo_start', newId: eid(u2), stoppedIds: [eid(u1)] });
+      check('T15b: undo of an old start after a later start is 409 conflict', oldUndo.status === 409 && oldUndo.data?.code === 'conflict', oldUndo.raw);
+      check('T15b: ...the entry it once stopped stays stopped, the old start stays, only the latest runs',
+        dbEntry(eid(u1))?.end_at !== null && !!dbEntry(eid(u2)) && runningRows().length === 1 && runningRows()[0].id === eid(u3), JSON.stringify(runningRows()));
+      // (b) Switch to a target that already runs among two: the other stops, the identical one keeps running.
+      await te(S.erik, { action: 'stop', all: true });
+      const b1 = await te(S.erik, { action: 'start', taskId: 'task-tt-p1' });
+      const b2 = await te(S.erik, { action: 'start', taskId: 'task-tt-p2', mode: 'parallel' });
+      const bs = await te(S.erik, { action: 'start', taskId: 'task-tt-p2' });
+      check('T15b: switch to a running target among two answers 200 alreadyRunning with that entry and stops the other',
+        b1.status === 201 && b2.status === 201 && bs.status === 200 && bs.data?.alreadyRunning === true && eid(bs) === eid(b2)
+          && bs.data?.stoppedAll?.length === 1 && bs.data.stoppedAll[0].id === eid(b1) && bs.data.stopped?.id === eid(b1), bs.raw);
+      check('T15b: ...exactly the identical one runs', runningRows().length === 1 && runningRows()[0].id === eid(b2), JSON.stringify(runningRows()));
+      // (c) The permission is the owner's: a manager who has it cannot run a parallel timer for Erik, whose role lacks it.
+      await te(S.erik, { action: 'stop', all: true });
+      const grantPm = (on) => sql(on
+        ? `UPDATE system_settings SET value = JSON_SET(value, '$[1].permissions.time_tracking_parallel', 'edit') WHERE \`key\` = 'ROLES_RBAC'`
+        : `UPDATE system_settings SET value = JSON_REMOVE(value, '$[1].permissions.time_tracking_parallel') WHERE \`key\` = 'ROLES_RBAC'`);
+      grant(false);
+      grantPm(true);
+      const c1 = await te(S.erik, { action: 'start', description: 'T15b Erik own' });
+      const c2 = await te(S.pm, { action: 'start', userId: USERS.erik.id, description: 'T15b by the manager', mode: 'parallel' });
+      check('T15b: a manager with the permission starting parallel for Erik (role without it) is 409 parallel_forbidden',
+        c1.status === 201 && c2.status === 409 && c2.data?.code === 'parallel_forbidden' && runningRows().length === 1, c2.raw);
+      grantPm(false);
+      grant(true);
 
       // Cleanup.
       await te(S.erik, { action: 'stop', all: true });

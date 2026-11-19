@@ -11,8 +11,18 @@
  *   ccrm_tt_lock_prepare($pdo, $userId);   // BEFORE beginTransaction(): INSERT IGNORE the row
  *   $pdo->beginTransaction();
  *   ccrm_tt_lock_user($pdo, $userId);      // first statement: SELECT ... FOR UPDATE
- *   ... read the running rows (ccrm_tt_running_rows, a locking read), write, settle ...
+ *   ... read the running rows (ccrm_tt_running_rows, a plain read), write, settle ...
  *   $pdo->commit();
+ *
+ * The presence lock must be the FIRST statement of the transaction. InnoDB (REPEATABLE READ)
+ * creates a transaction's snapshot at its first non-locking read; when that read comes after the
+ * lock, it sees everything the previous holder committed. A plain SELECT before the lock would
+ * pin an older snapshot, and the running rows read afterwards could be stale. Do every lookup
+ * that needs no lock (permissions, settings, the owner's scope) before beginTransaction().
+ *
+ * The running rows are read WITHOUT `FOR UPDATE`: the presence row already serialises each user,
+ * and a locking read on the non-unique `idx_te_running` takes next-key (gap) locks that two
+ * different users' transactions can cross into a deadlock.
  *
  * The row is created outside the transaction on purpose: an INSERT IGNORE inside it takes a
  * shared lock on an existing row, and two transactions that both hold it and then ask for the
@@ -54,10 +64,13 @@ if (!function_exists('ccrm_tt_lock_user')) {
 
     /**
      * Every running entry of the user (start set, no end, not deleted), oldest start first.
-     * $lock = a locking read (FOR UPDATE): always the latest committed rows, for use under the lock.
+     * Always a plain (non-locking) read. $lock is kept for callers that mark "I hold the user's
+     * lock": under ccrm_tt_lock_user() taken as the transaction's first statement, the plain read
+     * already sees the latest committed rows (see the header), without gap locks on the
+     * non-unique `idx_te_running` that could deadlock two users.
      */
     function ccrm_tt_running_rows(\PDO $pdo, string $userId, bool $lock = false): array {
-        $stmt = $pdo->prepare("SELECT * FROM `time_entries` WHERE `running_guard` = ? ORDER BY `start_at` ASC, `id` ASC" . ($lock ? ' FOR UPDATE' : ''));
+        $stmt = $pdo->prepare("SELECT * FROM `time_entries` WHERE `running_guard` = ? ORDER BY `start_at` ASC, `id` ASC");
         $stmt->execute([$userId]);
         return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
