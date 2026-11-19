@@ -100,6 +100,9 @@ function setup() {
   lines.push(task('task-tt-1', 'Write the offer', 'TT Erik', 'proj-tt-1'));
   lines.push(task('task-tt-2', 'Secret task of the manager', 'TT Manager', null));
   lines.push(task('task-tt-3', 'Task without a project', 'TT Erik', null));
+  // Fixed past dates (2026-05, 2026-10) are older than the default lockAfterDays (14): switch the age
+  // lock off for the whole probe (null = off). Sections that test the lock turn it on for themselves (T13).
+  lines.push(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('TIME_TRACKING_SETTINGS', ${q(JSON.stringify({ lockAfterDays: null }))});`);
   sql(lines.join('\n'));
 }
 
@@ -324,6 +327,96 @@ async function main() {
     sql(`UPDATE projects SET billable_rate = 80 WHERE id = 'proj-tt-1'`);
     const rated = await te(S.admin, { action: 'create', projectId: 'proj-tt-1', description: 'Rated', entryDate: '2026-10-20', durationSec: 3600, source: 'manual' });
     check('T12: an entry with no rate of its own freezes the project billable rate', dbEntry(rated.data?.entry?.id)?.billable_rate === '80.00', JSON.stringify(dbEntry(rated.data?.entry?.id)));
+
+    section('T13: worked time and parallel cost (TT2 phase 1)');
+    {
+      const round4 = (n) => Math.round(n * 10000) / 10000;
+      const near = (a, b, tol = 0.00011) => Math.abs(Number(a) - Number(b)) <= tol;
+      const cents = (n) => Number(n).toFixed(2);
+      const setLock = (days) => te(S.admin, { action: 'settings', settings: { lockAfterDays: days } });
+      // Timed manual entry for Erik; times are UTC on a fixed past day (October 2026, still CEST: UTC+2).
+      const mk = (date, from, to, desc, extra = {}) =>
+        te(S.erik, { action: 'create', description: desc, startAt: `${date}T${from}:00Z`, endAt: `${date}T${to}:00Z`, source: 'manual', ...extra });
+      const row = (r) => dbEntry(r.data?.entry?.id);
+      const H2 = 7200000;
+      const min = (n) => String(n * 60000);
+
+      // One entry alone.
+      const a = await mk('2026-10-05', '09:00', '11:00', 'T13 A');
+      check('T13: timed entry A is created', a.status === 201, a.raw);
+      let aRow = row(a);
+      const rate = Number(aRow?.cost_rate);
+      check('T13: A alone: worked_ms = 7 200 000', aRow?.worked_ms === String(H2), JSON.stringify(aRow));
+      const fullCost = round4(2 * rate).toFixed(4);
+      check('T13: A alone: cost = round4(2 x rate), stored with 4 decimals', rate > 0 && aRow?.cost === fullCost, `${aRow?.cost} vs ${fullCost}`);
+
+      // Identical interval: they split it.
+      const b = await mk('2026-10-05', '09:00', '11:00', 'T13 B');
+      aRow = row(a);
+      let bRow = row(b);
+      check('T13: B (identical interval) is created', b.status === 201, b.raw);
+      check('T13: identical intervals: A and B each get worked_ms 3 600 000', aRow?.worked_ms === '3600000' && bRow?.worked_ms === '3600000', `${aRow?.worked_ms} / ${bRow?.worked_ms}`);
+      check('T13: A.cost + B.cost = the cost of A alone (4 decimals and to the cent)', near(Number(aRow?.cost) + Number(bRow?.cost), fullCost) && cents(Number(aRow?.cost) + Number(bRow?.cost)) === cents(fullCost), `${aRow?.cost} + ${bRow?.cost} vs ${fullCost}`);
+      check('T13: B\'s create re-settled A (its stored cost dropped to half)', near(aRow?.cost, rate), aRow?.cost);
+      check('T13: project time (duration_sec) is untouched: 7200 each', aRow?.duration_sec === '7200' && bRow?.duration_sec === '7200');
+
+      // Soft delete B, restore B.
+      await te(S.erik, { action: 'delete', id: b.data.entry.id });
+      aRow = row(a);
+      check('T13: deleting B returns A to 7 200 000 and the full cost', aRow?.worked_ms === String(H2) && aRow?.cost === fullCost, JSON.stringify(aRow));
+      await te(S.erik, { action: 'restore', id: b.data.entry.id });
+      aRow = row(a); bRow = row(b);
+      check('T13: restoring B splits them again', aRow?.worked_ms === '3600000' && bRow?.worked_ms === '3600000', `${aRow?.worked_ms} / ${bRow?.worked_ms}`);
+
+      // Move B away.
+      const moved = await te(S.erik, { action: 'update', id: b.data.entry.id, startAt: '2026-10-05T13:00:00Z', endAt: '2026-10-05T15:00:00Z' });
+      aRow = row(a); bRow = row(b);
+      check('T13: moving B so it no longer overlaps: both worked_ms 7 200 000', moved.status === 200 && aRow?.worked_ms === String(H2) && bRow?.worked_ms === String(H2), `${moved.raw.slice(0, 160)} ${aRow?.worked_ms} / ${bRow?.worked_ms}`);
+      check('T13: ...and both carry the full cost', aRow?.cost === fullCost && bRow?.cost === fullCost, `${aRow?.cost} / ${bRow?.cost}`);
+
+      // Staggered example of D2 (one day; C overlaps A and B).
+      const sa = await mk('2026-10-06', '09:00', '11:00', 'T13 SA');
+      const sb = await mk('2026-10-06', '09:30', '10:30', 'T13 SB');
+      const sc = await mk('2026-10-06', '10:00', '10:30', 'T13 SC');
+      const [ra, rb, rc] = [row(sa), row(sb), row(sc)];
+      check('T13: staggered: worked 85 / 25 / 10 minutes in ms', ra?.worked_ms === min(85) && rb?.worked_ms === min(25) && rc?.worked_ms === min(10), `${ra?.worked_ms} / ${rb?.worked_ms} / ${rc?.worked_ms}`);
+      check('T13: staggered: sum of worked_ms = 7 200 000 (the union)', Number(ra?.worked_ms) + Number(rb?.worked_ms) + Number(rc?.worked_ms) === H2);
+      const sumCost = Number(ra?.cost) + Number(rb?.cost) + Number(rc?.cost);
+      check('T13: staggered: sum of cost = the cost of 2 h, to the cent', cents(sumCost) === cents(fullCost) && near(sumCost, fullCost, 0.00031), `${sumCost} vs ${fullCost}`);
+
+      // Hours-only entry on the same day as timed ones.
+      const day = await te(S.erik, { action: 'create', description: 'T13 Day', entryDate: '2026-10-06', durationSec: 5400, source: 'day' });
+      check('T13: hours-only entry: worked_ms = duration x 1000 (C15)', row(day)?.worked_ms === '5400000', JSON.stringify(row(day)));
+      check('T13: ...and the timed entries of that day are untouched by it', row(sa)?.worked_ms === min(85) && row(sb)?.worked_ms === min(25) && row(sc)?.worked_ms === min(10));
+
+      // Running entry.
+      const run1 = await te(S.erik, { action: 'start', description: 'T13 running' });
+      check('T13: a running entry has worked_ms NULL', run1.status === 201 && row(run1)?.worked_ms === null, run1.raw);
+      const stopped = await te(S.erik, { action: 'stop' });
+      check('T13: after stop, worked_ms is set', stopped.status === 200 && row(run1)?.worked_ms !== null, JSON.stringify(row(run1)));
+
+      // Lock rule (D3.3): overlapping a locked neighbour. The new entry gets today's date (so the age rule does
+      // not lock it itself) but its interval overlaps A on 2026-10-05, which lockAfterDays=1 locks.
+      const today = new Date().toISOString().slice(0, 10);
+      await setLock(1);
+      const blocked = await mk('2026-10-05', '09:30', '10:00', 'T13 overlaps locked', { entryDate: today });
+      check('T13: lock: an Employee creating an entry that overlaps a locked entry is refused (entry_locked)', (blocked.status === 409 || blocked.status === 403) && blocked.data?.code === 'entry_locked', blocked.raw);
+      check('T13: lock: the refused entry was not stored and A is unchanged', rows(`SELECT id FROM time_entries WHERE description='T13 overlaps locked'`).length === 0 && row(a)?.worked_ms === String(H2));
+      const control = await mk('2026-10-20', '09:00', '10:00', 'T13 control, no neighbour', { entryDate: today });
+      check('T13: lock (control): the same trick without a locked neighbour is allowed', control.status === 201, control.raw);
+      const forErik = await te(S.admin, { action: 'create', userId: USERS.erik.id, description: 'T13 admin override', startAt: '2026-10-05T09:30:00Z', endAt: '2026-10-05T10:00:00Z', entryDate: today, source: 'manual' });
+      check('T13: lock: the admin acting for Erik may overlap the locked entry', forErik.status === 201, forErik.raw);
+      await setLock(null);
+      check('T13: lock: the setting is restored (age lock off again)', (await api(S.erik, 'time_entries.php', { query: '?action=settings' })).data?.settings?.lockAfterDays === null);
+
+      // These two land in a later package of the same phase (D5.3 last row): list and totals expose worked time.
+      const listed = (await list(S.erik, '?from=2026-10-05&to=2026-10-06')).data?.entries || [];
+      const la = listed.find((e) => e.id === a.data.entry.id);
+      check('T13 [later package]: list entries carry workedMs', listed.length > 0 && la?.workedMs !== undefined && la.workedMs !== null && Number(la.workedMs) > 0, JSON.stringify(la));
+      const totals = await api(S.erik, 'time_entries.php', { query: '?action=totals' });
+      const proj = totals.data?.byProject?.['proj-tt-1'];
+      check('T13 [later package]: action=totals carries workedMs next to seconds', !!proj && typeof proj.seconds === 'number' && typeof proj.workedMs === 'number', totals.raw);
+    }
   } finally {
     teardown();
   }
