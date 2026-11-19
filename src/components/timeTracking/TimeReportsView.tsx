@@ -13,9 +13,10 @@ import {
   type BillableFilter,
   type ReportGroupBy,
 } from "../../utils/timeReports.ts";
-import { entrySeconds, formatDuration, hoursOf, todayIso, type TimeEntry } from "../../utils/timeTracking.ts";
+import { entrySeconds, formatDuration, hoursOf, projectColor, todayIso, type TimeEntry } from "../../utils/timeTracking.ts";
 import { entryWorkedSeconds, liveWorkedShares } from "../../utils/timeWorked.ts";
 import { MoneyText } from "./MoneyText";
+import { ProjectLabel } from "./ProjectLabel";
 import { TimeSalaryReport } from "./TimeSalaryReport";
 import { useTimeLookups, type TimeDeps } from "./shared";
 import type { Lead, Project } from "../../types";
@@ -76,9 +77,10 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
     return [...ids].map((id) => ({ id, name: deps.leads.find((l) => l.id === id)?.name || id })).sort((a, b) => a.name.localeCompare(b.name));
   }, [deps.leads, deps.projects]);
 
+  const workingDays = useMemo(() => tt.calendarFor(tt.workCountry).workingDaysInRange(from, to), [from, to, tt.calendarFor, tt.workCountry]);
+
   const report = useMemo(() => {
     const clientByProject = new Map(deps.projects.map((p) => [p.id, clientIdOf(p, deps.leads)]));
-    const workingDays = tt.calendarFor(tt.workCountry).workingDaysInRange(from, to);
     const nowMs = clock || tt.nowMs;
     const shares = entries.some((e) => e.running) ? liveWorkedShares(entries, nowMs) : undefined;
     return buildReport({
@@ -111,11 +113,16 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
       currency: deps.currency,
       workingDays,
     });
-  }, [billable, clientId, clock, deps, entries, from, groupBy, parallelOnly, projectId, tt.nowMs, settings.rounding, to, tt.calendarFor, tt.userId, tt.workCountry, userId, viewer.canCosts]);
+  }, [billable, clientId, clock, deps, entries, from, groupBy, parallelOnly, projectId, tt.nowMs, settings.rounding, to, tt.userId, userId, viewer.canCosts, workingDays]);
 
   const personName = (id: string) => deps.users.find((u) => u.id === id)?.name || id;
   const projectName = (id: string | null) => (id ? lookups.projectName(id) : t("Unallocated", "Nepriradené", "Nincs projekt"));
   const clientName = (id: string | null) => (id ? clients.find((c) => c.id === id)?.name || id : t("No client", "Bez klienta", "Nincs ügyfél"));
+  const clientOfProject = (id: string | null) => {
+    const project = id ? deps.projects.find((p) => p.id === id) : null;
+    const cid = project ? clientIdOf(project, deps.leads) : null;
+    return cid ? clientName(cid) : null;
+  };
   const groupLabel = (key: string) => {
     if (groupBy === "project") return projectName(key || null);
     if (groupBy === "person") return personName(key);
@@ -187,6 +194,7 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
     );
   }
 
+  const peopleCount = new Set(report.lines.map((l) => l.userId)).size;
   const hasCost = Object.keys(report.totals.cost).length > 0;
   const both = report.showsWorked;
 
@@ -276,10 +284,11 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
       ) : mode === "summary" ? (
         <>
           <StatGrid count={hasCost ? 4 : 3}>
-            <StatTile label={report.showsWorked ? t("Delivered", "Dodané", "Leszállított") : t("Hours", "Hodiny", "Órák")} value={<span className="tabular-nums">{formatDuration(report.totals.seconds)}</span>} />
+            <StatTile label={report.showsWorked ? t("Delivered", "Dodané", "Leszállított") : t("Hours", "Hodiny", "Órák")} value={<span className="tabular-nums">{formatDuration(report.totals.seconds)}</span>} delta={t(`${peopleCount} people · ${workingDays} working days`, `${peopleCount} ľudí · ${workingDays} pracovných dní`, `${peopleCount} fő · ${workingDays} munkanap`)} />
             {report.showsWorked && (
               <StatTile
                 label={t("Worked", "Odpracované", "Ledolgozott")}
+                delta={t("Parallel timers counted once", "Paralelné časovače sa rátajú raz", "A párhuzamos időzítők egyszer számítanak")}
                 value={
                   <span className="tabular-nums">
                     {formatDuration(report.totals.workedSeconds)}
@@ -288,12 +297,23 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
                 }
               />
             )}
-            <StatTile label={t("Billable", "Fakturovateľné", "Számlázható")} value={<span className="tabular-nums">{billablePct == null ? "—" : `${billablePct} %`}</span>} />
+            <StatTile
+              label={t("Billable", "Fakturovateľné", "Számlázható")}
+              value={<span className="tabular-nums">{billablePct == null ? "—" : `${billablePct} %`}</span>}
+              delta={t(`${formatDuration(report.totals.billableSeconds)} of ${formatDuration(report.totals.seconds)}`, `${formatDuration(report.totals.billableSeconds)} z ${formatDuration(report.totals.seconds)}`, `${formatDuration(report.totals.billableSeconds)} / ${formatDuration(report.totals.seconds)}`)}
+            />
             <StatTile
               label={t("Hours per working day", "Hodiny na pracovný deň", "Óra munkanaponként")}
+              delta={t(`over ${workingDays} working days`, `za ${workingDays} pracovných dní`, `${workingDays} munkanap alatt`)}
               value={<span className="tabular-nums">{report.perWorkingDaySeconds == null ? "—" : formatDuration(report.perWorkingDaySeconds)}</span>}
             />
-            {hasCost && <StatTile label={t("Labour cost", "Náklady na prácu", "Munkaköltség")} value={<MoneyText bag={report.totals.cost} language={deps.language} />} />}
+            {hasCost && (
+              <StatTile
+                label={t("Labour cost", "Náklady na prácu", "Munkaköltség")}
+                value={<MoneyText bag={report.totals.cost} language={deps.language} />}
+                delta={t(`${report.lines.length} entries`, `${report.lines.length} záznamov`, `${report.lines.length} bejegyzés`)}
+              />
+            )}
           </StatGrid>
           <Surface>
             <h3 className="type-card-title text-slate-900">{t("Share by project", "Podiel podľa projektu", "Megoszlás projekt szerint")}</h3>
@@ -304,10 +324,13 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
                   <span className="min-w-0">
                     <span className="block truncate text-ui text-slate-800">{projectName(share.projectId)}</span>
                     <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-slate-100">
-                      <span className="block h-full rounded-full bg-teal-600 transition-[width] duration-500" style={{ width: `${Math.round(share.ratio * 100)}%` }} />
+                      <span className="block h-full rounded-full transition-[width] duration-500" style={{ width: `${Math.round(share.ratio * 100)}%`, backgroundColor: projectColor(share.projectId) }} />
                     </span>
                   </span>
-                  <span className="tabular-nums text-ui font-semibold text-teal-700">{formatDuration(share.seconds)}</span>
+                  <span className="tabular-nums text-ui font-semibold text-teal-700">
+                    {formatDuration(share.seconds)}
+                    <span className="ml-2 font-normal text-slate-500">{Math.round(share.ratio * 100)} %</span>
+                  </span>
                 </li>
               ))}
             </ul>
@@ -326,7 +349,16 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
               <tbody>
                 {report.groups.map((g) => (
                   <tr key={g.key || "empty"} className="border-b border-slate-100">
-                    <td className="px-4 py-2.5 font-semibold text-slate-900">{groupLabel(g.key)}</td>
+                    <td className="px-4 py-2.5 font-semibold text-slate-900">
+                      {groupBy === "project" && g.key ? (
+                        <>
+                          <ProjectLabel projectId={g.key} name={groupLabel(g.key)} compact />
+                          {clientOfProject(g.key) && <span className="block truncate type-meta font-normal text-slate-500">{clientOfProject(g.key)}</span>}
+                        </>
+                      ) : (
+                        groupLabel(g.key)
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 tabular-nums text-teal-700">{formatDuration(g.seconds)}</td>
                     {both && <td className="px-4 py-2.5 tabular-nums">{formatDuration(g.workedSeconds)}</td>}
                     <td className="px-4 py-2.5 tabular-nums">{formatDuration(g.billableSeconds)}</td>
@@ -400,13 +432,14 @@ function ModeSwitch({ mode, setMode, salary, t }: { mode: Mode; setMode: (m: Mod
       key={id}
       type="button"
       onClick={() => setMode(id)}
-      className={`h-9 rounded-xl px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${mode === id ? "bg-teal-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+      aria-pressed={mode === id}
+      className={`h-8 rounded-lg px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${mode === id ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
     >
       {label}
     </button>
   );
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className="inline-flex w-fit flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
       {item("summary", t("Summary", "Súhrn", "Összegzés"))}
       {item("detailed", t("Detailed", "Podrobné", "Részletes"))}
       {salary && item("salary", t("Salary allocation", "Rozdelenie mzdy", "Bérfelosztás"))}
