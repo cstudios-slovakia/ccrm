@@ -1,0 +1,2 @@
+- **Time tracking: cost totals round once**: a total of entry costs now adds the four-decimal costs and rounds to cents at the end, so three parallel entries of €6.6667 total €20.00 instead of €20.01.
+- **Tests**: worked-time helpers for the client (`src/utils/timeWorked.ts`: an entry's worked seconds, list totals with a live share for running timers, leverage), covering no overlap, the brief, staggered, a running entry, missing `workedMs`, two people and hours-only entries. Not wired to any view yet.

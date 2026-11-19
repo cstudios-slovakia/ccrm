@@ -225,17 +225,20 @@ export const billablePercent = (entries: readonly TimeEntry[], nowMs: number): n
   return total > 0 ? Math.round((billableSeconds(entries, nowMs) / total) * 100) : null;
 };
 
-/** The sum of the cost fields the viewer was allowed to see; null when none of them was. */
+/**
+ * The sum of the cost fields the viewer was allowed to see; null when none of them was.
+ * Costs carry four decimals; the sum is rounded to cents once, at the end (TIME-TRACKING-V2 D3.2).
+ */
 export const totalCost = (entries: readonly TimeEntry[]): number | null => {
   let any = false;
-  let cents = 0;
+  let sum = 0;
   for (const e of entries) {
     if (typeof e.cost === "number") {
       any = true;
-      cents += Math.round(e.cost * 100);
+      sum += e.cost;
     }
   }
-  return any ? cents / 100 : null;
+  return any ? Math.round(sum * 100) / 100 : null;
 };
 
 /** entries -> { date -> entries }, entries of a day newest first (running one on top). */
