@@ -24,6 +24,22 @@ const SCRATCH_DB = 'ccrm_tt_probe';
 const SCRATCH_DIR = '/var/www/html/ttprobe';
 const publicDir = fileURLToPath(new URL('../../public/', import.meta.url));
 
+// Node's fetch keeps sockets alive; Apache closes an idle one after KeepAliveTimeout (5 s). A section
+// that pauses longer (a `docker exec` cron pass) then reuses a dead socket and fails with
+// "other side closed" before the request reached PHP. Retry exactly that failure once.
+const rawFetch = globalThis.fetch;
+globalThis.fetch = async (...args) => {
+  try {
+    return await rawFetch(...args);
+  } catch (e) {
+    const code = e?.cause?.code || '';
+    if (/other side closed/i.test(String(e?.cause?.message || '')) || code === 'UND_ERR_SOCKET' || code === 'ECONNRESET') {
+      return rawFetch(...args);
+    }
+    throw e;
+  }
+};
+
 const run = (cmd, args, input) =>
   execFileSync(cmd, args, { encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
 const docker = (...args) => run('docker', args);
