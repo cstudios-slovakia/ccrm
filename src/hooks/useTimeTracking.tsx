@@ -42,7 +42,8 @@ import {
   type TimeViewer,
 } from "../utils/timeTrackingApi.ts";
 import { isRunningTarget as runningHas, resolveStartMode, sameRunningIds, type RunningTarget } from "../utils/timeTrackingRunning.ts";
-import { stripTimerTitle, timerTabTitle, workedClockSeconds } from "../utils/timeContainer.ts";
+import { stripTimerTitle, workedClockSeconds } from "../utils/timeContainer.ts";
+import { presenceTabTitle } from "../utils/timePresenceUi.ts";
 import { IDLE_PRESENCE_VIEW, nextPresenceBoundary, presenceView as derivePresenceView, type PresenceView } from "../utils/timePresence.ts";
 import { StartModePopover } from "../components/timeTracking/StartModePopover.tsx";
 
@@ -419,14 +420,23 @@ export function TimeTrackingProvider({
   useEffect(() => {
     if (typeof document === "undefined") return;
     const base = stripTimerTitle(document.title);
-    if (!primaryRunning) {
+    if (!primaryRunning && presenceView.phase !== "paused") {
       if (document.title !== base) document.title = base;
       return;
     }
     // One item: its own elapsed time. Several: the worked clock of the stretch and "∥N" (D5.4).
-    const seconds = running.length > 1 ? workedClockSeconds(running, nowMs) : elapsedSeconds(primaryRunning.startAt, nowMs);
-    document.title = timerTabTitle(base, running.length, seconds);
-  }, [primaryRunning, running, nowMs]);
+    const seconds = !primaryRunning ? 0 : running.length > 1 ? workedClockSeconds(running, nowMs) : elapsedSeconds(primaryRunning.startAt, nowMs);
+    const next = presenceTabTitle({
+      base,
+      phase: presenceView.phase,
+      runningCount: running.length,
+      workedSec: seconds,
+      secondsToPause: presenceView.secondsToPause,
+      questionLabel: t("Still working?", "Stále pracuješ?", "Még dolgozol?"),
+      pausedLabel: t("Paused", "Pozastavené", "Szüneteltetve"),
+    });
+    if (document.title !== next) document.title = next;
+  }, [primaryRunning, running, nowMs, presenceView, t]);
 
   const ensureHolidayYears = useCallback(
     (country: HolidayCountry, years: number[]) => {

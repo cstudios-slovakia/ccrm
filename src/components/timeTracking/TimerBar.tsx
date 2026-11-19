@@ -14,6 +14,7 @@ import { TimeApiError, createEntry, timeErrorMessage, updateEntry } from "../../
 import type { Task, Ticket } from "../../types";
 import { isClosedTicketStatus } from "../../utils/tickets";
 import { ClockDigits } from "./ClockDigits";
+import { CycleRing } from "./CycleRing";
 import { ProjectPicker } from "./ProjectPicker";
 import { TimerContainer } from "./TimerContainer";
 import { canRenameTitle, renameHint, useTimeLookups, type TimeDeps } from "./shared";
@@ -344,10 +345,12 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
         <>
           <ClockDigits value={formatDuration(elapsed, true)} className="min-w-20 justify-center text-title font-bold text-slate-900" data-testid="timer-elapsed" />
           {running ? (
-            <button type="button" onClick={onStop} disabled={busy} data-testid="timer-stop" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-rose-600 px-4 text-ui font-semibold text-white transition-all hover:bg-rose-700 active:scale-95 disabled:opacity-60 cursor-pointer">
-              <Square className="size-4 fill-current" />
-              {t("Stop", "Zastaviť", "Leállítás")}
-            </button>
+            <CycleRing swap label radius={12} buttonClass="inline-flex h-10 items-center gap-1.5 rounded-xl px-4 text-ui font-semibold text-white transition-all active:scale-95 cursor-pointer">
+              <button type="button" onClick={onStop} disabled={busy} data-testid="timer-stop" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-rose-600 px-4 text-ui font-semibold text-white transition-all hover:bg-rose-700 active:scale-95 disabled:opacity-60 cursor-pointer">
+                <Square className="size-4 fill-current" />
+                {t("Stop", "Zastaviť", "Leállítás")}
+              </button>
+            </CycleRing>
           ) : (
             <button type="button" onClick={onStart} disabled={busy} data-testid="timer-start" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-ui font-semibold text-primary-foreground transition-all hover:opacity-90 active:scale-95 disabled:opacity-60 cursor-pointer">
               <Play className="size-4 fill-current" />

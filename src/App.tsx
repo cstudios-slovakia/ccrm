@@ -9,6 +9,7 @@ import { WhatsAppModule } from "./components/whatsapp/WhatsAppModule";
 import { buildDemoDirectory } from "./components/whatsapp/demo/demoDirectory";
 import { crmHashForRecord } from "./components/whatsapp/lib/routes";
 import { ProjectRequestDialog } from "./components/timeTracking/ProjectRequestDialog";
+import { PresenceDialog } from "./components/timeTracking/PresenceDialog";
 import { TaskStatusTimerBridge } from "./components/timeTracking/TaskStatusTimerBridge";
 import { reportLocalTaskEdit } from "./utils/taskStatusTimerHook";
 import type { TimeDeps } from "./components/timeTracking/shared";
@@ -4906,7 +4907,7 @@ ${log.payload || ''}
       leadSources={leadSources}
       canCreate={access.canEdit("leads") || access.canEdit("clients")}
     >
-    {timeDeps && timeEnabled && <><ProjectRequestDialog deps={timeDeps} /><TaskStatusTimerBridge deps={timeDeps} actions={taskStateTimerActions} /></>}
+    {timeDeps && timeEnabled && <><ProjectRequestDialog deps={timeDeps} /><PresenceDialog /><TaskStatusTimerBridge deps={timeDeps} actions={taskStateTimerActions} /></>}
     <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50 transition-colors duration-[230ms]">
       {/* Dynamic Aurora Ambient Background Blobs (Themed per active view) */}
       <AuroraBackground

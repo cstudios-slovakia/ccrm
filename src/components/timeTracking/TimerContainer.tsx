@@ -4,6 +4,7 @@ import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { deliveredSeconds, workedClockSeconds } from "../../utils/timeContainer.ts";
 import { elapsedSeconds, formatDuration, projectColor, type TimeEntry } from "../../utils/timeTracking.ts";
 import { ClockDigits } from "./ClockDigits";
+import { CycleRing } from "./CycleRing";
 
 interface Props {
   /** Name of a project by id (entries carry their own `projectName`, which wins). */
@@ -120,10 +121,12 @@ export function TimerContainer({ projectName, renderAdd, onAdd, footer, touch = 
             </button>
           )}
           {running.length > 0 && (
-            <button type="button" disabled={busy} onClick={() => void act(stopAll)} data-testid="timer-container-stop-all" className={`${BTN} ${size} bg-rose-600 text-ui text-white hover:bg-rose-700`}>
-              <Square className="size-4 fill-current" />
-              {t("Stop all", "Zastaviť všetko", "Mind leállítása")}
-            </button>
+            <CycleRing radius={12}>
+              <button type="button" disabled={busy} onClick={() => void act(stopAll)} data-testid="timer-container-stop-all" className={`${BTN} ${size} bg-rose-600 text-ui text-white hover:bg-rose-700`}>
+                <Square className="size-4 fill-current" />
+                {t("Stop all", "Zastaviť všetko", "Mind leállítása")}
+              </button>
+            </CycleRing>
           )}
           {footer}
         </div>

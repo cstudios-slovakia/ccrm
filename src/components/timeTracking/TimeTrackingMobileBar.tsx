@@ -3,6 +3,7 @@ import { CalendarDays, ListTodo, Plus, Square, Timer } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { extraItemsLabel, workedClockSeconds } from "../../utils/timeContainer.ts";
 import { elapsedSeconds, formatDuration } from "../../utils/timeTracking.ts";
+import { CycleRing } from "./CycleRing";
 import { ClockDigits } from "./ClockDigits";
 import { TimerContainer } from "./TimerContainer";
 
@@ -50,12 +51,13 @@ export function TimeTrackingMobileBar({ onNavigate }: Props) {
     <div className="ws-sm:hidden">
       <div className="h-16" aria-hidden />
       {running && several && (
+        <CycleRing radius={24} className="fixed inset-x-3 bottom-20 z-40">
         <button
           type="button"
           onClick={() => setSheet(true)}
           aria-haspopup="dialog"
           data-testid="mobile-running-summary"
-          className="fixed inset-x-3 bottom-20 z-40 flex min-h-11 items-center gap-3 rounded-3xl border border-rose-200 bg-white p-4 text-left shadow-xl transition-colors hover:bg-rose-50 active:bg-rose-100 cursor-pointer motion-reduce:transition-none"
+          className="flex w-full min-h-11 items-center gap-3 rounded-3xl border border-rose-200 bg-white p-4 text-left shadow-xl transition-colors hover:bg-rose-50 active:bg-rose-100 cursor-pointer motion-reduce:transition-none"
         >
           <span className="size-2.5 shrink-0 animate-pulse rounded-full bg-rose-600 motion-reduce:animate-none" />
           <span className="min-w-0 flex-1">
@@ -66,21 +68,24 @@ export function TimeTrackingMobileBar({ onNavigate }: Props) {
           </span>
           <ClockDigits value={elapsed} className="text-title font-bold text-slate-900" data-testid="mobile-running-worked" />
         </button>
+        </CycleRing>
       )}
       {running && !several && (
         <div data-testid="mobile-running-card" className="fixed inset-x-3 bottom-20 z-40 rounded-3xl border border-rose-200 bg-white p-4 shadow-xl">
           <p className="type-overline text-rose-600">{t("Timer running", "Časovač beží", "Az időzítő fut")}</p>
           <ClockDigits value={elapsed} className="text-metric text-slate-900" />
           <p className="truncate text-body text-slate-700">{running.title || t("No title", "Bez názvu", "Nincs cím")}</p>
-          <button
-            type="button"
-            onClick={() => void stop(running.id)}
-            data-testid="mobile-running-stop"
-            className="mt-3 inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-2xl bg-rose-600 px-4 text-ui font-semibold text-white transition-all hover:bg-rose-700 active:scale-95 cursor-pointer motion-reduce:transition-none"
-          >
-            <Square className="size-4 fill-current" />
-            {t("Stop", "Zastaviť", "Leállítás")}
-          </button>
+          <CycleRing swap label radius={16} className="mt-3" buttonClass="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-2xl px-4 text-ui font-semibold text-white transition-all active:scale-95 cursor-pointer motion-reduce:transition-none">
+            <button
+              type="button"
+              onClick={() => void stop(running.id)}
+              data-testid="mobile-running-stop"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-2xl bg-rose-600 px-4 text-ui font-semibold text-white transition-all hover:bg-rose-700 active:scale-95 cursor-pointer motion-reduce:transition-none"
+            >
+              <Square className="size-4 fill-current" />
+              {t("Stop", "Zastaviť", "Leállítás")}
+            </button>
+          </CycleRing>
         </div>
       )}
       {sheet && (

@@ -26,7 +26,7 @@ export const deliveredSeconds = (running: readonly RunningLike[], nowMs: number)
 /** The "+2" of the header pill: the items beyond the first. */
 export const extraItemsLabel = (count: number): string => (count > 1 ? `+${count - 1}` : "");
 
-const TITLE_PREFIX = /^▶ \d+:\d{2}(?::\d{2})? · (?:∥\d+ · )?/;
+const TITLE_PREFIX = /^(?:▶ \d+:\d{2}(?::\d{2})? · (?:∥\d+ · )?|⏰ \d+:\d{2} · [^·]+ · |⏸ [^·]+ · )/;
 
 /** Removes our own prefix from a document title, so the page's own title is left. */
 export const stripTimerTitle = (title: string): string => title.replace(TITLE_PREFIX, "");
