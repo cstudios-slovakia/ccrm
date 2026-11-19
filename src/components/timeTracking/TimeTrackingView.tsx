@@ -138,7 +138,7 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
           }}
         />
       )}
-      <TimeTrackingMobileBar onNavigate={onNavigate} />
+      <TimeTrackingMobileBar onNavigate={onNavigate} deps={deps} recentProjectIds={recentProjectIds} secondsByProject={secondsByProject} />
     </Page>
   );
 }

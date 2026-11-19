@@ -1,0 +1,1 @@
+- **Time tracking on phones** (`TimeTrackingMobileBar.tsx`, `HeaderTimerPill.tsx`, `TimeTrackingView.tsx`): the running-timers sheet has a drag handle (swipe down) and a close button, and "+ Add timer" shows the start inputs inside the sheet. With every timer paused, the bottom bar and the header pill show "Paused · Resume" with the dashed ring instead of "Start timer".

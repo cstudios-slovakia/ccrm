@@ -17,7 +17,7 @@ import { extraItemsLabel, workedClockSeconds } from "../../utils/timeContainer.t
  * billable, description), so the running entry can be edited from any page.
  */
 export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
-  const { enabled, ready, primaryRunning: running, running: runningAll, nowMs, t, start, stop } = useTimeTracking();
+  const { enabled, ready, primaryRunning: running, running: runningAll, paused, nowMs, t, start, stop, resume, resumeAll } = useTimeTracking();
   const several = runningAll.length > 1;
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
@@ -49,7 +49,20 @@ export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
 
   return (
     <>
-      {!running ? (
+      {!running && paused.length > 0 ? (
+        <CycleRing radius={12}>
+          <button
+            type="button"
+            onClick={() => void (paused.length > 1 ? resumeAll() : resume(paused[0].id))}
+            data-testid="header-timer-resume"
+            title={t("Resume", "Pokračovať", "Folytatás")}
+            className="inline-flex h-8.5 shrink-0 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-2.5 text-ui font-semibold text-amber-800 shadow-sm transition-colors hover:border-amber-300 hover:bg-amber-100 cursor-pointer xs:h-9"
+          >
+            <Play className="size-3.5 fill-current text-amber-600" />
+            <span className="hidden md:inline">{t("Paused", "Pozastavené", "Szüneteltetve")} · {t("Resume", "Pokračovať", "Folytatás")}</span>
+          </button>
+        </CycleRing>
+      ) : !running ? (
         <button
           type="button"
           onClick={() => void start()}

@@ -1,14 +1,20 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { CalendarDays, ListTodo, Plus, Square, Timer } from "lucide-react";
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { CalendarDays, ListTodo, Play, Plus, Square, Timer, X } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { extraItemsLabel, workedClockSeconds } from "../../utils/timeContainer.ts";
 import { elapsedSeconds, formatDuration } from "../../utils/timeTracking.ts";
 import { CycleRing } from "./CycleRing";
 import { ClockDigits } from "./ClockDigits";
 import { TimerContainer } from "./TimerContainer";
+import { TimerBar } from "./TimerBar";
+import type { TimeDeps } from "./shared";
 
 interface Props {
   onNavigate: (route: string) => void;
+  /** Lets the sheet's "+ Add timer" show the start inputs inline; without it the button opens the timer route. */
+  deps?: TimeDeps;
+  recentProjectIds?: string[];
+  secondsByProject?: Record<string, number>;
 }
 
 /**
@@ -16,11 +22,29 @@ interface Props {
  * Hidden from the ws-sm workspace up. The running card sits above it; with several items it
  * is a summary that opens the container as a bottom sheet.
  */
-export function TimeTrackingMobileBar({ onNavigate }: Props) {
+export function TimeTrackingMobileBar({ onNavigate, deps, recentProjectIds, secondsByProject }: Props) {
   const tt = useTimeTracking();
   const { t, primaryRunning: running, running: all, nowMs, stop } = tt;
   const several = all.length > 1;
   const [sheet, setSheet] = useState(false);
+  const [dragY, setDragY] = useState(0);
+  const dragStart = useRef<number | null>(null);
+  const pausedOnly = !running && tt.paused.length > 0;
+  const firstPaused = tt.paused[0];
+
+  const onDragDown = (e: PointerEvent) => {
+    dragStart.current = e.clientY;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onDragMove = (e: PointerEvent) => {
+    if (dragStart.current !== null) setDragY(Math.max(0, e.clientY - dragStart.current));
+  };
+  const onDragEnd = () => {
+    if (dragStart.current === null) return;
+    dragStart.current = null;
+    if (dragY > 80) setSheet(false);
+    setDragY(0);
+  };
   const elapsed = running ? formatDuration(several ? workedClockSeconds(all, nowMs) : elapsedSeconds(running.startAt, nowMs), true) : "";
 
   useEffect(() => {
@@ -88,6 +112,28 @@ export function TimeTrackingMobileBar({ onNavigate }: Props) {
           </CycleRing>
         </div>
       )}
+      {pausedOnly && (
+        <div data-testid="mobile-paused-card" className="fixed inset-x-3 bottom-20 z-40 flex items-center gap-3 rounded-3xl border border-amber-200 bg-white p-4 shadow-xl">
+          <span className="min-w-0 flex-1">
+            <span className="block type-overline text-amber-600">{t("Paused", "Pozastavené", "Szüneteltetve")}</span>
+            <span className="block truncate text-body text-slate-700">
+              {firstPaused?.title || t("No title", "Bez názvu", "Nincs cím")}
+              {tt.paused.length > 1 && <span className="font-bold text-amber-700"> {extraItemsLabel(tt.paused.length)}</span>}
+            </span>
+          </span>
+          <CycleRing radius={16}>
+            <button
+              type="button"
+              onClick={() => void (tt.paused.length > 1 ? tt.resumeAll() : tt.resume(firstPaused.id))}
+              data-testid="mobile-paused-resume"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-2xl bg-amber-500 px-4 text-ui font-semibold text-white transition-all hover:bg-amber-600 active:scale-95 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none motion-reduce:active:scale-100"
+            >
+              <Play className="size-4 fill-current" />
+              {t("Resume", "Pokračovať", "Folytatás")}
+            </button>
+          </CycleRing>
+        </div>
+      )}
       {sheet && (
         <div className="fixed inset-0 z-[960]" data-testid="mobile-timer-sheet-root">
           <div className="absolute inset-0 bg-slate-900/40 animate-in fade-in duration-200 motion-reduce:animate-none" onClick={() => setSheet(false)} aria-hidden />
@@ -96,14 +142,40 @@ export function TimeTrackingMobileBar({ onNavigate }: Props) {
             aria-modal="true"
             aria-label={t("Running timer", "Bežiaci časovač", "Futó időzítő")}
             data-testid="mobile-timer-sheet"
+            style={dragY ? { transform: `translateY(${dragY}px)` } : undefined}
             className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-2xl animate-in slide-in-from-bottom duration-200 motion-reduce:animate-none"
           >
+            <div className="relative mb-1 flex min-h-11 items-center justify-center">
+              <div
+                data-testid="mobile-timer-sheet-handle"
+                onPointerDown={onDragDown}
+                onPointerMove={onDragMove}
+                onPointerUp={onDragEnd}
+                onPointerCancel={onDragEnd}
+                className="flex h-11 flex-1 cursor-grab touch-none items-center justify-center"
+              >
+                <span className="h-1.5 w-10 rounded-full bg-slate-300" aria-hidden />
+              </div>
+              <button
+                type="button"
+                onClick={() => setSheet(false)}
+                aria-label={t("Close", "Zavrieť", "Bezárás")}
+                data-testid="mobile-timer-sheet-close"
+                className="absolute right-0 inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 active:bg-slate-200 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
             <TimerContainer
               touch
-              onAdd={() => {
-                setSheet(false);
-                onNavigate("time-tracking");
-              }}
+              {...(deps
+                ? { renderAdd: (done: () => void) => <TimerBar deps={deps} recentProjectIds={recentProjectIds ?? []} secondsByProject={secondsByProject} adding onStarted={done} /> }
+                : {
+                    onAdd: () => {
+                      setSheet(false);
+                      onNavigate("time-tracking");
+                    },
+                  })}
             />
           </div>
         </div>
