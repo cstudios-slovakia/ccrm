@@ -185,6 +185,8 @@ export const computeWorkedCost = (workedMs: number | null | undefined, rate: num
 
 export interface ExplainContext {
   t: (en: string, sk: string, hu: string) => string;
+  /** The rate card is still open: the explanation says "provisional" (false or undefined: nothing said). */
+  provisional?: boolean;
   /** Formats an amount of money, e.g. "€3,200". */
   money: (n: number) => string;
   /** "Oct 2026" */
@@ -214,6 +216,71 @@ export const explainCostRate = (r: CostRate, settings: CostSettings, ctx: Explai
   }
 };
 
+/** The rate card of one person-month, as `time_entries.php?action=rateCard` returns it. */
+export interface RateCard {
+  employeeId?: string;
+  month?: string;
+  rate: number | null;
+  source: string;
+  salaryAmount: number | null;
+  /** Working days of the month; null when unknown. */
+  workingDays: number | null;
+  /** null with a fixed-hours basis. */
+  basisDays?: number | null;
+  country?: string;
+  paidLeaveDays?: number | null;
+  unpaidLeaveDays?: number | null;
+  hoursPerDay?: number | null;
+  multiplier?: number | null;
+  fallback?: boolean;
+  frozen?: boolean;
+  hoursBasis?: string;
+  fixedHoursPerMonth?: number | null;
+}
+
+const trimNum = (n: number): string => String(Math.round(n * 10) / 10);
+
+/**
+ * A monthly rate from the rate card in words (D4.1, D4.3). Examples (en):
+ *   none:    "€3,200 ÷ 20 days ÷ 8 h × 1.352 = €27.04/h (May 2026, SK, provisional)"
+ *   paid:    "€3,200 ÷ (20 − 3 leave) days ÷ 8 h × 1.352 = €31.81/h (...)"
+ *   unpaid:  "€3,200 × 18/20 ÷ (20 − 2 unpaid) days ÷ 8 h × 1.352 = €27.04/h (...)"
+ *   both:    "€3,200 × 18/20 ÷ (20 − 3 leave − 2 unpaid) days ÷ 8 h × 1.352 = €32.45/h (...)"
+ *   fallback: "... = €27.04/h (whole month on leave: basis 20 days, May 2026, SK)"
+ * "provisional" only while `ctx.provisional` is true (the card is not frozen). Null when the card is
+ * not a monthly one (or has no working days), so the caller keeps its own text.
+ */
+export const explainRateCard = (c: RateCard, ctx: ExplainContext): string | null => {
+  if (c.rate === null || c.salaryAmount === null || (c.source !== "monthly" && c.source !== "contractor_monthly")) return null;
+  const { t, money } = ctx;
+  const wd = c.workingDays ?? c.basisDays ?? null;
+  if (wd === null || !(wd > 0)) return null;
+  const paid = Math.max(0, Number(c.paidLeaveDays) || 0);
+  const unpaid = Math.max(0, Number(c.unpaidLeaveDays) || 0);
+  const h = Number(c.hoursPerDay) > 0 ? Number(c.hoursPerDay) : 8;
+  const mult = Number(c.multiplier) > 0 && Number(c.multiplier) !== 1 ? ` × ${c.multiplier}` : "";
+  const hUnit = t("h", "h", "ó");
+  const salary = unpaid > 0 ? `${money(c.salaryAmount)} × ${trimNum(wd - unpaid)}/${wd}` : money(c.salaryAmount);
+  const days = (() => {
+    if (c.fallback || (paid <= 0 && unpaid <= 0)) return `${wd}`;
+    const bits = [String(wd)];
+    if (paid > 0) bits.push(`− ${trimNum(paid)} ${t("leave", "dovolenka", "szabadság")}`);
+    if (unpaid > 0) bits.push(`− ${trimNum(unpaid)} ${t("unpaid", "neplatená", "fizetetlen")}`);
+    return `(${bits.join(" ")})`;
+  })();
+  const dayWord = t("days", "dní", "nap");
+  const divisor =
+    c.hoursBasis === "fixed" && Number(c.fixedHoursPerMonth) > 0
+      ? `${trimNum(Number(c.fixedHoursPerMonth) * (c.fallback ? 1 : (wd - unpaid - paid) / wd))} ${hUnit} ${t("(fixed monthly hours)", "(pevný počet hodín mesiaca)", "(havi fix óraszám)")}`
+      : `${days} ${dayWord} ÷ ${h} ${hUnit}`;
+  const note: string[] = [];
+  if (c.fallback) note.push(t(`whole month on leave: basis ${wd} days`, `celý mesiac na dovolenke: základ ${wd} dní`, `egész hónap szabadságon: ${wd} napos alap`));
+  note.push(ctx.monthLabel);
+  if (c.country) note.push(c.country);
+  if (ctx.provisional) note.push(t("provisional", "predbežná", "ideiglenes"));
+  return `${salary} ÷ ${divisor}${mult} = ${money(c.rate)}/h (${note.join(", ")})`;
+};
+
 /** "Oct 2026 · 22 working days · man-day €145.45 · €24.58/h" — the Team matrix and drawer tooltip. */
 export const costRateTooltip = (r: CostRate, ctx: ExplainContext): string => {
   if (r.rate === null) return ctx.t("No rate — no employee linked", "Bez sadzby — nie je pripojený zamestnanec", "Nincs díj — nincs munkatárs hozzárendelve");
@@ -221,5 +288,13 @@ export const costRateTooltip = (r: CostRate, ctx: ExplainContext): string => {
   if (r.basisDays !== null) parts.push(`${r.basisDays} ${ctx.t("working days", "pracovných dní", "munkanap")}`);
   if (r.manDay !== null) parts.push(`${ctx.t("man-day", "osobodeň", "ember-nap")} ${ctx.money(r.manDay)}`);
   parts.push(`${ctx.money(r.rate)}/h`);
-  return parts.join(" · ");
+  // Monthly pay: the same words as the entry drawer, from the leave the rate was priced with.
+  const why =
+    r.amount !== null && r.basisDays !== null
+      ? explainRateCard(
+          { rate: r.rate, source: r.source, salaryAmount: r.amount, workingDays: r.basisDays, paidLeaveDays: r.paidLeaveDays, unpaidLeaveDays: r.unpaidLeaveDays, hoursPerDay: r.hoursPerDay, multiplier: r.multiplier, fallback: r.fallback, country: ctx.country },
+          ctx,
+        )
+      : null;
+  return parts.join(" · ") + (why ? `\n${why}` : "");
 };

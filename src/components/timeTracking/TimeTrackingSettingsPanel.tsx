@@ -163,6 +163,11 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
             <span className="type-meta text-slate-500">{t("Applies to employees, not to contractors.", "Platí pre zamestnancov, nie pre dodávateľov.", "Munkavállalókra vonatkozik, vállalkozókra nem.")}</span>
           </label>
         </div>
+        <ul className="grid list-disc gap-1 pl-5 type-meta text-slate-500" data-testid="tt-leave-notes">
+          <li>{t("Paid leave raises that month's hourly rate: the same salary is spread over fewer hours. Unpaid leave lowers salary and hours together, so the rate stays the same.", "Platená dovolenka zvyšuje hodinovú sadzbu daného mesiaca: rovnaká mzda sa delí menším počtom hodín. Neplatené voľno znižuje mzdu aj hodiny spolu, sadzba ostáva rovnaká.", "A fizetett szabadság emeli az adott hónap óradíját: ugyanaz a fizetés kevesebb órára oszlik. A fizetés nélküli szabadság a fizetést és az órákat együtt csökkenti, így a díj nem változik.")}</li>
+          <li>{t("Sick leave follows the leave type's paid flag. Part-time people use their own hours per day (employee form).", "Práceneschopnosť sa riadi príznakom platenosti typu voľna. Zamestnanci na čiastočný úväzok používajú vlastné hodiny za deň (formulár zamestnanca).", "A betegszabadság a szabadságtípus fizetett jelölését követi. A részmunkaidősök a saját napi óraszámukat használják (munkatársi űrlap).")}</li>
+          <li>{t("A month's rate stays provisional until its payroll is closed or the month after next begins; then it is frozen.", "Sadzba mesiaca ostáva predbežná, kým sa neuzavrie jeho výplata alebo nezačne nasledujúci mesiac po ňom; potom sa zafixuje.", "A hónap díja ideiglenes marad, amíg a bérszámfejtése le nem zárul vagy el nem kezdődik a rá következő második hónap; utána rögzül.")}</li>
+        </ul>
         <div className="rounded-2xl bg-slate-50 p-4 text-ui text-slate-700" data-testid="tt-example">
           {t("Example", "Príklad", "Példa")}: {money(3200)} / {t("month", "mesiac", "hó")}, {new Date(new Date().getFullYear(), exampleMonth - 1, 1).toLocaleDateString(locale, { month: "long" })} ({country}) →{" "}
           <b className="tabular-nums">{exampleDays} {t("working days", "pracovných dní", "munkanap")}</b> →{" "}

@@ -23,6 +23,7 @@ import { TimeApiError, createEntry, timeErrorMessage, updateEntry, type EntryInp
 import type { Task } from "../../types";
 import { ProjectPicker } from "./ProjectPicker";
 import { DrawerWorkedLine } from "./WorkedLine";
+import { RateExplanation } from "./RateExplanation";
 import { canRenameTitle, renameHint, useMoney, useTimeLookups, type TimeDeps } from "./shared";
 
 interface Props {
@@ -435,10 +436,20 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
                     <span className="text-ui text-slate-600">{money(entry.costRate)}/h · {sourceName(entry.costRateSource)}</span>
                     <span className="text-title font-bold tabular-nums text-violet-700">{entry.cost !== null && entry.cost !== undefined ? money(entry.cost) : "—"}</span>
                   </div>
-                  <div className="mt-1 type-meta text-slate-500" data-testid="entry-rate-basis">
-                    {entry.costRateBasisDays ? `${monthLabel} · ${country} · ${entry.costRateBasisDays} ${t("working days", "pracovných dní", "munkanap")} · ` : `${monthLabel} · `}
-                    {t("the rate is frozen when the entry is saved", "sadzba sa zafixuje pri uložení záznamu", "a díj a mentéskor rögzül")}
-                  </div>
+                  <RateExplanation
+                    employeeId={entry.costRateSource === "monthly" || entry.costRateSource === "contractor_monthly" ? entry.employeeId : null}
+                    month={entry.entryDate.slice(0, 7)}
+                    monthLabel={monthLabel}
+                    country={country}
+                    t={t}
+                    money={money}
+                    fallback={
+                      <>
+                        {entry.costRateBasisDays ? `${monthLabel} · ${country} · ${entry.costRateBasisDays} ${t("working days", "pracovných dní", "munkanap")} · ` : `${monthLabel} · `}
+                        {t("the rate is frozen when the entry is saved", "sadzba sa zafixuje pri uložení záznamu", "a díj a mentéskor rögzül")}
+                      </>
+                    }
+                  />
                 </>
               )}
               {billableValue !== null && (

@@ -7,6 +7,7 @@ import {
   computeWorkedCost,
   costRateTooltip,
   explainCostRate,
+  explainRateCard,
   type CostSettings,
 } from "./timeCost.ts";
 import { builtinWorkingDays } from "./holidays.ts";
@@ -97,6 +98,20 @@ test("the frozen rate is explained in plain words", () => {
   const r = computeCostRate({ kind: "employee", salaryType: "monthly", salaryAmount: 3200 }, 22);
   const ctx = { t, money, monthLabel: "Oct 2026", country: "SK" };
   assert.equal(explainCostRate(r, DEFAULT_COST_SETTINGS, ctx), "€3,200.00 ÷ 22 working days (Oct 2026, SK) ÷ 8 h × 1.352 = €24.58/h");
-  assert.equal(costRateTooltip(r, ctx), "Oct 2026 · 22 working days · man-day €145.45 · €24.58/h");
+  assert.equal(costRateTooltip(r, ctx), "Oct 2026 · 22 working days · man-day €145.45 · €24.58/h\n€3,200.00 ÷ 22 days ÷ 8 h × 1.352 = €24.58/h (Oct 2026, SK)");
   assert.match(explainCostRate(computeCostRate(null, 22), DEFAULT_COST_SETTINGS, ctx), /no employee linked/);
+});
+
+test("explainRateCard words every leave case (D4.1)", () => {
+  const ctx = { t, money, monthLabel: "May 2026", country: "SK", provisional: true };
+  const base = { rate: 31.8118, source: "monthly", salaryAmount: 3200, workingDays: 20, hoursPerDay: 8, multiplier: 1.352, country: "SK" };
+  assert.equal(explainRateCard({ ...base, rate: 27.04 }, ctx), "€3,200.00 ÷ 20 days ÷ 8 h × 1.352 = €27.04/h (May 2026, SK, provisional)");
+  assert.equal(explainRateCard({ ...base, paidLeaveDays: 3 }, ctx), "€3,200.00 ÷ (20 − 3 leave) days ÷ 8 h × 1.352 = €31.81/h (May 2026, SK, provisional)");
+  assert.equal(explainRateCard({ ...base, rate: 27.04, unpaidLeaveDays: 2 }, ctx), "€3,200.00 × 18/20 ÷ (20 − 2 unpaid) days ÷ 8 h × 1.352 = €27.04/h (May 2026, SK, provisional)");
+  assert.equal(
+    explainRateCard({ ...base, rate: 32.448, paidLeaveDays: 3, unpaidLeaveDays: 2 }, ctx),
+    "€3,200.00 × 18/20 ÷ (20 − 3 leave − 2 unpaid) days ÷ 8 h × 1.352 = €32.45/h (May 2026, SK, provisional)",
+  );
+  assert.equal(explainRateCard({ ...base, rate: 27.04, paidLeaveDays: 20, fallback: true }, { ...ctx, provisional: false }), "€3,200.00 ÷ 20 days ÷ 8 h × 1.352 = €27.04/h (whole month on leave: basis 20 days, May 2026, SK)");
+  assert.equal(explainRateCard({ ...base, source: "hourly" }, ctx), null);
 });

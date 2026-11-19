@@ -189,6 +189,17 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
         }
         return route.fulfill(ok({ byTask, byTicket, byProject, workedByUserDay: {} }));
       }
+      if (url.searchParams.get('action') === 'rateCard') {
+        const employeeId = url.searchParams.get('employeeId') ?? '';
+        const month = url.searchParams.get('month') ?? '';
+        const owner = Object.entries(ctx.employees).find(([, e]) => e.id === employeeId);
+        if (!owner || (!canCosts && owner[0] !== caller)) return route.fulfill(fail('forbidden', 403));
+        const c = country(owner[0]);
+        const days = builtinWorkingDays(c, Number(month.slice(0, 4)), Number(month.slice(5, 7)), overridesOf(c));
+        const emp = owner[1];
+        const r = computeCostRate({ kind: emp.kind, salaryType: emp.salaryType, salaryAmount: emp.salaryAmount }, days, { ...DEFAULT_COST_SETTINGS, ...settings });
+        return route.fulfill(ok({ rateCard: { employeeId, month, rate: r.rate, source: r.source, basisDays: r.basisDays, workingDays: days, country: c, paidLeaveDays: 0, unpaidLeaveDays: 0, hoursPerDay: r.hoursPerDay ?? settings.hoursPerDay, multiplier: r.multiplier, fallback: false, salaryType: emp.salaryType, salaryAmount: emp.salaryAmount, frozen: false, stored: false, hoursBasis: settings.hoursBasis } }));
+      }
       if (url.searchParams.get('action') === 'overlaps') {
         return route.fulfill(ok({ months: [] }));
       }

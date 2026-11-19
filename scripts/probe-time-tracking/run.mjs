@@ -104,7 +104,7 @@ function setup() {
   lines.push(task('task-tt-1', 'Write the offer', 'TT Erik', 'proj-tt-1'));
   lines.push(task('task-tt-2', 'Secret task of the manager', 'TT Manager', null));
   lines.push(task('task-tt-3', 'Task without a project', 'TT Erik', null));
-  // Fixed past dates (2026-05, 2026-10) are older than the default lockAfterDays (14): switch the age
+  // Past dates (previous month, fixed Oct 2026 sections) are older than the default lockAfterDays (14): switch the age
   // lock off for the whole probe (null = off). Sections that test the lock turn it on for themselves (T13).
   lines.push(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('TIME_TRACKING_SETTINGS', ${q(JSON.stringify({ lockAfterDays: null }))});`);
   sql(lines.join('\n'));
@@ -153,6 +153,20 @@ const php = (code) =>
   docker('exec', '-u', 'www-data', WEB, 'php', '-r',
     `require '${SCRATCH_DIR}/config.php'; require_once '${SCRATCH_DIR}/api/schema.php'; require_once '${SCRATCH_DIR}/api/time_entries_lib.php'; require_once '${SCRATCH_DIR}/api/time_rate_card.php'; $pdo = get_db_connection(); ${code}`);
 
+// Date-independent months (TT2 phase 3): the current and the previous calendar month are always open
+// (C12 freezes a month at the start of month + 2), so the probe prices entries there and reads the expected
+// working days from the same holiday calendar the PHP uses, instead of hard-coding May / October 2026.
+const monthOffset = (back) => {
+  const d = new Date();
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - back, 1));
+  const ym = `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}`;
+  return { ym, year: t.getUTCFullYear(), month: t.getUTCMonth() + 1, last: new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).toISOString().slice(0, 10) };
+};
+const round4 = (n) => Math.round((n + Number.EPSILON) * 10000) / 10000;
+const near = (actual, expected) => actual !== null && actual !== undefined && Math.abs(Number(actual) - expected) < 0.00011;
+const MULT = 1.352; // default employer multiplier; Erik: EUR 3200 / month, 8 h per day
+const monthlyRate = (days) => round4((3200 / (days * 8)) * MULT);
+
 async function main() {
   console.log('Setting up the time tracking probe scratch environment...');
   setup();
@@ -167,46 +181,56 @@ async function main() {
     check('T1: an Employee may open the module', (await list(S.erik)).status === 200);
 
     section('T2: cost rate per employment status (frozen on save)');
-    const oct = await te(S.erik, { action: 'create', description: 'Offer work', entryDate: '2026-10-14', durationSec: 8100, source: 'day' });
+    // M1 = previous month, M2 = current month: both open on any date. wd() = working days from the PHP calendar.
+    const M1 = monthOffset(1);
+    const M2 = monthOffset(0);
+    const wd = (country, m) => parseInt(php(`echo ccrm_holidays_working_days($pdo, '${country}', ${m.year}, ${m.month}, [], false);`).trim(), 10);
+    const skDays1 = wd('SK', M1);
+    const skDays2 = wd('SK', M2);
+    const huDays1 = wd('HU', M1);
+    const rate1 = monthlyRate(skDays1);
+    const cost1 = round4((8100 / 3600) * rate1); // a 2:15:00 entry
+    const oct = await te(S.erik, { action: 'create', description: 'Offer work', entryDate: `${M1.ym}-14`, durationSec: 8100, source: 'day' });
     check('T2: create returns 201', oct.status === 201, oct.raw);
     const octRow = dbEntry(oct.data?.entry?.id);
-    check('T2: Erik Oct 2026 SK -> 24.5818/h, source monthly, 22 days', octRow?.cost_rate === '24.5818' && octRow?.cost_rate_source === 'monthly' && octRow?.cost_rate_basis_days === '22', JSON.stringify(octRow));
-    check('T2: a 2:15:00 entry costs 55.3091 (4 decimals, D3.2)', octRow?.cost === '55.3091', octRow?.cost);
+    check(`T2: Erik ${M1.ym} SK -> 3200 / (${skDays1} x 8) x 1.352 = ${rate1}/h, source monthly`, near(octRow?.cost_rate, rate1) && octRow?.cost_rate_source === 'monthly' && octRow?.cost_rate_basis_days === String(skDays1), JSON.stringify(octRow));
+    check(`T2: a 2:15:00 entry costs ${cost1} (4 decimals, D3.2)`, near(octRow?.cost, cost1), octRow?.cost);
     check('T2: employee_id is resolved from the owner', octRow?.employee_id === 'emp-erik');
-    const may = await te(S.erik, { action: 'create', description: 'May work', entryDate: '2026-05-12', durationSec: 3600, source: 'day' });
+    const may = await te(S.erik, { action: 'create', description: 'May work', entryDate: `${M2.ym}-12`, durationSec: 3600, source: 'day' });
     const mayRow = dbEntry(may.data?.entry?.id);
-    check('T2: Erik May 2026 (20 days) -> 27.04/h, differs from October', mayRow?.cost_rate === '27.0400' && mayRow?.cost_rate_basis_days === '20', JSON.stringify(mayRow));
-    const free = await te(S.free, { action: 'create', description: 'Contract work', entryDate: '2026-10-14', durationSec: 3600, source: 'day' });
+    check(`T2: Erik ${M2.ym} (${skDays2} days) -> ${monthlyRate(skDays2)}/h, priced with its own month's days`, near(mayRow?.cost_rate, monthlyRate(skDays2)) && mayRow?.cost_rate_basis_days === String(skDays2), JSON.stringify(mayRow));
+    const free = await te(S.free, { action: 'create', description: 'Contract work', entryDate: `${M1.ym}-14`, durationSec: 3600, source: 'day' });
     const freeRow = dbEntry(free.data?.entry?.id);
     check('T2: freelancer hourly 20 -> flat 20.00, no multiplier', freeRow?.cost_rate === '20.0000' && freeRow?.cost_rate_source === 'contractor_hourly' && freeRow?.cost === '20.0000', JSON.stringify(freeRow));
-    const pmEntry = await te(S.pm, { action: 'create', description: 'Manager work', entryDate: '2026-10-14', durationSec: 3600, source: 'day' });
+    const pmEntry = await te(S.pm, { action: 'create', description: 'Manager work', entryDate: `${M1.ym}-14`, durationSec: 3600, source: 'day' });
     const pmRow = dbEntry(pmEntry.data?.entry?.id);
     check('T2: no employee linked -> no rate, cost NULL', pmRow?.cost_rate === null && pmRow?.cost_rate_source === 'none' && pmRow?.cost === null && pmRow?.employee_id === null, JSON.stringify(pmRow));
     // Same salary, Hungarian calendar: give Erik the HU calendar and add a second October entry.
     sql(`UPDATE employees SET work_country='HU' WHERE id='emp-erik'`);
-    const hu = await te(S.erik, { action: 'create', description: 'HU calendar', entryDate: '2026-10-15', durationSec: 3600, source: 'day' });
+    const hu = await te(S.erik, { action: 'create', description: 'HU calendar', entryDate: `${M1.ym}-15`, durationSec: 3600, source: 'day' });
     const huRow = dbEntry(hu.data?.entry?.id);
-    check('T2: Oct 2026 in Hungary has 21 working days -> 25.7524/h', huRow?.cost_rate === '25.7524' && huRow?.cost_rate_basis_days === '21', JSON.stringify(huRow));
+    const rateHu1 = monthlyRate(huDays1);
+    check(`T2: ${M1.ym} in Hungary has ${huDays1} working days (SK ${skDays1}) -> ${rateHu1}/h`, near(huRow?.cost_rate, rateHu1) && huRow?.cost_rate_basis_days === String(huDays1), JSON.stringify(huRow));
     // C12 (TT2 phase 3): October is still open, so the calendar change re-priced the earlier October entry too.
-    check('T2: an open month follows the calendar: the earlier October entry is re-priced to 25.7524', dbEntry(oct.data.entry.id)?.cost_rate === '25.7524', JSON.stringify(dbEntry(oct.data.entry.id)));
+    check(`T2: an open month follows the calendar: the earlier ${M1.ym} entry is re-priced to ${rateHu1}`, near(dbEntry(oct.data.entry.id)?.cost_rate, rateHu1), JSON.stringify(dbEntry(oct.data.entry.id)));
     sql(`UPDATE employees SET work_country=NULL WHERE id='emp-erik'`);
-    php(`ccrm_tt_rate_for($pdo, 'emp-erik', '2026-10', ccrm_tt_load_settings($pdo), true);`);
-    check('T2: ...and back to 24.5818 (cost 55.3091) once the rate card sees the SK calendar again', dbEntry(oct.data.entry.id)?.cost_rate === '24.5818' && dbEntry(oct.data.entry.id)?.cost === '55.3091', JSON.stringify(dbEntry(oct.data.entry.id)));
+    php(`ccrm_tt_rate_for($pdo, 'emp-erik', '${M1.ym}', ccrm_tt_load_settings($pdo), true);`);
+    check(`T2: ...and back to ${rate1} (cost ${cost1}) once the rate card sees the SK calendar again`, near(dbEntry(oct.data.entry.id)?.cost_rate, rate1) && near(dbEntry(oct.data.entry.id)?.cost, cost1), JSON.stringify(dbEntry(oct.data.entry.id)));
 
     section('T3: cost visibility is enforced by the server');
-    const asPm = await list(S.pm, '?userId=all&from=2026-01-01&to=2026-12-31');
+    const asPm = await list(S.pm, `?userId=all&from=${M1.ym}-01&to=${M2.last}`);
     const erikFromPm = (asPm.data?.entries || []).find((e) => e.id === oct.data.entry.id);
     check('T3: a manager (team, no costs) sees the entry', !!erikFromPm);
     check('T3: ...without cost, rate, source or billable rate', erikFromPm && !('cost' in erikFromPm) && !('costRate' in erikFromPm) && !('costRateSource' in erikFromPm) && !('billableRate' in erikFromPm), JSON.stringify(erikFromPm));
-    check('T3: no cost number appears anywhere in the raw body of that list', !asPm.raw.includes('24.58') && !asPm.raw.includes('55.30'), 'found a cost figure');
-    const asCosts = await list(S.costs, '?userId=all&from=2026-01-01&to=2026-12-31');
+    check('T3: no cost number appears anywhere in the raw body of that list', !asPm.raw.includes(rate1.toFixed(2)) && !asPm.raw.includes(cost1.toFixed(2)), 'found a cost figure');
+    const asCosts = await list(S.costs, `?userId=all&from=${M1.ym}-01&to=${M2.last}`);
     const erikFromCosts = (asCosts.data?.entries || []).find((e) => e.id === oct.data.entry.id);
-    check('T3: a role with time_tracking_costs sees cost 55.3091 and rate 24.5818', erikFromCosts?.cost === 55.3091 && erikFromCosts?.costRate === 24.5818, JSON.stringify(erikFromCosts));
-    const own = await list(S.erik, '?from=2026-01-01&to=2026-12-31');
+    check(`T3: a role with time_tracking_costs sees cost ${cost1} and rate ${rate1}`, near(erikFromCosts?.cost, cost1) && near(erikFromCosts?.costRate, rate1), JSON.stringify(erikFromCosts));
+    const own = await list(S.erik, `?from=${M1.ym}-01&to=${M2.last}`);
     const ownEntry = (own.data?.entries || []).find((e) => e.id === oct.data.entry.id);
-    check('T3: the owner always sees their own cost', ownEntry?.cost === 55.3091);
+    check('T3: the owner always sees their own cost', near(ownEntry?.cost, cost1));
     check('T3: ...but not the billable rate', ownEntry && !('billableRate' in ownEntry));
-    const spy = await list(S.erik, `?userId=${USERS.free.id}&from=2026-01-01&to=2026-12-31`);
+    const spy = await list(S.erik, `?userId=${USERS.free.id}&from=${M1.ym}-01&to=${M2.last}`);
     check('T3: asking for a colleague without time_tracking_team returns only own entries', (spy.data?.entries || []).every((e) => e.userId === USERS.erik.id) && !spy.raw.includes('Contract work'), spy.raw.slice(0, 200));
 
     section('T4: ownership');
@@ -302,9 +326,9 @@ async function main() {
     const noRateRow = dbEntry(pmEntry.data.entry.id);
     check('T11: the manager entry starts with no rate', noRateRow?.cost_rate_source === 'none');
     sql(`INSERT INTO employees (id, name, kind, user_id, salary_type, salary_amount, is_active) VALUES ('emp-pm', 'TT Manager', 'employee', 'tt-pm', 'hourly', 10, 1)`);
-    check('T11: re-pricing is admin only', (await te(S.pm, { action: 'reprice', from: '2026-10-01', to: '2026-10-31' })).status === 403);
-    const rp = await te(S.admin, { action: 'reprice', from: '2026-10-01', to: '2026-10-31' });
-    check('T11: the admin re-prices October (a month-picker end of the 31st is accepted)', rp.status === 200 && rp.data?.repriced >= 3, rp.raw);
+    check('T11: re-pricing is admin only', (await te(S.pm, { action: 'reprice', from: `${M1.ym}-01`, to: M1.last })).status === 403);
+    const rp = await te(S.admin, { action: 'reprice', from: `${M1.ym}-01`, to: M1.last });
+    check(`T11: the admin re-prices ${M1.ym} (a month-picker end on the last day of the month is accepted)`, rp.status === 200 && rp.data?.repriced >= 3, rp.raw);
     const pricedRow = dbEntry(pmEntry.data.entry.id);
     check('T11: the entry that had no rate is now priced: hourly 10 x 1.4 (saved multiplier)', pricedRow?.cost_rate === '14.0000' && pricedRow?.cost === '14.0000' && pricedRow?.employee_id === 'emp-pm', JSON.stringify(pricedRow));
 
@@ -557,8 +581,9 @@ async function main() {
       check('T15: a parallel start (two different tasks of one project) returns 201 and stops nothing', p1.status === 201 && p2.status === 201 && p2.data?.stopped === null && Array.isArray(p2.data?.stoppedAll) && p2.data.stoppedAll.length === 0, `${p1.raw} / ${p2.raw}`);
       check('T15: ...both run in the database', runningRows().length === 2 && dbEntry(p1.data?.entry?.id)?.end_at === null);
       const gr = await api(S.erik, 'time_entries.php', { query: '?running=1' });
-      check('T15: ?running=1 lists both (oldest first), entry = the first, paused [], presence null, serverNow',
-        gr.status === 200 && gr.data?.running?.length === 2 && gr.data.running[0].id === p1.data?.entry?.id && gr.data.entry?.id === p1.data?.entry?.id
+      // Two starts in one second tie on start_at; the order is (start_at, id), the same as runningRows().
+      check('T15: ?running=1 lists both (oldest first, ties by id), entry = the first, paused [], presence null, serverNow',
+        gr.status === 200 && gr.data?.running?.length === 2 && gr.data.running.map((e) => e.id).join() === runningRows().map((e) => e.id).join() && gr.data.entry?.id === runningRows()[0]?.id
           && Array.isArray(gr.data.paused) && gr.data.paused.length === 0 && gr.data.presence === null && typeof gr.data.serverNow === 'string', gr.raw);
 
       // The identical target never runs twice.
@@ -843,8 +868,9 @@ async function main() {
         && b.data?.mode === 'parallel' && b.data?.stopped_previous_id === null && Array.isArray(b.data?.stopped_ids) && b.data.stopped_ids.length === 0, `${a.raw} / ${b.raw}`);
       check('T18: ...two entries run in the database', runningRows().length === 2);
       const gr = await mcp('get_running_timer');
-      check('T18: get_running_timer lists both in timers (oldest first), running = the first, paused []',
-        !gr.isError && gr.data?.timers?.length === 2 && gr.data.timers[0].id === a.data?.entry?.id && gr.data.running?.id === a.data?.entry?.id
+      // Two starts in one second tie on start_at and the tie is broken by id: compare with the (start_at, id) order.
+      check('T18: get_running_timer lists both in timers (by start_at, id), running = the first, paused []',
+        !gr.isError && gr.data?.timers?.length === 2 && gr.data.timers.map((e) => e.id).join() === runningRows().map((e) => e.id).join() && [a.data?.entry?.id, b.data?.entry?.id].every((id) => gr.data.timers.some((e) => e.id === id)) && gr.data.running?.id === runningRows()[0]?.id
           && Array.isArray(gr.data.paused) && gr.data.paused.length === 0, gr.raw);
       const again = await mcp('start_timer', { description: 'T18 MCP A', mode: 'parallel' });
       check('T18: parallel start_timer of a running target: success:false, already_running, nothing new stored',

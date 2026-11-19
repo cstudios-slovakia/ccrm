@@ -10,6 +10,7 @@
 import type { HolidayDay, HolidayCountry } from "./holidays.ts";
 import type { TaskPersonTime } from "./taskTimeSummary.ts";
 import type { StartWhileRunning, TimeEntry, TimeTrackingSettings } from "./timeTracking.ts";
+import type { RateCard } from "./timeCost.ts";
 
 export class TimeApiError extends Error {
   readonly code: string;
@@ -119,6 +120,12 @@ export const getTotals = async (): Promise<TimeTotals> => {
     byProject: body.byProject && typeof body.byProject === "object" ? body.byProject : {},
     workedByUserDay: body.workedByUserDay && typeof body.workedByUserDay === "object" ? body.workedByUserDay : {},
   };
+};
+
+/** The rate card of one person-month (own, or anyone's with time_tracking_costs); null when there is none. */
+export const getRateCard = async (employeeId: string, month: string): Promise<RateCard | null> => {
+  const body = await get({ action: "rateCard", employeeId, month });
+  return body.rateCard && typeof body.rateCard === "object" ? (body.rateCard as RateCard) : null;
 };
 
 export interface OverlapMonth { month: string; entries: number; users: number }

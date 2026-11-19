@@ -277,6 +277,31 @@ if ($method === 'GET') {
         ccrm_te_respond(ccrm_tt_load_prefs($pdo, $callerId));
     }
 
+    // The rate card of one person-month, for the explanation in the drawer and the Team tooltip
+    // (D4.3). Read-only: a stored row is returned as it is, otherwise the rate is computed without
+    // writing. Own always; anyone else's only with time_tracking_costs.
+    if ($action === 'rateCard') {
+        $rcEmployee = trim((string)($_GET['employeeId'] ?? ''));
+        $rcMonth = trim((string)($_GET['month'] ?? ''));
+        if ($rcEmployee === '' || !preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $rcMonth)) {
+            ccrm_te_fail('bad_request', 400);
+        }
+        $rcOwn = ccrm_tt_employee_for_user($pdo, $callerId);
+        if (!$canCosts && (string)($rcOwn['id'] ?? '') !== $rcEmployee) {
+            ccrm_te_fail('forbidden', 403);
+        }
+        require_once __DIR__ . '/time_rate_card.php';
+        $rc = ccrm_trc_compute($pdo, $rcEmployee, $rcMonth, $settings, false);
+        if ($rc === null) {
+            ccrm_te_respond(['rateCard' => null]);
+        }
+        $rcRow = $rc['monthly'] ? ccrm_trc_row($pdo, $rcEmployee, $rcMonth) : null;
+        $rcFrozen = $rc['monthly'] && ((is_array($rcRow) && $rcRow['frozen_at'] !== null) || ccrm_trc_month_frozen($pdo, $rcEmployee, $rcMonth));
+        $card = ($rcFrozen && is_array($rcRow)) ? ccrm_trc_from_row($rcRow, $rc) : ccrm_trc_result($rc, $rcFrozen, is_array($rcRow));
+        $card['hoursBasis'] = $rc['hoursBasis'];
+        ccrm_te_respond(['rateCard' => ['employeeId' => $rcEmployee, 'month' => $rcMonth] + $card]);
+    }
+
     if (isset($_GET['running']) || $action === 'running') {
         // D5.3: every running item (oldest first); `entry` = the first, kept for old clients (D5.6).
         // `paused` and `presence` are filled by phase 6.
