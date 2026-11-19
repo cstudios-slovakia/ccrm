@@ -20,6 +20,7 @@ import {
 } from "../utils/timeTracking.ts";
 import {
   TimeApiError,
+  confirmPresence,
   getHolidays,
   EMPTY_TIME_TOTALS,
   getRunningState,
@@ -34,12 +35,15 @@ import {
   timeErrorMessage,
   undoStart,
   type EntryInput,
+  type RunningState,
   type StartMode,
+  type TimePresence,
   type TimeTotals,
   type TimeViewer,
 } from "../utils/timeTrackingApi.ts";
 import { isRunningTarget as runningHas, resolveStartMode, sameRunningIds, type RunningTarget } from "../utils/timeTrackingRunning.ts";
 import { stripTimerTitle, timerTabTitle, workedClockSeconds } from "../utils/timeContainer.ts";
+import { IDLE_PRESENCE_VIEW, nextPresenceBoundary, presenceView as derivePresenceView, type PresenceView } from "../utils/timePresence.ts";
 import { StartModePopover } from "../components/timeTracking/StartModePopover.tsx";
 
 export interface StartOptions {
@@ -78,8 +82,16 @@ export interface TimeTrackingContextValue {
   running: TimeEntry[];
   /** Paused entries (phase 6/7 fills it; empty until then). */
   paused: TimeEntry[];
-  /** The presence engine's state, as the server sent it (typed in phase 7). */
-  presence: unknown | null;
+  /** The presence engine's state, as the server last sent it (D7.1); replaced on every running-set read. */
+  presence: TimePresence | null;
+  /** The presence cycle at `nowMs`, derived locally (phase, ring, countdowns): what every presence UI reads (D8.1). */
+  presenceView: PresenceView;
+  /**
+   * D7.4 "Still working": restarts the cycle now. Resolves the new state; after the deadline the
+   * server has paused the timers, so this re-reads the running set and resolves the paused state.
+   * Resolves null when nothing runs or the answer failed.
+   */
+  confirm: () => Promise<TimePresence | null>;
   /** Server clock minus this browser's clock, from the last running-set answer (0 until known). */
   serverOffsetMs: number;
   /** The first running entry, or null: what single-timer UI shows. */
@@ -89,6 +101,7 @@ export interface TimeTrackingContextValue {
   /** What a Start does while something runs: the user's preference (D5.2). */
   startWhileRunning: StartWhileRunning;
   saveStartWhileRunning: (pref: StartWhileRunning) => Promise<void>;
+  /** The shared clock: this browser's time corrected by `serverOffsetMs`; ticks each second while a timer runs or a presence state is open. */
   nowMs: number;
   /** Tracked seconds per task, ticket and project. Reloaded with `version`. */
   totals: TimeTotals;
@@ -139,6 +152,8 @@ const Ctx = createContext<TimeTrackingContextValue>({
   running: [],
   paused: [],
   presence: null,
+  presenceView: IDLE_PRESENCE_VIEW,
+  confirm: async () => null,
   serverOffsetMs: 0,
   primaryRunning: null,
   isRunningTarget: () => false,
@@ -183,8 +198,11 @@ interface ModeRequest {
   resolve: (choice: { mode: StartMode; remember: boolean } | null) => void;
 }
 
-/** A tab-channel message: the running set travels with timer changes so other tabs update at once. */
-type ChannelMessage = "changed" | { type: "changed"; running?: TimeEntry[] };
+/**
+ * A tab-channel message: the running set travels with timer changes so other tabs update at once;
+ * a presence answer carries the new state so every tab closes its question (D8.2).
+ */
+type ChannelMessage = "changed" | { type: "changed"; running?: TimeEntry[] } | { type: "presence"; presence: TimePresence | null };
 
 const rectOf = (anchor: Element | DOMRect | null | undefined): DOMRect | null => {
   if (!anchor) return null;
@@ -212,14 +230,18 @@ export function TimeTrackingProvider({
   const [defaultCountry, setDefaultCountry] = useState<HolidayCountry>("SK");
   const [running, setRunning] = useState<TimeEntry[]>(NO_ENTRIES);
   const [paused, setPaused] = useState<TimeEntry[]>(NO_ENTRIES);
-  const [presence, setPresence] = useState<unknown | null>(null);
+  const [presence, setPresence] = useState<TimePresence | null>(null);
   const [serverOffsetMs, setServerOffsetMs] = useState(0);
+  const offsetRef = useRef(0);
+  offsetRef.current = serverOffsetMs;
   const [startWhileRunning, setStartWhileRunning] = useState<StartWhileRunning>("ask");
   const [modeRequest, setModeRequest] = useState<ModeRequest | null>(null);
   const modeRequestRef = useRef<ModeRequest | null>(null);
   const modeRequestSeq = useRef(0);
   const [totals, setTotals] = useState<TimeTotals>(EMPTY_TIME_TOTALS);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  /** The browser clock corrected by the server's (D11: a wrong device clock never moves a countdown). */
+  const clock = useCallback(() => Date.now() + offsetRef.current, []);
   const [version, setVersion] = useState(0);
   const [projectRequest, setProjectRequest] = useState<TimeTrackingContextValue["projectRequest"]>(null);
   const [holidayYears, setHolidayYears] = useState<Record<string, { days: HolidayDay[]; fallback: boolean }>>({});
@@ -263,6 +285,11 @@ export function TimeTrackingProvider({
     const channel = new BroadcastChannel(`ccrm-time-tracking:${userId}`);
     channel.onmessage = (e: MessageEvent<ChannelMessage>) => {
       const data = e.data;
+      if (data && typeof data === "object" && data.type === "presence") {
+        // Answered in another tab: the cycle restarted there; nothing else changed.
+        setPresence(data.presence);
+        return;
+      }
       if (data && typeof data === "object" && Array.isArray(data.running)) applyRunning(data.running);
       setVersion((v) => v + 1);
     };
@@ -295,7 +322,7 @@ export function TimeTrackingProvider({
     }
   }, []);
 
-  const refreshRunning = useCallback(async () => {
+  const refreshRunning = useCallback(async (): Promise<RunningState | null> => {
     try {
       const sentAt = Date.now();
       const next = await getRunningState();
@@ -307,9 +334,15 @@ export function TimeTrackingProvider({
       setPresence(next.presence);
       const server = next.serverNow ? Date.parse(next.serverNow) : NaN;
       // The answer's midpoint is the best guess of when the server read its clock.
-      if (Number.isFinite(server)) setServerOffsetMs(Math.round(server - (sentAt + Date.now()) / 2));
+      if (Number.isFinite(server)) {
+        offsetRef.current = Math.round(server - (sentAt + Date.now()) / 2);
+        setServerOffsetMs(offsetRef.current);
+        setNowMs(Date.now() + offsetRef.current);
+      }
+      return next;
     } catch {
       /* keep what we have */
+      return null;
     }
   }, [applyRunning]);
 
@@ -357,13 +390,29 @@ export function TimeTrackingProvider({
   const primaryRunning = running[0] ?? null;
   const runningKey = running.map((e) => e.id).join(",");
 
-  // Elapsed time is now minus start: the clock only re-renders, it never counts.
+  // Elapsed time and the presence countdowns are now minus an instant: the clock only re-renders,
+  // it never counts. It ticks while a timer runs or a paused state can still be resumed; idle, it rests.
+  const presenceOpen = presence?.phase === "paused" || presence?.phase === "question";
+  const ticking = !!runningKey || presenceOpen;
   useEffect(() => {
-    if (!runningKey) return;
-    setNowMs(Date.now());
-    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    if (!ticking) return;
+    setNowMs(clock());
+    const id = window.setInterval(() => setNowMs(clock()), 1000);
     return () => window.clearInterval(id);
-  }, [runningKey]);
+  }, [ticking, clock]);
+
+  // At the deadline the server pauses every timer (D7.3), at the end of the resume window it drops
+  // the markers: ask it right then instead of waiting for the next poll ("pausing…" until it answers).
+  const boundary = nextPresenceBoundary(presence);
+  useEffect(() => {
+    if (!enabled || !userId || boundary === null) return;
+    // A little after the instant, so the server's own clock has passed it too.
+    const wait = Math.max(0, boundary - clock()) + 750;
+    const id = window.setTimeout(() => void refreshRunning(), Math.min(wait, 2 ** 31 - 1));
+    return () => window.clearTimeout(id);
+  }, [boundary, enabled, userId, clock, refreshRunning]);
+
+  const presenceView = useMemo(() => derivePresenceView(presence, nowMs), [presence, nowMs]);
 
   // The browser tab shows the timer: "▶ 1:12:05 · CCRM". The prefix pattern also strips the
   // older "▶ 1:12 · " form, in case a title was set before this version loaded.
@@ -743,6 +792,24 @@ export function TimeTrackingProvider({
     }
   }, [afterPauseChange, fail, refreshRunning]);
 
+  const confirm = useCallback(async (): Promise<TimePresence | null> => {
+    try {
+      const next = await confirmPresence();
+      setPresence(next);
+      post({ type: "presence", presence: next });
+      return next;
+    } catch (e) {
+      if (e instanceof TimeApiError && (e.code === "paused" || e.code === "not_running")) {
+        // Too late (the timers were paused at the deadline) or nothing runs any more: show the real state.
+        const state = await refreshRunning();
+        bumpTimers();
+        return e.code === "paused" ? (state?.presence ?? null) : null;
+      }
+      fail(e);
+      return null;
+    }
+  }, [bumpTimers, fail, post, refreshRunning]);
+
   const isRunningTarget = useCallback((target: RunningTarget) => runningHas(running, target), [running]);
 
   const value: TimeTrackingContextValue = {
@@ -757,6 +824,8 @@ export function TimeTrackingProvider({
     running,
     paused,
     presence,
+    presenceView,
+    confirm,
     serverOffsetMs,
     primaryRunning,
     isRunningTarget,

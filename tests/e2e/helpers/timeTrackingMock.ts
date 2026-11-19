@@ -158,14 +158,75 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
     entries
       .filter((e) => e.userId === caller && e.startAt && !e.endAt && !e.deletedAt)
       .sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt));
-  // TT2 D7.1: the mock never asks the presence question: a running set is always in the tracking phase,
-  // anchored at the last confirm (or now). No timers: idle.
-  let presenceAnchor: string | null = null;
+  // TT2 D7: the presence cycle with the default timeline (question at 50, pause at 60, resume window 10).
+  // The anchor moves on start, resume, edit of a running entry and confirm (C6, D7.4), so by itself the
+  // mock stays in the tracking phase. A spec moves it with `window.__ttPresence = { minutesIn: 55 }`
+  // (read and consumed on the next running-set read or confirm: the anchor becomes now − 55 min) and
+  // can switch the checks off with `{ enabled: false }`. Past the deadline the mock settles like
+  // D7.3: every running entry ends at promptAt and is paused with a resume window.
+  const PROMPT_MS = 50 * 60000;
+  const DEADLINE_MS = 60 * 60000;
+  const RESUME_MS = 10 * 60000;
+  let presenceAnchor: number | null = null;
+  let presenceEnabled = true;
+  let autoPausedAt: number | null = null;
+  const isoS = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const anchorNow = () => {
+    presenceAnchor = Date.now();
+    autoPausedAt = null;
+  };
+  /** Applies a spec's `window.__ttPresence` override, once. */
+  const readPresenceOverride = async () => {
+    let o: { minutesIn?: number; enabled?: boolean } | null = null;
+    try {
+      o = await page.evaluate(() => {
+        const w = window as unknown as { __ttPresence?: { minutesIn?: number; enabled?: boolean } };
+        const v = w.__ttPresence ?? null;
+        delete w.__ttPresence;
+        return v;
+      });
+    } catch {
+      /* the page is navigating: no override this time */
+    }
+    if (!o) return;
+    if (typeof o.enabled === 'boolean') presenceEnabled = o.enabled;
+    if (typeof o.minutesIn === 'number' && runningSet().length) {
+      presenceAnchor = Date.now() - o.minutesIn * 60000;
+      autoPausedAt = null;
+    }
+  };
+  /** D7.3: no answer by the deadline pauses every running entry at promptAt. */
+  const settlePresence = () => {
+    const rows = runningSet();
+    if (!rows.length) {
+      presenceAnchor = null;
+      return;
+    }
+    if (presenceAnchor === null) presenceAnchor = Date.now();
+    if (!presenceEnabled || Date.now() < presenceAnchor + DEADLINE_MS) return;
+    const deadline = presenceAnchor + DEADLINE_MS;
+    const prompt = presenceAnchor + PROMPT_MS;
+    for (const row of rows) {
+      finish(row, isoS(Math.max(Date.parse(row.startAt), prompt)));
+      Object.assign(row, { pausedAt: isoS(deadline), pauseReason: 'presence', resumeUntil: isoS(deadline + RESUME_MS), endReason: 'presence' });
+    }
+    autoPausedAt = deadline;
+    presenceAnchor = null;
+    settleWorked();
+  };
   const presence = () => {
-    if (!runningSet().length) return { enabled: true, anchorAt: null, promptAt: null, deadlineAt: null, phase: 'idle', autoPausedAt: null, resumeUntil: null };
-    const anchor = Date.parse(presenceAnchor ?? new Date().toISOString());
-    const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
-    return { enabled: true, anchorAt: iso(anchor), promptAt: iso(anchor + 50 * 60000), deadlineAt: iso(anchor + 60 * 60000), phase: 'tracking', autoPausedAt: null, resumeUntil: null };
+    settlePresence();
+    const base = { enabled: presenceEnabled, anchorAt: null, promptAt: null, deadlineAt: null, autoPausedAt: null, resumeUntil: null };
+    if (presenceAnchor === null) {
+      const resumable = autoPausedAt !== null && Date.now() < autoPausedAt + RESUME_MS
+        && entries.some((e) => e.userId === caller && e.pausedAt && e.pauseReason === 'presence' && !e.deletedAt);
+      return resumable
+        ? { ...base, phase: 'paused', autoPausedAt: isoS(autoPausedAt!), resumeUntil: isoS(autoPausedAt! + RESUME_MS) }
+        : { ...base, phase: 'idle' };
+    }
+    const a = presenceAnchor;
+    const phase = presenceEnabled && Date.now() >= a + PROMPT_MS ? 'question' : 'tracking';
+    return { ...base, anchorAt: isoS(a), promptAt: isoS(a + PROMPT_MS), deadlineAt: isoS(a + DEADLINE_MS), phase };
   };
   const norm = (v: unknown) => String(v ?? '').trim();
   // The server's identical target (ccrm_tt_same_target): same task; else same ticket; else free text on the same project with the same title.
@@ -214,9 +275,11 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       }
       if (url.searchParams.get('action') === 'prefs') return route.fulfill(ok({ startWhileRunning }));
       if (url.searchParams.has('running')) {
+        await readPresenceOverride();
+        const p = presence();
         const set = runningSet().map(view);
         const paused = entries.filter((e) => e.userId === caller && e.pausedAt && !e.deletedAt).map(view);
-        return route.fulfill(ok({ running: set, paused, presence: presence(), serverNow: new Date().toISOString(), entry: set[0] ?? null }));
+        return route.fulfill(ok({ running: set, paused, presence: p, serverNow: new Date().toISOString(), entry: set[0] ?? null }));
       }
       if (url.searchParams.get('action') === 'totals') {
         const byTask: Record<string, number> = {};
@@ -275,6 +338,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
 
     if (!canEdit) return route.fulfill(fail('forbidden', 403));
     const body = (req.postDataJSON() ?? {}) as Json;
+    settlePresence(); // D7.3 runs before every call: a stop after the deadline finds the timers paused
     const action = body.action as string;
 
     if (action === 'prefs') {
@@ -290,9 +354,12 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
     }
 
     if (action === 'confirm') {
-      // D7.4: the answer restarts the cycle now; with nothing running there is nothing to confirm.
-      if (!runningSet().length) return route.fulfill(fail('not_running', 409, { presence: presence() }));
-      presenceAnchor = new Date().toISOString();
+      // D7.4: the answer restarts the cycle now; after the deadline the timers are already paused.
+      await readPresenceOverride();
+      const state = presence();
+      if (state.phase === 'paused') return route.fulfill(fail('paused', 409, { presence: state }));
+      if (!runningSet().length) return route.fulfill(fail('not_running', 409, { presence: state }));
+      anchorNow();
       return route.fulfill(ok({ presence: presence() }));
     }
 
@@ -329,6 +396,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       entries.push(entry);
       settleWorked();
       const stoppedAll = stopped.map(view);
+      anchorNow(); // C6: a start restarts the presence cycle
       return route.fulfill(ok({ entry: view(entry), stopped: stoppedAll[0] ?? null, stoppedAll, mode }, 201));
     }
 
@@ -403,6 +471,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       };
       entries.push(entry);
       settleWorked();
+      anchorNow(); // C6: a resume restarts the presence cycle
       return route.fulfill(ok({ entry: view(entry), entries: [view(entry)], resumed: [old.id], stoppedAll: prevs.map(view), skipped: [], alreadyRunning: [], expired: [] }, 201));
     }
 
