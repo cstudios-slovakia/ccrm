@@ -16,7 +16,7 @@ import { elapsedSeconds, formatDuration, projectColor } from "../../utils/timeTr
  * billable, description), so the running entry can be edited from any page.
  */
 export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
-  const { enabled, ready, running, nowMs, t, start, stop } = useTimeTracking();
+  const { enabled, ready, primaryRunning: running, nowMs, t, start, stop } = useTimeTracking();
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
 
@@ -92,7 +92,7 @@ export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                void stop();
+                void stop(running.id);
               }}
               data-testid="header-timer-stop"
               aria-label={t("Stop timer", "Zastaviť časovač", "Időzítő leállítása")}

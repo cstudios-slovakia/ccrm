@@ -37,15 +37,17 @@ export function TaskTimeControls({
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState("");
   const [note, setNote] = useState("");
-  const runningHere = tt.running?.taskId === task.id;
-  const runningNote = runningHere ? tt.running?.note ?? "" : null;
+  // "Running" means this task is in the running set (D5.4).
+  const runningEntry = tt.running.find((e) => e.taskId === task.id) ?? null;
+  const runningHere = runningEntry !== null;
+  const runningNote = runningEntry ? runningEntry.note ?? "" : null;
   // While the timer runs here the field mirrors the running entry.
   useEffect(() => {
     if (runningNote !== null) setNote(runningNote);
   }, [runningHere, runningNote]);
   if (!tt.enabled || !tt.viewer.canEdit) return null;
 
-  const tracked = (tt.totals.byTask[task.id] ?? 0) + (runningHere ? elapsedSeconds(tt.running?.startAt ?? null, tt.nowMs) : 0);
+  const tracked = (tt.totals.byTask[task.id] ?? 0) + (runningHere ? elapsedSeconds(runningEntry?.startAt ?? null, tt.nowMs) : 0);
   const t = tt.t;
 
   const begin = async (projectId: string | null, remember: boolean) => {
@@ -63,9 +65,9 @@ export function TaskTimeControls({
   };
 
   const commitNote = async () => {
-    if (!runningHere || !tt.running || note.trim() === (tt.running.note ?? "").trim()) return;
+    if (!runningEntry || note.trim() === (runningEntry.note ?? "").trim()) return;
     try {
-      await updateEntry(tt.running.id, { note: note.trim() || null });
+      await updateEntry(runningEntry.id, { note: note.trim() || null });
       tt.bump();
     } catch (e) {
       tt.notify(timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t), "error");
@@ -73,8 +75,8 @@ export function TaskTimeControls({
   };
 
   const onPlay = () => {
-    if (runningHere) {
-      void tt.stop();
+    if (runningEntry) {
+      void tt.stop(runningEntry.id);
       return;
     }
     const resolved = resolveTaskProject(task, projects, leads, (p) => isClosedProjectStatus(p.status, statuses));

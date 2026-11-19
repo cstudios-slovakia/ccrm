@@ -102,12 +102,14 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
   const scopeUserId = scope !== "me" && scope !== "all" ? scope : undefined;
   const { entries: loaded } = useTimeEntries({ from: range.from, to: range.to, userId: scopeParam(scope) });
   const entries = useMemo(() => {
-    const running = tt.running;
-    if (!running) return loaded;
-    if (scopeUserId && running.userId !== scopeUserId) return loaded;
-    if (loaded.some((e) => e.id === running.id)) return loaded.map((e) => (e.id === running.id ? running : e));
-    if (running.entryDate >= range.from && running.entryDate <= range.to) return [running, ...loaded];
-    return loaded;
+    // Every running entry of the set is drawn live: replaced in place, or added when the list predates it.
+    let out = loaded;
+    for (const running of tt.running) {
+      if (scopeUserId && running.userId !== scopeUserId) continue;
+      if (out.some((e) => e.id === running.id)) out = out.map((e) => (e.id === running.id ? running : e));
+      else if (running.entryDate >= range.from && running.entryDate <= range.to) out = [running, ...out];
+    }
+    return out;
   }, [loaded, tt.running, scopeUserId, range.from, range.to]);
   const byId = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
 

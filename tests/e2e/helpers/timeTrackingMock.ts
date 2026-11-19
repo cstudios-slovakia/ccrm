@@ -8,8 +8,10 @@ import { DEFAULT_TIME_TRACKING_SETTINGS, type TimeTrackingSettings } from '../..
 /**
  * A stateful stand-in for `/api/time_entries.php` and `/api/holidays.php`.
  *
- * It follows the real server's rules where the UI depends on them: one running timer per user, the
- * title of a linked entry is the task's (joined live), the frozen cost rate is computed from the
+ * It follows the real server's rules where the UI depends on them: the running set (D5.3: a start
+ * with `mode: 'switch'` stops every running entry, `'parallel'` runs beside them within
+ * `settings.parallel`), the identical-target refusal, `stop {id | all}` and the `undo_start` of
+ * several stopped entries, the title of a linked entry is the task's (joined live), the frozen cost rate is computed from the
  * employee's pay and THAT month's working days, cost fields are stripped for people who may not
  * see them, and a task the caller cannot edit is still linkable. The cost maths is the app's own
  * `timeCost.ts` / `holidays.ts`, so a rate in a screenshot is the rate the product would charge.
@@ -144,7 +146,36 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
     e.durationSec = Math.max(0, Math.round((Date.parse(endIso) - Date.parse(e.startAt)) / 1000));
     Object.assign(e, price(e.userId, e.entryDate, e.durationSec));
   };
-  const running = () => entries.find((e) => e.userId === caller && e.startAt && !e.endAt && !e.deletedAt);
+  /** The caller's running set, oldest start first (like the server). */
+  const runningSet = () =>
+    entries
+      .filter((e) => e.userId === caller && e.startAt && !e.endAt && !e.deletedAt)
+      .sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt));
+  const norm = (v: unknown) => String(v ?? '').trim();
+  // The server's identical target (ccrm_tt_same_target): same task; else same ticket; else free text on the same project with the same title.
+  const sameTarget = (row: Json, links: Json) => {
+    if (norm(links.taskId)) return norm(row.taskId) === norm(links.taskId);
+    if (norm(links.ticketId)) return !norm(row.taskId) && norm(row.ticketId) === norm(links.ticketId);
+    return !norm(row.taskId) && !norm(row.ticketId) && norm(row.projectId) === norm(links.projectId) && norm(row.description) === norm(links.description);
+  };
+  // ccrm_tt_parallel_refusal, in the order of D5.3. The mock grants `time_tracking_parallel` to anyone who may edit time.
+  const parallelRefusal = (rows: Json[], links: Json): { code: string; entry?: Json; maxParallel?: number } | null => {
+    if (!rows.length) return null;
+    const p = settings.parallel ?? DEFAULT_TIME_TRACKING_SETTINGS.parallel;
+    if (!p.enabled) return { code: 'parallel_disabled' };
+    if (rows.length >= p.maxParallel) return { code: 'parallel_limit', maxParallel: p.maxParallel };
+    const project = norm(links.projectId);
+    if (project && p.sameProject !== 'always') {
+      const newLinked = !!(norm(links.taskId) || norm(links.ticketId));
+      for (const row of rows) {
+        if (norm(row.projectId) !== project || sameTarget(row, links)) continue;
+        const rowLinked = !!(norm(row.taskId) || norm(row.ticketId));
+        if (p.sameProject === 'never' || !newLinked || !rowLinked) return { code: 'same_project', entry: row };
+      }
+    }
+    const hit = rows.find((row) => sameTarget(row, links));
+    return hit ? { code: 'already_running', entry: hit } : null;
+  };
   const ok = (body: Json, status = 200) => ({ status, contentType: 'application/json', body: JSON.stringify({ success: true, ...body }) });
   const fail = (code: string, status = 400, extra: Json = {}) => ({ status, contentType: 'application/json', body: JSON.stringify({ success: false, code, ...extra }) });
 
@@ -167,8 +198,8 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       }
       if (url.searchParams.get('action') === 'prefs') return route.fulfill(ok({ startWhileRunning }));
       if (url.searchParams.has('running')) {
-        const r = running();
-        return route.fulfill(ok({ entry: r ? view(r) : null }));
+        const set = runningSet().map(view);
+        return route.fulfill(ok({ running: set, paused: [], presence: null, serverNow: new Date().toISOString(), entry: set[0] ?? null }));
       }
       if (url.searchParams.get('action') === 'totals') {
         const byTask: Record<string, number> = {};
@@ -240,13 +271,24 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       const links = resolveLinks(body);
       if ('error' in links) return route.fulfill(fail(links.error as string, 422));
       const now = new Date().toISOString();
-      const prev = running();
-      // Like the server: starting what already runs (a stale tab) is refused, never a restart.
-      const same = (a: unknown, b: unknown) => String(a ?? '').trim() === String(b ?? '').trim();
-      if (prev && same(prev.projectId, links.projectId) && same(prev.taskId, links.taskId) && same(prev.ticketId, links.ticketId) && same(prev.description, links.description)) {
-        return route.fulfill(fail('already_running', 409, { entry: view(prev) }));
+      const mode = body.mode == null || body.mode === '' ? 'switch' : body.mode;
+      if (mode !== 'switch' && mode !== 'parallel') return route.fulfill(fail('bad_mode', 400));
+      const rows = runningSet();
+      const stopped: Json[] = [];
+      if (mode === 'parallel') {
+        const refusal = parallelRefusal(rows, links);
+        if (refusal) {
+          return route.fulfill(fail(refusal.code, 409, { ...(refusal.entry ? { entry: view(refusal.entry) } : {}), ...(refusal.maxParallel ? { maxParallel: refusal.maxParallel } : {}) }));
+        }
+      } else {
+        // Like the server: starting what already runs (a stale tab) is refused, never a restart.
+        const same = rows.find((row) => sameTarget(row, links));
+        if (same) return route.fulfill(fail('already_running', 409, { entry: view(same) }));
+        for (const row of rows) {
+          finish(row, now);
+          stopped.push(row);
+        }
       }
-      if (prev) finish(prev, now);
       const entry: Json = {
         id: `te-mock-${++idSeq}`, userId: caller, recordedByUserId: caller, employeeId: ctx.employees[caller]?.id ?? null, ticketId: links.ticketId,
         projectId: links.projectId, taskId: links.taskId, description: links.description, titleSnapshot: links.titleSnapshot, legacyNote: null, note: cleanNote(body.note),
@@ -256,15 +298,33 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       };
       entries.push(entry);
       settleWorked();
-      return route.fulfill(ok({ entry: view(entry), stopped: prev ? view(prev) : null }, 201));
+      const stoppedAll = stopped.map(view);
+      return route.fulfill(ok({ entry: view(entry), stopped: stoppedAll[0] ?? null, stoppedAll, mode }, 201));
     }
 
     if (action === 'stop') {
-      const e = body.id ? entries.find((x) => x.id === body.id) : running();
+      const needsProject = (x: Json) => settings.requireProjectToStop && !x.projectId && access.can('projects');
+      if (body.all) {
+        const rows = runningSet();
+        const ids = rows.filter(needsProject).map((x) => x.id);
+        if (ids.length) return route.fulfill(fail('project_required', 422, { ids }));
+        const now = new Date().toISOString();
+        for (const row of rows) finish(row, now);
+        settleWorked();
+        const stoppedAll = rows.map(view);
+        return route.fulfill(ok({ entry: stoppedAll[0] ?? null, stoppedAll }));
+      }
+      let e: Json | undefined;
+      if (body.id) e = entries.find((x) => x.id === body.id && !x.deletedAt);
+      else {
+        const rows = runningSet();
+        if (rows.length > 1) return route.fulfill(fail('ambiguous', 409, { running: rows.map(view) }));
+        e = rows[0];
+      }
       if (!e) return route.fulfill(fail('not_found', 404));
       if (e.endAt) return route.fulfill(ok({ entry: view(e) }));
       if (body.projectId) e.projectId = body.projectId;
-      if (settings.requireProjectToStop && !e.projectId && access.can('projects')) return route.fulfill(fail('project_required', 422));
+      if (needsProject(e)) return route.fulfill(fail('project_required', 422));
       finish(e, new Date().toISOString());
       settleWorked();
       return route.fulfill(ok({ entry: view(e) }));
@@ -273,10 +333,17 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
     if (action === 'undo_start') {
       const i = entries.findIndex((e) => e.id === body.newId);
       if (i >= 0) entries.splice(i, 1);
-      const old = entries.find((e) => e.id === body.stoppedId);
-      if (old) Object.assign(old, { endAt: null, durationSec: null, costRate: null, costRateSource: 'none', costRateBasisDays: null, cost: null });
+      const ids = new Set<string>([...(Array.isArray(body.stoppedIds) ? body.stoppedIds : []), body.stoppedId].filter((x): x is string => typeof x === 'string' && x !== ''));
+      const reopened: Json[] = [];
+      for (const id of ids) {
+        const old = entries.find((e) => e.id === id && e.userId === caller && !e.deletedAt && e.startAt);
+        if (!old) continue;
+        Object.assign(old, { endAt: null, durationSec: null, costRate: null, costRateSource: 'none', costRateBasisDays: null, cost: null });
+        reopened.push(old);
+      }
       settleWorked();
-      return route.fulfill(ok({ entry: old ? view(old) : null }));
+      const views = reopened.map(view);
+      return route.fulfill(ok({ entry: views[0] ?? null, reopened: views }));
     }
 
     if (action === 'create' || action === 'update') {

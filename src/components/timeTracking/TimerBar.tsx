@@ -37,7 +37,7 @@ interface Props {
  */
 export function TimerBar({ deps, recentProjectIds, secondsByProject, footer }: Props) {
   const tt = useTimeTracking();
-  const { t, running, nowMs, settings } = tt;
+  const { t, primaryRunning: running, nowMs, settings } = tt;
   const lookups = useTimeLookups(deps);
   const [mode, setMode] = useState<"timer" | "manual">("timer");
   const [text, setText] = useState("");
@@ -125,7 +125,7 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject, footer }: P
   const onStop = async () => {
     if (busy) return;
     setBusy(true);
-    await tt.stop();
+    await tt.stop(running?.id);
     setBusy(false);
   };
 

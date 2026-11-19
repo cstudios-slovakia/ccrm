@@ -11,7 +11,7 @@ import { sendBrowserNotification } from "../../utils/browserNotifications";
 export function IdleReminder() {
   const tt = useTimeTracking();
   const minutes = tt.settings.idleReminderMinutes;
-  const running = tt.running;
+  const running = tt.primaryRunning;
   const [open, setOpen] = useState(false);
   const last = useRef(Date.now());
   const fired = useRef(false);

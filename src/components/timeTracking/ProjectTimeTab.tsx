@@ -53,7 +53,8 @@ export function ProjectTimeTab({
     return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(localeCodeFor(language), { day: "numeric", month: "numeric", year: "numeric" });
   };
   const money = (n: number) => formatMoney(n, currency, language, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const runningHere = tt.running?.projectId === project.id && !tt.running.taskId;
+  // A timer on the project itself (not on one of its tasks) is in the running set.
+  const runningHere = tt.running.find((e) => e.projectId === project.id && !e.taskId && !e.ticketId) ?? null;
 
   const inputClass = "w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-ui font-semibold text-slate-800 tabular-nums transition-colors duration-150 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20";
   const blockClass = "p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3";
@@ -79,7 +80,7 @@ export function ProjectTimeTab({
               type="button"
               data-testid="project-start-timer"
               onClick={() => {
-                if (runningHere) void tt.stop();
+                if (runningHere) void tt.stop(runningHere.id);
                 else void tt.start({ projectId: project.id, description: null, originType: "project", originId: project.id });
               }}
               className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-ui font-bold shadow-sm transition-all active:scale-95 cursor-pointer ${runningHere ? "bg-rose-600 text-white hover:bg-rose-700" : "bg-primary text-primary-foreground hover:opacity-90"}`}

@@ -40,8 +40,9 @@ export function TaskTimeBreakdown({ taskId, users }: { taskId?: string; users: U
   const money = (n: number) => formatMoney(n, currency, language, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const noRate = t("No rate — no employee linked", "Bez sadzby — nie je pripojený zamestnanec", "Nincs díj — nincs munkatárs hozzárendelve");
   const nameOf = (userId: string) => users.find((u) => u.id === userId)?.name || t("Unknown", "Neznámy", "Ismeretlen");
-  const runningHere = tt.running?.taskId === taskId && tt.userId
-    ? { userId: tt.userId, seconds: elapsedSeconds(tt.running.startAt, tt.nowMs) }
+  const runningEntry = tt.running.find((e) => e.taskId === taskId);
+  const runningHere = runningEntry && tt.userId
+    ? { userId: tt.userId, seconds: elapsedSeconds(runningEntry.startAt, tt.nowMs) }
     : null;
   const rows = withRunningSeconds(people, runningHere).sort(
     (a, b) => b.seconds - a.seconds || nameOf(a.userId).localeCompare(nameOf(b.userId)),

@@ -14,7 +14,7 @@ interface Props {
  */
 export function TimeTrackingMobileBar({ onNavigate }: Props) {
   const tt = useTimeTracking();
-  const { t, running, nowMs, stop } = tt;
+  const { t, primaryRunning: running, nowMs, stop } = tt;
   const elapsed = running ? formatDuration(elapsedSeconds(running.startAt, nowMs), true) : "";
 
   const item = (label: string, icon: ReactNode, onClick: () => void, testId: string) => (
@@ -39,7 +39,7 @@ export function TimeTrackingMobileBar({ onNavigate }: Props) {
           <p className="truncate text-body text-slate-700">{running.title || t("No title", "Bez názvu", "Nincs cím")}</p>
           <button
             type="button"
-            onClick={() => void stop()}
+            onClick={() => void stop(running.id)}
             data-testid="mobile-running-stop"
             className="mt-3 inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-2xl bg-rose-600 px-4 text-ui font-semibold text-white cursor-pointer"
           >

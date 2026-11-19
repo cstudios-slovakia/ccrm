@@ -2,8 +2,8 @@
  * Client for `api/time_entries.php` and `api/holidays.php`.
  *
  * Time entries never ride the sync.php blob: they have their own endpoint, their own
- * permission checks (own time / team / costs) and their own conflict rule (one running
- * timer per user). Errors cross the wire as stable codes; `timeErrorMessage` turns one
+ * permission checks (own time / team / costs) and their own conflict rules (several running
+ * timers per user only when parallel tracking is on, D5.3). Errors cross the wire as stable codes; `timeErrorMessage` turns one
  * into a sentence in the UI language.
  */
 
@@ -15,13 +15,16 @@ import type { RateCard } from "./timeCost.ts";
 export class TimeApiError extends Error {
   readonly code: string;
   readonly status: number;
-  /** For `already_running`: the entry that is running. */
+  /** For `already_running` / `same_project`: the running entry it collides with. */
   readonly entry?: TimeEntry | null;
-  constructor(code: string, status: number, entry?: TimeEntry | null) {
+  /** The rest of the error body (`maxParallel` of `parallel_limit`, `running` of `ambiguous`, `ids` of a stop-all refusal). */
+  readonly details: Record<string, unknown>;
+  constructor(code: string, status: number, entry?: TimeEntry | null, details: Record<string, unknown> = {}) {
     super(code);
     this.code = code;
     this.status = status;
     this.entry = entry;
+    this.details = details;
   }
 }
 
@@ -71,7 +74,12 @@ const parse = async (res: Response): Promise<any> => {
     /* not JSON */
   }
   if (!res.ok || !body || body.success !== true) {
-    throw new TimeApiError(body?.code || (res.status === 401 ? "signed_out" : "save_failed"), res.status, body?.entry ?? null);
+    throw new TimeApiError(
+      body?.code || (res.status === 401 ? "signed_out" : "save_failed"),
+      res.status,
+      body?.entry ?? null,
+      body && typeof body === "object" ? (body as Record<string, unknown>) : {},
+    );
   }
   return body;
 };
@@ -172,7 +180,32 @@ export const listEntries = async (params: ListParams = {}): Promise<{ entries: T
   return { entries: body.entries as TimeEntry[], viewer: body.viewer as TimeViewer };
 };
 
-export const getRunning = async (): Promise<TimeEntry | null> => ((await get({ running: "1" })).entry as TimeEntry | null) ?? null;
+export interface RunningState {
+  /** Every running entry, oldest start first. */
+  running: TimeEntry[];
+  paused: TimeEntry[];
+  /** The presence engine's state (phase 7 types it). */
+  presence: unknown | null;
+  /** The server's clock at the answer (ISO), null from an old server. */
+  serverNow: string | null;
+}
+
+const entryList = (v: unknown): TimeEntry[] => (Array.isArray(v) ? (v.filter((e) => e && typeof e === "object") as TimeEntry[]) : []);
+
+/** The running set. An old server answers only `entry`: that becomes a set of one. */
+export const getRunningState = async (): Promise<RunningState> => {
+  const body = await get({ running: "1" });
+  const running = Array.isArray(body.running) ? entryList(body.running) : body.entry ? [body.entry as TimeEntry] : [];
+  return {
+    running,
+    paused: entryList(body.paused),
+    presence: body.presence ?? null,
+    serverNow: typeof body.serverNow === "string" ? body.serverNow : null,
+  };
+};
+
+/** The first running entry (single-timer callers). */
+export const getRunning = async (): Promise<TimeEntry | null> => (await getRunningState()).running[0] ?? null;
 
 export const getSettings = async (): Promise<TimeSettingsResponse> => {
   const body = await get({ action: "settings" });
@@ -188,16 +221,49 @@ export const savePrefs = async (startWhileRunning: StartWhileRunning): Promise<{
 export const saveSettings = async (settings: Partial<TimeTrackingSettings>): Promise<TimeTrackingSettings> =>
   (await post("settings", { settings })).settings as TimeTrackingSettings;
 
-export const startTimer = async (input: EntryInput): Promise<{ entry: TimeEntry; stopped: TimeEntry | null }> => {
-  const body = await post("start", input as Record<string, unknown>);
-  return { entry: body.entry, stopped: body.stopped ?? null };
+/** `switch` stops every running entry first (the default, and what an old server always does); `parallel` stops nothing. */
+export type StartMode = "switch" | "parallel";
+
+export interface StartResult {
+  entry: TimeEntry;
+  /** The first stopped entry (old servers send only this). */
+  stopped: TimeEntry | null;
+  /** Every entry the start stopped. */
+  stoppedAll: TimeEntry[];
+  mode: StartMode;
+  /** A switch to a target that already runs among several: `entry` is that running one, nothing stopped. */
+  alreadyRunning: boolean;
+}
+
+export const startTimer = async (input: EntryInput, mode?: StartMode): Promise<StartResult> => {
+  const body = await post("start", { ...(input as Record<string, unknown>), ...(mode ? { mode } : {}) });
+  const stopped = (body.stopped as TimeEntry | null) ?? null;
+  return {
+    entry: body.entry,
+    stopped,
+    stoppedAll: Array.isArray(body.stoppedAll) ? entryList(body.stoppedAll) : stopped ? [stopped] : [],
+    mode: body.mode === "parallel" ? "parallel" : "switch",
+    alreadyRunning: body.alreadyRunning === true,
+  };
 };
 
+/** Stops one entry; without `id` the single running one (409 `ambiguous` while several run). */
 export const stopTimer = async (opts: { id?: string; projectId?: string | null } = {}): Promise<TimeEntry> =>
   (await post("stop", opts)).entry as TimeEntry;
 
-export const undoStart = async (newId: string, stoppedId?: string | null): Promise<TimeEntry | null> =>
-  ((await post("undo_start", { newId, stoppedId })).entry as TimeEntry | null) ?? null;
+/** Stops every running entry of the caller; resolves the stopped ones (empty when nothing ran). */
+export const stopAllTimers = async (): Promise<TimeEntry[]> => {
+  const body = await post("stop", { all: true });
+  return Array.isArray(body.stoppedAll) ? entryList(body.stoppedAll) : body.entry ? [body.entry as TimeEntry] : [];
+};
+
+/** The Undo of a start: drops the new entry and reopens every entry it stopped. */
+export const undoStart = async (newId: string, stoppedIds: string[] = []): Promise<{ entry: TimeEntry | null; reopened: TimeEntry[] }> => {
+  // `stoppedId` keeps an old server (one timer) reopening the one it stopped.
+  const body = await post("undo_start", { newId, stoppedIds, stoppedId: stoppedIds[0] ?? null });
+  const entry = (body.entry as TimeEntry | null) ?? null;
+  return { entry, reopened: Array.isArray(body.reopened) ? entryList(body.reopened) : entry ? [entry] : [] };
+};
 
 export const createEntry = async (input: EntryInput): Promise<TimeEntry> =>
   (await post("create", input as Record<string, unknown>)).entry as TimeEntry;
@@ -232,9 +298,29 @@ export const getHolidays = async (country: HolidayCountry, year: number): Promis
   return { country, year, days: body.days as HolidayDay[], fallback: !!body.fallback };
 };
 
-/** One sentence per error code, in the UI language. */
-export const timeErrorMessage = (code: string, t: (en: string, sk: string, hu: string) => string): string => {
+/** One sentence per error code, in the UI language. `details` is the error body (`TimeApiError.details`). */
+export const timeErrorMessage = (
+  code: string,
+  t: (en: string, sk: string, hu: string) => string,
+  details: Record<string, unknown> = {},
+): string => {
   switch (code) {
+    case "parallel_disabled":
+      return t("Parallel timers are turned off for this company.", "Paralelné časovače sú pre túto firmu vypnuté.", "A párhuzamos időzítők ennél a cégnél ki vannak kapcsolva.");
+    case "parallel_forbidden":
+      return t("You are not allowed to run timers in parallel.", "Nemáte oprávnenie spúšťať časovače paralelne.", "Nincs jogosultsága párhuzamos időzítők futtatására.");
+    case "parallel_limit": {
+      const max = Number(details.maxParallel);
+      return Number.isFinite(max) && max > 0
+        ? t(`At most ${max} timers can run at once. Stop one first.`, `Naraz môže bežať najviac ${max} časovačov. Najprv jeden zastavte.`, `Egyszerre legfeljebb ${max} időzítő futhat. Előbb állítson le egyet.`)
+        : t("No more timers can run at once. Stop one first.", "Naraz už nemôže bežať viac časovačov. Najprv jeden zastavte.", "Egyszerre nem futhat több időzítő. Előbb állítson le egyet.");
+    }
+    case "same_project":
+      return t("A timer on this project is already running. In parallel, one project runs only on different tasks.", "Na tomto projekte už beží časovač. Paralelne môže jeden projekt bežať len na rôznych úlohách.", "Ezen a projekten már fut egy időzítő. Párhuzamosan egy projekt csak különböző feladatokon futhat.");
+    case "ambiguous":
+      return t("Several timers are running. Pick the one to stop.", "Beží viac časovačov. Vyberte, ktorý zastaviť.", "Több időzítő fut. Válassza ki, melyiket állítja le.");
+    case "bad_mode":
+      return t("The app is out of date. Reload the page and try again.", "Aplikácia je zastaraná. Obnovte stránku a skúste znova.", "Az alkalmazás elavult. Töltse újra az oldalt, és próbálja újra.");
     case "forbidden":
       return t("You do not have permission to do this.", "Na toto nemáte oprávnenie.", "Ehhez nincs jogosultsága.");
     case "forbidden_project":
