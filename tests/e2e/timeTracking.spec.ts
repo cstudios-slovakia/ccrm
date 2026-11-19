@@ -83,6 +83,8 @@ test.describe('Time tracking', () => {
     const seeded = row(page, 'Návrh cenovej ponuky');
     await seeded.hover();
     await seeded.getByTestId('time-entry-continue').click();
+    // Parallel tracking is on by default (C4), so a start while one runs asks first (C3).
+    await page.getByTestId('start-mode-switch').click();
     await expect(page.getByTestId('header-timer-running')).toContainText('Návrh cenovej ponuky');
     await expect(page.getByTestId('undo-toast')).toBeVisible();
     await page.getByTestId('undo-toast-undo').click();
