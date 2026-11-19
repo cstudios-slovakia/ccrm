@@ -29,6 +29,7 @@ import {
   pauseEntries,
   resumeEntries,
   savePrefs,
+  savePresenceSoundPref,
   startTimer,
   stopAllTimers,
   stopTimer,
@@ -44,6 +45,8 @@ import {
 import { isRunningTarget as runningHas, resolveStartMode, sameRunningIds, type RunningTarget } from "../utils/timeTrackingRunning.ts";
 import { stripTimerTitle, workedClockSeconds } from "../utils/timeContainer.ts";
 import { presenceTabTitle } from "../utils/timePresenceUi.ts";
+import { usePresenceSound } from "./usePresenceSound.ts";
+import { DEFAULT_PRESENCE_SOUND, sanitizePresenceSound, unlockPresenceAudio, type PresenceSoundPrefs } from "../utils/presenceSound.ts";
 import { IDLE_PRESENCE_VIEW, nextPresenceBoundary, presenceView as derivePresenceView, type PresenceView } from "../utils/timePresence.ts";
 import { StartModePopover } from "../components/timeTracking/StartModePopover.tsx";
 
@@ -102,6 +105,9 @@ export interface TimeTrackingContextValue {
   /** What a Start does while something runs: the user's preference (D5.2). */
   startWhileRunning: StartWhileRunning;
   saveStartWhileRunning: (pref: StartWhileRunning) => Promise<void>;
+  /** TT2 D8.3: the person's own presence-sound settings (the question itself cannot be turned off). */
+  presenceSound: PresenceSoundPrefs;
+  savePresenceSound: (next: PresenceSoundPrefs) => Promise<void>;
   /** The shared clock: this browser's time corrected by `serverOffsetMs`; ticks each second while a timer runs or a presence state is open. */
   nowMs: number;
   /** Tracked seconds per task, ticket and project. Reloaded with `version`. */
@@ -160,6 +166,8 @@ const Ctx = createContext<TimeTrackingContextValue>({
   isRunningTarget: () => false,
   startWhileRunning: "ask",
   saveStartWhileRunning: async () => {},
+  presenceSound: DEFAULT_PRESENCE_SOUND,
+  savePresenceSound: async () => {},
   totals: EMPTY_TIME_TOTALS,
   nowMs: Date.now(),
   version: 0,
@@ -236,6 +244,7 @@ export function TimeTrackingProvider({
   const offsetRef = useRef(0);
   offsetRef.current = serverOffsetMs;
   const [startWhileRunning, setStartWhileRunning] = useState<StartWhileRunning>("ask");
+  const [presenceSound, setPresenceSound] = useState<PresenceSoundPrefs>(DEFAULT_PRESENCE_SOUND);
   const [modeRequest, setModeRequest] = useState<ModeRequest | null>(null);
   const modeRequestRef = useRef<ModeRequest | null>(null);
   const modeRequestSeq = useRef(0);
@@ -252,6 +261,8 @@ export function TimeTrackingProvider({
   pausedRef.current = paused;
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const presenceSoundRef = useRef(presenceSound);
+  presenceSoundRef.current = presenceSound;
   const prefRef = useRef(startWhileRunning);
   prefRef.current = startWhileRunning;
 
@@ -310,6 +321,7 @@ export function TimeTrackingProvider({
       setDefaultCountry(res.defaultCountry);
       const pref = res.me.startWhileRunning;
       setStartWhileRunning(pref === "switch" || pref === "parallel" ? pref : "ask");
+      setPresenceSound(sanitizePresenceSound(res.me.presenceSound));
     } catch {
       /* the module shows its own empty state; defaults stay */
     }
@@ -414,6 +426,7 @@ export function TimeTrackingProvider({
   }, [boundary, enabled, userId, clock, refreshRunning]);
 
   const presenceView = useMemo(() => derivePresenceView(presence, nowMs), [presence, nowMs]);
+  usePresenceSound(presenceView.phase === "question", presenceView.secondsToPause, settings.presence.confirmWindowMinutes * 60, presenceSound);
 
   // The browser tab shows the timer: "▶ 1:12:05 · CCRM". The prefix pattern also strips the
   // older "▶ 1:12 · " form, in case a title was set before this version loaded.
@@ -532,6 +545,21 @@ export function TimeTrackingProvider({
     [fail],
   );
 
+  const savePresenceSound = useCallback(
+    async (next: PresenceSoundPrefs) => {
+      const before = presenceSoundRef.current;
+      setPresenceSound(next);
+      try {
+        const res = await savePresenceSoundPref(next);
+        setPresenceSound(sanitizePresenceSound(res.presenceSound ?? next));
+      } catch (e) {
+        setPresenceSound(before);
+        fail(e);
+      }
+    },
+    [fail],
+  );
+
   const warnAlreadyRunning = useCallback(
     (entry: TimeEntry) => {
       const title = entry.title;
@@ -640,6 +668,7 @@ export function TimeTrackingProvider({
 
   const start = useCallback(
     async (input: EntryInput = {}, opts: StartOptions = {}): Promise<TimeEntry | null> => {
+      unlockPresenceAudio();
       const anchor = rectOf(opts.anchor !== undefined ? opts.anchor : typeof document !== "undefined" ? document.activeElement : null);
       const current = runningRef.current;
       const target: RunningTarget = { taskId: input.taskId, ticketId: input.ticketId, projectId: input.projectId, title: input.description };
@@ -774,6 +803,7 @@ export function TimeTrackingProvider({
 
   const resume = useCallback(
     async (id?: string): Promise<boolean> => {
+      unlockPresenceAudio();
       const targetId = id ?? (pausedRef.current.length === 1 ? pausedRef.current[0].id : undefined);
       if (!targetId) return false;
       try {
@@ -790,6 +820,7 @@ export function TimeTrackingProvider({
   );
 
   const resumeAll = useCallback(async (): Promise<boolean> => {
+    unlockPresenceAudio();
     if (!pausedRef.current.length) return false;
     try {
       const res = await resumeEntries({ all: true });
@@ -803,6 +834,7 @@ export function TimeTrackingProvider({
   }, [afterPauseChange, fail, refreshRunning]);
 
   const confirm = useCallback(async (): Promise<TimePresence | null> => {
+    unlockPresenceAudio();
     try {
       const next = await confirmPresence();
       setPresence(next);
@@ -841,6 +873,8 @@ export function TimeTrackingProvider({
     isRunningTarget,
     startWhileRunning,
     saveStartWhileRunning,
+    presenceSound,
+    savePresenceSound,
     totals,
     nowMs,
     version,

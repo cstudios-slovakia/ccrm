@@ -273,6 +273,7 @@ if ($method === 'GET') {
                 'employeeId' => $employee['id'] ?? null,
                 'workCountry' => ccrm_tt_work_country($pdo, $employee),
                 'startWhileRunning' => ccrm_tt_load_prefs($pdo, $callerId)['startWhileRunning'],
+                'presenceSound' => ccrm_tt_load_prefs($pdo, $callerId)['presenceSound'],
             ],
             'viewer' => ['canEdit' => $canEdit, 'canTeam' => $canTeam, 'canCosts' => $canCosts],
         ] + ((ccrm_is_admin($sessionUser) || ccrm_can($scope, 'general_config', 'edit')) ? ['cron' => ccrm_tt_cron_status($pdo)] : []));
@@ -534,11 +535,17 @@ if ($method !== 'POST') {
 // ---------------------------------------------------------------------------------------
 
 if ($action === 'prefs') {
-    $mode = $body['startWhileRunning'] ?? null;
-    if (!in_array($mode, ['ask', 'switch', 'parallel'], true)) {
-        ccrm_te_fail('invalid_start_while_running', 422);
+    // Partial update: either field may be sent; the other keeps its stored value.
+    $prefs = ccrm_tt_load_prefs($pdo, $callerId);
+    if (array_key_exists('startWhileRunning', $body)) {
+        if (!in_array($body['startWhileRunning'], ['ask', 'switch', 'parallel'], true)) {
+            ccrm_te_fail('invalid_start_while_running', 422);
+        }
+        $prefs['startWhileRunning'] = $body['startWhileRunning'];
     }
-    $prefs = ['startWhileRunning' => $mode];
+    if (array_key_exists('presenceSound', $body)) {
+        $prefs['presenceSound'] = ccrm_tt_sanitize_presence_sound($body['presenceSound']);
+    }
     ccrm_tt_save_prefs($pdo, $callerId, $prefs);
     ccrm_te_respond($prefs);
 }

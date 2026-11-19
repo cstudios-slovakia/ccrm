@@ -48,15 +48,27 @@ if (!function_exists('ccrm_tt_default_settings')) {
         return strlen($key) <= 100 ? $key : 'TT_PREFS:' . hash('sha256', $userId);
     }
 
+    /** TT2 D8.3 / C18: the presence sound's per-person settings; the question cannot be turned off, only the sound. */
+    function ccrm_tt_sanitize_presence_sound($raw): array {
+        $raw = is_array($raw) ? $raw : [];
+        $volume = $raw['volume'] ?? 0.6;
+        $volume = is_numeric($volume) ? max(0.0, min(1.0, round((float)$volume, 2))) : 0.6;
+        $sound = in_array($raw['sound'] ?? null, ['chimeA', 'chimeB', 'chimeC'], true) ? $raw['sound'] : 'chimeA';
+        return ['volume' => $volume, 'muted' => !empty($raw['muted']), 'sound' => $sound];
+    }
+
     /** The caller's own time-tracking preferences (system_settings, one JSON row per user). */
     function ccrm_tt_load_prefs(\PDO $pdo, string $userId): array {
-        $out = ['startWhileRunning' => 'ask'];
+        $out = ['startWhileRunning' => 'ask', 'presenceSound' => ccrm_tt_sanitize_presence_sound(null)];
         try {
             $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = ? LIMIT 1");
             $stmt->execute([ccrm_tt_prefs_key($userId)]);
             $raw = json_decode((string)$stmt->fetchColumn(), true);
             if (is_array($raw) && in_array($raw['startWhileRunning'] ?? null, ['ask', 'switch', 'parallel'], true)) {
                 $out['startWhileRunning'] = $raw['startWhileRunning'];
+            }
+            if (is_array($raw)) {
+                $out['presenceSound'] = ccrm_tt_sanitize_presence_sound($raw['presenceSound'] ?? null);
             }
         } catch (\Throwable $e) {
         }

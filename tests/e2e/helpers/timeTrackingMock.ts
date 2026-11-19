@@ -62,6 +62,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
   let settings: TimeTrackingSettings = JSON.parse(JSON.stringify(DEFAULT_TIME_TRACKING_SETTINGS));
   let idSeq = 100;
   let startWhileRunning: 'ask' | 'switch' | 'parallel' = 'ask';
+  let presenceSound: Json = { volume: 0.6, muted: false, sound: 'chimeA' };
   const access = buildAccess(ctx.user as any, ctx.roles);
   const canEdit = access.canEdit('time_tracking');
   const canTeam = access.can('time_tracking_team');
@@ -271,9 +272,9 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
     if (req.method() === 'GET') {
       settleWorked();
       if (url.searchParams.get('action') === 'settings') {
-        return route.fulfill(ok({ settings, defaultCountry: 'SK', me: { userId: caller, employeeId: ctx.employees[caller]?.id ?? null, workCountry: country(caller), startWhileRunning }, viewer: { canEdit, canTeam, canCosts }, ...(canEdit ? { cron: { lastRunAt: new Date().toISOString(), stale: false } } : {}) }));
+        return route.fulfill(ok({ settings, defaultCountry: 'SK', me: { userId: caller, employeeId: ctx.employees[caller]?.id ?? null, workCountry: country(caller), startWhileRunning, presenceSound }, viewer: { canEdit, canTeam, canCosts }, ...(canEdit ? { cron: { lastRunAt: new Date().toISOString(), stale: false } } : {}) }));
       }
-      if (url.searchParams.get('action') === 'prefs') return route.fulfill(ok({ startWhileRunning }));
+      if (url.searchParams.get('action') === 'prefs') return route.fulfill(ok({ startWhileRunning, presenceSound }));
       if (url.searchParams.has('running')) {
         await readPresenceOverride();
         const p = presence();
@@ -342,9 +343,12 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
     const action = body.action as string;
 
     if (action === 'prefs') {
-      if (!['ask', 'switch', 'parallel'].includes(body.startWhileRunning as string)) return route.fulfill(fail('invalid_start_while_running', 422));
-      startWhileRunning = body.startWhileRunning as typeof startWhileRunning;
-      return route.fulfill(ok({ startWhileRunning }));
+      if ('startWhileRunning' in body) {
+        if (!['ask', 'switch', 'parallel'].includes(body.startWhileRunning as string)) return route.fulfill(fail('invalid_start_while_running', 422));
+        startWhileRunning = body.startWhileRunning as typeof startWhileRunning;
+      }
+      if (body.presenceSound && typeof body.presenceSound === 'object') presenceSound = { ...(body.presenceSound as Json) };
+      return route.fulfill(ok({ startWhileRunning, presenceSound }));
     }
 
     if (action === 'settings') {
