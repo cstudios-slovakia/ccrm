@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Clock, Copy, Trash2, Unlink, X } from "lucide-react";
+import { CheckCircle2, Clock, Copy, Trash2, Unlink, X } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
 import { CustomSelect } from "../ui/CustomSelect";
+import { Switch } from "../ui/Switch";
 import { resolveWorkCountry, type HolidayCountry } from "../../utils/holidays.ts";
 import { matchOpenTasks, matchOpenTickets } from "../../utils/timeLinks.ts";
 import { isClosedTicketStatus } from "../../utils/tickets";
@@ -210,6 +211,17 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
   const recordedBy = deps.users.find((u) => u.id === entry.recordedByUserId);
   const sourceText = SOURCE_LABEL[entry.source] ? t(...SOURCE_LABEL[entry.source]) : entry.source;
   const importTool = importedFrom(entry.source);
+  const hoursOnly = !entry.running && !entry.startAt && !entry.endAt;
+  const sourceChip = importTool
+    ? t("Imported", "Importované", "Importált")
+    : entry.source === "timer"
+      ? t("Timer", "Časovač", "Időzítő")
+      : hoursOnly
+        ? t("Hours only", "Iba hodiny", "Csak órák")
+        : entry.source === "manual"
+          ? t("Manual", "Ručne", "Kézi")
+          : null;
+  const chipClass = "type-meta inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-600";
   const originTask = entry.originType === "task" && entry.originId ? lookups.taskById.get(entry.originId) : null;
   const isAdmin = isAdminRoleName(deps.currentUser.role);
   const lockSettings = {
@@ -236,6 +248,10 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
           <span className="type-overline inline-flex items-center gap-1.5 rounded-full border border-teal-200/80 bg-teal-50 px-2.5 py-0.5 text-teal-700">
             <Clock className="size-3.5" />
             {readOnly ? t("Time entry", "Záznam času", "Időbejegyzés") : t("Edit time entry", "Upraviť záznam času", "Időbejegyzés szerkesztése")}
+          </span>
+          <span className="ml-2 flex min-w-0 flex-1 flex-wrap items-center gap-1.5" data-testid="entry-source-chips">
+            {(entry.taskId || originTask) && <span className={chipClass}>{t("Started from task", "Spustené z úlohy", "Feladatból indítva")}</span>}
+            {sourceChip && <span className={chipClass}>{sourceChip}</span>}
           </span>
           <button type="button" onClick={close} aria-label={t("Close", "Zavrieť", "Bezárás")} className="rounded-lg p-1 text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-600 active:scale-95 cursor-pointer">
             <X className="size-5" />
@@ -301,12 +317,16 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
 
           {/* Task link */}
           <div className="grid gap-1">
-            <span className="type-label text-slate-600">{t("Task", "Úloha", "Feladat")}</span>
+            <span className="type-label text-slate-600">
+              {t("Task", "Úloha", "Feladat")}
+              <span className="type-meta ml-1 font-normal text-slate-400">{t("· optional, tasks of this project", "· voliteľné, úlohy tohto projektu", "· nem kötelező, a projekt feladatai")}</span>
+            </span>
             {taskId ? (
-              <div className="flex items-center gap-2 rounded-xl bg-teal-50 px-3 py-2 text-ui font-semibold text-teal-800" data-testid="entry-linked-task">
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-ui font-semibold text-slate-800" data-testid="entry-linked-task">
+                <CheckCircle2 className="size-4 shrink-0 text-teal-600" />
                 <span className="min-w-0 flex-1 truncate">{linkedTask?.title ?? entry.title}</span>
                 {!readOnly && (
-                  <button type="button" onClick={unlink} title={t("Unlink the task: the entry keeps this title as its own", "Odpojiť úlohu: záznam si ponechá tento názov", "Feladat leválasztása: a bejegyzés megtartja ezt a címet")} data-testid="entry-unlink" className="inline-flex items-center gap-1 text-teal-700 hover:text-teal-900 cursor-pointer">
+                  <button type="button" onClick={unlink} title={t("Unlink the task: the entry keeps this title as its own", "Odpojiť úlohu: záznam si ponechá tento názov", "Feladat leválasztása: a bejegyzés megtartja ezt a címet")} data-testid="entry-unlink" className="inline-flex items-center gap-1 text-slate-400 hover:text-slate-700 cursor-pointer">
                     <Unlink className="size-4" />
                   </button>
                 )}
@@ -370,8 +390,8 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
           )}
 
           {/* When */}
-          <div className="grid grid-cols-2 gap-3">
-            <label className="col-span-2 grid gap-1">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <label className="grid gap-1">
               <span className="type-label text-slate-600">{t("Date", "Dátum", "Dátum")}</span>
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} readOnly={readOnly} className="h-10 rounded-xl border border-slate-200 px-3 text-ui outline-none focus:border-primary" data-testid="entry-date" />
             </label>
@@ -384,18 +404,21 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
               <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} readOnly={readOnly || entry.running} className="h-10 rounded-xl border border-slate-200 px-3 text-ui tabular-nums outline-none focus:border-primary" data-testid="entry-end" />
             </label>
             {!entry.running && (
-              <label className="col-span-2 grid gap-1">
+              <label className="grid gap-1">
                 <span className="type-label text-slate-600">{t("Duration", "Trvanie", "Időtartam")}</span>
                 <input value={dur} onChange={(e) => setDur(e.target.value)} readOnly={readOnly || (!!start && !!end)} placeholder="1:30" className="h-10 rounded-xl border border-slate-200 px-3 text-ui tabular-nums outline-none focus:border-primary read-only:bg-slate-50" data-testid="entry-duration" />
-                <span className="type-meta text-slate-500">{t("Start and end are optional: leave them empty to keep the entry hours-only.", "Začiatok a koniec sú voliteľné: nechajte ich prázdne pre záznam iba v hodinách.", "A kezdet és a vég nem kötelező: hagyja üresen, ha csak óraszámot rögzít.")}</span>
               </label>
             )}
+            {!entry.running && <span className="type-meta col-span-2 text-slate-500 sm:col-span-4">{t("Start and end are optional: leave them empty to keep the entry hours-only.", "Začiatok a koniec sú voliteľné: nechajte ich prázdne pre záznam iba v hodinách.", "A kezdet és a vég nem kötelező: hagyja üresen, ha csak óraszámot rögzít.")}</span>}
           </div>
 
           {/* Person */}
           {viewer.canTeam && (
             <label className="grid gap-1">
-              <span className="type-label text-slate-600">{t("Person", "Osoba", "Személy")}</span>
+              <span className="type-label text-slate-600">
+                {t("Person", "Osoba", "Személy")}
+                {!readOnly && <span className="type-meta ml-1 font-normal text-slate-400">{t("· whose time", "· čí je to čas", "· kié az idő")}</span>}
+              </span>
               <div data-testid="entry-person">
                 <CustomSelect
                   searchable
@@ -415,7 +438,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
           </label>
 
           <label className="flex cursor-pointer items-center gap-3">
-            <input type="checkbox" checked={billable} onChange={(e) => setBillable(e.target.checked)} disabled={readOnly} className="size-4 accent-emerald-600" data-testid="entry-billable" />
+            <Switch checked={billable} onChange={setBillable} disabled={readOnly} tone="emerald" testId="entry-billable" />
             <span className="text-ui font-semibold text-slate-800">{t("Billable", "Fakturovateľné", "Számlázható")}</span>
             {viewer.canCosts && entry.billableRate ? <span className="type-meta tabular-nums text-emerald-700">{money(entry.billableRate)}/h</span> : null}
           </label>
@@ -430,8 +453,13 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
                 <>
                   <div className="mt-1 flex items-baseline justify-between gap-2">
                     <span className="text-ui text-slate-600">{money(entry.costRate)}/h · {sourceName(entry.costRateSource)}</span>
-                    <span className="text-title font-bold tabular-nums text-violet-700">{entry.cost !== null && entry.cost !== undefined ? money(entry.cost) : "—"}</span>
+                    <span className="text-title font-bold tabular-nums text-slate-900">{entry.cost !== null && entry.cost !== undefined ? money(entry.cost) : "—"}</span>
                   </div>
+                  {entry.cost !== null && entry.cost !== undefined && !!entry.durationSec && (
+                    <div className="mt-1 text-ui tabular-nums text-slate-600" data-testid="entry-cost-formula">
+                      {formatDuration(entry.durationSec)} × {money(entry.costRate)}/h = {money(entry.cost)}
+                    </div>
+                  )}
                   <div className="mt-1 type-meta text-slate-500" data-testid="entry-rate-basis">
                     {entry.costRateBasisDays ? `${monthLabel} · ${country} · ${entry.costRateBasisDays} ${t("working days", "pracovných dní", "munkanap")} · ` : `${monthLabel} · `}
                     {t("the rate is frozen when the entry is saved", "sadzba sa zafixuje pri uložení záznamu", "a díj a mentéskor rögzül")}
@@ -442,6 +470,12 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
                 <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 text-ui">
                   <span className="text-slate-600">{t("Billable value", "Fakturovateľná hodnota", "Számlázható érték")}</span>
                   <span className="font-semibold tabular-nums text-emerald-700">{money(billableValue)}</span>
+                </div>
+              )}
+              {billableValue !== null && entry.cost !== null && entry.cost !== undefined && (
+                <div className="mt-1 flex justify-between text-ui" data-testid="entry-margin">
+                  <span className="text-slate-600">{t("Margin", "Marža", "Árrés")}</span>
+                  <span className="font-semibold tabular-nums text-slate-900">{money(billableValue - entry.cost)}</span>
                 </div>
               )}
             </div>
