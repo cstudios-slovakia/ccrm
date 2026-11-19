@@ -210,7 +210,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
     if (req.method() === 'GET') {
       settleWorked();
       if (url.searchParams.get('action') === 'settings') {
-        return route.fulfill(ok({ settings, defaultCountry: 'SK', me: { userId: caller, employeeId: ctx.employees[caller]?.id ?? null, workCountry: country(caller), startWhileRunning }, viewer: { canEdit, canTeam, canCosts } }));
+        return route.fulfill(ok({ settings, defaultCountry: 'SK', me: { userId: caller, employeeId: ctx.employees[caller]?.id ?? null, workCountry: country(caller), startWhileRunning }, viewer: { canEdit, canTeam, canCosts }, ...(canEdit ? { cron: { lastRunAt: new Date().toISOString(), stale: false } } : {}) }));
       }
       if (url.searchParams.get('action') === 'prefs') return route.fulfill(ok({ startWhileRunning }));
       if (url.searchParams.has('running')) {

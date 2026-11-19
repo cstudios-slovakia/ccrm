@@ -68,7 +68,7 @@ function mcp_timer_describe(array $rows): string {
  * rate, billable rate, and the given link / note overrides. Inside the transaction, under the lock;
  * a row another client stopped meanwhile is left as it is.
  */
-function mcp_timer_close_row(\PDO $pdo, string $uid, array $row, string $endUtc, array $settings, ?array $links = null, $note = null, bool $setNote = false): void {
+function mcp_timer_close_row(\PDO $pdo, string $uid, array $row, string $endUtc, array $settings, ?array $links = null, $note = null, bool $setNote = false, string $reason = 'user'): void {
     $endUtc = max($endUtc, (string)$row['start_at']);
     $dur = min(86400, ccrm_tt_seconds_between($row['start_at'], $endUtc));
     $projectId = $links !== null ? $links['project_id'] : $row['project_id'];
@@ -81,7 +81,7 @@ function mcp_timer_close_row(\PDO $pdo, string $uid, array $row, string $endUtc,
         "UPDATE time_entries
          SET task_id = ?, project_id = ?, title_snapshot = ?, description = ?, note = ?,
              end_at = ?, duration_sec = ?, employee_id = ?, cost_rate = ?, cost_rate_source = ?,
-             cost_rate_basis_days = ?, billable_rate = ?
+             cost_rate_basis_days = ?, billable_rate = ?, end_reason = ?
          WHERE id = ? AND end_at IS NULL"
     )->execute([
         $links !== null ? $links['task_id'] : $row['task_id'],
@@ -90,7 +90,7 @@ function mcp_timer_close_row(\PDO $pdo, string $uid, array $row, string $endUtc,
         $links !== null ? $links['description'] : $row['description'],
         $setNote ? $note : $row['note'],
         $endUtc, $dur, $pricing['employee_id'], $pricing['cost_rate'], $pricing['cost_rate_source'],
-        $pricing['cost_rate_basis_days'], $billRate, $row['id'],
+        $pricing['cost_rate_basis_days'], $billRate, $reason, $row['id'],
     ]);
 }
 
@@ -148,7 +148,7 @@ function mcp_timer_start(\PDO $pdo, array $user, string $uid, array $args, array
                 return ['refusal' => ['code' => 'already_running', 'entryId' => (string)$same['id']]];
             }
             foreach ($runningRows as $old) {
-                mcp_timer_close_row($pdo, $uid, $old, $nowUtc, $settings);
+                mcp_timer_close_row($pdo, $uid, $old, $nowUtc, $settings, null, null, false, 'switch');
                 $stopped[] = $old;
             }
         }
@@ -286,7 +286,7 @@ function mcp_timer_stop(\PDO $pdo, array $user, string $uid, array $args, array 
     mcp_tx($pdo, function () use ($pdo, $uid, $rows, $nowUtc, $settings, $links, $note, $setNote) {
         ccrm_tt_lock_user($pdo, $uid);
         foreach ($rows as $r) {
-            mcp_timer_close_row($pdo, $uid, $r, $nowUtc, $settings, $links, $note, $setNote);
+            mcp_timer_close_row($pdo, $uid, $r, $nowUtc, $settings, $links, $note, $setNote, 'user');
         }
         ccrm_tt_settle_rows($pdo, $rows); // running until now: covers the stopped intervals
         ccrm_tt_presence_touch($pdo, $uid, $nowUtc); // one of several: anchor = now; the last: NULL (C6)

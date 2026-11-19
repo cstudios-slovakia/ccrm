@@ -117,7 +117,24 @@ export interface TimeTrackingSettings {
   rounding: { minutes: 0 | 5 | 15 | 30; mode: "nearest" | "up" };
   extension: { enabled: boolean; activityCaptureAllowed: boolean; unsortedRetentionDays: number };
   parallel: { enabled: boolean; maxParallel: number; sameProject: "differentTasks" | "never" | "always" };
+  /** TT2 D7.1: the presence cycle. Server clamps: promptAfter 10–240, confirm 2–60, resume 0–120 minutes. */
+  presence: PresenceSettings;
   ticketTimeVisibleToClients: boolean;
+}
+
+export interface PresenceSettings {
+  enabled: boolean;
+  promptAfterMinutes: number;
+  confirmWindowMinutes: number;
+  resumeWindowMinutes: number;
+  /** Where an unanswered cycle ends its items: at the question (C7) or at the deadline. */
+  trimTo: "prompt" | "deadline";
+}
+
+/** `GET time_entries.php?action=settings` → `cron` (admins / general_config only): stale = not run for 5 minutes, or never. */
+export interface TimeTrackingCronStatus {
+  lastRunAt: string | null;
+  stale: boolean;
 }
 
 /** Mirrors ccrm_tt_default_settings() in api/time_entries_lib.php. */
@@ -138,6 +155,7 @@ export const DEFAULT_TIME_TRACKING_SETTINGS: TimeTrackingSettings = {
   rounding: { minutes: 0, mode: "nearest" },
   extension: { enabled: true, activityCaptureAllowed: true, unsortedRetentionDays: 30 },
   parallel: { enabled: false, maxParallel: 4, sameProject: "differentTasks" },
+  presence: { enabled: true, promptAfterMinutes: 50, confirmWindowMinutes: 10, resumeWindowMinutes: 10, trimTo: "prompt" },
   ticketTimeVisibleToClients: false,
 };
 

@@ -37,6 +37,8 @@ if (!function_exists('ccrm_tt_default_settings')) {
             'rounding' => ['minutes' => 0, 'mode' => 'nearest'],
             'extension' => ['enabled' => true, 'activityCaptureAllowed' => true, 'unsortedRetentionDays' => 30],
             'parallel' => ['enabled' => false, 'maxParallel' => 4, 'sameProject' => 'differentTasks'],
+            // TT2 D7.1: the presence cycle (question after promptAfter, automatic pause at the deadline).
+            'presence' => ['enabled' => true, 'promptAfterMinutes' => 50, 'confirmWindowMinutes' => 10, 'resumeWindowMinutes' => 10, 'trimTo' => 'prompt'],
             'ticketTimeVisibleToClients' => false,
         ];
     }
@@ -138,6 +140,17 @@ if (!function_exists('ccrm_tt_default_settings')) {
                 'enabled' => array_key_exists('enabled', $in['parallel']) ? (bool)$in['parallel']['enabled'] : $par['enabled'],
                 'maxParallel' => (int)ccrm_tt_clamp_num($in['parallel']['maxParallel'] ?? null, 2, 10, (float)$par['maxParallel']),
                 'sameProject' => in_array($same, ['differentTasks', 'never', 'always'], true) ? $same : $par['sameProject'],
+            ];
+        }
+        if (isset($in['presence']) && is_array($in['presence'])) {
+            $pr = $base['presence'] ?? ccrm_tt_default_settings()['presence'];
+            $p = $in['presence'];
+            $out['presence'] = [
+                'enabled' => array_key_exists('enabled', $p) ? (bool)$p['enabled'] : (bool)$pr['enabled'],
+                'promptAfterMinutes' => (int)ccrm_tt_clamp_num($p['promptAfterMinutes'] ?? null, 10, 240, (float)$pr['promptAfterMinutes']),
+                'confirmWindowMinutes' => (int)ccrm_tt_clamp_num($p['confirmWindowMinutes'] ?? null, 2, 60, (float)$pr['confirmWindowMinutes']),
+                'resumeWindowMinutes' => (int)ccrm_tt_clamp_num($p['resumeWindowMinutes'] ?? null, 0, 120, (float)$pr['resumeWindowMinutes']),
+                'trimTo' => in_array($p['trimTo'] ?? null, ['prompt', 'deadline'], true) ? $p['trimTo'] : ($pr['trimTo'] === 'deadline' ? 'deadline' : 'prompt'),
             ];
         }
         if (isset($in['holidayOverrides']) && is_array($in['holidayOverrides'])) {

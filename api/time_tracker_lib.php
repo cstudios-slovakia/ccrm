@@ -449,15 +449,19 @@ function ccrm_ttx_origin(array $links): ?string {
     return null;
 }
 
-/** Close one running row at $endUtc (never before its start) and freeze its rates. A row stopped meanwhile is left as it is. */
-function ccrm_ttx_close_row(\PDO $pdo, array $row, string $endUtc, array $settings, ?string $projectId = null, ?string $deviceId = null): void {
+/**
+ * Close one running row at $endUtc (never before its start), freeze its rates and record how it
+ * ended (`end_reason` 'user' for a stop, 'switch' for a start that stopped it, TT2 D6).
+ * A row stopped meanwhile is left as it is.
+ */
+function ccrm_ttx_close_row(\PDO $pdo, array $row, string $endUtc, array $settings, ?string $projectId = null, ?string $deviceId = null, string $reason = 'user'): void {
     $endUtc = max($endUtc, (string)$row['start_at']);
     $dur = ccrm_tt_seconds_between($row['start_at'], $endUtc);
     $project = $projectId ?? $row['project_id'];
     $price = ccrm_tt_price($pdo, (string)$row['user_id'], $row['entry_date'], $dur, $settings, false);
     $rate = $row['billable_rate'] !== null ? $row['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $project, $row['ticket_id'], (string)$row['entry_date']);
-    $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `project_id` = ?, `employee_id` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `device_id` = COALESCE(`device_id`, ?) WHERE `id` = ? AND `end_at` IS NULL")
-        ->execute([$endUtc, $dur, $project, $price['employee_id'], $rate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $deviceId, $row['id']]);
+    $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `project_id` = ?, `employee_id` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `device_id` = COALESCE(`device_id`, ?), `end_reason` = ? WHERE `id` = ? AND `end_at` IS NULL")
+        ->execute([$endUtc, $dur, $project, $price['employee_id'], $rate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $deviceId, $reason, $row['id']]);
 }
 
 /**
@@ -508,7 +512,7 @@ function ccrm_ttx_start(\PDO $pdo, array $user, array $device, array $body, arra
             return ['ok' => false, 'code' => 'already_running', 'status' => 409, 'entry' => ccrm_ttx_entry($pdo, (string)$same['id'], $viewer)];
         }
         foreach ($runningRows as $old) {
-            ccrm_ttx_close_row($pdo, $old, $startUtc, $settings);
+            ccrm_ttx_close_row($pdo, $old, $startUtc, $settings, null, null, 'switch');
             $stopped[] = $old;
         }
         $pdo->prepare(
@@ -633,7 +637,7 @@ function ccrm_ttx_stop(\PDO $pdo, array $user, array $device, array $body, array
             }
         }
         if ($current !== null) {
-            ccrm_ttx_close_row($pdo, $current, $endUtc, $settings, $projectId, (string)$device['id']);
+            ccrm_ttx_close_row($pdo, $current, $endUtc, $settings, $projectId, (string)$device['id'], 'user');
             ccrm_tt_settle_rows($pdo, [$current]); // running until now: covers the stopped interval
             ccrm_tt_presence_touch($pdo, $userId, ccrm_tt_now_utc()); // one of several: anchor = now; the last: NULL (TT2 C6)
         }

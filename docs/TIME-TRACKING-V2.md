@@ -194,8 +194,10 @@ Symptom → root cause → proposed fix. Fixed only in the phase named.
     retries exactly that failure once.
 16. **A paused free-text timer can be stopped without a project** (pause skips "require a
     project"; stopping a paused item adds no time). The UI may still ask; noted, not changed.
-17. **The extension's own stop and the MCP stop do not set `end_reason` yet** (phase 6a covered
-    REST); to be routed through `ccrm_tt_end_entries()` in phase 6.
+17. ~~The extension's own stop and the MCP stop do not set `end_reason` yet~~ Done in phase 6d:
+    their close helpers (`ccrm_ttx_close_row`, `mcp_timer_close_row`) write `end_reason` 'user'
+    for a stop and 'switch' for a start that stopped something (they keep their own UPDATE for
+    the extension's `device_id` and MCP's link / note overrides).
 ---
 
 # Part B. Review of the owner's proposal

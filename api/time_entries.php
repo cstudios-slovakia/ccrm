@@ -53,6 +53,7 @@ require_once __DIR__ . '/time_lock.php';
 require_once __DIR__ . '/time_parallel.php';
 require_once __DIR__ . '/time_pause_lib.php';
 require_once __DIR__ . '/time_presence_lib.php';
+require_once __DIR__ . '/time_presence_cron.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
@@ -274,7 +275,7 @@ if ($method === 'GET') {
                 'startWhileRunning' => ccrm_tt_load_prefs($pdo, $callerId)['startWhileRunning'],
             ],
             'viewer' => ['canEdit' => $canEdit, 'canTeam' => $canTeam, 'canCosts' => $canCosts],
-        ]);
+        ] + ((ccrm_is_admin($sessionUser) || ccrm_can($scope, 'general_config', 'edit')) ? ['cron' => ccrm_tt_cron_status($pdo)] : []));
     }
 
     if ($action === 'prefs') {
@@ -1097,6 +1098,7 @@ if ($action === 'confirm') {
     if (!$answer['ok']) {
         ccrm_te_fail($answer['code'], 409, ['presence' => $answer['presence']]);
     }
+    ccrm_tt_push_cleared_later($pdo, $callerId); // other devices close the question (D7.5)
     ccrm_te_respond(['presence' => $answer['presence']]);
 }
 
@@ -1139,6 +1141,7 @@ if ($action === 'start') {
 
     $stopped = [];
     $alreadyId = null; // switch to a target that already runs among others: that one keeps running
+    ccrm_tt_presence_watch_answer($pdo, $owner, $settings); // an answer: "cleared" push after the response (D7.5)
     ccrm_tt_lock_prepare($pdo, $owner);
     try {
         $pdo->beginTransaction();
@@ -1307,6 +1310,7 @@ if ($action === 'stop') {
     };
 
     $clearedPaused = [];
+    ccrm_tt_presence_watch_answer($pdo, $owner, $settings); // an answer: "cleared" push after the response (D7.5)
     ccrm_tt_lock_prepare($pdo, $owner);
     try {
         $pdo->beginTransaction();
@@ -1419,6 +1423,7 @@ if ($action === 'pause') {
         ccrm_tt_price($pdo, $owner, $r['entry_date'], null, $settings, true); // warm the holiday cache
     }
     $pausedIds = [];
+    ccrm_tt_presence_watch_answer($pdo, $owner, $settings); // an answer: "cleared" push after the response (D7.5)
     ccrm_tt_lock_prepare($pdo, $owner);
     try {
         $pdo->beginTransaction();
@@ -1482,6 +1487,7 @@ if ($action === 'resume') {
     $alreadyRunning = [];
     $stopped = [];
     $fail = null; // [code, status, extra] answered after the transaction (expired markers stay cleared)
+    ccrm_tt_presence_watch_answer($pdo, $owner, $settings); // an answer: "cleared" push after the response (D7.5)
     ccrm_tt_lock_prepare($pdo, $owner);
     try {
         $pdo->beginTransaction();

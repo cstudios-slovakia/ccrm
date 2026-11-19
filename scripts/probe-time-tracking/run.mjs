@@ -1131,7 +1131,7 @@ async function main() {
         r.status === 201 && dbEntry(bId)?.start_at === utc(T0 + 120 * MIN) && dbEntry(bId)?.continues_id === aId && dbEntry(aId)?.paused_at === null
           && dbEntry(aId)?.end_reason === 'presence' && presenceRow('tt-erik').anchor_at === utc(T0 + 120 * MIN), r.raw);
       setNow(T0 + 125 * MIN);
-      const sb = await te(S.erik, { action: 'stop', id: bId });
+      const sb = await te(S.erik, { action: 'stop', id: bId, projectId: 'proj-tt-1' }); // "require a project" is on here
       check('T20: stopping the last running entry clears the anchor', sb.status === 200 && dbEntry(bId)?.end_at === utc(T0 + 125 * MIN) && presenceRow('tt-erik').anchor_at === null, sb.raw);
 
       // A second cycle with no answer until deadline + 11: the pause expired too, the entry is simply stopped.
@@ -1188,6 +1188,85 @@ async function main() {
       const g6 = await runningNow(S.erik);
       check('T20: cleanup: the real clock is back, nothing runs for Erik or the freelancer',
         g6.data?.serverNow !== isoZ(T2 + 20 * MIN) && runningOf('tt-erik').length === 0 && runningOf('tt-free').length === 0, g6.raw);
+    }
+    section('T22: presence cron and pushes (phase 6d)');
+    {
+      // The per-minute pass of cron.php (ccrm_tt_presence_cron_pass, called directly: the whole cron does unrelated
+      // work). Erik is handled only by the cron, the freelancer only lazily (his own GETs), on the same timeline.
+      // The scratch DB has no push subscriptions: the pushes are asserted through time_presence.last_push_at.
+      const MIN = 60000;
+      const utc = (ms) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+      const isoZ = (ms) => new Date(ms).toISOString().slice(0, 19) + 'Z';
+      const setNow = (ms) => sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('TT_TEST_NOW', ${q(utc(ms))})`);
+      const isNull = (v) => v === null || v === undefined || v === 'NULL';
+      const d = new Date();
+      const T3 = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 13, 0, 0); // after T20's instants, far from 23:59
+      const pres = (uid) => rows(`SELECT anchor_at, last_push_at, auto_paused_at FROM time_presence WHERE user_id=${q(uid)}`)[0] || {};
+      const cronPass = () => JSON.parse(php(`require_once '${SCRATCH_DIR}/api/time_presence_cron.php'; echo json_encode(ccrm_tt_presence_cron_pass($pdo));`).trim() || 'null');
+      const lastRun = () => rows(`SELECT value FROM system_settings WHERE \`key\` = 'TT_CRON_LAST_RUN'`)[0]?.value ?? null;
+      const settingsOf = (sess) => api(sess, 'time_entries.php', { query: '?action=settings' });
+      const shape = (x) => x && [x.start_at, x.end_at, x.duration_sec, x.end_reason, x.paused_at, x.pause_reason, x.resume_until].join('|');
+
+      await te(S.erik, { action: 'stop', all: true });
+      await te(S.free, { action: 'stop', all: true });
+      setNow(T3);
+      const a = await te(S.erik, { action: 'start', description: 'T22 cron' });
+      const b = await te(S.free, { action: 'start', description: 'T22 lazy' });
+      const [aId, bId] = [a.data?.entry?.id, b.data?.entry?.id];
+      const p0 = cronPass();
+      check('T22: setup: both started at T3', a.status === 201 && b.status === 201, `${a.raw} / ${b.raw}`);
+      check('T22: a cron pass writes TT_CRON_LAST_RUN (test clock), no errors; no question yet, no push',
+        lastRun() === utc(T3) && p0?.errors === 0 && p0?.users >= 2 && p0?.questions === 0 && isNull(pres('tt-erik').last_push_at), `${JSON.stringify(p0)} / ${JSON.stringify(pres('tt-erik'))}`);
+
+      // The question window (T3+50 .. T3+60): one push per user per calendar minute.
+      setNow(T3 + 55 * MIN);
+      const p1 = cronPass();
+      check('T22: in the question window the pass pushes the question: last_push_at = now',
+        pres('tt-erik').last_push_at === utc(T3 + 55 * MIN) && p1?.questions >= 1 && p1?.errors === 0, `${JSON.stringify(p1)} / ${JSON.stringify(pres('tt-erik'))}`);
+      setNow(T3 + 55 * MIN + 30000);
+      const p2 = cronPass();
+      check('T22: a second pass within the same minute sends nothing and leaves last_push_at',
+        pres('tt-erik').last_push_at === utc(T3 + 55 * MIN) && p2?.questions === 0, `${JSON.stringify(p2)} / ${JSON.stringify(pres('tt-erik'))}`);
+      setNow(T3 + 56 * MIN);
+      const p3 = cronPass();
+      check('T22: the next minute pushes again', pres('tt-erik').last_push_at === utc(T3 + 56 * MIN) && p3?.questions >= 1, JSON.stringify(p3));
+      check('T22: ...the entry still runs (the question changes nothing)', isNull(dbEntry(aId)?.end_at), JSON.stringify(dbEntry(aId)));
+
+      const sa = await settingsOf(S.admin);
+      check('T22: action=settings (admin) shows cron.stale false and lastRunAt right after a run',
+        sa.status === 200 && sa.data?.cron?.stale === false && sa.data.cron.lastRunAt === isoZ(T3 + 56 * MIN), sa.raw);
+      const se = await settingsOf(S.erik);
+      check('T22: ...an Employee gets no cron value', se.status === 200 && se.data?.cron === undefined, se.raw);
+      const pr = sa.data?.settings?.presence;
+      check('T22: action=settings carries the presence defaults',
+        pr?.enabled === true && pr.promptAfterMinutes === 50 && pr.confirmWindowMinutes === 10 && pr.resumeWindowMinutes === 10 && pr.trimTo === 'prompt', JSON.stringify(pr));
+
+      // Past the deadline: the cron ends Erik's entry exactly as the lazy path ends the freelancer's.
+      setNow(T3 + 61 * MIN);
+      await api(S.free, 'time_entries.php', { query: '?running=1' }); // lazy first
+      const p4 = cronPass();
+      const [aRow, bRow] = [dbEntry(aId), dbEntry(bId)];
+      check('T22: after the deadline the cron pauses (end T3+50, paused T3+60, resume_until T3+70) exactly like the lazy path',
+        shape(aRow) === shape(bRow) && aRow?.end_at === utc(T3 + 50 * MIN) && aRow?.end_reason === 'presence' && aRow?.paused_at === utc(T3 + 60 * MIN) && aRow?.resume_until === utc(T3 + 70 * MIN),
+        `${shape(aRow)} vs ${shape(bRow)}`);
+      check('T22: ...the pass reports one automatic pause (the lazy user was settled already)', p4?.paused === 1 && p4?.errors === 0, JSON.stringify(p4));
+      check('T22: ...anchor cleared, auto_paused_at set', isNull(pres('tt-erik').anchor_at) && pres('tt-erik').auto_paused_at === utc(T3 + 60 * MIN), JSON.stringify(pres('tt-erik')));
+
+      // Past the resume window: the markers are cleared (stopped), again identical.
+      setNow(T3 + 71 * MIN);
+      await api(S.free, 'time_entries.php', { query: '?running=1' });
+      const p5 = cronPass();
+      const [aRow2, bRow2] = [dbEntry(aId), dbEntry(bId)];
+      check('T22: after the resume window the cron clears the marker (stopped) like the lazy path',
+        shape(aRow2) === shape(bRow2) && isNull(aRow2?.paused_at) && aRow2?.end_at === utc(T3 + 50 * MIN), `${shape(aRow2)} vs ${shape(bRow2)}`);
+      check('T22: ...the pass reports one "stopped" push and auto_paused_at is gone', p5?.stopped === 1 && isNull(pres('tt-erik').auto_paused_at), `${JSON.stringify(p5)} / ${JSON.stringify(pres('tt-erik'))}`);
+
+      // Cleanup: real clock; nothing running or paused.
+      await te(S.erik, { action: 'stop', all: true });
+      await te(S.free, { action: 'stop', all: true });
+      sql(`DELETE FROM system_settings WHERE \`key\` = 'TT_TEST_NOW'`);
+      check('T22: cleanup: nothing runs for Erik or the freelancer',
+        rows(`SELECT id FROM time_entries WHERE user_id IN ('tt-erik','tt-free') AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL`).length === 0);
     }
   } finally {
     teardown();
