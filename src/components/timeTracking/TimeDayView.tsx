@@ -185,6 +185,11 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
           <ChevronRight className="size-4" />
         </button>
       </Surface>
+      <p className="flex flex-wrap items-center gap-x-4 gap-y-1 type-meta text-slate-500" data-testid="day-strip-legend">
+        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-emerald-500" />{t("full day", "plný deň", "teljes nap")}</span>
+        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-500" />{t("under target", "pod cieľom", "cél alatt")}</span>
+        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-slate-300" />{t("nothing logged", "nič nezaznamenané", "nincs rögzítve")}</span>
+      </p>
 
       {/* Day header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -260,6 +265,9 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
             <button type="button" onClick={() => void saveRow()} disabled={busy} data-testid="day-row-save" className="h-9 rounded-xl bg-primary px-4 text-ui font-semibold text-primary-foreground disabled:opacity-60 cursor-pointer">{t("Save", "Uložiť", "Mentés")}</button>
             <button type="button" onClick={() => setAdding(false)} className="h-9 rounded-xl px-3 text-ui font-semibold text-slate-500 hover:bg-slate-100 cursor-pointer">{t("Close", "Zavrieť", "Bezárás")}</button>
           </div>
+          <p className="type-meta text-slate-500" data-testid="day-add-hint">
+            {t("Hours only — no start or end time needed. Type 1:30 or 90m. Add a time range from the drawer if you want it on the calendar grid.", "Len hodiny — začiatok ani koniec netreba. Napíšte 1:30 alebo 90m. Časový rozsah doplníte v paneli, ak ho chcete v kalendári.", "Csak órák — kezdés és befejezés nem kell. Írja be: 1:30 vagy 90m. Időtartományt a panelben adhat hozzá, ha a naptárban is látni szeretné.")}
+          </p>
         </Surface>
       )}
 
