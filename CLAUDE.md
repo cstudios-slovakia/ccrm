@@ -115,7 +115,8 @@ decisions, per-phase checklists, spec. When asked to "make phase N", follow its 
 
 **Second generation** (parallel tracking, auto-pause, status-driven timers):
 [`docs/TIME-TRACKING-V2.md`](docs/TIME-TRACKING-V2.md). It overrides the first file where they
-disagree. When asked to "make tt2 phase N", follow its Part A. Bill project time
+disagree. When asked to "make tt2 phase N", follow its Part A: the session orchestrates the
+phase with parallel subagents on its own model or a lower one (A1b). Bill project time
 (`duration_sec`), pay and measure worked time (`worked_ms`); only `ccrm_tt_settle()` writes cost.
 
 ## Demo mode rebuild

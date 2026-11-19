@@ -33,10 +33,11 @@ checked on that commit; search by symbol if they moved.
    still marked 🟡 is the proposed default: build with it, and say in your report that you did.
    Never re-ask a ✅ decision. If the code contradicts a decision or a number here, **stop and
    tell the user**; do not change a fixture to make a test pass.
-4. **Work in your own worktree** (`.agents/rules/agent-worktrees.md`). Build only the checklist
-   of phase N (Part E). Part D is the spec.
-5. **Test:** `npm run check`, then scoped QA `node scripts/qa/run-qa.mjs --files <changed files>`,
-   plus the phase's own tests. PHP is linted through Docker when it is not installed:
+4. **You are the orchestrator of this phase; you do not build it alone.** Build only the
+   checklist of phase N (Part E); Part D is the spec. How to split and delegate the work is A1b.
+5. **Test the merged result:** `npm run check`, then **one** scoped QA run
+   `node scripts/qa/run-qa.mjs --files <changed files>`, plus the phase's own tests. PHP is
+   linted through Docker when it is not installed:
    `docker run --rm -v <dir>:/app -w /app php:8.2-cli php -l <file>`. The server probe
    `npm run test:time-tracking` sees only the main checkout: run it after the merge.
 6. **Commit** with a changelog fragment in `changelog.d/` (never name it `*-prompt.md`, that
@@ -44,9 +45,43 @@ checked on that commit; search by symbol if they moved.
 7. **Update this file in the same commit:** tick the boxes, fill the status row, write what you
    deferred under the phase's **Left over** line, add what you learned to **Findings (A4)**.
    ✅ only when every box is ticked and the tests are green; otherwise 🟡 with what is missing.
-8. **Report:** what was built, test results (with the output of anything that failed), what you
-   assumed or deferred, pre-existing failures you saw (listed, not fixed). **Stop.** Do not start
-   the next phase.
+8. **Report:** what was built, which subagents did which package (and on which model), test
+   results (with the output of anything that failed), what you assumed or deferred,
+   pre-existing failures you saw (listed, not fixed). **Stop.** Do not start the next phase.
+
+## A1b. Orchestration: parallel subagents on your own model or a lower one
+
+The session that receives "make tt2 phase N" plans, delegates, merges and verifies. It writes
+code itself only for the integration between packages and for small fixes after the merge.
+
+1. **Split the phase into work packages whose files do not overlap.** Each phase in Part E has a
+   **Work packages** line with a suggested split and its order. Adjust it if the code says
+   otherwise; never give two agents the same file.
+2. **Search before you split.** Send broad "where is X, who calls Y" questions to `ccrm-explorer`
+   agents in parallel instead of reading large files yourself.
+3. **One self-contained prompt per package,** built from `docs/prompts/_TEMPLATE.md`: the goal,
+   the exact files, the sections of this file to read (name them: "read D2 and D3.3"), the
+   decisions that apply, the definition of done, what is out of scope. A subagent knows only what
+   the prompt says. Every editing prompt ends with this sentence, verbatim:
+
+   > Verify with `npm run check` only. Do not run browser QA, do not push, do not wait for CI. Commit on your worktree branch; the orchestrator merges.
+
+4. **Run the packages as parallel subagents, each in its own worktree** (`ccrm-implementer`, or
+   a general agent with `isolation: worktree`). **Model: your own or a lower one, never a higher
+   one.** Use your own model for money, date, schema and concurrency logic and for anything that
+   two languages must compute identically. Use a lower model for mechanical work: translations,
+   wiring a new field through types, test scaffolding, mock updates.
+5. **At most three editing agents at once on this machine, counted across every open session.**
+   If other phase sessions are running, use fewer. A package marked **first** is merged before
+   the others start, because they build on its shape (a schema, an API contract, a provider).
+6. **Review before merging.** Every non-trivial diff gets an independent `ccrm-reviewer` on your
+   own model or a lower one, given the diff and the spec sections, not your opinion of it. Fix
+   what it confirms.
+7. **Merge one package at a time** from the main checkout
+   (`node scripts/agent/finish-worktree.mjs <name>`), in the order of the Work packages line.
+   After the last merge run step 5 of A1 yourself. Subagents never run browser QA.
+8. **Stay single** for a package that is small or tightly coupled; a fresh agent re-reads
+   everything and is not faster. Say so in the report.
 
 ## A2. Rules for every phase
 
@@ -88,7 +123,9 @@ Legend: ⬜ not started · 🟡 built, not finished (see Left over) · ✅ done
 | 9 | Reports, project finances, exports, demo data, MCP summary | 2, 3 | ⬜ | | |
 | 10 | Chrome extension and mobile | 7 | ⬜ | | |
 
-**Waves** (at most three editing sessions at once on this machine):
+**Waves.** Phases of one wave do not depend on each other. Each phase session fans out into
+subagents (A1b), and the limit of three editing agents is for the whole machine: run the phases
+of a wave one after another, or two at a time with a smaller fan-out each.
 
 ```
 wave 1:  1
@@ -217,9 +254,10 @@ Symptom → root cause → proposed fix. Fixed only in the phase named.
     open tabs would play a chorus; a service worker cannot play audio at all. One tab is elected
     to play; when no tab is open, the operating system's notification sound, repeated every
     minute, is the sound (D8.3, D8.4).
-17. **Working away from the screen.** A two-hour client meeting is tracked work with nobody at
-    the keyboard. Answering from the phone's notification and a logged "don't ask for N minutes"
-    cover it (C9, D8.4).
+17. **Working away from the screen.** A two-hour client meeting is work with nobody at the
+    keyboard, and a running timer would be paused during it. The owner's rule: the timer is for
+    work at the computer; a meeting or a call is recorded as a regular manual entry. There is no
+    way to answer in advance or from a notification (C9).
 18. **It is an accuracy tool, not a control.** Manual entries exist, so auto-pause cannot prevent
     dishonest tracking; it prevents forgotten timers, which matter more now that one forgotten
     hour can bill three clients. Entries it ended are marked, so a pattern is visible (D6).
@@ -238,30 +276,30 @@ Symptom → root cause → proposed fix. Fixed only in the phase named.
 
 # Part C. Decisions
 
-✅ = confirmed by the owner. 🟡 = proposed default, waiting for the owner. Most defaults are
-settings, so a later change of mind is a setting change, not a rebuild. C1 and C2 come from the
-owner's brief.
+✅ = confirmed by the owner. 🟡 = proposed default, waiting for the owner. **All of them were
+confirmed on 2026-11-19**; C9 and C14 were changed by the owner on that day. Most are settings,
+so a later change of mind is a setting change, not a rebuild.
 
 | # | St. | Decision | Used by |
 |---|---|---|---|
 | C1 | ✅ | Each parallel project receives the **full** tracked time (billing, budgets, retainers). The person's working time and cost count each real minute **once**, split equally between the entries running in that minute. | 1 |
 | C2 | ✅ | A monthly salary's hourly cost is derived from the days the person can actually work that month: working days minus public holidays minus leave. Replaces TIME-TRACKING C6.6. | 3 |
-| C3 | 🟡 | **Parallel is always deliberate.** A second Start while something runs asks "Switch" or "Run in parallel" (remembered per user: ask / switch / parallel). It never adds silently. | 4, 5 |
-| C4 | 🟡 | Parallel tracking is off until a company turns it on, is a role permission (`time_tracking_parallel`), and has a cap `maxParallel` (default 4). | 4 |
-| C5 | 🟡 | The same project may run in parallel only for **different tasks or tickets** (setting `sameProject`: `differentTasks` \| `never` \| `always`). The identical target never runs twice. | 4 |
-| C6 | 🟡 | **One presence cycle per user,** not per entry. Any deliberate timer action (start, resume, stop one of several, edit a running entry) counts as an answer and restarts the 50 minutes. | 6, 7 |
-| C7 | 🟡 | When nobody answers, the entries end at **the moment of the question** (minute 50). The unanswered ten minutes are not kept. Setting `trimTo`: `prompt` \| `deadline`. | 6 |
-| C8 | 🟡 | After a pause, resuming starts a **new entry from that moment** (the owner's rule). There is no "I was working the whole time" button; a manual edit remains possible and is audit-logged like any edit. | 6, 7 |
-| C9 | 🟡 | A person may answer in advance: "don't ask for 30 / 60 / 120 minutes" (cap `snoozeMaxMinutes`, default 120, 0 = off). Each use is audit-logged. | 6, 7 |
-| C10 | 🟡 | Part-time people: add `employees.hours_per_day` (NULL = the company's `hoursPerDay`). It scales the monthly divisor and the daily target. | 3 |
-| C11 | 🟡 | Leave that counts: `employee_vacations` rows with status `approved` or `taken`. A leave type with `isPaid: true` raises the rate; `isPaid: false` (default for sick and unpaid leave) leaves it unchanged. No partial sick-pay model. | 3 |
-| C12 | 🟡 | A month's rate is **provisional while the month is open** and is re-priced automatically when salary, leave or holidays change. The month closes when its payroll record is closed, else at the end of the following month. After that only the admin "Re-price a period" changes it. Replaces TIME-TRACKING C7.5. | 3 |
-| C13 | 🟡 | The project Finances tab gains an information line "Billable work (time tracking)" = Σ project time × billable rate. It does **not** change `invoicable` or any income figure. Invoicing from time is not in this plan. | 9 |
-| C14 | ✅ | **Every status action applies only to the person who changed the status** (owner, 2026-11-19). Start, pause and stop touch that person's own timer on the task and nobody else's. A colleague's timer on the same task keeps running when someone else sets the task to Done; the presence question is what catches it if it was forgotten. Still 🟡 inside this decision: **start** fires only on a single-task change and only when that person is an assignee or the task has none. One-way only: starting a timer never changes a status. | 8 |
-| C15 | 🟡 | Hours-only entries (Day, Timesheet) are never parallel: their worked time equals their duration. | 1 |
-| C16 | 🟡 | **History is not rewritten.** The migration sets worked time = duration for existing entries, so no closed month changes. Settings shows how many existing entries overlap, and the admin "Re-price a period" re-allocates a chosen period. | 1 |
-| C17 | 🟡 | A manual or status pause stays paused until the day's `autoStopAt`; an automatic pause expires after the 10-minute resume window. | 6 |
-| C18 | 🟡 | Sound: a two-tone chime (the existing synthesised one), every 20 s in the first five minutes of the question, every 8 s in the last five. It stops when the pause happens. Each person has a volume control and may mute; the notification and the dialog cannot be turned off. The final sound is the owner's pick in phase 7. | 7 |
+| C3 | ✅ | **Parallel is always deliberate.** A second Start while something runs asks "Switch" or "Run in parallel" (remembered per user: ask / switch / parallel). It never adds silently. | 4, 5 |
+| C4 | ✅ | Parallel tracking is off until a company turns it on, is a role permission (`time_tracking_parallel`), and has a cap `maxParallel` (default 4). | 4 |
+| C5 | ✅ | The same project may run in parallel only for **different tasks or tickets** (setting `sameProject`: `differentTasks` \| `never` \| `always`). The identical target never runs twice. | 4 |
+| C6 | ✅ | **One presence cycle per user,** not per entry. Any deliberate timer action (start, resume, stop one of several, edit a running entry) counts as an answer and restarts the 50 minutes. | 6, 7 |
+| C7 | ✅ | When nobody answers, the entries end at **the moment of the question** (minute 50). The unanswered ten minutes are not kept. Setting `trimTo`: `prompt` \| `deadline`. | 6 |
+| C8 | ✅ | After a pause, resuming starts a **new entry from that moment** (the owner's rule). There is no "I was working the whole time" button; a manual edit remains possible and is audit-logged like any edit. | 6, 7 |
+| C9 | ✅ | **No answering in advance and no answering from a notification** (owner, 2026-11-19). There is no "don't ask for N minutes", and the push notification has no buttons: it only alerts, and a click opens the app. The question is answered in the app's own dialog, nowhere else. A meeting or a phone call away from the computer is recorded as a regular manual entry, not with a running timer. Still 🟡 inside this decision: the dialog is also shown when the app is open on a phone (a person may track from the phone app). | 6, 7 |
+| C10 | ✅ | Part-time people: add `employees.hours_per_day` (NULL = the company's `hoursPerDay`). It scales the monthly divisor and the daily target. | 3 |
+| C11 | ✅ | Leave that counts: `employee_vacations` rows with status `approved` or `taken`. A leave type with `isPaid: true` raises the rate; `isPaid: false` (default for sick and unpaid leave) leaves it unchanged. No partial sick-pay model. | 3 |
+| C12 | ✅ | A month's rate is **provisional while the month is open** and is re-priced automatically when salary, leave or holidays change. The month closes when its payroll record is closed, else at the end of the following month. After that only the admin "Re-price a period" changes it. Replaces TIME-TRACKING C7.5. | 3 |
+| C13 | ✅ | The project Finances tab gains an information line "Billable work (time tracking)" = Σ project time × billable rate. It does **not** change `invoicable` or any income figure. Invoicing from time is not in this plan. | 9 |
+| C14 | ✅ | **Every status action applies only to the person who changed the status** (owner, 2026-11-19). Start, pause and stop touch that person's own timer on the task and nobody else's. A colleague's timer on the same task keeps running when someone else sets the task to Done; the presence question is what catches it if it was forgotten. **Start** fires only on a single-task change and only when that person is an assignee or the task has none. One-way only: starting a timer never changes a status. | 8 |
+| C15 | ✅ | Hours-only entries (Day, Timesheet) are never parallel: their worked time equals their duration. | 1 |
+| C16 | ✅ | **History is not rewritten.** The migration sets worked time = duration for existing entries, so no closed month changes. Settings shows how many existing entries overlap, and the admin "Re-price a period" re-allocates a chosen period. | 1 |
+| C17 | ✅ | A manual or status pause stays paused until the day's `autoStopAt`; an automatic pause expires after the 10-minute resume window. | 6 |
+| C18 | ✅ | Sound: a two-tone chime (the existing synthesised one), every 20 s in the first five minutes of the question, every 8 s in the last five. It stops when the pause happens. Each person has a volume control and may mute; the notification and the dialog cannot be turned off. The final sound is the owner's pick in phase 7. | 7 |
 
 ---
 
@@ -542,7 +580,6 @@ ever has a hole in it.
 time_presence(
   user_id VARCHAR(50) PRIMARY KEY,
   anchor_at DATETIME NULL,        -- the last answer; NULL when nothing runs
-  snooze_until DATETIME NULL,     -- C9
   last_push_at DATETIME NULL, auto_paused_at DATETIME NULL, updated_at)
 ```
 
@@ -553,11 +590,10 @@ presence: { enabled: boolean;              // true
             promptAfterMinutes: number;    // 50
             confirmWindowMinutes: number;  // 10
             resumeWindowMinutes: number;   // 10
-            trimTo: 'prompt' | 'deadline'; // 'prompt' (C7)
-            snoozeMaxMinutes: number }     // 120, 0 = off (C9)
+            trimTo: 'prompt' | 'deadline' } // 'prompt' (C7)
 ```
 
-Derived, never stored: `promptAt = max(anchor_at + promptAfter, snooze_until)`,
+Derived, never stored: `promptAt = anchor_at + promptAfter`,
 `deadlineAt = promptAt + confirmWindow`.
 
 ### D7.2 Timeline (defaults)
@@ -594,24 +630,22 @@ the cron has not run for five minutes).
 
 - `POST confirm` (session, in `time_entries.php`): allowed while `now < deadlineAt`;
   `anchor_at = now`. After the deadline: 409 `paused` with the state; the UI offers Resume.
-- `POST snooze { minutes }`: `snooze_until = now + minutes`, capped; audit-logged.
+- There is no other way to answer: no snooze, no notification button, no token link (C9).
 - Start, resume, stopping one of several, editing a running entry: `anchor_at = now` (C6).
 - The first Start after an empty running set sets `anchor_at`.
 
 ### D7.5 Push
 
 `cron.php`, each minute, for users in the question window: one push per minute (the repeat makes
-the operating system play its sound again), `tag: 'tt-presence'`, `renotify`, `requireInteraction`,
-actions **Still working** and **Pause**. After the automatic pause: one push "Paused at 09:50"
-with **Resume**. After expiry: one push "Timers stopped at 09:50".
+the operating system play its sound again), `tag: 'tt-presence'`, `renotify`, `requireInteraction`.
+After the automatic pause: one push "Paused at 09:50". After expiry: one push "Timers stopped
+at 09:50".
 
 - New sender `ccrm_send_push_to_user_id()` in `webpush.php` (the existing one targets a name or
   an e-mail).
-- **The notification buttons work without a session.** The payload carries a token:
-  user id, the cycle's `anchor_at`, an expiry, and an HMAC-SHA256 over them with a server
-  secret. New endpoint `public/api/time_presence.php` accepts `{ token, action }`, checks the
-  signature, the expiry and that `anchor_at` still matches (so a token works for one cycle
-  only), and is rate-limited per IP. A session-less file on purpose: sign-in is per window.
+- **The notification only alerts (C9).** It has no action buttons and carries no token. A click
+  opens or focuses the app on the time-tracking page, where the person answers in the dialog
+  while signed in. No session-less endpoint exists for answering.
 - On every answer the server sends a silent push "cleared" so other devices close the
   notification and stop the sound.
 
@@ -627,14 +661,13 @@ mobile bar, all reading the provider's single clock (`nowMs`, corrected by `serv
 | Tracking (0–50) | fills clockwise, rose, `(now − anchor) ÷ 60 min` | Stop |
 | Question (50–60) | the last sixth pulses amber | "Still working?" (confirm) |
 | Paused | empty, dashed amber | Resume (pause icon) |
-| Snoozed | the snoozed stretch is drawn muted | Stop |
 
 With `prefers-reduced-motion` nothing pulses; the colour change alone carries the state.
 
 ### D8.2 The question
 
 A modal `role="alertdialog"` in every open tab: the running items, the countdown to the pause,
-**Still working** (default, Enter), Pause, Stop all, "Don't ask for…" (C9). Answering in one tab
+**Still working** (default, Enter), Pause, Stop all. Nothing else answers it (C9). Answering in one tab
 closes it in all (the existing `BroadcastChannel`). Tab title: `⏰ 9:12 · Still working?`, then
 `⏸ Paused · …`. After the pause the dialog becomes "Paused at 09:50 · Resume / Stop".
 
@@ -649,10 +682,10 @@ closes it in all (the existing `BroadcastChannel`). Tab title: `⏰ 9:12 · Stil
 
 ### D8.4 The service worker (`public/sw.js`)
 
-`notificationclick` reads `event.action`: `confirm`, `pause` or `resume` → `fetch` to
-`time_presence.php` with the token, then close the notification and `postMessage` the open
-pages. A click on the body opens or focuses the app at `#time-tracking?presence=<token>`, which
-confirms on load: this is the path on iOS, where notification buttons do not exist. The
+The presence notification has no actions (C9). A click opens or focuses the app at
+`#time-tracking`, as notification clicks do today; opening the app answers nothing, the person
+still has to press **Still working** in the dialog. The worker gains one thing: on the silent
+"cleared" push it closes the open `tt-presence` notification and tells the open pages. The
 pass-through `fetch` handler stays as it is (no caching, `docs/PWA.md`).
 
 ### D8.5 Removed
@@ -761,6 +794,12 @@ keep to the size-cap rule when a named file is capped.
 
 Spec: D2, D3. Decisions: C1, C15, C16.
 
+**Work packages:** (a) the engine in TypeScript and PHP with the fixtures and both test
+runners ∥ (b) schema, migration and the `entities_overview.md` section. Then **(c)**
+`time_settle.php` and every write site, **one agent, your own model** (the sites are coupled;
+do not split them) ∥ (d) the guard test and the probe cases, written against D3.3. Last: (e)
+the API fields and the Settings count.
+
 - [ ] `src/utils/timeAllocation.ts` + tests; `public/api/time_allocation.php`;
       `scripts/fixtures/time-allocation-cases.json` (the four examples of D2, the invariants,
       a running entry, a 5-entry random case checked against I1); `scripts/test-time-allocation.php`
@@ -785,6 +824,10 @@ Spec: D2, D3. Decisions: C1, C15, C16.
 
 Spec: D9, D5.5 (totals only). Needs 1.
 
+**Work packages:** **first** (a) the type and the helpers in `timeTracking.ts` with their
+tests. Then (b) List, Day, the drawer line and the approval totals ∥ (c) Team, Reports and the
+salary report utilities ∥ (d) Timesheet, the QA mock and the e2e case.
+
 - [ ] `TimeEntry.workedMs`; helpers `entryWorkedSeconds`, `totalWorkedSeconds`, `leverage` in
       `timeTracking.ts` (a running entry's live share comes from `timeAllocation.ts`)
 - [ ] Every row of the left column of D9 switched to worked time; unit tests per helper
@@ -799,6 +842,11 @@ Spec: D9, D5.5 (totals only). Needs 1.
 ### Phase 3. Leave-aware monthly rate and the rate card
 
 Spec: D4. Decisions: C2, C10, C11, C12. Needs 1.
+
+**Work packages:** (a) `leaveDaysInMonth` and the formula in both languages with fixtures,
+**your own model** ∥ (b) `employees.hours_per_day` through all four places and the employee
+form. Then (c) the rate card table, `ccrm_tt_rate_for()`, the cron pass, the freeze rule and
+re-pricing. Last: (d) the drawer and tooltip text, the Settings text, the probe case.
 
 - [ ] `leaveDaysInMonth` in TypeScript and PHP + fixtures (a leave crossing a month end, a half
       day, a leave over a public holiday, pending and rejected rows ignored)
@@ -820,6 +868,11 @@ Spec: D4. Decisions: C2, C10, C11, C12. Needs 1.
 
 Spec: D5.1–D5.3, D5.6. Decisions: C3, C4, C5. Needs 1.
 
+**Work packages:** **first** (a) the probe tests for today's behaviour. Then **(b)** the
+schema, the per-user lock and the REST actions in `time_entries.php`, **one agent, your own
+model**. Then (c) the extension endpoints ∥ (d) the MCP tools ∥ (e) settings, the RBAC key
+with its labels and the per-user preference.
+
 - [ ] **First** the missing tests for today's behaviour (A4.8): single start/stop/undo over REST,
       the extension endpoints and the MCP tools, in the server probe
 - [ ] Schema: `uq_te_running` → plain index; table `time_presence` (all columns of D7.1)
@@ -839,6 +892,11 @@ Spec: D5.1–D5.3, D5.6. Decisions: C3, C4, C5. Needs 1.
 
 Spec: D5.4, D5.5. Needs 2, 4.
 
+**Work packages:** **first** (a) the provider (`running[]`, `paused[]`, `primaryRunning`), the
+API client and the QA mock. Then (b) timer bar container, header pill, tab title, mobile bar ∥
+(c) Calendar frame and the List and Day groups ∥ (d) task, ticket and project start buttons,
+the two settings blocks. Last: the e2e cases.
+
 - [ ] Provider: `running[]`, `paused[]`, `primaryRunning`; start with the preference and the
       "Switch / Run in parallel" popover
 - [ ] Timer bar container; header pill for several items; tab title; mobile bar
@@ -854,28 +912,38 @@ Spec: D5.4, D5.5. Needs 2, 4.
 
 Spec: D6, D7. Decisions: C6, C7, C8, C9, C17. Needs 4.
 
+**Work packages:** **first** (a) the schema and `pause` / `resume` in the API. Then **(b)**
+`time_presence_lib.php` with settle, confirm and the anchor rules, **your own model** ∥ (c) the
+push sender and the three pushes in `webpush.php`. Then (d) the `cron.php` pass and
+`autoStopAt` ∥ (e) the settings and the probe with the controllable clock.
+
 - [ ] Schema: the five columns of D6
 - [ ] `pause`, `resume`, `stop` on a paused item; the three states in the API
-- [ ] `time_presence_lib.php`: settle (D7.3), confirm, snooze, the anchor rules (D7.4)
+- [ ] `time_presence_lib.php`: settle (D7.3), confirm, the anchor rules (D7.4)
 - [ ] `cron.php`: the per-minute pass, `autoStopAt` enforced (A4.2), the cron-age warning value
-- [ ] `webpush.php`: `ccrm_send_push_to_user_id()`, the three pushes, the silent "cleared"
-- [ ] `time_presence.php`: token endpoint, rate limit, single-cycle check
+- [ ] `webpush.php`: `ccrm_send_push_to_user_id()`, the three pushes (no action buttons, no
+      token, C9), the silent "cleared"
 - [ ] Settings `presence` (server sanitizer + defaults)
 - [ ] Probe with a controllable clock: answer at minute 55 → nothing lost; no answer → entries
       end at minute 50 and are paused; resume at 65 → a new entry from 65; nothing by 70 →
-      stopped; lazy settle and cron give the same rows; a used token fails in the next cycle
+      stopped; lazy settle and cron give the same rows; a confirm without a session is refused
 
 **Left over:**
 
 ### Phase 7. Presence UI
 
-Spec: D8. Decisions: C18. Needs 5, 6.
+Spec: D8. Decisions: C9, C18. Needs 5, 6.
+
+**Work packages:** **first** (a) `presence` in the provider and the phase selector. Then (b)
+`CycleRing` on the three buttons, the dialog and the tab title ∥ (c) the sound, the one-tab
+lock and the Personal settings controls ∥ (d) `sw.js`, the Settings block, removing the idle
+reminder. Last: the e2e cases.
 
 - [ ] `CycleRing` on the three Stop buttons; the pause and resume states
 - [ ] The question dialog, cross-tab close, tab title
 - [ ] Sound: pattern, audio unlock, the one-tab lock, volume and mute in Personal settings;
       **the owner picks the sound** from two or three candidates before the phase closes
-- [ ] `sw.js`: actions, the body-click deep link, close on "cleared"
+- [ ] `sw.js`: close the notification on "cleared"; the click only opens the app (D8.4)
 - [ ] Settings → Time tracking: the Presence block and the cron warning
 - [ ] `IdleReminder` and the two dead settings removed from the UI
 - [ ] e2e (mocked clock): ring fills, dialog appears at 50, confirm restarts, no answer shows the
@@ -886,6 +954,11 @@ Spec: D8. Decisions: C18. Needs 5, 6.
 ### Phase 8. Task status actions
 
 Spec: D10. Decision: C14. Needs 5, 6.
+
+**Work packages:** (a) the settings key, its sync mapping, the rename cascade and the dropdown
+component ∥ (b) the pure function in both languages with fixtures, the hook in
+`updateTasksAndSync` and the toast ∥ (c) `time_status_lib.php`, the two MCP calls and the
+probe case. Last: the e2e cases.
 
 - [ ] `TASK_STATE_TIMER_ACTIONS`: defaults, sync mapping, rename cascade, delete
 - [ ] The dropdown in Task states (new component) and the one-click suggestion
@@ -905,6 +978,10 @@ Spec: D10. Decision: C14. Needs 5, 6.
 
 Spec: D9, C13. Needs 2, 3.
 
+**Work packages:** (a) Reports, CSV, the salary report and the Team matrix rate ∥ (b) project
+Finances, `totals.billableValue` and the MCP summary ∥ (c) demo data and its assert script.
+Last: the notes in `TIME-TRACKING.md`.
+
 - [ ] Reports: worked and delivered columns, leverage, filter "parallel only"; CSV carries both;
       the client PDF stays project time only
 - [ ] Salary report: buckets by worked time; the Team matrix prices with the rate card (A4.5)
@@ -921,8 +998,11 @@ Spec: D9, C13. Needs 2, 3.
 
 Needs 7.
 
+**Work packages:** (a) the extension (popup, badge, `chrome.idle`, the zip) ∥ (b) the mobile
+container and the ring on the bottom bar.
+
 - [ ] Extension popup: the running set, per-item stop, the question with **Still working**
-      (`chrome.notifications` buttons), the badge in the question and paused states
+      inside the popup (no notification buttons, C9), the badge in the question and paused states
 - [ ] `chrome.idle`: when the system is locked or idle past the question, do not wait for the
       deadline to show "paused" locally (the server stays the judge)
 - [ ] Mobile: the container as a bottom sheet, 44 px targets, the ring on the bottom bar
