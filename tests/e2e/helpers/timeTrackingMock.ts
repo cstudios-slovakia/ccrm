@@ -346,7 +346,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
 
     if (action === 'pause') {
       // D6: the running item ends now and keeps a resumable marker; "require a project" does not apply.
-      const e = body.id ? entries.find((x) => x.id === body.id && !x.deletedAt) : running();
+      const e = body.id ? entries.find((x) => x.id === body.id && !x.deletedAt) : runningSet()[0];
       if (body.id && !e) return route.fulfill(fail('not_found', 404));
       if (!e) return route.fulfill(ok({ entry: null, paused: [] }));
       if (e.endAt && !e.pausedAt) return route.fulfill(fail('not_running', 409, { entry: view(e) }));
@@ -369,8 +369,8 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
         return route.fulfill(fail('pause_expired', 409, { entry: view(old), expired: [old.id] }));
       }
       const now = new Date().toISOString();
-      const prev = running();
-      if (prev) {
+      const prevs = runningSet();
+      for (const prev of prevs) {
         finish(prev, now);
         prev.endReason = 'switch';
       }
@@ -382,7 +382,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       };
       entries.push(entry);
       settleWorked();
-      return route.fulfill(ok({ entry: view(entry), entries: [view(entry)], resumed: [old.id], stoppedAll: prev ? [view(prev)] : [], skipped: [], alreadyRunning: [], expired: [] }, 201));
+      return route.fulfill(ok({ entry: view(entry), entries: [view(entry)], resumed: [old.id], stoppedAll: prevs.map(view), skipped: [], alreadyRunning: [], expired: [] }, 201));
     }
 
     if (action === 'undo_start') {
