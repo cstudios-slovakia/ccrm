@@ -16,8 +16,17 @@
  *   ledger / nobody linked / no salary: no rate (source "none")
  *
  * `hoursBasis: "fixed"` replaces `workingDays x hoursPerDay` with
- * `fixedHoursPerMonth` for the monthly types. Vacation and sick days do NOT
- * reduce the working days: the employee is paid for them.
+ * `fixedHoursPerMonth` for the monthly types.
+ *
+ * Leave (docs/TIME-TRACKING-V2.md D4.1, C2, C10, C11), the optional `leave` argument:
+ *   WD = workingDays, PL / UL = paid / unpaid leave days (`leaveDaysInMonth`, timeLeave.ts),
+ *   H  = the person's hours per day (`leave.hoursPerDay`, else settings.hoursPerDay)
+ *   monthCost      = salary x (WD - UL) / WD x multiplier
+ *   availableHours = (WD - UL - PL) x H   (fixed basis: fixedHoursPerMonth x (WD - UL - PL) / WD)
+ *   rate           = round4(monthCost / availableHours)
+ * availableHours <= 0 falls back to the no-leave basis (WD x H, or fixedHoursPerMonth) with
+ * `fallback: true`. Daily pay divides by the person's H too; hourly pay ignores leave.
+ * No leave and the company's hours per day give exactly the numbers of the table above.
  *
  * `public/api/time_cost.php` is a port; `scripts/fixtures/time-cost-cases.json`
  * is run by both (`npm run test:unit` and `npm run test:time-cost`).
@@ -67,6 +76,23 @@ export interface CostRate {
   multiplier: number;
   /** The salary amount the rate was derived from. */
   amount: number | null;
+  /** Monthly types: salary x (WD - UL) / WD x multiplier, 4 decimals. */
+  monthCost?: number | null;
+  /** Monthly types: the paid / unpaid leave days the rate used (after clamping to the month). */
+  paidLeaveDays?: number | null;
+  unpaidLeaveDays?: number | null;
+  /** The hours per day the rate used (the person's, else the company's). */
+  hoursPerDay?: number | null;
+  /** The month had no available hours left after leave; the no-leave basis was used. */
+  fallback?: boolean;
+}
+
+/** Per-person inputs of D4.1; all optional, and none of them = today's numbers. */
+export interface CostLeave {
+  paidLeaveDays?: number | null;
+  unpaidLeaveDays?: number | null;
+  /** employees.hours_per_day; null or not positive = settings.hoursPerDay. */
+  hoursPerDay?: number | null;
 }
 
 export const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -80,16 +106,27 @@ export const basisFor = (workingDays: number, settings: CostSettings): { hours: 
     ? { hours: settings.fixedHoursPerMonth, days: null }
     : { hours: workingDays * settings.hoursPerDay, days: workingDays };
 
-/** The hourly cost rate of one person for one month. `workingDays` is that month's, in the person's country. */
+const nonNegative = (n: number | null | undefined): number => {
+  const v = Number(n);
+  return Number.isFinite(v) && v > 0 ? v : 0;
+};
+
+/**
+ * The hourly cost rate of one person for one month. `workingDays` is that month's, in the person's
+ * country; `leave` carries that month's leave days and the person's hours per day (D4.1).
+ */
 export const computeCostRate = (
   person: CostPerson | null | undefined,
   workingDays: number,
   settings: CostSettings = DEFAULT_COST_SETTINGS,
+  leave: CostLeave | null = null,
 ): CostRate => {
   if (!person) return NONE;
   const amount = Number(person.salaryAmount);
   if (!Number.isFinite(amount) || amount <= 0) return NONE;
-  if (!(settings.hoursPerDay > 0)) return NONE;
+  const personHours = Number(leave?.hoursPerDay);
+  const hoursPerDay = Number.isFinite(personHours) && personHours > 0 ? personHours : settings.hoursPerDay;
+  if (!(hoursPerDay > 0)) return NONE;
 
   const kind = person.kind || "employee";
   if (kind === "ledger") return NONE;
@@ -98,23 +135,39 @@ export const computeCostRate = (
   const multiplier = isContractor ? 1 : settings.employerMultiplier > 0 ? settings.employerMultiplier : 1;
 
   if (salaryType === "hourly") {
-    return { rate: round4(amount * multiplier), source: isContractor ? "contractor_hourly" : "hourly", basisDays: null, basisHours: null, manDay: round4(amount * settings.hoursPerDay), multiplier, amount };
+    return { rate: round4(amount * multiplier), source: isContractor ? "contractor_hourly" : "hourly", basisDays: null, basisHours: null, manDay: round4(amount * hoursPerDay), multiplier, amount, hoursPerDay };
   }
   if (salaryType === "daily") {
-    return { rate: round4((amount / settings.hoursPerDay) * multiplier), source: isContractor ? "contractor_daily" : "daily", basisDays: null, basisHours: null, manDay: round4(amount), multiplier, amount };
+    return { rate: round4((amount / hoursPerDay) * multiplier), source: isContractor ? "contractor_daily" : "daily", basisDays: null, basisHours: null, manDay: round4(amount), multiplier, amount, hoursPerDay };
   }
   if (salaryType === "monthly") {
-    const basis = basisFor(workingDays, settings);
-    if (!(basis.hours > 0)) return NONE;
-    const rate = round4((amount / basis.hours) * multiplier);
+    const fixed = settings.hoursBasis === "fixed";
+    const fullHours = fixed ? settings.fixedHoursPerMonth : workingDays * hoursPerDay;
+    if (!(fullHours > 0)) return NONE;
+    // Leave only makes sense against a month that has working days.
+    const wd = workingDays > 0 ? workingDays : 0;
+    const unpaid = wd > 0 ? Math.min(nonNegative(leave?.unpaidLeaveDays), wd) : 0;
+    const paid = wd > 0 ? Math.min(nonNegative(leave?.paidLeaveDays), wd - unpaid) : 0;
+    const left = wd - unpaid - paid;
+    // No leave: exactly today's arithmetic (amount / hours x multiplier).
+    const monthBase = unpaid > 0 ? (amount * (wd - unpaid)) / wd : amount;
+    let hours = fullHours;
+    if (unpaid > 0 || paid > 0) hours = fixed ? (settings.fixedHoursPerMonth * left) / wd : left * hoursPerDay;
+    const fallback = !(hours > 0);
+    if (fallback) hours = fullHours;
     return {
-      rate,
+      rate: round4((monthBase / hours) * multiplier),
       source: isContractor ? "contractor_monthly" : "monthly",
-      basisDays: basis.days,
-      basisHours: basis.hours,
-      manDay: round4((amount / basis.hours) * settings.hoursPerDay),
+      basisDays: fixed ? null : workingDays,
+      basisHours: hours,
+      manDay: round4((monthBase / hours) * hoursPerDay),
       multiplier,
       amount,
+      monthCost: round4(monthBase * multiplier),
+      paidLeaveDays: paid,
+      unpaidLeaveDays: unpaid,
+      hoursPerDay,
+      fallback,
     };
   }
   return NONE;

@@ -18,10 +18,13 @@ const t = (en: string) => en;
 for (const c of fixtures.cases) {
   test(`timeCost fixture: ${c.name}`, () => {
     const settings: CostSettings = c.settings ?? fixtures.settings;
-    const r = computeCostRate(c.person, c.workingDays, settings);
+    const r = computeCostRate(c.person, c.workingDays, settings, c.leave ?? null);
     assert.equal(r.rate, c.expect.rate);
     assert.equal(r.source, c.expect.source);
     assert.equal(r.basisDays, c.expect.basisDays);
+    for (const key of ["monthCost", "basisHours", "fallback", "paidLeaveDays", "unpaidLeaveDays", "hoursPerDay"] as const) {
+      if (key in c.expect) assert.equal(r[key], c.expect[key], key);
+    }
     assert.equal(computeWorkedCost(c.workedMs ?? c.durationSec * 1000, r.rate), c.expect.cost);
   });
 }

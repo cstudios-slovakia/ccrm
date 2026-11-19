@@ -1,0 +1,52 @@
+{
+  "_comment": "Shared by src/utils/timeLeave.test.ts and scripts/test-time-cost.php (leaveDaysInMonth, D4.2). Calendar: Mon-Fri minus `holidays` (SK 2026 rest days; 1 May 2026 is a Friday). Paid or unpaid comes from `vacationTypes` through leaveTypeIsPaid (an id not listed falls back to annual/worked_days = paid). Totals are rounded once to one decimal.",
+  "holidays": ["2026-01-01", "2026-01-06", "2026-04-03", "2026-04-06", "2026-05-01", "2026-07-05", "2026-08-29", "2026-11-01", "2026-12-24", "2026-12-25", "2026-12-26"],
+  "vacationTypes": [
+    { "id": "annual", "isPaid": true },
+    { "id": "worked_days", "isPaid": true },
+    { "id": "sick", "isPaid": false },
+    { "id": "unpaid", "isPaid": false },
+    { "id": "doctor" }
+  ],
+  "cases": [
+    { "name": "Leave crossing a month end, May side (29 Apr - 6 May, 1 May is a holiday)", "month": "2026-05", "rows": [{ "startDate": "2026-04-29", "endDate": "2026-05-06", "daysCount": 5, "status": "approved", "vacationTypeId": "annual" }], "expect": { "paid": 3, "unpaid": 0 } },
+    { "name": "Leave crossing a month end, April side", "month": "2026-04", "rows": [{ "startDate": "2026-04-29", "endDate": "2026-05-06", "daysCount": 5, "status": "approved", "vacationTypeId": "annual" }], "expect": { "paid": 2, "unpaid": 0 } },
+    { "name": "Half day: days_count 0.5 over one day", "month": "2026-05", "rows": [{ "startDate": "2026-05-12", "endDate": "2026-05-12", "daysCount": 0.5, "status": "taken", "vacationTypeId": "annual" }], "expect": { "paid": 0.5, "unpaid": 0 } },
+    { "name": "Leave over a public holiday: 1-8 May counts 5 days, not 6", "month": "2026-05", "rows": [{ "startDate": "2026-05-01", "endDate": "2026-05-08", "daysCount": 6, "status": "approved", "vacationTypeId": "annual" }], "expect": { "paid": 5, "unpaid": 0 } },
+    { "name": "Pending, requested and rejected rows are ignored", "month": "2026-05", "rows": [
+      { "startDate": "2026-05-04", "endDate": "2026-05-05", "daysCount": 2, "status": "pending", "vacationTypeId": "annual" },
+      { "startDate": "2026-05-06", "endDate": "2026-05-06", "daysCount": 1, "status": "requested", "vacationTypeId": "annual" },
+      { "startDate": "2026-05-07", "endDate": "2026-05-08", "daysCount": 2, "status": "rejected", "vacationTypeId": "unpaid" }
+    ], "expect": { "paid": 0, "unpaid": 0 } },
+    { "name": "A paid and an unpaid type in one month (Erik's 3 + 2 of D4.1)", "month": "2026-05", "rows": [
+      { "startDate": "2026-05-11", "endDate": "2026-05-13", "daysCount": 3, "status": "approved", "vacationTypeId": "annual" },
+      { "startDate": "2026-05-18", "endDate": "2026-05-19", "daysCount": 2, "status": "taken", "vacationTypeId": "unpaid" }
+    ], "expect": { "paid": 3, "unpaid": 2 } },
+    { "name": "Sick leave (isPaid false) and a type with no flag count as unpaid", "month": "2026-05", "rows": [
+      { "startDate": "2026-05-20", "endDate": "2026-05-21", "daysCount": 2, "status": "approved", "vacationTypeId": "sick" },
+      { "startDate": "2026-05-22", "endDate": "2026-05-22", "daysCount": 1, "status": "approved", "vacationTypeId": "doctor" }
+    ], "expect": { "paid": 0, "unpaid": 3 } },
+    { "name": "A type that is not configured falls back to the defaults (worked_days paid, other unpaid)", "month": "2026-05", "rows": [
+      { "startDate": "2026-05-25", "endDate": "2026-05-25", "daysCount": 1, "status": "approved", "vacationTypeId": "worked_days" },
+      { "startDate": "2026-05-26", "endDate": "2026-05-26", "daysCount": 1, "status": "approved", "vacationTypeId": "custom-xyz" }
+    ], "vacationTypes": [], "expect": { "paid": 1, "unpaid": 1 } },
+    { "name": "Scaled row cut by the month: 2 days over 5 working days (28 May - 3 Jun), May side", "month": "2026-05", "rows": [{ "startDate": "2026-05-28", "endDate": "2026-06-03", "daysCount": 2, "status": "approved", "vacationTypeId": "annual" }], "expect": { "paid": 0.8, "unpaid": 0 } },
+    { "name": "Scaled row cut by the month, June side", "month": "2026-06", "rows": [{ "startDate": "2026-05-28", "endDate": "2026-06-03", "daysCount": 2, "status": "approved", "vacationTypeId": "annual" }], "expect": { "paid": 1.2, "unpaid": 0 } },
+    { "name": "Rounding once to one decimal: 1 day over 3 working days, 2 in May = 0.6667 -> 0.7", "month": "2026-05", "rows": [{ "startDate": "2026-05-28", "endDate": "2026-06-01", "daysCount": 1, "status": "approved", "vacationTypeId": "annual" }], "expect": { "paid": 0.7, "unpaid": 0 } },
+    { "name": "Rounding, the June side = 0.3333 -> 0.3", "month": "2026-06", "rows": [{ "startDate": "2026-05-28", "endDate": "2026-06-01", "daysCount": 1, "status": "approved", "vacationTypeId": "annual" }], "expect": { "paid": 0.3, "unpaid": 0 } },
+    { "name": "Rounding happens on the total, not per row: three thirds make 1.0", "month": "2026-05", "rows": [
+      { "startDate": "2026-05-04", "endDate": "2026-05-06", "daysCount": 1, "status": "approved", "vacationTypeId": "annual" },
+      { "startDate": "2026-05-11", "endDate": "2026-05-13", "daysCount": 1, "status": "approved", "vacationTypeId": "annual" },
+      { "startDate": "2026-05-18", "endDate": "2026-05-20", "daysCount": 1, "status": "approved", "vacationTypeId": "annual" }
+    ], "expect": { "paid": 3, "unpaid": 0 } },
+    { "name": "days_count above the range's working days weighs at most 1 per day", "month": "2026-05", "rows": [{ "startDate": "2026-05-04", "endDate": "2026-05-05", "daysCount": 10, "status": "approved", "vacationTypeId": "annual" }], "expect": { "paid": 2, "unpaid": 0 } },
+    { "name": "A weekend-only row and a row outside the month count nothing", "month": "2026-05", "rows": [
+      { "startDate": "2026-05-02", "endDate": "2026-05-03", "daysCount": 2, "status": "approved", "vacationTypeId": "annual" },
+      { "startDate": "2026-06-08", "endDate": "2026-06-09", "daysCount": 2, "status": "approved", "vacationTypeId": "unpaid" }
+    ], "expect": { "paid": 0, "unpaid": 0 } },
+    { "name": "DB-shaped values: days_count as a string, missing days_count weighs 1", "month": "2026-05", "rows": [
+      { "startDate": "2026-05-04", "endDate": "2026-05-04", "daysCount": "0.5", "status": "approved", "vacationTypeId": "unpaid" },
+      { "startDate": "2026-05-05", "endDate": "2026-05-06", "daysCount": null, "status": "approved", "vacationTypeId": "unpaid" }
+    ], "expect": { "paid": 0, "unpaid": 2.5 } }
+  ]
+}
