@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { ListChecks, Play, Square, Timer, Wallet } from "lucide-react";
+import { ListChecks, Play, Plus, Square, Timer, Wallet } from "lucide-react";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
+import { requestNewTimeEntry } from "./timeCreateBridge";
 import { clockTime, formatDuration, hoursOf } from "../../utils/timeTracking.ts";
 import { formatMoney } from "../../utils/currency";
 import { localeCodeFor } from "../../utils/localTime";
@@ -75,6 +76,16 @@ export function ProjectTimeTab({
             </div>
           </div>
           {tt.enabled && tt.viewer.canEdit && (
+            <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              data-testid="project-add-time"
+              onClick={() => requestNewTimeEntry({ projectId: project.id })}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-ui font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-all active:scale-95 cursor-pointer"
+            >
+              <Plus className="size-4" />
+              {t("Add time", "Pridať čas", "Idő felvétele")}
+            </button>
             <button
               type="button"
               data-testid="project-start-timer"
@@ -89,6 +100,7 @@ export function ProjectTimeTab({
                 ? t("Stop timer", "Zastaviť časovač", "Időzítő leállítása")
                 : t("Start timer on this project", "Spustiť časovač na tomto projekte", "Időzítő indítása ezen a projekten")}
             </button>
+            </div>
           )}
         </div>
       </div>

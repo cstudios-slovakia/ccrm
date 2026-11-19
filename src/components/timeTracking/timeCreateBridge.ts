@@ -25,3 +25,15 @@ export const rememberTimeCreate = (next: TimeCreateEnv): void => {
 };
 
 export const readTimeCreate = (): TimeCreateEnv => env;
+
+/** "Add time manually" from the task drawer or a project's Time tab: the host mounted in App opens the entry drawer. */
+export const NEW_TIME_ENTRY_EVENT = "ccrm-time-new-entry";
+
+export interface NewTimeEntryRequest {
+  taskId?: string | null;
+  projectId?: string | null;
+}
+
+export const requestNewTimeEntry = (detail: NewTimeEntryRequest): void => {
+  window.dispatchEvent(new CustomEvent<NewTimeEntryRequest>(NEW_TIME_ENTRY_EVENT, { detail }));
+};
