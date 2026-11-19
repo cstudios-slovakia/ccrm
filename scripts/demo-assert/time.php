@@ -122,13 +122,14 @@ return [
             $role = $roleOf[$r['user_id']];
             $wd = ccrm_holidays_working_days($db, $country, (int)substr($r['entry_date'], 0, 4), (int)substr($r['entry_date'], 5, 2), [], false);
             $rate = ccrm_tc_cost_rate(['kind' => 'employee', 'salaryType' => 'monthly', 'salaryAmount' => $personOf[$role]['salary']], $wd, ccrm_tc_default_settings());
-            $want = ccrm_tc_entry_cost((int)$r['duration_sec'], $rate['rate']);
+            $want = ccrm_tc_worked_cost((int)$r['duration_sec'] * 1000, $rate['rate']); // no overlaps: worked = duration
             if ($r['cost_rate_source'] !== 'monthly' || (int)$r['cost_rate_basis_days'] !== $wd) $costBad[] = "{$r['id']}: source/basis {$r['cost_rate_source']}/{$r['cost_rate_basis_days']} (month has {$wd})";
             if (abs((float)$r['cost_rate'] - (float)$rate['rate']) > 0.00005) $costBad[] = "{$r['id']}: rate {$r['cost_rate']} != {$rate['rate']}";
             if (abs((float)$r['cost'] - (float)$want) > 0.001) $costBad[] = "{$r['id']}: cost {$r['cost']} != {$want}";
-            if (abs((float)$r['cost'] - round((int)$r['duration_sec'] / 3600 * (float)$r['cost_rate'], 2)) > 0.001) $costBad[] = "{$r['id']}: cost != round(hours x cost_rate, 2)";
+            if ((int)($r['worked_ms'] ?? -1) !== (int)$r['duration_sec'] * 1000) $costBad[] = "{$r['id']}: worked_ms {$r['worked_ms']} != duration x 1000";
+            if (abs((float)$r['cost'] - round((int)$r['duration_sec'] / 3600 * (float)$r['cost_rate'], 4)) > 0.00005) $costBad[] = "{$r['id']}: cost != round(hours x cost_rate, 4)";
         }
-        $check('cost_rate / basis days / cost equal the real ccrm_tc_* functions on the converted salary and the month\'s working days; cost = round(h x rate, 2)', !$costBad, implode("\n", array_slice($costBad, 0, 6)));
+        $check('cost_rate / basis days / cost equal the real ccrm_tc_* functions on the converted salary and the month\'s working days; worked_ms = duration; cost = round(h x rate, 4)', !$costBad, implode("\n", array_slice($costBad, 0, 6)));
         $billBad = [];
         foreach ($entries as $r) {
             if ((int)$r['billable'] === 1 && abs((float)$r['billable_rate'] - demo_money(45.0)) > 0.001) $billBad[] = "{$r['id']}: billable_rate {$r['billable_rate']}";

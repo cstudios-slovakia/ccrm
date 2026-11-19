@@ -14,6 +14,7 @@
 
 require_once __DIR__ . '/recurring_tasks.php';
 require_once __DIR__ . '/time_entries_lib.php';
+require_once __DIR__ . '/time_settle.php';
 require_once __DIR__ . '/tickets.php';
 
 /**
@@ -768,18 +769,21 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             $note = isset($args['note']) ? ccrm_tt_clean_note($args['note']) : null;
             $id = ccrm_tt_new_id();
 
-            $pdo->prepare(
-                "INSERT INTO time_entries
-                    (id, user_id, recorded_by_user_id, employee_id, project_id, task_id, ticket_id,
-                     description, title_snapshot, note, entry_date, start_at, end_at, duration_sec,
-                     billable, billable_rate, cost_rate, cost_rate_source, cost_rate_basis_days, cost, tags, source)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'manual')"
-            )->execute([
-                $id, $uid, $uid, $pricing['employee_id'], $links['project_id'], $links['task_id'], $links['ticket_id'],
-                $links['description'], $links['title_snapshot'], $note,
-                $timing['entry_date'], $timing['start_at'], $timing['end_at'], $timing['duration_sec'],
-                $billable, $billRate, $pricing['cost_rate'], $pricing['cost_rate_source'], $pricing['cost_rate_basis_days'], $pricing['cost'],
-            ]);
+            mcp_tx($pdo, function () use ($pdo, $id, $uid, $pricing, $links, $note, $timing, $billable, $billRate) {
+                $pdo->prepare(
+                    "INSERT INTO time_entries
+                        (id, user_id, recorded_by_user_id, employee_id, project_id, task_id, ticket_id,
+                         description, title_snapshot, note, entry_date, start_at, end_at, duration_sec,
+                         billable, billable_rate, cost_rate, cost_rate_source, cost_rate_basis_days, tags, source)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'manual')"
+                )->execute([
+                    $id, $uid, $uid, $pricing['employee_id'], $links['project_id'], $links['task_id'], $links['ticket_id'],
+                    $links['description'], $links['title_snapshot'], $note,
+                    $timing['entry_date'], $timing['start_at'], $timing['end_at'], $timing['duration_sec'],
+                    $billable, $billRate, $pricing['cost_rate'], $pricing['cost_rate_source'], $pricing['cost_rate_basis_days'],
+                ]);
+                ccrm_tt_settle_rows($pdo, [['user_id' => $uid, 'start_at' => $timing['start_at'], 'end_at' => $timing['end_at'], 'duration_sec' => $timing['duration_sec'], 'entry_date' => $timing['entry_date']]]);
+            });
 
             mcp_audit($pdo, $user, 'time_entry_log', "Logged time entry {$id} ({$timing['duration_sec']}s on {$timing['entry_date']})");
             $row = ccrm_tt_fetch_entry($pdo, $id);
@@ -820,22 +824,24 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
                         : null;
                     $pdo->prepare(
                         "UPDATE time_entries
-                         SET end_at = ?, duration_sec = ?, employee_id = ?, cost_rate = ?, cost_rate_source = ?, cost_rate_basis_days = ?, cost = ?, billable_rate = ?
+                         SET end_at = ?, duration_sec = ?, employee_id = ?, cost_rate = ?, cost_rate_source = ?, cost_rate_basis_days = ?, billable_rate = ?
                          WHERE id = ?"
-                    )->execute([$nowUtc, $dur, $pPricing['employee_id'], $pPricing['cost_rate'], $pPricing['cost_rate_source'], $pPricing['cost_rate_basis_days'], $pPricing['cost'], $pBill, $prev['id']]);
+                    )->execute([$nowUtc, $dur, $pPricing['employee_id'], $pPricing['cost_rate'], $pPricing['cost_rate_source'], $pPricing['cost_rate_basis_days'], $pBill, $prev['id']]);
                 }
 
                 $pdo->prepare(
                     "INSERT INTO time_entries
                         (id, user_id, recorded_by_user_id, employee_id, project_id, task_id, ticket_id,
                          description, title_snapshot, note, entry_date, start_at, end_at, duration_sec,
-                         billable, billable_rate, cost_rate, cost_rate_source, cost_rate_basis_days, cost, tags, source)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?, ?, ?, ?, ?, NULL, '[]', 'timer')"
+                         billable, billable_rate, cost_rate, cost_rate_source, cost_rate_basis_days, tags, source)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?, ?, ?, ?, ?, '[]', 'timer')"
                 )->execute([
                     $id, $uid, $uid, $pricing['employee_id'], $links['project_id'], $links['task_id'], $links['ticket_id'],
                     $links['description'], $links['title_snapshot'], $note, $today, $nowUtc,
                     $billable, $billRate, $pricing['cost_rate'], $pricing['cost_rate_source'], $pricing['cost_rate_basis_days'],
                 ]);
+                // $prev was running until now, so its row covers the stopped interval.
+                ccrm_tt_settle_rows($pdo, [$prev ?: null]);
             });
 
             mcp_audit($pdo, $user, 'timer_start', "Started timer {$id}" . ($stoppedPrevId ? " (stopped {$stoppedPrevId})" : ''));
@@ -876,17 +882,20 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
                 : null;
             $note = array_key_exists('note', $args) ? ccrm_tt_clean_note($args['note']) : $row['note'];
 
-            $pdo->prepare(
-                "UPDATE time_entries
-                 SET task_id = ?, project_id = ?, title_snapshot = ?, description = ?, note = ?,
-                     end_at = ?, duration_sec = ?, employee_id = ?, cost_rate = ?, cost_rate_source = ?,
-                     cost_rate_basis_days = ?, cost = ?, billable_rate = ?
-                 WHERE id = ?"
-            )->execute([
-                $links['task_id'], $links['project_id'], $links['title_snapshot'], $links['description'], $note,
-                $nowUtc, $dur, $pricing['employee_id'], $pricing['cost_rate'], $pricing['cost_rate_source'],
-                $pricing['cost_rate_basis_days'], $pricing['cost'], $billRate, $row['id'],
-            ]);
+            mcp_tx($pdo, function () use ($pdo, $links, $note, $nowUtc, $dur, $pricing, $billRate, $row) {
+                $pdo->prepare(
+                    "UPDATE time_entries
+                     SET task_id = ?, project_id = ?, title_snapshot = ?, description = ?, note = ?,
+                         end_at = ?, duration_sec = ?, employee_id = ?, cost_rate = ?, cost_rate_source = ?,
+                         cost_rate_basis_days = ?, billable_rate = ?
+                     WHERE id = ?"
+                )->execute([
+                    $links['task_id'], $links['project_id'], $links['title_snapshot'], $links['description'], $note,
+                    $nowUtc, $dur, $pricing['employee_id'], $pricing['cost_rate'], $pricing['cost_rate_source'],
+                    $pricing['cost_rate_basis_days'], $billRate, $row['id'],
+                ]);
+                ccrm_tt_settle_rows($pdo, [$row]); // running until now: covers the stopped interval
+            });
 
             mcp_audit($pdo, $user, 'timer_stop', "Stopped timer {$row['id']} ({$dur}s)");
             $updated = ccrm_tt_fetch_entry($pdo, $row['id']);
@@ -936,19 +945,23 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             $pricing = ccrm_tt_price($pdo, (string)$cur['user_id'], $entryDate, $isRunning ? null : $dur, $settings, true);
             $billRate = $billable ? ccrm_tt_lookup_billable_rate($pdo, $links['project_id'], $links['ticket_id'], $entryDate) : null;
 
-            $pdo->prepare(
-                "UPDATE time_entries
-                 SET task_id = ?, ticket_id = ?, project_id = ?, title_snapshot = ?, description = ?,
-                     note = ?, entry_date = ?, duration_sec = ?, billable = ?,
-                     employee_id = ?, cost_rate = ?, cost_rate_source = ?, cost_rate_basis_days = ?, cost = ?,
-                     billable_rate = ?
-                 WHERE id = ?"
-            )->execute([
-                $links['task_id'], $links['ticket_id'], $links['project_id'], $links['title_snapshot'], $links['description'],
-                $note, $entryDate, $dur, $billable,
-                $pricing['employee_id'], $pricing['cost_rate'], $pricing['cost_rate_source'], $pricing['cost_rate_basis_days'], $pricing['cost'],
-                $billRate, $id,
-            ]);
+            mcp_tx($pdo, function () use ($pdo, $links, $note, $entryDate, $dur, $billable, $pricing, $billRate, $id, $cur) {
+                $pdo->prepare(
+                    "UPDATE time_entries
+                     SET task_id = ?, ticket_id = ?, project_id = ?, title_snapshot = ?, description = ?,
+                         note = ?, entry_date = ?, duration_sec = ?, billable = ?,
+                         employee_id = ?, cost_rate = ?, cost_rate_source = ?, cost_rate_basis_days = ?,
+                         billable_rate = ?
+                     WHERE id = ?"
+                )->execute([
+                    $links['task_id'], $links['ticket_id'], $links['project_id'], $links['title_snapshot'], $links['description'],
+                    $note, $entryDate, $dur, $billable,
+                    $pricing['employee_id'], $pricing['cost_rate'], $pricing['cost_rate_source'], $pricing['cost_rate_basis_days'],
+                    $billRate, $id,
+                ]);
+                // A new duration moves the end of a timed entry (start + duration, D2); settle the old and new interval.
+                ccrm_tt_settle_rows($pdo, [$cur, ['duration_sec' => $dur, 'entry_date' => $entryDate] + $cur]);
+            });
 
             mcp_audit($pdo, $user, 'time_entry_update', "Updated time entry {$id}");
             $updated = ccrm_tt_fetch_entry($pdo, $id);

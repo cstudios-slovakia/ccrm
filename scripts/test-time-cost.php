@@ -18,7 +18,7 @@ $fixtures = json_decode((string)file_get_contents(__DIR__ . '/fixtures/time-cost
 foreach ($fixtures['cases'] as $case) {
     $settings = $case['settings'] ?? $fixtures['settings'];
     $r = ccrm_tc_cost_rate($case['person'], (int)$case['workingDays'], $settings);
-    $cost = ccrm_tc_entry_cost($case['durationSec'], $r['rate']);
+    $cost = ccrm_tc_worked_cost(isset($case['workedMs']) ? (int)$case['workedMs'] : (int)$case['durationSec'] * 1000, $r['rate']);
     $e = $case['expect'];
     $ok = $r['rate'] === ($e['rate'] === null ? null : (float)$e['rate'])
         && $r['source'] === $e['source']
@@ -26,6 +26,8 @@ foreach ($fixtures['cases'] as $case) {
         && $cost === ($e['cost'] === null ? null : (float)$e['cost']);
     $check($case['name'], $ok, json_encode(['got' => $r, 'cost' => $cost]));
 }
+$check('three identical 2 h entries at EUR 10/h: 6.6667 each, 20.00 in total', ccrm_tc_worked_cost(2400000, 10.0) === 6.6667 && round(3 * 6.6667, 2) === 20.0);
+$check('cost is null without a rate or worked time; 0 ms costs 0', ccrm_tc_worked_cost(3600000, null) === null && ccrm_tc_worked_cost(null, 20.0) === null && ccrm_tc_worked_cost(0, 20.0) === 0.0);
 $check('fixtures use the default settings', $fixtures['settings'] == ccrm_tc_default_settings());
 
 // Working days of the months the fixtures rely on, with no database (override list is empty).

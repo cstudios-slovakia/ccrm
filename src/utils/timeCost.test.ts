@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   DEFAULT_COST_SETTINGS,
   computeCostRate,
-  computeEntryCost,
+  computeWorkedCost,
   costRateTooltip,
   explainCostRate,
   type CostSettings,
@@ -22,7 +22,7 @@ for (const c of fixtures.cases) {
     assert.equal(r.rate, c.expect.rate);
     assert.equal(r.source, c.expect.source);
     assert.equal(r.basisDays, c.expect.basisDays);
-    assert.equal(computeEntryCost(c.durationSec, r.rate), c.expect.cost);
+    assert.equal(computeWorkedCost(c.workedMs ?? c.durationSec * 1000, r.rate), c.expect.cost);
   });
 }
 
@@ -30,11 +30,11 @@ test("fixtures share the app's default settings", () => {
   assert.deepEqual(fixtures.settings, DEFAULT_COST_SETTINGS);
 });
 
-test("Erik: 3200 / 22 days = man-day 145.45, 18.18/h, x1.352 = 24.58/h; 2:15:00 costs 55.31", () => {
+test("Erik: 3200 / 22 days = man-day 145.45, 18.18/h, x1.352 = 24.58/h; 2:15:00 worked costs 55.3091", () => {
   const r = computeCostRate({ kind: "employee", salaryType: "monthly", salaryAmount: 3200 }, 22);
   assert.equal(r.manDay, 145.4545);
   assert.equal(r.rate, 24.5818);
-  assert.equal(computeEntryCost(2 * 3600 + 15 * 60, r.rate), 55.31);
+  assert.equal(computeWorkedCost((2 * 3600 + 15 * 60) * 1000, r.rate), 55.3091);
 });
 
 test("the monthly rate differs between months, driven by the calendar (May 20 days vs June 22)", () => {
@@ -78,10 +78,16 @@ test("a negative, NaN or missing amount gives no rate", () => {
   }
 });
 
-test("cost is null without a rate or a duration, and 0 seconds costs 0", () => {
-  assert.equal(computeEntryCost(3600, null), null);
-  assert.equal(computeEntryCost(null, 20), null);
-  assert.equal(computeEntryCost(0, 20), 0);
+test("cost is null without a rate or worked time, and 0 ms costs 0", () => {
+  assert.equal(computeWorkedCost(3600000, null), null);
+  assert.equal(computeWorkedCost(null, 20), null);
+  assert.equal(computeWorkedCost(0, 20), 0);
+});
+
+test("three identical 2 h entries at EUR 10/h cost 6.6667 each; the total rounds to cents once (20.00)", () => {
+  const each = computeWorkedCost(2400000, 10);
+  assert.equal(each, 6.6667);
+  assert.equal(Math.round(3 * (each as number) * 100) / 100, 20);
 });
 
 test("the frozen rate is explained in plain words", () => {

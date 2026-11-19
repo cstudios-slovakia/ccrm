@@ -54,6 +54,7 @@ if (!function_exists('ccrm_migrate_ticket_time_entries')) {
         // before publish, when the copy on disk may not parse; require_once
         // would then refuse to read the fixed file later in the same process.
         include __DIR__ . '/time_entries_lib.php';
+        include __DIR__ . '/time_settle.php';
         $settings = ccrm_tt_load_settings($pdo);
         $rows = $pdo->query("SELECT * FROM `ticket_time_entries`")->fetchAll(\PDO::FETCH_ASSOC);
         if (!$rows) {
@@ -66,10 +67,11 @@ if (!function_exists('ccrm_migrate_ticket_time_entries')) {
         }
         $ticketStmt = $pdo->prepare("SELECT `title`, `project_id`, `client_id`, `assignee_id` FROM `tickets` WHERE `id` = ? LIMIT 1");
         $ins = $pdo->prepare(
-            "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `task_id`, `ticket_id`, `description`, `title_snapshot`, `legacy_note`, `entry_date`, `start_at`, `end_at`, `duration_sec`, `billable`, `billable_rate`, `cost_rate`, `cost_rate_source`, `cost_rate_basis_days`, `cost`, `tags`, `source`, `origin_type`, `origin_id`, `external_id`)
-             VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, '[]', 'ticket_legacy', 'ticket', ?, ?)"
+            "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `task_id`, `ticket_id`, `description`, `title_snapshot`, `legacy_note`, `entry_date`, `start_at`, `end_at`, `duration_sec`, `billable`, `billable_rate`, `cost_rate`, `cost_rate_source`, `cost_rate_basis_days`, `tags`, `source`, `origin_type`, `origin_id`, `external_id`)
+             VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, '[]', 'ticket_legacy', 'ticket', ?, ?)"
         );
         $log = [];
+        $touched = [];
         foreach ($rows as $row) {
             $ext = 'tte:' . $row['id'];
             if (isset($have[$ext])) {
@@ -114,12 +116,14 @@ if (!function_exists('ccrm_migrate_ticket_time_entries')) {
                 $price['cost_rate'],
                 $price['cost_rate_source'],
                 $price['cost_rate_basis_days'],
-                $price['cost'],
                 $row['ticket_id'],
                 $ext,
             ]);
             $have[$ext] = true;
+            $touched[] = ['user_id' => $userId, 'start_at' => null, 'end_at' => null, 'duration_sec' => $duration, 'entry_date' => $entryDate];
         }
+        // Hours-only rows: worked time = duration (C15), cost from it. No network ($fetch = false inside).
+        ccrm_tt_settle_rows($pdo, $touched);
         if ($log) {
             error_log('[ccrm] ticket time migration: ' . implode('; ', $log));
             $prev = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'TIME_TICKET_MIGRATION_LOG'");

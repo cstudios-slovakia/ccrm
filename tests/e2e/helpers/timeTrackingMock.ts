@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 import { buildAccess } from '../../../src/utils/permissions';
 import { builtinHolidays, builtinWorkingDays, resolveWorkCountry, type HolidayCountry } from '../../../src/utils/holidays';
 import { allocateWorkedMs, workedMsForHoursOnly, type AllocationEntry } from '../../../src/utils/timeAllocation';
-import { computeCostRate, computeEntryCost, DEFAULT_COST_SETTINGS } from '../../../src/utils/timeCost';
+import { computeCostRate, computeWorkedCost, DEFAULT_COST_SETTINGS } from '../../../src/utils/timeCost';
 import { DEFAULT_TIME_TRACKING_SETTINGS, type TimeTrackingSettings } from '../../../src/utils/timeTracking';
 
 /**
@@ -74,7 +74,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
     const c = country(userId);
     const days = builtinWorkingDays(c, Number(entryDate.slice(0, 4)), Number(entryDate.slice(5, 7)), overridesOf(c));
     const r = computeCostRate({ kind: emp.kind, salaryType: emp.salaryType, salaryAmount: emp.salaryAmount }, days, { ...DEFAULT_COST_SETTINGS, ...settings });
-    return { employeeId: emp.id, costRate: r.rate, costRateSource: r.source, costRateBasisDays: r.basisDays, cost: computeEntryCost(durationSec, r.rate) };
+    return { employeeId: emp.id, costRate: r.rate, costRateSource: r.source, costRateBasisDays: r.basisDays, cost: durationSec === null ? null : computeWorkedCost(durationSec * 1000, r.rate) };
   };
 
   // The seeded entries are priced like any saved entry (the frozen rate of their own month).
@@ -294,7 +294,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       if (!startAt || endAt) {
         const monthChanged = !existing || existing.entryDate?.slice(0, 7) !== next.entryDate.slice(0, 7) || existing.userId !== owner || !existing.endAt && !!endAt;
         if (monthChanged) Object.assign(next, price(owner, next.entryDate, durationSec));
-        else next.cost = computeEntryCost(durationSec, next.costRate);
+        else next.cost = durationSec == null ? null : computeWorkedCost(durationSec * 1000, next.costRate); // the mock models no overlaps: worked = duration
       }
       if (existing) Object.assign(existing, next);
       else entries.push(next);

@@ -234,11 +234,13 @@ if (!function_exists('ccrm_tt_default_settings')) {
 
     /**
      * Price one stretch of work: who is the employee, whose calendar applies, how many working
-     * days the month has, the hourly rate and the cost. Never prices a running entry.
+     * days the month has and the hourly rate to freeze on the entry. The cost itself comes from
+     * worked time and is written only by ccrm_tt_settle() (time_settle.php); $durationSec is
+     * accepted for older callers and ignored.
      *
      * @param bool $fetch allow one holiday-API fetch when the year is not cached. Pass false
      *                    inside a transaction, in a migration or on any poll path.
-     * @return array{employee_id: ?string, cost_rate: ?float, cost_rate_source: string, cost_rate_basis_days: ?int, cost: ?float, country: string, workingDays: int}
+     * @return array{employee_id: ?string, cost_rate: ?float, cost_rate_source: string, cost_rate_basis_days: ?int, country: string, workingDays: int}
      */
     function ccrm_tt_price(\PDO $pdo, string $userId, string $entryDate, ?int $durationSec, array $settings, bool $fetch = true): array {
         $employee = ccrm_tt_employee_for_user($pdo, $userId);
@@ -247,7 +249,7 @@ if (!function_exists('ccrm_tt_default_settings')) {
         $month = (int)substr($entryDate, 5, 2);
         $days = ccrm_holidays_working_days($pdo, $country, $year, $month, ccrm_tt_overrides_for($settings, $country), $fetch);
         if ($employee === null) {
-            return ['employee_id' => null, 'cost_rate' => null, 'cost_rate_source' => 'none', 'cost_rate_basis_days' => null, 'cost' => null, 'country' => $country, 'workingDays' => $days];
+            return ['employee_id' => null, 'cost_rate' => null, 'cost_rate_source' => 'none', 'cost_rate_basis_days' => null, 'country' => $country, 'workingDays' => $days];
         }
         $r = ccrm_tc_cost_rate(
             ['kind' => $employee['kind'], 'salaryType' => $employee['salary_type'], 'salaryAmount' => $employee['salary_amount']],
@@ -264,7 +266,6 @@ if (!function_exists('ccrm_tt_default_settings')) {
             'cost_rate' => $r['rate'],
             'cost_rate_source' => $r['source'],
             'cost_rate_basis_days' => $r['basisDays'],
-            'cost' => ccrm_tc_entry_cost($durationSec, $r['rate']),
             'country' => $country,
             'workingDays' => $days,
         ];

@@ -32,6 +32,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/read_scope.php';
 require_once __DIR__ . '/time_entries_lib.php';
+require_once __DIR__ . '/time_settle.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
@@ -730,6 +731,7 @@ if ($action === 'import') {
                     'oldProject' => $oldProject, 'projectChanged' => $projectChanged, 'timeChanged' => $timeChanged,
                     'start' => $startUtc, 'end' => $endUtc, 'entryDate' => $entryDate, 'seconds' => (int)$r['seconds'],
                     'originId' => $stored['origin_id'] ?? null,
+                    'stored' => $stored,
                     'originIsOldProject' => (string)($stored['origin_type'] ?? '') === 'project' && $oldProject !== '' && (string)($stored['origin_id'] ?? '') === $oldProject,
                 ];
                 continue;
@@ -776,28 +778,57 @@ if ($action === 'import') {
     }
     $repaired = 0;
     $repairedProjects = 0;
+    /* Repairs and new entries are written in one transaction that ends with ccrm_tt_settle_rows()
+       (worked time and cost of every touched entry and its neighbours). Rates are looked up
+       first, so the holiday cache is warm and nothing inside the transaction needs the network. */
+    $priceMemo = [];
+    $priceFor = function (string $userId, string $entryDate) use ($pdo, $settings, &$priceMemo): array {
+        $key = $userId . '|' . substr($entryDate, 0, 7);
+        return $priceMemo[$key] ??= ccrm_tt_price($pdo, $userId, $entryDate, null, $settings, true);
+    };
+    $touched = [];
+    $failTx = function (string $code, int $status) use ($pdo): void {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        ccrm_te_fail($code, $status);
+    };
+    if ($commit && ($repairList || $ready)) {
+        foreach ($repairList as $f) {
+            $priceFor($f['userId'], $f['entryDate']);
+        }
+        foreach ($ready as $r) {
+            $readyStart = ccrm_tt_to_utc($r['start']);
+            if ($readyStart !== null) {
+                $priceFor($r['ccrmUser'], ccrm_tt_local_date($readyStart));
+            }
+        }
+        $pdo->beginTransaction();
+    }
     if ($commit && $repairList) {
         $repStmt = $pdo->prepare(
             "UPDATE `time_entries` SET `project_id` = ?, `billable_rate` = ?, `origin_id` = ?, `entry_date` = ?, `start_at` = ?, `end_at` = ?, `duration_sec` = ?,
-                    `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `cost` = ?
+                    `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?
               WHERE `id` = ? AND `source` = 'toggl' AND `deleted_at` IS NULL"
         );
         foreach ($repairList as $f) {
-            // Rate and cost are recomputed the same way a fresh import prices the entry.
-            $price = ccrm_tt_price($pdo, $f['userId'], $f['entryDate'], $f['seconds'], $settings, true);
+            // The rate is re-frozen the same way a fresh import prices the entry; settle writes the cost.
+            $price = $priceFor($f['userId'], $f['entryDate']);
             $rate = ccrm_tt_lookup_billable_rate($pdo, $f['project'], null, $f['entryDate']);
             // An entry that says it came from its (old) project follows the project.
             $originId = $f['originIsOldProject'] ? $f['project'] : $f['originId'];
             try {
                 $repStmt->execute([
                     $f['project'], $rate, $originId, $f['entryDate'], $f['start'], $f['end'], $f['seconds'],
-                    $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $price['cost'],
+                    $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'],
                     $f['id'],
                 ]);
             } catch (\PDOException $e) {
                 ccrm_log_exception($e);
-                ccrm_te_fail('save_failed', 500);
+                $failTx('save_failed', 500);
             }
+            $touched[] = $f['stored'];
+            $touched[] = ['user_id' => $f['userId'], 'start_at' => $f['start'], 'end_at' => $f['end'], 'duration_sec' => $f['seconds'], 'entry_date' => $f['entryDate']];
             if ($repStmt->rowCount() > 0) {
                 $repaired++;
                 if ($f['projectChanged']) {
@@ -809,8 +840,8 @@ if ($action === 'import') {
     }
     if ($commit && $ready) {
         $ins = $pdo->prepare(
-            "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `task_id`, `ticket_id`, `description`, `title_snapshot`, `entry_date`, `start_at`, `end_at`, `duration_sec`, `billable`, `billable_rate`, `cost_rate`, `cost_rate_source`, `cost_rate_basis_days`, `cost`, `tags`, `source`, `external_id`)
-             VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'toggl', ?)"
+            "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `task_id`, `ticket_id`, `description`, `title_snapshot`, `entry_date`, `start_at`, `end_at`, `duration_sec`, `billable`, `billable_rate`, `cost_rate`, `cost_rate_source`, `cost_rate_basis_days`, `tags`, `source`, `external_id`)
+             VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'toggl', ?)"
         );
         foreach ($ready as $r) {
             if (isset($existing[$r['id']])) {
@@ -824,27 +855,37 @@ if ($action === 'import') {
             }
             $entryDate = ccrm_tt_local_date($startUtc);
             $desc = $r['description'] !== '' ? $r['description'] : null;
-            $price = ccrm_tt_price($pdo, $r['ccrmUser'], $entryDate, (int)$r['seconds'], $settings, true);
+            $price = $priceFor($r['ccrmUser'], $entryDate);
             $rate = ccrm_tt_lookup_billable_rate($pdo, $r['ccrmProject'], null, $entryDate);
             try {
                 $ins->execute([
                     ccrm_tt_new_id(), $r['ccrmUser'], $callerId, $price['employee_id'], $r['ccrmProject'],
                     $desc, $desc, $entryDate, $startUtc, $endUtc, (int)$r['seconds'], $r['billable'] ? 1 : 0, $rate,
-                    $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $price['cost'],
+                    $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'],
                     $r['id'],
                 ]);
                 $existing[$r['id']] = true;
                 $imported++;
+                $touched[] = ['user_id' => $r['ccrmUser'], 'start_at' => $startUtc, 'end_at' => $endUtc, 'duration_sec' => (int)$r['seconds'], 'entry_date' => $entryDate];
             } catch (\PDOException $e) {
                 if ((int)($e->errorInfo[1] ?? 0) === 1062) {
                     $already++;
                     continue;
                 }
                 ccrm_log_exception($e);
-                ccrm_te_fail('save_failed', 500);
+                $failTx('save_failed', 500);
             }
         }
         ccrm_audit_log($pdo, $sessionUser, 'time_tracking.toggl_import', "Imported {$imported} Toggl entries from {$from} to {$to} ({$already} already imported)");
+    }
+    if ($pdo->inTransaction()) {
+        try {
+            ccrm_tt_settle_rows($pdo, $touched);
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            ccrm_log_exception($e);
+            $failTx('save_failed', 500);
+        }
     }
 
     ccrm_te_respond([
@@ -911,14 +952,39 @@ if ($action === 'reprice') {
         $where[] = '`user_id` IN (' . implode(',', array_fill(0, count($only), '?')) . ')';
         array_push($params, ...$only);
     }
-    $sel = $pdo->prepare('SELECT `id`, `user_id`, `entry_date`, `duration_sec` FROM `time_entries` WHERE ' . implode(' AND ', $where));
+    $sel = $pdo->prepare('SELECT `id`, `user_id`, `entry_date` FROM `time_entries` WHERE ' . implode(' AND ', $where));
     $sel->execute($params);
-    $upd = $pdo->prepare("UPDATE `time_entries` SET `employee_id` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `cost` = ? WHERE `id` = ?");
+    $rows = $sel->fetchAll(\PDO::FETCH_ASSOC);
+    // Re-freeze the rates first (may fetch holidays, so outside the transaction), then write them and
+    // settle the period per user: that re-prices AND re-allocates overlapping entries (C16).
+    $prices = [];
+    foreach ($rows as $r) {
+        $key = $r['user_id'] . '|' . substr((string)$r['entry_date'], 0, 7);
+        $prices[$key] ??= ccrm_tt_price($pdo, (string)$r['user_id'], (string)$r['entry_date'], null, $settings, true);
+    }
+    $upd = $pdo->prepare("UPDATE `time_entries` SET `employee_id` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ? WHERE `id` = ?");
     $count = 0;
-    foreach ($sel->fetchAll(\PDO::FETCH_ASSOC) as $r) {
-        $price = ccrm_tt_price($pdo, (string)$r['user_id'], (string)$r['entry_date'], $r['duration_sec'] === null ? null : (int)$r['duration_sec'], $settings, true);
-        $upd->execute([$price['employee_id'], $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $price['cost'], $r['id']]);
-        $count++;
+    $users = [];
+    try {
+        $pdo->beginTransaction();
+        foreach ($rows as $r) {
+            $price = $prices[$r['user_id'] . '|' . substr((string)$r['entry_date'], 0, 7)];
+            $upd->execute([$price['employee_id'], $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $r['id']]);
+            $users[(string)$r['user_id']] = true;
+            $count++;
+        }
+        $fromDay = ccrm_ts_local_day_ms($from);
+        $toDay = ccrm_ts_local_day_ms($to);
+        foreach (array_keys($users) as $u) {
+            ccrm_tt_settle($pdo, (string)$u, ccrm_ts_utc($fromDay[0]), ccrm_ts_utc($toDay[1]));
+        }
+        $pdo->commit();
+    } catch (\Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        ccrm_log_exception($e);
+        ccrm_te_fail('save_failed', 500);
     }
     ccrm_audit_log($pdo, $sessionUser, 'time_tracking.reprice', "Re-priced {$count} time entries from {$from} to {$to}");
     ccrm_te_respond(['repriced' => $count]);
@@ -969,8 +1035,8 @@ if ($action === 'start') {
             $dur = ccrm_tt_seconds_between($old['start_at'], $endUtc);
             $price = ccrm_tt_price($pdo, $owner, $old['entry_date'], $dur, $settings, false);
             $stoppedRate = $old['billable_rate'] !== null ? $old['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $old['project_id'], $old['ticket_id'], (string)$old['entry_date']);
-            $upd = $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `employee_id` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `cost` = ? WHERE `id` = ?");
-            $upd->execute([$endUtc, $dur, $price['employee_id'], $stoppedRate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $price['cost'], $old['id']]);
+            $upd = $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `employee_id` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ? WHERE `id` = ?");
+            $upd->execute([$endUtc, $dur, $price['employee_id'], $stoppedRate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $old['id']]);
             $stopped = $old['id'];
         }
         $ins = $pdo->prepare(
@@ -984,6 +1050,8 @@ if ($action === 'start') {
             ccrm_te_source($body['source'] ?? null, 'timer'), ccrm_te_origin($body['originType'] ?? null), ccrm_tt_nullable_id($body['originId'] ?? null),
             ccrm_tt_nullable_id($body['deviceId'] ?? null),
         ]);
+        // The stopped entry (its running interval reaches now) and the new one, which may be back-dated.
+        ccrm_tt_settle_rows($pdo, [$old, ['user_id' => $owner, 'start_at' => $startUtc, 'end_at' => null, 'entry_date' => ccrm_tt_local_date($startUtc)]]);
         $pdo->commit();
     } catch (\PDOException $e) {
         if ($pdo->inTransaction()) {
@@ -1052,8 +1120,19 @@ if ($action === 'stop') {
     $dur = ccrm_tt_seconds_between($row['start_at'], $endUtc);
     $price = ccrm_tt_price($pdo, (string)$row['user_id'], $row['entry_date'], $dur, $settings, true);
     $stoppedRate = $row['billable_rate'] !== null ? $row['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $projectId, $row['ticket_id'], (string)$row['entry_date']);
-    $upd = $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `project_id` = ?, `employee_id` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `cost` = ? WHERE `id` = ? AND `end_at` IS NULL");
-    $upd->execute([$endUtc, $dur, $projectId, $price['employee_id'], $stoppedRate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $price['cost'], $row['id']]);
+    try {
+        $pdo->beginTransaction();
+        $upd = $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `project_id` = ?, `employee_id` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ? WHERE `id` = ? AND `end_at` IS NULL");
+        $upd->execute([$endUtc, $dur, $projectId, $price['employee_id'], $stoppedRate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $row['id']]);
+        ccrm_tt_settle_rows($pdo, [$row]); // running until now: covers the stopped interval
+        $pdo->commit();
+    } catch (\Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        ccrm_log_exception($e);
+        ccrm_te_fail('save_failed', 500);
+    }
     ccrm_te_respond(['entry' => ccrm_te_json($pdo, $row['id'], $viewer)]);
 }
 
@@ -1071,10 +1150,19 @@ if ($action === 'undo_start') {
         $pdo->beginTransaction();
         // The accidental start is removed outright; there is nothing to restore it to.
         $pdo->prepare("DELETE FROM `time_entries` WHERE `id` = ? AND `end_at` IS NULL")->execute([$newId]);
+        $touched = [$new];
         if ($stoppedId !== null) {
-            $reopen = $pdo->prepare("UPDATE `time_entries` SET `end_at` = NULL, `duration_sec` = NULL, `cost_rate` = NULL, `cost_rate_source` = 'none', `cost_rate_basis_days` = NULL, `cost` = NULL WHERE `id` = ? AND `user_id` = ? AND `deleted_at` IS NULL AND `start_at` IS NOT NULL");
+            $before = $pdo->prepare("SELECT `user_id`, `start_at`, `end_at`, `duration_sec`, `entry_date` FROM `time_entries` WHERE `id` = ? AND `user_id` = ? AND `deleted_at` IS NULL AND `start_at` IS NOT NULL");
+            $before->execute([$stoppedId, $new['user_id']]);
+            if ($stoppedRow = $before->fetch(\PDO::FETCH_ASSOC)) {
+                $touched[] = $stoppedRow;
+                $touched[] = ['end_at' => null] + $stoppedRow;
+            }
+            // Only the end goes; ccrm_tt_settle() clears worked time and cost of the running entry.
+            $reopen = $pdo->prepare("UPDATE `time_entries` SET `end_at` = NULL, `duration_sec` = NULL WHERE `id` = ? AND `user_id` = ? AND `deleted_at` IS NULL AND `start_at` IS NOT NULL");
             $reopen->execute([$stoppedId, $new['user_id']]);
         }
+        ccrm_tt_settle_rows($pdo, $touched);
         $pdo->commit();
     } catch (\Throwable $e) {
         if ($pdo->inTransaction()) {
@@ -1104,15 +1192,32 @@ if ($action === 'delete' || $action === 'restore') {
     ccrm_te_refuse_locked($pdo, $sessionUser, [$row], $settings);
     /* PHASE6-LOCK-END */
     if ($action === 'delete') {
-        $pdo->prepare("UPDATE `time_entries` SET `deleted_at` = UTC_TIMESTAMP() WHERE `id` = ? AND `deleted_at` IS NULL")->execute([$id]);
+        try {
+            $pdo->beginTransaction();
+            $pdo->prepare("UPDATE `time_entries` SET `deleted_at` = UTC_TIMESTAMP() WHERE `id` = ? AND `deleted_at` IS NULL")->execute([$id]);
+            ccrm_tt_settle_rows($pdo, [$row]); // its neighbours get its share back
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            ccrm_log_exception($e);
+            ccrm_te_fail('save_failed', 500);
+        }
         if ((string)$row['user_id'] !== $callerId) {
             ccrm_audit_log($pdo, $sessionUser, 'time_entry.delete', "Deleted time entry {$id} of user {$row['user_id']}");
         }
         ccrm_te_respond(['id' => $id]);
     }
     try {
+        $pdo->beginTransaction();
         $pdo->prepare("UPDATE `time_entries` SET `deleted_at` = NULL WHERE `id` = ?")->execute([$id]);
+        ccrm_tt_settle_rows($pdo, [$row]); // the restored entry and its neighbours share again
+        $pdo->commit();
     } catch (\PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         // Restoring a deleted running timer while another one runs.
         if ((int)($e->errorInfo[1] ?? 0) === 1062) {
             ccrm_te_fail('already_running', 409);
@@ -1195,7 +1300,8 @@ if ($action === 'create') {
     }
     [$startUtc, $endUtc, $duration, $entryDate] = $time;
     /* PHASE6-LOCK-START */
-    ccrm_te_refuse_locked($pdo, $sessionUser, [[
+    // An entry that overlaps a locked one changes its worked time and cost: refused like editing it (D3.3).
+    ccrm_te_refuse_locked($pdo, $sessionUser, array_merge([[
         'id' => null,
         'user_id' => $owner,
         'employee_id' => null,
@@ -1203,15 +1309,16 @@ if ($action === 'create') {
         'approval_status' => null,
         'start_at' => $startUtc,
         'end_at' => $endUtc,
-    ]], $settings);
+    ]], ccrm_tt_overlapping_entries($pdo, $owner, $startUtc, $endUtc)), $settings);
     /* PHASE6-LOCK-END */
     $price = ccrm_tt_price($pdo, $owner, $entryDate, $duration, $settings, true);
     $billable = array_key_exists('billable', $body) ? (int)(bool)$body['billable'] : (int)$settings['billableByDefault'];
     $id = ccrm_tt_new_id();
     try {
+        $pdo->beginTransaction();
         $ins = $pdo->prepare(
-            "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `task_id`, `ticket_id`, `description`, `title_snapshot`, `note`, `entry_date`, `start_at`, `end_at`, `duration_sec`, `billable`, `billable_rate`, `cost_rate`, `cost_rate_source`, `cost_rate_basis_days`, `cost`, `tags`, `source`, `origin_type`, `origin_id`, `device_id`)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `task_id`, `ticket_id`, `description`, `title_snapshot`, `note`, `entry_date`, `start_at`, `end_at`, `duration_sec`, `billable`, `billable_rate`, `cost_rate`, `cost_rate_source`, `cost_rate_basis_days`, `tags`, `source`, `origin_type`, `origin_id`, `device_id`)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         );
         $ins->execute([
             $id, $owner, $callerId, $price['employee_id'], $links['project_id'], $links['task_id'], $links['ticket_id'], $links['description'], $links['title_snapshot'], ccrm_tt_clean_note($body['note'] ?? null),
@@ -1219,12 +1326,17 @@ if ($action === 'create') {
             ($canCosts && isset($body['billableRate']) && is_numeric($body['billableRate']))
                 ? round((float)$body['billableRate'], 2)
                 : ccrm_tt_lookup_billable_rate($pdo, $links['project_id'], $links['ticket_id'], $entryDate),
-            $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $price['cost'],
+            $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'],
             json_encode(ccrm_tt_clean_tags($body['tags'] ?? []), JSON_UNESCAPED_UNICODE),
             ccrm_te_source($body['source'] ?? null, 'manual'), ccrm_te_origin($body['originType'] ?? null), ccrm_tt_nullable_id($body['originId'] ?? null),
             ccrm_tt_nullable_id($body['deviceId'] ?? null),
         ]);
+        ccrm_tt_settle_rows($pdo, [['user_id' => $owner, 'start_at' => $startUtc, 'end_at' => $endUtc, 'duration_sec' => $duration, 'entry_date' => $entryDate]]);
+        $pdo->commit();
     } catch (\PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         if ((int)($e->errorInfo[1] ?? 0) === 1062) {
             ccrm_te_fail('already_running', 409);
         }
@@ -1304,6 +1416,12 @@ if ($action === 'update') {
             'end_at' => $endUtc,
         ];
     }
+    // Moving it (or handing it to someone else) onto a locked entry of the owner is refused like editing that entry (D3.3).
+    $moved = $owner !== (string)$row['user_id'] || $startUtc !== $row['start_at'] || $endUtc !== $row['end_at']
+        || (string)($duration ?? '') !== (string)($row['duration_sec'] ?? '');
+    if ($moved) {
+        $lockedRows = array_merge($lockedRows, ccrm_tt_overlapping_entries($pdo, $owner, $startUtc, $endUtc, $id));
+    }
     ccrm_te_refuse_locked($pdo, $sessionUser, $lockedRows, $settings);
     /* PHASE6-LOCK-END */
 
@@ -1318,12 +1436,11 @@ if ($action === 'update') {
         $price = [
             'employee_id' => $row['employee_id'], 'cost_rate' => $rate, 'cost_rate_source' => $row['cost_rate_source'],
             'cost_rate_basis_days' => $row['cost_rate_basis_days'] === null ? null : (int)$row['cost_rate_basis_days'],
-            'cost' => ($endUtc !== null || $startUtc === null) ? ccrm_tc_entry_cost($duration, $rate) : null,
         ];
     }
     if ($startUtc !== null && $endUtc === null) {
         // Still running: nothing is priced yet.
-        $price = ['employee_id' => $price['employee_id'], 'cost_rate' => null, 'cost_rate_source' => 'none', 'cost_rate_basis_days' => null, 'cost' => null];
+        $price = ['employee_id' => $price['employee_id'], 'cost_rate' => null, 'cost_rate_source' => 'none', 'cost_rate_basis_days' => null];
     }
 
     $billable = $has('billable') ? (int)(bool)$body['billable'] : (int)$row['billable'];
@@ -1337,16 +1454,23 @@ if ($action === 'update') {
     $note = $has('note') ? ccrm_tt_clean_note($body['note']) : ($row['note'] ?? null);
 
     try {
+        $pdo->beginTransaction();
         $upd = $pdo->prepare(
             "UPDATE `time_entries` SET `user_id` = ?, `employee_id` = ?, `project_id` = ?, `task_id` = ?, `ticket_id` = ?, `description` = ?, `title_snapshot` = ?, `note` = ?, `entry_date` = ?,
-               `start_at` = ?, `end_at` = ?, `duration_sec` = ?, `billable` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `cost` = ?, `tags` = ?
+               `start_at` = ?, `end_at` = ?, `duration_sec` = ?, `billable` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `tags` = ?
              WHERE `id` = ? AND `deleted_at` IS NULL"
         );
         $upd->execute([
             $owner, $price['employee_id'], $links['project_id'], $links['task_id'], $links['ticket_id'], $links['description'], $links['title_snapshot'], $note, $entryDate,
-            $startUtc, $endUtc, $duration, $billable, $billableRate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $price['cost'], $tags, $id,
+            $startUtc, $endUtc, $duration, $billable, $billableRate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $tags, $id,
         ]);
+        // The old and the new interval (an owner change settles both people).
+        ccrm_tt_settle_rows($pdo, [$row, ['user_id' => $owner, 'start_at' => $startUtc, 'end_at' => $endUtc, 'duration_sec' => $duration, 'entry_date' => $entryDate]]);
+        $pdo->commit();
     } catch (\PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         if ((int)($e->errorInfo[1] ?? 0) === 1062) {
             ccrm_te_fail('already_running', 409);
         }

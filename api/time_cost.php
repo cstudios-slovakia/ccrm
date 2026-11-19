@@ -116,11 +116,14 @@ if (!function_exists('ccrm_tc_round2')) {
         return ccrm_tc_none();
     }
 
-    /** computeEntryCost(): `duration_sec / 3600 x rate`, 2 decimals; null with no rate or no duration. */
-    function ccrm_tc_entry_cost(?int $durationSec, ?float $rate): ?float {
-        if ($rate === null || $durationSec === null) {
+    /**
+     * computeWorkedCost(): `worked_ms / 3 600 000 x rate`, 4 decimals (D3.2); null with no rate or
+     * no worked time. A total sums these and rounds to cents once, at the end.
+     */
+    function ccrm_tc_worked_cost(?int $workedMs, ?float $rate): ?float {
+        if ($rate === null || $workedMs === null) {
             return null;
         }
-        return ccrm_tc_round2(($durationSec / 3600) * $rate);
+        return ccrm_tc_round4(($workedMs / 3600000) * $rate);
     }
 }

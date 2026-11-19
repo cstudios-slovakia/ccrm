@@ -20,8 +20,9 @@
  *    client). A linked entry has NO title of its own (C5): description NULL, title_snapshot =
  *    the linked item's title. When no such task or ticket exists the entry stays a plain one.
  *  - Cost: the snapshot of the real ccrm_tc_cost_rate() (api/time_cost.php) with the employee's
- *    CONVERTED salary and the month's working days (ccrm_holidays_working_days()), cost =
- *    ccrm_tc_entry_cost(). Billable entries carry the pack's EUR 45/h, converted.
+ *    CONVERTED salary and the month's working days (ccrm_holidays_working_days()); worked time and
+ *    cost are written by ccrm_tt_settle() after the insert (no overlaps, so cost =
+ *    ccrm_tc_worked_cost(duration x 1000, rate)). Billable entries carry the pack's EUR 45/h, converted.
  *  - Approval: the previous full week is `approved` for pm and sales and `submitted` for owner
  *    (the app only knows `approved`; `submitted` is an open week), older weeks are `approved`,
  *    the current week is open (NULL).
@@ -37,6 +38,7 @@ require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/lookup.php';
 require_once __DIR__ . '/../time_cost.php';
 require_once __DIR__ . '/../holidays_lib.php';
+require_once __DIR__ . '/../time_settle.php';
 
 if (!function_exists('demo_seed_time')) {
 
@@ -312,9 +314,9 @@ if (!function_exists('demo_seed_time')) {
         $ins = $pdo->prepare(
             "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `task_id`, `ticket_id`,
                 `description`, `title_snapshot`, `note`, `entry_date`, `start_at`, `end_at`, `duration_sec`, `billable`, `billable_rate`,
-                `cost_rate`, `cost_rate_source`, `cost_rate_basis_days`, `cost`, `tags`, `source`, `origin_type`, `origin_id`,
+                `cost_rate`, `cost_rate_source`, `cost_rate_basis_days`, `tags`, `source`, `origin_type`, `origin_id`,
                 `device_id`, `approval_status`, `created_at`, `updated_at`)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?)"
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?)"
         );
 
         // Entries ordered by day then login keeps the ids readable (demo-time-1 is the oldest owner entry).
@@ -326,6 +328,7 @@ if (!function_exists('demo_seed_time')) {
         }
         usort($flat, static fn($a, $b) => [$a['day'], array_search($a['role'], demo_user_roles(), true), $a['start']] <=> [$b['day'], array_search($b['role'], demo_user_roles(), true), $b['start']]);
 
+        $touched = [];
         foreach ($flat as $n => $p) {
             $role = $p['role'];
             $item = $pack['pools'][$role][$p['item']];
@@ -358,7 +361,6 @@ if (!function_exists('demo_seed_time')) {
                 $workingDays($date),
                 $costSettings
             );
-            $cost = ccrm_tc_entry_cost($seconds, $rate['rate']);
 
             $source = $p['source'];
             $originType = null;
@@ -406,7 +408,6 @@ if (!function_exists('demo_seed_time')) {
                 $rate['rate'],
                 $rate['source'],
                 $rate['basisDays'],
-                $cost,
                 $source,
                 $originType,
                 $originId,
@@ -415,8 +416,11 @@ if (!function_exists('demo_seed_time')) {
                 $endUtc,
                 $endUtc,
             ]);
+            $touched[] = ['user_id' => $who['userId'], 'start_at' => $startUtc, 'end_at' => $endUtc, 'duration_sec' => $seconds, 'entry_date' => $date];
             $rows++;
         }
+        // Worked time and cost: the one write path (D3.3); the entries carry their frozen rate, so no pricing.
+        ccrm_tt_settle_rows($pdo, $touched);
 
         // The owner's paired browser: only a hash of a key nobody was ever given, so it cannot authenticate.
         $device = $pack['device'];

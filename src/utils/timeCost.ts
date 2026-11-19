@@ -120,10 +120,14 @@ export const computeCostRate = (
   return NONE;
 };
 
-/** `duration_sec / 3600 x rate`, 2 decimals; null with no rate or no duration. */
-export const computeEntryCost = (durationSec: number | null | undefined, rate: number | null | undefined): number | null => {
-  if (rate === null || rate === undefined || durationSec === null || durationSec === undefined) return null;
-  return round2((durationSec / 3600) * rate);
+/**
+ * `worked_ms / 3 600 000 x rate`, 4 decimals (docs/TIME-TRACKING-V2.md D3.2); null with no rate or
+ * no worked time. The server writes it (`ccrm_tt_settle()`); a total sums these and rounds to cents
+ * once, at the end. Billable value still uses project time (duration), not this.
+ */
+export const computeWorkedCost = (workedMs: number | null | undefined, rate: number | null | undefined): number | null => {
+  if (rate === null || rate === undefined || workedMs === null || workedMs === undefined) return null;
+  return round4((workedMs / 3600000) * rate);
 };
 
 export interface ExplainContext {

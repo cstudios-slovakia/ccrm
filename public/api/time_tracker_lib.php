@@ -13,6 +13,7 @@
  */
 
 require_once __DIR__ . '/time_entries_lib.php';
+require_once __DIR__ . '/time_settle.php';
 require_once __DIR__ . '/read_scope.php';
 
 const CCRM_TT_EXT_VERSION = '1.0.0';
@@ -486,8 +487,8 @@ function ccrm_ttx_start(\PDO $pdo, array $user, array $device, array $body, arra
             $dur = ccrm_tt_seconds_between($old['start_at'], $endUtc);
             $price = ccrm_tt_price($pdo, $userId, $old['entry_date'], $dur, $settings, false);
             $stoppedRate = $old['billable_rate'] !== null ? $old['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $old['project_id'], $old['ticket_id'], (string)$old['entry_date']);
-            $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `employee_id` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `cost` = ? WHERE `id` = ?")
-                ->execute([$endUtc, $dur, $price['employee_id'], $stoppedRate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $price['cost'], $old['id']]);
+            $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `employee_id` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ? WHERE `id` = ?")
+                ->execute([$endUtc, $dur, $price['employee_id'], $stoppedRate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $old['id']]);
             $stopped = $old['id'];
         }
         $pdo->prepare(
@@ -500,6 +501,7 @@ function ccrm_ttx_start(\PDO $pdo, array $user, array $device, array $body, arra
             ccrm_ttx_origin($links), ccrm_tt_nullable_id($body['originId'] ?? null) ?? ($links['task_id'] ?? $links['ticket_id'] ?? $links['project_id']),
             $device['id'],
         ]);
+        ccrm_tt_settle_rows($pdo, [$old, ['user_id' => $userId, 'start_at' => $startUtc, 'end_at' => null, 'entry_date' => ccrm_tt_local_date($startUtc)]]);
         $pdo->commit();
     } catch (\PDOException $e) {
         if ($pdo->inTransaction()) {
@@ -581,8 +583,18 @@ function ccrm_ttx_stop(\PDO $pdo, array $user, array $device, array $body, array
     $dur = ccrm_tt_seconds_between($row['start_at'], $endUtc);
     $price = ccrm_tt_price($pdo, $userId, $row['entry_date'], $dur, $settings, true);
     $stoppedRate = $row['billable_rate'] !== null ? $row['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $projectId, $row['ticket_id'], (string)$row['entry_date']);
-    $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `project_id` = ?, `employee_id` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `cost` = ?, `device_id` = COALESCE(`device_id`, ?) WHERE `id` = ? AND `end_at` IS NULL")
-        ->execute([$endUtc, $dur, $projectId, $price['employee_id'], $stoppedRate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $price['cost'], $device['id'], $row['id']]);
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `project_id` = ?, `employee_id` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `device_id` = COALESCE(`device_id`, ?) WHERE `id` = ? AND `end_at` IS NULL")
+            ->execute([$endUtc, $dur, $projectId, $price['employee_id'], $stoppedRate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $device['id'], $row['id']]);
+        ccrm_tt_settle_rows($pdo, [$row]); // running until now: covers the stopped interval
+        $pdo->commit();
+    } catch (\Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
     return ['ok' => true, 'entry' => ccrm_ttx_entry($pdo, $row['id'], $viewer)];
 }
 
@@ -840,7 +852,14 @@ function ccrm_ttx_assign(\PDO $pdo, array $user, array $scope, array $ids, ?stri
     if (!$rows) {
         return ['ok' => false, 'code' => 'not_found', 'status' => 404];
     }
-    $entries = [];
+    // Rates first (may fetch the holiday calendar), so nothing inside the transaction needs the network.
+    $prices = [];
+    foreach ($rows as $row) {
+        $day = ccrm_tt_local_date($row['started_at']);
+        $prices[substr($day, 0, 7)] ??= ccrm_tt_price($pdo, $userId, $day, null, $settings, true);
+    }
+    $newIds = [];
+    $touched = [];
     $pdo->beginTransaction();
     try {
         foreach ($rows as $row) {
@@ -850,27 +869,34 @@ function ccrm_ttx_assign(\PDO $pdo, array $user, array $scope, array $ids, ?stri
                 $title = (string)$row['domain'];
             }
             $dur = (int)$row['duration_sec'];
-            $price = ccrm_tt_price($pdo, $userId, ccrm_tt_local_date($row['started_at']), $dur, $settings, true);
-            $rate = ccrm_tt_lookup_billable_rate($pdo, $projectId, null, ccrm_tt_local_date($row['started_at']));
+            $day = ccrm_tt_local_date($row['started_at']);
+            $price = $prices[substr($day, 0, 7)];
+            $rate = ccrm_tt_lookup_billable_rate($pdo, $projectId, null, $day);
             $pdo->prepare(
-                "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `description`, `title_snapshot`, `entry_date`, `start_at`, `end_at`, `duration_sec`, `billable`, `billable_rate`, `cost_rate`, `cost_rate_source`, `cost_rate_basis_days`, `cost`, `tags`, `source`, `origin_type`, `origin_id`, `device_id`)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'activity', 'activity', ?, ?)"
+                "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `description`, `title_snapshot`, `entry_date`, `start_at`, `end_at`, `duration_sec`, `billable`, `billable_rate`, `cost_rate`, `cost_rate_source`, `cost_rate_basis_days`, `tags`, `source`, `origin_type`, `origin_id`, `device_id`)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'activity', 'activity', ?, ?)"
             )->execute([
                 $newId, $userId, $userId, $employee['id'] ?? null, $projectId, $title, $title,
-                ccrm_tt_local_date($row['started_at']), $row['started_at'], $row['ended_at'], $dur, $billable, $rate,
-                $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $price['cost'],
+                $day, $row['started_at'], $row['ended_at'], $dur, $billable, $rate,
+                $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'],
                 $row['id'], $row['device_id'],
             ]);
             $pdo->prepare("UPDATE `time_activity` SET `status` = 'assigned', `entry_id` = ?, `suggested_project_id` = COALESCE(`suggested_project_id`, ?) WHERE `id` = ? AND `status` = 'unsorted'")
                 ->execute([$newId, $projectId, $row['id']]);
-            $entries[] = ccrm_ttx_entry($pdo, $newId, $viewer);
+            $newIds[] = $newId;
+            $touched[] = ['user_id' => $userId, 'start_at' => $row['started_at'], 'end_at' => $row['ended_at'], 'duration_sec' => $dur, 'entry_date' => $day];
         }
+        ccrm_tt_settle_rows($pdo, $touched);
         $pdo->commit();
     } catch (\Throwable $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
         }
         throw $e;
+    }
+    $entries = [];
+    foreach ($newIds as $newId) {
+        $entries[] = ccrm_ttx_entry($pdo, $newId, $viewer);
     }
     return ['ok' => true, 'assigned' => count($entries), 'entries' => $entries];
 }
