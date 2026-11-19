@@ -710,6 +710,65 @@ async function main() {
       check('T16: ...recomputes the frozen row (2 paid leave days, frozen_at kept)', re?.paid_leave_days === '2.0' && !!re?.frozen_at && re?.frozen_at === frozen?.frozen_at && near(re?.rate, want2), JSON.stringify(re));
       check('T16: ...and re-prices the entry with the new rate and cost', near(dbEntry(p.data.entry.id)?.cost_rate, want2) && near(dbEntry(p.data.entry.id)?.cost, want2), JSON.stringify(dbEntry(p.data.entry.id)));
     }
+    section('T17: the extension with parallel timers (phase 4c)');
+    {
+      // D5.6: the extension stays single-timer but is safe beside parallel timers. Uses the T15 tasks (proj-tt-1), so
+      // requireProjectToStop (true again) never refuses a stop. Pairs its own device: T14's key is out of scope here.
+      const runningRows = () => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL ORDER BY start_at, id`);
+      const setParallel = (p) => sql(`UPDATE system_settings SET value = JSON_SET(value, '$.parallel', CAST(${q(JSON.stringify(p))} AS JSON)) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      const grant = (on) => sql(on
+        ? `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'edit') WHERE \`key\` = 'ROLES_RBAC'`
+        : `UPDATE system_settings SET value = JSON_REMOVE(value, '$[2].permissions.time_tracking_parallel') WHERE \`key\` = 'ROLES_RBAC'`);
+      const iso = (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const ext = (method, action, body, key) =>
+        fetch(`${BASE}/ttprobe/api/time_tracker_ext.php${method === 'GET' ? `?action=${action}` : ''}`, {
+          method,
+          headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(key ? { Authorization: `Bearer ${key}` } : {}) },
+          body: body === undefined ? undefined : JSON.stringify({ action, ...body }),
+        }).then(async (res) => { const raw = await res.text(); let data = null; try { data = JSON.parse(raw); } catch {} return { status: res.status, raw, data }; });
+
+      await te(S.erik, { action: 'stop', all: true });
+      check('T17: starting point: Erik has no running entry', runningRows().length === 0);
+      const code = await api(S.erik, 'time_tracker_ext.php', { method: 'POST', body: { action: 'code' } });
+      const key = (await ext('POST', 'pair', { code: code.data?.code, deviceName: 'T17 probe', version: '1.0.0' })).data?.deviceKey;
+      check('T17: a device is paired', /^ttk_[a-f0-9]{64}$/.test(key || ''), code.raw);
+      setParallel({ enabled: true, maxParallel: 4, sameProject: 'differentTasks' });
+      grant(true);
+
+      const t0 = Date.now() - 60000; // both started a minute ago: worked = 60 s, a plain sum would say 120 s
+      const p1 = await te(S.erik, { action: 'start', taskId: 'task-tt-p1', startedAt: iso(t0) });
+      const p2 = await te(S.erik, { action: 'start', taskId: 'task-tt-p2', mode: 'parallel', startedAt: iso(t0 + 1000) });
+      check('T17: two REST timers run in parallel', p1.status === 201 && p2.status === 201 && runningRows().length === 2, `${p1.raw} / ${p2.raw}`);
+
+      const er = await ext('GET', 'running', undefined, key);
+      check('T17: extension running reports count 2, running[2], entry = the first, workedTodaySeconds a number',
+        er.status === 200 && er.data?.count === 2 && er.data?.running?.length === 2 && er.data?.entry?.id === p1.data?.entry?.id && typeof er.data?.workedTodaySeconds === 'number', er.raw);
+      // Running part = workedTodaySeconds - recent.todaySeconds (closed entries of today).
+      const closed = (await ext('GET', 'recent', undefined, key)).data?.todaySeconds;
+      const runningPart = er.data?.workedTodaySeconds - closed;
+      check('T17: ...the worked clock adds the union of the running intervals (about 60 s, not 120)', runningPart >= 55 && runningPart < 100, `${er.data?.workedTodaySeconds} - ${closed}`);
+
+      const amb = await ext('POST', 'stop', {}, key);
+      check('T17: extension stop without an id while two run is 409 ambiguous with running = 2', amb.status === 409 && amb.data?.code === 'ambiguous' && amb.data?.running === 2 && runningRows().length === 2, amb.raw);
+
+      const same = await ext('POST', 'start', { taskId: 'task-tt-p1' }, key);
+      check('T17: extension start of a running target is 409 already_running with that entry, nothing stopped',
+        same.status === 409 && same.data?.code === 'already_running' && same.data?.entry?.id === p1.data?.entry?.id && runningRows().length === 2, same.raw);
+
+      const sw = await ext('POST', 'start', { taskId: 'task-tt-p3' }, key);
+      const ids = [p1, p2].map((r) => r.data?.entry?.id);
+      check('T17: extension start switches both off: stoppedAll 2, stopped = the first, one running',
+        sw.status === 201 && sw.data?.stoppedAll?.length === 2 && sw.data?.stopped?.id === ids[0] && ids.every((id) => dbEntry(id)?.end_at !== null)
+          && runningRows().length === 1 && runningRows()[0].id === sw.data?.entry?.id, sw.raw);
+
+      const one = await ext('POST', 'stop', {}, key);
+      check('T17: with one running, extension stop without an id ends it', one.status === 200 && one.data?.entry?.id === sw.data?.entry?.id && runningRows().length === 0, one.raw);
+
+      await te(S.erik, { action: 'stop', all: true });
+      sql(`UPDATE system_settings SET value = JSON_REMOVE(value, '$.parallel') WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      grant(false);
+      check('T17: cleanup: Erik has no running entry, parallel settings and permission removed', runningRows().length === 0);
+    }
   } finally {
     teardown();
   }

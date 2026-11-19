@@ -136,8 +136,8 @@ try {
             if ($method !== 'GET') {
                 ccrm_ttx_fail('method_not_allowed', 405);
             }
-            $row = ccrm_ttx_running($pdo, $userId);
-            ccrm_ttx_out(['entry' => $row ? ccrm_ttx_entry($pdo, $row['id'], $viewer) : null]);
+            // {entry: first running (old extensions), running: Entry[], count, workedTodaySeconds, serverNow}
+            ccrm_ttx_out(ccrm_ttx_running_payload($pdo, $userId, $viewer));
         }
         if ($action === 'recent') {
             if ($method !== 'GET') {
@@ -176,7 +176,8 @@ try {
             if (!$result['ok']) {
                 ccrm_ttx_fail($result['code'], (int)$result['status'], isset($result['entry']) ? ['entry' => $result['entry']] : []);
             }
-            ccrm_ttx_out(['entry' => $result['entry'], 'stopped' => $result['stopped']], 201);
+            // Always a switch (TT2 D5.6): every running entry was stopped; `stopped` = the first, for old extensions.
+            ccrm_ttx_out(['entry' => $result['entry'], 'stopped' => $result['stopped'], 'stoppedAll' => $result['stoppedAll'], 'mode' => 'switch'], 201);
         }
         if ($action === 'stop') {
             if ($method !== 'POST') {
@@ -184,7 +185,8 @@ try {
             }
             $result = ccrm_ttx_stop($pdo, $user, $device, $body, $settings, $scope);
             if (!$result['ok']) {
-                ccrm_ttx_fail($result['code'], (int)$result['status']);
+                // ambiguous (409): several timers run and no id was sent; `running` = how many.
+                ccrm_ttx_fail($result['code'], (int)$result['status'], $result['extra'] ?? []);
             }
             ccrm_ttx_out(['entry' => $result['entry']]);
         }

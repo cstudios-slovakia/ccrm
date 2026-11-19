@@ -32,7 +32,8 @@ async function flush(state: TrackerLocal): Promise<TrackerLocal> {
         return saveLocal({ deviceKey: "", userName: "", queue: [], lost: lost.concat(queue.slice(i)), optimistic: null, openBlock: null });
       }
       if (code === "already_running" && item.kind === "start") continue;
-      if (code === "timestamp_out_of_window" || code === "end_before_start") {
+      // ambiguous: a queued stop without an id while several timers run; only the app can tell which.
+      if (code === "timestamp_out_of_window" || code === "end_before_start" || code === "ambiguous") {
         lost.push(item);
         continue;
       }
@@ -152,7 +153,13 @@ async function tick(): Promise<void> {
   } else {
     try {
       const res = await trackerCall(state.ccrmUrl, state.deviceKey, "GET", "running");
-      paint(res.entry?.running ? res.entry.startAt : null);
+      if ((res.count || 0) > 1) {
+        // Several timers: no single elapsed time fits, so the badge shows how many run.
+        chrome.action.setBadgeText({ text: `${res.count}x` });
+        chrome.action.setBadgeBackgroundColor({ color: "#e11d48" });
+      } else {
+        paint(res.entry?.running ? res.entry.startAt : null);
+      }
     } catch (error) {
       if (error instanceof TrackerError && error.code === "not_paired") {
         await saveLocal({ deviceKey: "", userName: "", optimistic: null });

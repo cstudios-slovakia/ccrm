@@ -14,6 +14,8 @@
 
 require_once __DIR__ . '/time_entries_lib.php';
 require_once __DIR__ . '/time_settle.php';
+require_once __DIR__ . '/time_lock.php';
+require_once __DIR__ . '/time_parallel.php';
 require_once __DIR__ . '/read_scope.php';
 
 const CCRM_TT_EXT_VERSION = '1.0.0';
@@ -397,15 +399,9 @@ function ccrm_ttx_revoke(\PDO $pdo, string $userId, string $deviceId): bool {
     return $stmt->rowCount() > 0;
 }
 
+/** The user's first running entry (oldest start), or null. Several may run (TT2 D5.1): see ccrm_tt_running_rows(). */
 function ccrm_ttx_running(\PDO $pdo, string $userId, bool $lock = false): ?array {
-    $sql = "SELECT * FROM `time_entries` WHERE `user_id` = ? AND `start_at` IS NOT NULL AND `end_at` IS NULL AND `deleted_at` IS NULL LIMIT 1";
-    if ($lock) {
-        $sql .= ' FOR UPDATE';
-    }
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([$userId]);
-    $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-    return $row ?: null;
+    return ccrm_tt_running_rows($pdo, $userId, $lock)[0] ?? null;
 }
 
 function ccrm_ttx_viewer(array $scope, string $userId): array {
@@ -443,11 +439,24 @@ function ccrm_ttx_origin(array $links): ?string {
     return null;
 }
 
+/** Close one running row at $endUtc (never before its start) and freeze its rates. A row stopped meanwhile is left as it is. */
+function ccrm_ttx_close_row(\PDO $pdo, array $row, string $endUtc, array $settings, ?string $projectId = null, ?string $deviceId = null): void {
+    $endUtc = max($endUtc, (string)$row['start_at']);
+    $dur = ccrm_tt_seconds_between($row['start_at'], $endUtc);
+    $project = $projectId ?? $row['project_id'];
+    $price = ccrm_tt_price($pdo, (string)$row['user_id'], $row['entry_date'], $dur, $settings, false);
+    $rate = $row['billable_rate'] !== null ? $row['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $project, $row['ticket_id'], (string)$row['entry_date']);
+    $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `project_id` = ?, `employee_id` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `device_id` = COALESCE(`device_id`, ?) WHERE `id` = ? AND `end_at` IS NULL")
+        ->execute([$endUtc, $dur, $project, $price['employee_id'], $rate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $deviceId, $row['id']]);
+}
+
 /**
- * Stop the user's running entry and start another, in one transaction.
- * Same rule as time_entries.php action=start.
+ * Start a timer from the extension. The extension is a single-timer client (TT2 D5.6), so its
+ * Start is always `switch`: under the per-user lock it stops EVERY running entry of the user,
+ * settles them and starts the new one. Starting the identical target of a running entry is
+ * refused with 409 `already_running` and that entry (D5.3), like REST.
  *
- * @return array{ok: bool, code?: string, status?: int, entry?: array|null, stopped?: array|null}
+ * @return array{ok: bool, code?: string, status?: int, entry?: array|null, stopped?: array|null, stoppedAll?: array}
  */
 function ccrm_ttx_start(\PDO $pdo, array $user, array $device, array $body, array $settings, array $scope): array {
     $userId = (string)$user['id'];
@@ -473,23 +482,24 @@ function ccrm_ttx_start(\PDO $pdo, array $user, array $device, array $body, arra
     $newId = ccrm_tt_new_id();
     $viewer = ccrm_ttx_viewer($scope, $userId);
 
-    $previous = ccrm_ttx_running($pdo, $userId);
-    if ($previous) {
+    // Warm the holiday cache for every entry the switch may stop: no network inside the transaction.
+    foreach (ccrm_tt_running_rows($pdo, $userId) as $previous) {
         ccrm_tt_price($pdo, $userId, $previous['entry_date'], null, $settings, true);
     }
 
+    $stopped = [];
+    ccrm_tt_lock_prepare($pdo, $userId);
     try {
         $pdo->beginTransaction();
-        $stopped = null;
-        $old = ccrm_ttx_running($pdo, $userId, true);
-        if ($old) {
-            $endUtc = max($startUtc, $old['start_at']);
-            $dur = ccrm_tt_seconds_between($old['start_at'], $endUtc);
-            $price = ccrm_tt_price($pdo, $userId, $old['entry_date'], $dur, $settings, false);
-            $stoppedRate = $old['billable_rate'] !== null ? $old['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $old['project_id'], $old['ticket_id'], (string)$old['entry_date']);
-            $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `employee_id` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ? WHERE `id` = ?")
-                ->execute([$endUtc, $dur, $price['employee_id'], $stoppedRate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $old['id']]);
-            $stopped = $old['id'];
+        ccrm_tt_lock_user($pdo, $userId);
+        $runningRows = ccrm_tt_running_rows($pdo, $userId, true);
+        if ($same = ccrm_tt_identical_running($runningRows, $links)) {
+            $pdo->rollBack();
+            return ['ok' => false, 'code' => 'already_running', 'status' => 409, 'entry' => ccrm_ttx_entry($pdo, (string)$same['id'], $viewer)];
+        }
+        foreach ($runningRows as $old) {
+            ccrm_ttx_close_row($pdo, $old, $startUtc, $settings);
+            $stopped[] = $old;
         }
         $pdo->prepare(
             "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `task_id`, `ticket_id`, `description`, `title_snapshot`, `entry_date`, `start_at`, `billable`, `tags`, `source`, `origin_type`, `origin_id`, `device_id`)
@@ -501,26 +511,36 @@ function ccrm_ttx_start(\PDO $pdo, array $user, array $device, array $body, arra
             ccrm_ttx_origin($links), ccrm_tt_nullable_id($body['originId'] ?? null) ?? ($links['task_id'] ?? $links['ticket_id'] ?? $links['project_id']),
             $device['id'],
         ]);
-        ccrm_tt_settle_rows($pdo, [$old, ['user_id' => $userId, 'start_at' => $startUtc, 'end_at' => null, 'entry_date' => ccrm_tt_local_date($startUtc)]]);
+        // The stopped entries (their running intervals reach now) and the new one, which may be back-dated.
+        ccrm_tt_settle_rows($pdo, array_merge($stopped, [['id' => $newId, 'user_id' => $userId, 'start_at' => $startUtc, 'end_at' => null, 'entry_date' => ccrm_tt_local_date($startUtc)]]));
         $pdo->commit();
-    } catch (\PDOException $e) {
+    } catch (\Throwable $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
         }
-        if ((int)($e->errorInfo[1] ?? 0) === 1062) {
-            $row = ccrm_ttx_running($pdo, $userId);
-            return ['ok' => false, 'code' => 'already_running', 'status' => 409, 'entry' => $row ? ccrm_ttx_entry($pdo, $row['id'], $viewer) : null];
-        }
         throw $e;
+    }
+    $stoppedAll = [];
+    foreach ($stopped as $old) {
+        if ($json = ccrm_ttx_entry($pdo, (string)$old['id'], $viewer)) {
+            $stoppedAll[] = $json;
+        }
     }
     return [
         'ok' => true,
         'entry' => ccrm_ttx_entry($pdo, $newId, $viewer),
-        'stopped' => $stopped ? ccrm_ttx_entry($pdo, $stopped, $viewer) : null,
+        'stopped' => $stoppedAll[0] ?? null, // old extensions: the (first) stopped entry
+        'stoppedAll' => $stoppedAll,
     ];
 }
 
-/** @return array{ok: bool, code?: string, status?: int, entry?: array|null} */
+/**
+ * Stop a timer from the extension, under the per-user lock. With `id`: that entry of the user.
+ * Without: the single running entry; with several running, 409 `ambiguous` and `running` (the
+ * count), because the extension cannot tell which one the user means (TT2 D5.3, D5.6).
+ *
+ * @return array{ok: bool, code?: string, status?: int, entry?: array|null, extra?: array}
+ */
 function ccrm_ttx_stop(\PDO $pdo, array $user, array $device, array $body, array $settings, array $scope): array {
     $userId = (string)$user['id'];
     if (!ccrm_can($scope, 'time_tracking', 'edit')) {
@@ -533,7 +553,11 @@ function ccrm_ttx_stop(\PDO $pdo, array $user, array $device, array $body, array
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
     } else {
-        $row = ccrm_ttx_running($pdo, $userId);
+        $rows = ccrm_tt_running_rows($pdo, $userId);
+        if (count($rows) > 1) {
+            return ['ok' => false, 'code' => 'ambiguous', 'status' => 409, 'extra' => ['running' => count($rows)]];
+        }
+        $row = $rows[0] ?? null;
     }
     if (!$row || $row['start_at'] === null || (string)$row['user_id'] !== $userId) {
         return ['ok' => false, 'code' => 'not_found', 'status' => 404];
@@ -580,15 +604,28 @@ function ccrm_ttx_stop(\PDO $pdo, array $user, array $device, array $body, array
         }
         $endUtc = ccrm_ttx_ms_utc($when['ms']);
     }
-    $dur = ccrm_tt_seconds_between($row['start_at'], $endUtc);
-    $price = ccrm_tt_price($pdo, $userId, $row['entry_date'], $dur, $settings, true);
-    $stoppedRate = $row['billable_rate'] !== null ? $row['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $projectId, $row['ticket_id'], (string)$row['entry_date']);
-    $pdo->beginTransaction();
+    ccrm_tt_price($pdo, $userId, $row['entry_date'], null, $settings, true); // warm the holiday cache
+    ccrm_tt_lock_prepare($pdo, $userId);
     try {
-        $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `project_id` = ?, `employee_id` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `device_id` = COALESCE(`device_id`, ?) WHERE `id` = ? AND `end_at` IS NULL")
-            ->execute([$endUtc, $dur, $projectId, $price['employee_id'], $stoppedRate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $device['id'], $row['id']]);
-        ccrm_tt_settle_rows($pdo, [$row]); // running until now: covers the stopped interval
-        $pdo->commit();
+        $pdo->beginTransaction();
+        ccrm_tt_lock_user($pdo, $userId);
+        $running = ccrm_tt_running_rows($pdo, $userId, true);
+        if ($id === null && count($running) > 1) {
+            // Another client started a second timer since the read above.
+            $pdo->rollBack();
+            return ['ok' => false, 'code' => 'ambiguous', 'status' => 409, 'extra' => ['running' => count($running)]];
+        }
+        $current = null;
+        foreach ($running as $r) {
+            if ((string)$r['id'] === (string)$row['id']) {
+                $current = $r;
+            }
+        }
+        if ($current !== null) {
+            ccrm_ttx_close_row($pdo, $current, $endUtc, $settings, $projectId, (string)$device['id']);
+            ccrm_tt_settle_rows($pdo, [$current]); // running until now: covers the stopped interval
+        }
+        $pdo->commit(); // stopped meanwhile by another client: nothing to do, answer with its state
     } catch (\Throwable $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
@@ -596,6 +633,57 @@ function ccrm_ttx_stop(\PDO $pdo, array $user, array $device, array $body, array
         throw $e;
     }
     return ['ok' => true, 'entry' => ccrm_ttx_entry($pdo, $row['id'], $viewer)];
+}
+
+/**
+ * Worked seconds of the user today (TT2 D9): the stored worked time of today's closed and
+ * hours-only entries plus the elapsed time of the UNION of the running intervals since local
+ * midnight, so two parallel timers add one second per second, not two.
+ */
+function ccrm_ttx_worked_today_seconds(\PDO $pdo, string $userId, array $runningRows): int {
+    $nowUtc = ccrm_tt_now_utc();
+    $today = ccrm_tt_local_date($nowUtc);
+    $sum = $pdo->prepare("SELECT COALESCE(SUM(COALESCE(`worked_ms`, `duration_sec` * 1000)), 0) FROM `time_entries` WHERE `user_id` = ? AND `entry_date` = ? AND `deleted_at` IS NULL AND (`end_at` IS NOT NULL OR `start_at` IS NULL)");
+    $sum->execute([$userId, $today]);
+    $closedMs = (int)round((float)$sum->fetchColumn());
+    $day = ccrm_ts_local_day_ms($today);
+    $nowMs = (int)ccrm_ts_ms($nowUtc);
+    $from = $day ? $day[0] : $nowMs;
+    $intervals = [];
+    foreach ($runningRows as $r) {
+        $start = ccrm_ts_ms($r['start_at'] ?? null);
+        if ($start === null) {
+            continue;
+        }
+        $start = max($start, $from);
+        if ($start < $nowMs) {
+            $intervals[] = $start;
+        }
+    }
+    // Running intervals all end now, so their union is [earliest start, now].
+    $runningMs = $intervals ? $nowMs - min($intervals) : 0;
+    return (int)round(($closedMs + $runningMs) / 1000);
+}
+
+/**
+ * The `running` payload: `entry` (the first running item, for old extensions), `running` (every
+ * running item), `count`, `workedTodaySeconds` and `serverNow` (TT2 D5.6).
+ */
+function ccrm_ttx_running_payload(\PDO $pdo, string $userId, array $viewer): array {
+    $rows = ccrm_tt_running_rows($pdo, $userId);
+    $running = [];
+    foreach ($rows as $r) {
+        if ($json = ccrm_ttx_entry($pdo, (string)$r['id'], $viewer)) {
+            $running[] = $json;
+        }
+    }
+    return [
+        'entry' => $running[0] ?? null,
+        'running' => $running,
+        'count' => count($running),
+        'workedTodaySeconds' => ccrm_ttx_worked_today_seconds($pdo, $userId, $rows),
+        'serverNow' => gmdate('Y-m-d\TH:i:s\Z'),
+    ];
 }
 
 function ccrm_ttx_recent(\PDO $pdo, string $userId, array $viewer): array {

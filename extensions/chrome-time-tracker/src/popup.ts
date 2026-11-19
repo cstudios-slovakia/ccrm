@@ -122,7 +122,10 @@ async function showTracker(): Promise<void> {
     const entry = state.optimistic
       ? { running: true, title: state.optimistic.title, projectName: state.optimistic.projectName, startAt: state.optimistic.startedAt, taskId: state.optimistic.taskTitle ? "local" : null, titleSource: "entry" }
       : running.entry;
-    if (entry?.running) renderRunning(entry, recent, count.count || 0, rules, state.ccrmUrl);
+    // Several timers run (started in the app): the extension is a single-timer client and does
+    // not pick one; it points to the app and shows the worked clock (TT2 D5.6).
+    if (!state.optimistic && (running.count || 0) > 1) renderMany(running, count.count || 0, rules, state.ccrmUrl);
+    else if (entry?.running) renderRunning(entry, recent, count.count || 0, rules, state.ccrmUrl);
     else renderIdle(recent, count.count || 0, rules, state.ccrmUrl);
   } catch (error) {
     if (error instanceof TrackerError && error.code === "not_paired") {
@@ -186,7 +189,41 @@ function renderRunning(entry: any, recent: any, unsorted: number, rules: { enabl
   wireOpen(ccrmUrl);
 }
 
-function renderIdle(recent: any, unsorted: number, rules: { enabled?: boolean }, ccrmUrl: string, offline = false): void {
+function renderMany(running: { count?: number; workedTodaySeconds?: number }, unsorted: number, rules: { enabled?: boolean }, ccrmUrl: string): void {
+  const loadedAt = Date.now();
+  const base = Number(running.workedTodaySeconds) || 0;
+  // The union of the running intervals grows one second per second, however many run.
+  const paint = () => {
+    const node = app.querySelector("#worked");
+    if (!node) return;
+    const sec = base + Math.max(0, Math.floor((Date.now() - loadedAt) / 1000));
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    node.textContent = `${h}:${String(m).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
+  };
+  app.innerHTML = `
+    <div class="stack">
+      <div>
+        <h1>${esc(running.count || 0)} timers running</h1>
+        <p class="muted">Open the app to stop or switch them.</p>
+      </div>
+      <div class="elapsed" id="worked">0:00</div>
+      <p class="muted">Worked today</p>
+      <button id="open-app" class="primary" type="button">Open the app</button>
+      ${captureRow(!!rules.enabled)}
+      ${footer(unsorted, ccrmUrl)}
+    </div>`;
+  paint();
+  window.clearInterval(clock);
+  clock = window.setInterval(paint, 1000);
+  app.querySelector("#open-app")?.addEventListener("click", () => {
+    void chrome.tabs.create({ url: `${ccrmUrl}/#time-tracking` });
+  });
+  wireCapture(!!rules.enabled);
+  wireOpen(ccrmUrl);
+}
+
+function renderIdle(recent: any,unsorted: number, rules: { enabled?: boolean }, ccrmUrl: string, offline = false): void {
   window.clearInterval(clock);
   app.innerHTML = `
     <div class="stack">
@@ -378,6 +415,13 @@ async function start(input: { description: string; projectId: string; projectNam
       renderPair("Pair this browser again.");
       return;
     }
+    if (error instanceof TrackerError && error.code === "already_running") {
+      // That exact work is already running (another tab or device started it): show it.
+      await saveLocal({ optimistic: null });
+      await refreshBadge();
+      await showTracker();
+      return;
+    }
     const node = app.querySelector("#form-error") as HTMLElement | null;
     if (node) {
       node.hidden = false;
@@ -404,6 +448,12 @@ async function stop(entry: any): Promise<void> {
   } catch (error) {
     if (error instanceof TrackerError && (error.code === "offline")) {
       await enqueue({ kind: "stop", at, body }, null);
+      await showTracker();
+      return;
+    }
+    if (error instanceof TrackerError && error.code === "ambiguous") {
+      // Several timers run and this one had no id: repaint, which shows "N timers running".
+      await saveLocal({ optimistic: null });
       await showTracker();
       return;
     }
