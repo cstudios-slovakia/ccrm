@@ -107,7 +107,7 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
   return (
     <div className="grid gap-4" data-testid="salary-report">
       <div>
-        <h3 className="type-card-title capitalize text-slate-900">{t("Salary allocation", "Rozdelenie mzdy", "Bérfelosztás")} · {monthLabel}</h3>
+        <h3 className="type-card-title text-slate-900">{t("Salary allocation", "Rozdelenie mzdy", "Bérfelosztás")} · <span className="capitalize">{monthLabel}</span></h3>
         <p className="mt-1 type-meta text-slate-500" data-testid="salary-basis">{basisSentence}{own}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
