@@ -132,7 +132,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
           delta={target !== null ? <span data-testid="stat-target">{t("of", "z", "ennyiből:")} {formatDuration(target)} {t("target", "cieľ", "cél")}</span> : undefined}
         />
         <StatTile label={t("Billable", "Fakturovateľné", "Számlázható")} value={<span className="tabular-nums">{billable === null ? "—" : `${billable} %`}</span>} />
-        {weekCost !== null && <StatTile label={t("Labour cost this week", "Náklady na prácu za týždeň", "Heti munkaköltség")} value={<span className="tabular-nums text-violet-700" data-testid="stat-cost">{money(weekCost)}</span>} />}
+        {weekCost !== null && <StatTile label={t("Labour cost this week", "Náklady na prácu za týždeň", "Heti munkaköltség")} value={<span className="tabular-nums text-slate-900" data-testid="stat-cost">{money(weekCost)}</span>} />}
       </StatGrid>
 
       <div className="flex flex-wrap items-center gap-2">

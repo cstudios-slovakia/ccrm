@@ -120,7 +120,7 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
         <OfYourTime entries={group} />
       </span>
       {rate && (
-        <span className="hidden w-20 shrink-0 text-right tabular-nums text-violet-700 ws-lg:inline" data-testid="time-entry-cost">
+        <span className="hidden w-20 shrink-0 text-right tabular-nums text-slate-500 ws-lg:inline" data-testid="time-entry-cost">
           {cost !== null ? money(cost) : entry.costRate === null && !entry.running ? <span className="text-amber-600" title={t("No rate — no employee linked", "Bez sadzby — nie je pripojený zamestnanec", "Nincs díj — nincs munkatárs hozzárendelve")}>—</span> : ""}
         </span>
       )}
