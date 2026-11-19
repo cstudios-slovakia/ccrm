@@ -148,6 +148,10 @@ async function api(sess, path, { method = 'GET', body, query = '' } = {}) {
 const te = (sess, body) => api(sess, 'time_entries.php', { method: 'POST', body });
 const list = (sess, query = '') => api(sess, 'time_entries.php', { query });
 const dbEntry = (id) => rows(`SELECT * FROM time_entries WHERE id=${q(id)}`)[0];
+/** Run PHP against the scratch copy with $pdo connected (the rate card has no HTTP surface of its own). */
+const php = (code) =>
+  docker('exec', '-u', 'www-data', WEB, 'php', '-r',
+    `require '${SCRATCH_DIR}/config.php'; require_once '${SCRATCH_DIR}/api/schema.php'; require_once '${SCRATCH_DIR}/api/time_entries_lib.php'; require_once '${SCRATCH_DIR}/api/time_rate_card.php'; $pdo = get_db_connection(); ${code}`);
 
 async function main() {
   console.log('Setting up the time tracking probe scratch environment...');
@@ -183,8 +187,11 @@ async function main() {
     const hu = await te(S.erik, { action: 'create', description: 'HU calendar', entryDate: '2026-10-15', durationSec: 3600, source: 'day' });
     const huRow = dbEntry(hu.data?.entry?.id);
     check('T2: Oct 2026 in Hungary has 21 working days -> 25.7524/h', huRow?.cost_rate === '25.7524' && huRow?.cost_rate_basis_days === '21', JSON.stringify(huRow));
+    // C12 (TT2 phase 3): October is still open, so the calendar change re-priced the earlier October entry too.
+    check('T2: an open month follows the calendar: the earlier October entry is re-priced to 25.7524', dbEntry(oct.data.entry.id)?.cost_rate === '25.7524', JSON.stringify(dbEntry(oct.data.entry.id)));
     sql(`UPDATE employees SET work_country=NULL WHERE id='emp-erik'`);
-    check('T2: the frozen October rate did not change when the calendar did', dbEntry(oct.data.entry.id)?.cost_rate === '24.5818');
+    php(`ccrm_tt_rate_for($pdo, 'emp-erik', '2026-10', ccrm_tt_load_settings($pdo), true);`);
+    check('T2: ...and back to 24.5818 (cost 55.3091) once the rate card sees the SK calendar again', dbEntry(oct.data.entry.id)?.cost_rate === '24.5818' && dbEntry(oct.data.entry.id)?.cost === '55.3091', JSON.stringify(dbEntry(oct.data.entry.id)));
 
     section('T3: cost visibility is enforced by the server');
     const asPm = await list(S.pm, '?userId=all&from=2026-01-01&to=2026-12-31');
@@ -629,6 +636,80 @@ async function main() {
     // T13/T14 stop free-text timers; Erik can pick a project, so "require a project" would refuse those stops
     // (that rule is T5's subject). Restore it for anything that runs after.
     sql(`UPDATE system_settings SET value = JSON_SET(value, '$.requireProjectToStop', true) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+
+    section('T16: leave-aware rate card (phase 3)');
+    {
+      // Erik: monthly 3 200 in SK. The open month is the current one (not frozen; the age lock is off);
+      // the closed one is the previous month with a closed payroll record. Multiplier and hours per day
+      // are whatever T9 saved, read back from the rate card row.
+      const near = (a, b, tol = 0.00011) => Math.abs(Number(a) - Number(b)) <= tol;
+      const round4 = (n) => Math.round(n * 10000) / 10000;
+      const today = new Date().toISOString().slice(0, 10);
+      const month = today.slice(0, 7);
+      const pd = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 2, 1));
+      const prev = pd.toISOString().slice(0, 7);
+      const card = (m) => rows(`SELECT * FROM time_rate_months WHERE employee_id='emp-erik' AND month=${q(m)}`)[0];
+      const audits = (m) => Number(rows(`SELECT COUNT(*) AS n FROM audit_log WHERE action='time_tracking.rate_card' AND detail LIKE ${q(`Rate card emp-erik ${m}:%`)}`)[0]?.n ?? 0);
+      // The first two SK working days of a month (weekdays that are not public holidays).
+      const holidayCache = {};
+      const firstWorkingDays = async (m) => {
+        const y = m.slice(0, 4);
+        holidayCache[y] ??= new Set(((await api(S.erik, 'holidays.php', { query: `?country=SK&year=${y}` })).data?.days || []).map((d) => d.date));
+        const out = [];
+        for (let d = new Date(`${m}-01T00:00:00Z`); out.length < 2; d.setUTCDate(d.getUTCDate() + 1)) {
+          const ymd = d.toISOString().slice(0, 10);
+          if (d.getUTCDay() !== 0 && d.getUTCDay() !== 6 && !holidayCache[y].has(ymd)) out.push(ymd);
+        }
+        return out;
+      };
+      const bookPaidLeave = async (id, m) => {
+        const [d1, d2] = await firstWorkingDays(m);
+        // 'annual' is a paid type in the EMPLOYEE_SETTINGS.vacationTypes the schema seeds (isPaid: true).
+        sql(`INSERT INTO employee_vacations (id, employee_id, vacation_type_id, start_date, end_date, days_count, status) VALUES (${q(id)}, 'emp-erik', 'annual', ${q(d1)}, ${q(d2)}, 2.0, 'approved')`);
+      };
+      const expected = (row, pl) => round4((3200 * Number(row.multiplier)) / ((Number(row.working_days) - pl) * Number(row.hours_per_day)));
+      const day = (desc, date) => te(S.erik, { action: 'create', description: desc, entryDate: date, durationSec: 3600, source: 'day' });
+
+      // ---- open month: leave booked after tracking re-prices the month once ----
+      const a = await day('T16 A', today);
+      check('T16: an entry in the open month is created and priced monthly', a.status === 201 && dbEntry(a.data?.entry?.id)?.cost_rate_source === 'monthly', a.raw);
+      const before = card(month);
+      check('T16: the rate card has the open month, no leave, not frozen, same rate as the entry', before && before.paid_leave_days === '0.0' && before.frozen_at === null && before.rate === dbEntry(a.data.entry.id)?.cost_rate, JSON.stringify(before));
+      const n0 = audits(month);
+      await bookPaidLeave('vac-t16-open', month);
+      const b = await day('T16 B', today); // pricing B reads the rate card, which sees the new leave
+      const after = card(month);
+      const want = after ? expected(after, 2) : NaN;
+      check('T16: the rate card row now has 2 paid leave days and the D4.1 rate', after?.paid_leave_days === '2.0' && near(after?.rate, want), `${JSON.stringify(after)} want ${want}`);
+      const aRow = dbEntry(a.data?.entry?.id);
+      check('T16: the earlier entry A was re-priced: rate = salary x multiplier / ((WD - PL) x H), 4 decimals', near(aRow?.cost_rate, want), `${aRow?.cost_rate} vs ${want}`);
+      check('T16: ...and its cost (1 h) follows, written by settle', near(aRow?.cost, want), `${aRow?.cost} vs ${want}`);
+      check('T16: the new entry B carries the same rate', b.status === 201 && near(dbEntry(b.data?.entry?.id)?.cost_rate, want), b.raw);
+      check('T16: one audit-log line for the re-pricing', audits(month) === n0 + 1, `${audits(month)} vs ${n0 + 1}`);
+      const c = await day('T16 C', today);
+      php(`echo json_encode(ccrm_tt_rate_card_cron($pdo, true));`);
+      check('T16: another entry and a cron pass re-price nothing more (no new audit line)', c.status === 201 && audits(month) === n0 + 1 && near(dbEntry(a.data.entry.id)?.cost_rate, want), `${audits(month)} audit lines`);
+
+      // ---- closed payroll month: not re-priced; the admin "Re-price a period" does recompute ----
+      const p = await day('T16 P', `${prev}-10`);
+      check('T16: an entry in the previous month is created', p.status === 201, p.raw);
+      const p0 = dbEntry(p.data?.entry?.id)?.cost_rate;
+      sql(`INSERT INTO employee_salaries (id, employee_id, period_type, period_key, year, period_number, items_json, total_salary, total_paid, status, closed_at) VALUES ('sal-t16', 'emp-erik', 'monthly', ${q(prev)}, ${Number(prev.slice(0, 4))}, ${Number(prev.slice(5, 7))}, '[]', 3200, 3200, 'paid', UTC_TIMESTAMP())`);
+      const np0 = audits(prev);
+      await bookPaidLeave('vac-t16-closed', prev);
+      php(`echo json_encode(ccrm_tt_rate_card_cron($pdo, true));`);
+      const frozen = card(prev);
+      check('T16: closed payroll month: the entry keeps its rate', p0 && dbEntry(p.data.entry.id)?.cost_rate === p0, `${dbEntry(p.data.entry.id)?.cost_rate} vs ${p0}`);
+      check('T16: ...the rate card row is frozen and ignores the new leave', !!frozen?.frozen_at && frozen?.paid_leave_days === '0.0', JSON.stringify(frozen));
+      check('T16: ...and no audit line was written for it', audits(prev) === np0, `${audits(prev)} vs ${np0}`);
+      const lastDay = new Date(Date.UTC(Number(prev.slice(0, 4)), Number(prev.slice(5, 7)), 0)).toISOString().slice(0, 10);
+      const rp = await te(S.admin, { action: 'reprice', from: `${prev}-01`, to: lastDay, userIds: [USERS.erik.id] });
+      const re = card(prev);
+      const want2 = re ? expected(re, 2) : NaN;
+      check('T16: admin re-price of the closed month succeeds', rp.status === 200 && rp.data?.repriced >= 1, rp.raw);
+      check('T16: ...recomputes the frozen row (2 paid leave days, frozen_at kept)', re?.paid_leave_days === '2.0' && !!re?.frozen_at && re?.frozen_at === frozen?.frozen_at && near(re?.rate, want2), JSON.stringify(re));
+      check('T16: ...and re-prices the entry with the new rate and cost', near(dbEntry(p.data.entry.id)?.cost_rate, want2) && near(dbEntry(p.data.entry.id)?.cost, want2), JSON.stringify(dbEntry(p.data.entry.id)));
+    }
   } finally {
     teardown();
   }
