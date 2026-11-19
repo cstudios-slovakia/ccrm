@@ -1,0 +1,1 @@
+- **Time tracking extension settings match the design** (`ExtensionSettings.tsx`, `PairedBrowsers.tsx`): the Download button uses the primary colour, setup is three step cards (Install, Pair, Track), a Copy button sits next to the pairing code, the activity switches use the shared Switch, and the privacy line has a lock icon and says managers never see unsorted activity.

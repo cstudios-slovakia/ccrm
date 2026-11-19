@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { MonitorSmartphone, RefreshCw } from "lucide-react";
+import { Check, Copy, MonitorSmartphone, RefreshCw } from "lucide-react";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
 import type { Language } from "../../utils/translations";
 import type { TFn } from "../../utils/timeTracking.ts";
@@ -12,6 +12,7 @@ export function PairedBrowsers({ t, language }: { t: TFn; language: Language }) 
   const [code, setCode] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -31,11 +32,23 @@ export function PairedBrowsers({ t, language }: { t: TFn; language: Language }) 
     try {
       const issued = await issuePairingCode();
       setCode(issued.code);
+      setCopied(false);
       setExpiresAt(issued.expiresAt);
     } catch (e) {
       window.showToast?.(timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t), "error");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const copyCode = async () => {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked: the code stays readable on screen */
     }
   };
 
@@ -76,6 +89,17 @@ export function PairedBrowsers({ t, language }: { t: TFn; language: Language }) 
               {expiresAt ? ` · ${when(expiresAt)}` : ""}
             </span>
           </div>
+        )}
+        {code && (
+          <button
+            type="button"
+            onClick={() => void copyCode()}
+            data-testid="tt-copy-pairing-code"
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-ui font-semibold text-slate-700 transition-all hover:bg-slate-50 active:scale-95 cursor-pointer"
+          >
+            {copied ? <Check className="size-4 text-emerald-600" /> : <Copy className="size-4" />}
+            {copied ? t("Copied", "Skopírované", "Másolva") : t("Copy", "Kopírovať", "Másolás")}
+          </button>
         )}
       </div>
       {devices.length === 0 ? (
