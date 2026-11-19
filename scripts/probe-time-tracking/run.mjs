@@ -1273,7 +1273,9 @@ async function main() {
     {
       // D10.2 "On the server", C14: an MCP status change pauses or stops the MCP key user's own timer on that
       // task, never starts one, never touches another user's timer. Admin is the second user (sees every task).
-      const TASK = 'task-tt-1';
+      // Its own task: T6 deletes task-tt-1 on purpose (the greyed-out title of a deleted task).
+      const TASK = 'task-tt-23';
+      sql(`INSERT INTO tasks (id, title, priority, deadline, status, owner, created_by, related_project_id) VALUES ('task-tt-23', 'T23 status task', 'medium', '2026-12-31', 'todo', 'TT Erik', 'TT Erik', 'proj-tt-1');`);
       const runningOn = (uid) => rows(`SELECT id FROM time_entries WHERE user_id=${q(uid)} AND task_id=${q(TASK)} AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL`);
       sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('TASK_STATES', ${q(JSON.stringify(['todo', 'in_progress', 'review', 'done']))});
            REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('TASK_STATE_TIMER_ACTIONS', ${q(JSON.stringify({ done: 'stop', review: 'pause', in_progress: 'start' }))});
