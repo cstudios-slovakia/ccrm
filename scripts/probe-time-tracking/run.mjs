@@ -1268,6 +1268,75 @@ async function main() {
       check('T22: cleanup: nothing runs for Erik or the freelancer',
         rows(`SELECT id FROM time_entries WHERE user_id IN ('tt-erik','tt-free') AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL`).length === 0);
     }
+
+    section('T23: MCP status actions (phase 8c)');
+    {
+      // D10.2 "On the server", C14: an MCP status change pauses or stops the MCP key user's own timer on that
+      // task, never starts one, never touches another user's timer. Admin is the second user (sees every task).
+      const TASK = 'task-tt-1';
+      const runningOn = (uid) => rows(`SELECT id FROM time_entries WHERE user_id=${q(uid)} AND task_id=${q(TASK)} AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL`);
+      sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('TASK_STATES', ${q(JSON.stringify(['todo', 'in_progress', 'review', 'done']))});
+           REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('TASK_STATE_TIMER_ACTIONS', ${q(JSON.stringify({ done: 'stop', review: 'pause', in_progress: 'start' }))});
+           UPDATE tasks SET status = 'todo', completed_at = NULL, completed_by = NULL WHERE id = ${q(TASK)};`);
+      await te(S.erik, { action: 'stop', all: true });
+      await te(S.admin, { action: 'stop', all: true });
+      const token = 'ccrm_mcp_probe_tt_erik_t23_' + '0'.repeat(36);
+      sql(`INSERT INTO mcp_keys (id, user_id, key_hash, key_prefix, name, created_at) VALUES ('pk-tt-erik-t23', 'tt-erik', SHA2(${q(token)}, 256), 'ccrm_mcp_p...', 'probe t23', NOW() - INTERVAL 1 DAY);`);
+      let rpcId = 2300;
+      const mcp = async (tool, args = {}) => {
+        const res = await fetch(`${BASE}/ttprobe/api/mcp.php`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CCRM-MCP-KEY': token },
+          body: JSON.stringify({ jsonrpc: '2.0', id: rpcId++, method: 'tools/call', params: { name: tool, arguments: args } }),
+        });
+        const raw = await res.text();
+        let body = null; try { body = JSON.parse(raw); } catch {}
+        const text = body?.result?.content?.[0]?.text;
+        let data = null; try { data = JSON.parse(text); } catch {}
+        return { status: res.status, raw, isError: !!body?.result?.isError || !!body?.error, data };
+      };
+
+      // Both users run a timer on the same task (different users never conflict).
+      const e1 = await te(S.erik, { action: 'start', taskId: TASK, description: 'T23 Erik 1' });
+      const a1 = await te(S.admin, { action: 'start', taskId: TASK, description: 'T23 Admin' });
+      check('T23: setup: Erik and Admin both run a timer on the task', e1.status === 201 && a1.status === 201 && runningOn('tt-erik').length === 1 && runningOn('tt-admin').length === 1, `${e1.raw} / ${a1.raw}`);
+
+      const c = await mcp('complete_task', { id: TASK });
+      const e1Row = dbEntry(e1.data?.entry?.id);
+      check("T23: MCP complete_task (done = stop) stops Erik's timer with end_reason 'status', not paused",
+        !c.isError && e1Row?.end_at !== null && e1Row?.end_reason === 'status' && e1Row?.paused_at === null && (c.data?.timer?.stopped || []).includes(e1.data?.entry?.id),
+        `${c.raw} / ${JSON.stringify(e1Row)}`);
+      check("T23: ...Admin's timer on the same task keeps running (C14)", runningOn('tt-admin').length === 1 && dbEntry(a1.data?.entry?.id)?.end_at === null);
+
+      // Back to an unmapped status: nothing happens; then a fresh timer and the "pause" status.
+      const u0 = await mcp('update_task', { id: TASK, status: 'todo' });
+      check('T23: update_task to an unmapped status reports no timer action', !u0.isError && u0.data?.timer === undefined, u0.raw);
+      const e2 = await te(S.erik, { action: 'start', taskId: TASK, description: 'T23 Erik 2' });
+      const u1 = await mcp('update_task', { id: TASK, status: 'review' });
+      const e2Row = dbEntry(e2.data?.entry?.id);
+      check("T23: MCP update_task to 'review' (pause) pauses Erik's timer: pause_reason 'status', end_reason NULL",
+        e2.status === 201 && !u1.isError && e2Row?.end_at !== null && e2Row?.paused_at !== null && e2Row?.pause_reason === 'status' && e2Row?.end_reason === null,
+        `${u1.raw} / ${JSON.stringify(e2Row)}`);
+      check("T23: ...Admin's timer still runs", runningOn('tt-admin').length === 1);
+
+      const u2 = await mcp('update_task', { id: TASK, status: 'in_progress' });
+      check("T23: a status mapped to start starts nothing on the server (Erik has nothing running, the pause stays)",
+        !u2.isError && runningOn('tt-erik').length === 0 && dbEntry(e2.data?.entry?.id)?.paused_at !== null, u2.raw);
+
+      const u3 = await mcp('update_task', { id: TASK, status: 'done' });
+      const e2Stopped = dbEntry(e2.data?.entry?.id);
+      check("T23: 'done' (stop) on a paused item clears the marker with end_reason 'status'",
+        !u3.isError && e2Stopped?.paused_at === null && e2Stopped?.end_reason === 'status' && (u3.data?.timer?.unpaused || []).includes(e2.data?.entry?.id),
+        `${u3.raw} / ${JSON.stringify(e2Stopped)}`);
+      const u4 = await mcp('update_task', { id: TASK, status: 'done' });
+      check('T23: the same status again is a no-op (no timer action)', !u4.isError && u4.data?.timer === undefined, u4.raw);
+
+      // Cleanup: Admin's timer, the settings, the task status.
+      await te(S.admin, { action: 'stop', all: true });
+      sql(`DELETE FROM system_settings WHERE \`key\` IN ('TASK_STATES', 'TASK_STATE_TIMER_ACTIONS');
+           UPDATE tasks SET status = 'todo', completed_at = NULL, completed_by = NULL WHERE id = ${q(TASK)};`);
+      check('T23: cleanup: nothing runs on the task', runningOn('tt-erik').length === 0 && runningOn('tt-admin').length === 0);
+    }
   } finally {
     teardown();
   }

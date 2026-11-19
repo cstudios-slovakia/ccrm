@@ -229,6 +229,24 @@ function mcp_require_conclusion_to_finish(array $row, $incoming): void {
     throw new \InvalidArgumentException("This task requires a conclusion before it can be completed. Pass 'conclusion' with a short note on how it was finished.");
 }
 
+/**
+ * TT2 phase 8 (D10.2, C14): after a committed status change, pause or stop the MCP key user's own
+ * timer on that task (never a start, never anyone else's). A timer failure never fails the task
+ * write that already committed; it is logged and left out of the answer.
+ */
+function mcp_task_status_timer(\PDO $pdo, array $user, string $taskId, string $oldStatus, string $newStatus): ?array {
+    $uid = (string)($user['id'] ?? '');
+    if ($uid === '' || $oldStatus === $newStatus) return null;
+    try {
+        require_once __DIR__ . '/time_status_lib.php';
+        $r = ccrm_tt_task_status_changed($pdo, $taskId, $oldStatus, $newStatus, $uid);
+        return $r['applied'] ? $r : null;
+    } catch (\Throwable $e) {
+        if (function_exists('ccrm_log_exception')) ccrm_log_exception($e);
+        return null;
+    }
+}
+
 function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
     $id = mcp_require_string($args, 'id');
     $chkKind = $pdo->prepare("SELECT task_kind FROM tasks WHERE id = ? LIMIT 1"); /* recurring-template: template refusal */
@@ -296,7 +314,12 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
         if ($newOwner !== null) $pdo->prepare("INSERT IGNORE INTO task_assignees (task_id, user_name) VALUES (?, ?)")->execute([$id, $newOwner]);
     });
     mcp_audit($pdo, $user, 'task_update', "Updated task $id");
-    return ['success' => true, 'id' => $id];
+    $out = ['success' => true, 'id' => $id];
+    if (isset($status) && $status !== (string)$row['status']) {
+        $timer = mcp_task_status_timer($pdo, $user, $id, (string)$row['status'], $status);
+        if ($timer !== null) $out['timer'] = $timer;
+    }
+    return $out;
 }
 
 function mcp_do_complete_task(\PDO $pdo, array $user, array $args): array {
@@ -310,7 +333,7 @@ function mcp_do_complete_task(\PDO $pdo, array $user, array $args): array {
     // Judged on the stored row, like sync.php: without tasks.view_all only the
     // caller's own, created and assigned tasks may be completed.
     [$scopeSql, $scopeParams] = mcp_task_scope($user);
-    $chk = $pdo->prepare("SELECT requires_conclusion, conclusion FROM tasks WHERE id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
+    $chk = $pdo->prepare("SELECT status, requires_conclusion, conclusion FROM tasks WHERE id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
     $chk->execute(array_merge([$id], $scopeParams));
     $row = $chk->fetch(\PDO::FETCH_ASSOC);
     if (!$row) throw new \Exception("Task not found with ID: {$id}");
@@ -320,7 +343,10 @@ function mcp_do_complete_task(\PDO $pdo, array $user, array $args): array {
     $stmt = $pdo->prepare("UPDATE tasks SET status = ?, completed_by = ?, completed_at = ?, conclusion = COALESCE(?, conclusion) WHERE id = ? AND " . ccrm_sql_real_tasks());
     $stmt->execute([$done, $user['name'], date('Y-m-d H:i'), $conclusion === '' ? null : mb_substr($conclusion, 0, 5000), $id]);
     mcp_audit($pdo, $user, 'task_complete', "Marked task $id as done");
-    return ['success' => true, 'id' => $id, 'status' => $done, 'completed_by' => $user['name']];
+    $out = ['success' => true, 'id' => $id, 'status' => $done, 'completed_by' => $user['name']];
+    $timer = mcp_task_status_timer($pdo, $user, $id, (string)($row['status'] ?? ''), $done);
+    if ($timer !== null) $out['timer'] = $timer;
+    return $out;
 }
 
 // ---------------------------------------------------------------------------
