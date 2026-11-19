@@ -23,6 +23,8 @@
  *    CONVERTED salary and the month's working days (ccrm_holidays_working_days()); worked time and
  *    cost are written by ccrm_tt_settle() after the insert (no overlaps, so cost =
  *    ccrm_tc_worked_cost(duration x 1000, rate)). Billable entries carry the pack's EUR 45/h, converted.
+ *  - One parallel morning (owner, newest day): see demo_time_plan(); the owner supervises AI agents on
+ *    three projects at once, so three entries overlap and ccrm_tt_settle() splits the worked time.
  *  - Approval: the previous full week is `approved` for pm and sales and `submitted` for owner
  *    (the app only knows `approved`; `submitted` is an open week), older weeks are `approved`,
  *    the current week is open (NULL).
@@ -144,6 +146,11 @@ if (!function_exists('demo_seed_time')) {
      * Entries per day (2-4) and hours per day are fixed tables; each login starts at its usual
      * time, takes 10-20 minutes between entries and a 45 minute lunch once the clock passes 11:30.
      * The latest end is 16:40, so the UTC time of an entry never crosses midnight (Denver = UTC-7).
+     *
+     * ONE exception (TT2 D2, the staggered example): the owner's newest day is a parallel morning,
+     * three agent-supervision entries 09:00-11:00, 09:30-10:30 and 10:00-10:30 plus a plain afternoon
+     * entry 13:00-15:30 (4 entries, 6 h). Their items come from the pack's `parallel` list (key
+     * 'parallel' instead of a pool 'item'); worked time and cost are settled, never computed here.
      */
     function demo_time_plan(array $poolSizes): array {
         $counts = [
@@ -172,6 +179,12 @@ if (!function_exists('demo_seed_time')) {
             $n = max(1, (int)($poolSizes[$role] ?? 1));
             $c = 0;
             foreach ($perDay as $dayIndex => $entryCount) {
+                if ($role === 'owner' && $dayIndex === count($perDay) - 1) {
+                    foreach ([[9 * 60, 120, 'timer'], [9 * 60 + 30, 60, 'timer'], [10 * 60, 30, 'timer'], [13 * 60, 150, 'manual']] as $k => [$start, $minutes, $source]) {
+                        $plan[$role][] = ['day' => $dayIndex, 'start' => $start, 'minutes' => $minutes, 'item' => 0, 'source' => $source, 'parallel' => $k];
+                    }
+                    continue;
+                }
                 $total = $totals[$role][$dayIndex];
                 $clock = $startOfDay[$role];
                 $lunch = false;
@@ -331,7 +344,9 @@ if (!function_exists('demo_seed_time')) {
         $touched = [];
         foreach ($flat as $n => $p) {
             $role = $p['role'];
-            $item = $pack['pools'][$role][$p['item']];
+            $item = isset($p['parallel'])
+                ? $pack['parallel'][$p['parallel']] + ['link' => null, 'pick' => 0, 'note' => '']
+                : $pack['pools'][$role][$p['item']];
             $who = $people[$role];
             $date = $days[$p['day']];
             $projectRef = $item['project'];

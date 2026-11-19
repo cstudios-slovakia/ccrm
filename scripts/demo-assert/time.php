@@ -36,8 +36,8 @@ return [
         $local = static fn(string $utcStr): DateTimeImmutable => (new DateTimeImmutable($utcStr, $utc))->setTimezone($tz);
 
         // --- who, how many, which days -------------------------------------------------------------------
-        $check('128 entries for exactly the three logins (owner 36, pm 48, sales 44), recorded by themselves, employee resolved',
-            count($entries) === 128 && count($byRole['owner']) === 36 && count($byRole['pm']) === 48 && count($byRole['sales']) === 44 && !isset($byRole['?'])
+        $check('130 entries for exactly the three logins (owner 38, pm 48, sales 44), recorded by themselves, employee resolved',
+            count($entries) === 130 && count($byRole['owner']) === 38 && count($byRole['pm']) === 48 && count($byRole['sales']) === 44 && !isset($byRole['?'])
             && !array_filter($entries, static fn($r) => $r['recorded_by_user_id'] !== $r['user_id'] || $r['employee_id'] !== $personOf[$roleOf[$r['user_id']]]['employeeId']));
 
         $days = demo_time_working_days($ctx);
@@ -84,12 +84,49 @@ return [
         }
         $check('for every install date of 2026-2027: 15 ascending working days before today, none on a weekend or holiday; the whole schedule stays between 07:00 and 17:00 so UTC never crosses midnight', !$sweepBad && !$planBad, implode("\n", array_slice(array_merge($planBad, $sweepBad), 0, 5)));
 
+        // --- the ONE parallel morning (TT2 D2): owner, newest day; every other entry overlaps nothing ----------------
+        $clusterIds = [];
+        foreach ($byRole as $role => $list) {
+            foreach ($list as $a) foreach ($list as $b2) {
+                if ($a['id'] !== $b2['id'] && $a['start_at'] < $b2['end_at'] && $b2['start_at'] < $a['end_at']) $clusterIds[$a['id']] = $role . ' ' . $a['entry_date'];
+            }
+        }
+        $clusterOf = array_values(array_unique($clusterIds));
+        $check('exactly one cluster of overlapping entries: the owner on the newest working day (three entries, the staggered example of D2)',
+            $clusterOf === ['owner ' . $days[14]] && count($clusterIds) === 3, json_encode($clusterOf));
+        $parallel = array_values(array_filter($entries, static fn($r) => isset($clusterIds[$r['id']])));
+        $unionMs = 0;
+        $cursorMs = null;
+        usort($parallel, static fn($a, $b2) => strcmp($a['start_at'], $b2['start_at']));
+        foreach ($parallel as $r) {
+            $s0 = (new DateTimeImmutable($r['start_at'], $utc))->getTimestamp() * 1000;
+            $e0 = (new DateTimeImmutable($r['end_at'], $utc))->getTimestamp() * 1000;
+            $from = $cursorMs === null ? $s0 : max($s0, $cursorMs);
+            if ($e0 > $from) $unionMs += $e0 - $from;
+            $cursorMs = $cursorMs === null ? $e0 : max($cursorMs, $e0);
+        }
+        $parBad = [];
+        $wSum = 0;
+        $cSum = 0.0;
+        foreach ($parallel as $r) {
+            $wSum += (int)$r['worked_ms'];
+            $cSum += (float)$r['cost'];
+            if ((int)$r['worked_ms'] > (int)$r['duration_sec'] * 1000 || (int)$r['worked_ms'] <= 0) $parBad[] = "{$r['id']}: worked_ms {$r['worked_ms']} vs duration {$r['duration_sec']} s";
+        }
+        $parRate = $parallel ? ccrm_tc_cost_rate(['kind' => 'employee', 'salaryType' => 'monthly', 'salaryAmount' => $personOf['owner']['salary']],
+            ccrm_holidays_working_days($db, demo_time_server_country($ctx), (int)substr($parallel[0]['entry_date'], 0, 4), (int)substr($parallel[0]['entry_date'], 5, 2), [], false), ccrm_tc_default_settings())['rate'] : 0;
+        $unionCost = $unionMs / 3600000 * (float)$parRate;
+        if ($wSum !== $unionMs) $parBad[] = "sum worked_ms {$wSum} != union {$unionMs}";
+        if (abs($cSum - $unionCost) >= 0.005) $parBad[] = "cost {$cSum} != union hours x rate {$unionCost}";
+        $check('parallel morning: sum of worked_ms = union length (I1), each worked <= its duration (I3), cost of the three = union hours x rate to the cent', $parallel && !$parBad, implode("\n", $parBad));
+
         // --- no overlaps, 2-4 entries and 5-8 h per login and day, sane hours ----------------------------------
         $overlap = [];
         $shape = [];
         foreach ($byRole as $role => $list) {
             usort($list, static fn($a, $b) => strcmp($a['start_at'], $b['start_at']));
             for ($i = 1; $i < count($list); $i++) {
+                if (isset($clusterIds[$list[$i]['id']]) && isset($clusterIds[$list[$i - 1]['id']])) continue;
                 if ($list[$i]['start_at'] < $list[$i - 1]['end_at']) $overlap[] = "{$role}: {$list[$i - 1]['id']} overlaps {$list[$i]['id']}";
             }
             $perDay = [];
@@ -108,7 +145,7 @@ return [
             }
             if (count($perDay) !== 15) $shape[] = "{$role}: " . count($perDay) . ' days';
         }
-        $check('no overlapping entries per login', !$overlap, implode("\n", array_slice($overlap, 0, 8)));
+        $check('no overlapping entries per login (apart from the parallel morning)', !$overlap, implode("\n", array_slice($overlap, 0, 8)));
         $check('2-4 entries and 5-8 h per login and day, between 07:00 and 17:00 local, each at least 30 minutes', !$shape, implode("\n", array_slice($shape, 0, 8)));
 
         // --- no running timer (B10) -----------------------------------------------------------------------------
@@ -122,6 +159,10 @@ return [
             $role = $roleOf[$r['user_id']];
             $wd = ccrm_holidays_working_days($db, $country, (int)substr($r['entry_date'], 0, 4), (int)substr($r['entry_date'], 5, 2), [], false);
             $rate = ccrm_tc_cost_rate(['kind' => 'employee', 'salaryType' => 'monthly', 'salaryAmount' => $personOf[$role]['salary']], $wd, ccrm_tc_default_settings());
+            if (isset($clusterIds[$r['id']])) { // the parallel morning is asserted as a cluster above; here only the frozen rate
+                if (abs((float)$r['cost_rate'] - (float)$rate['rate']) > 0.00005) $costBad[] = "{$r['id']}: rate {$r['cost_rate']} != {$rate['rate']}";
+                continue;
+            }
             $want = ccrm_tc_worked_cost((int)$r['duration_sec'] * 1000, $rate['rate']); // no overlaps: worked = duration
             if ($r['cost_rate_source'] !== 'monthly' || (int)$r['cost_rate_basis_days'] !== $wd) $costBad[] = "{$r['id']}: source/basis {$r['cost_rate_source']}/{$r['cost_rate_basis_days']} (month has {$wd})";
             if (abs((float)$r['cost_rate'] - (float)$rate['rate']) > 0.00005) $costBad[] = "{$r['id']}: rate {$r['cost_rate']} != {$rate['rate']}";
@@ -278,6 +319,6 @@ return [
         $db2->seedRow('time_entries', ['id' => 'te-hand-made', 'user_id' => $personOf['owner']['userId'], 'recorded_by_user_id' => $personOf['owner']['userId'], 'entry_date' => date('Y-m-d', strtotime('-40 days')), 'duration_sec' => 600, 'start_at' => null, 'end_at' => null]);
         demo_seed_all($db2, ['only' => ['time'], 'writeDataset' => false]);
         $after = $db2->rows('time_entries');
-        $check('a re-seed replaces the 128 demo entries and keeps a hand-made one', count(array_filter($after, static fn($r) => strpos($r['id'], 'demo-time-') === 0)) === 128 && count(array_filter($after, static fn($r) => $r['id'] === 'te-hand-made')) === 1);
+        $check('a re-seed replaces the 130 demo entries and keeps a hand-made one', count(array_filter($after, static fn($r) => strpos($r['id'], 'demo-time-') === 0)) === 130 && count(array_filter($after, static fn($r) => $r['id'] === 'te-hand-made')) === 1);
     },
 ];

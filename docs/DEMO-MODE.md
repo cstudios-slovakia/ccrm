@@ -517,14 +517,14 @@ allowed) and each one failed the matching assertion. Not run: `test:demo-seed:db
   amount: that is the id `sync.php` derives, so a later save upserts instead of duplicating (A5 #33). Nobody with a login (E1-E3) is on leave
   in the last five weeks, because `time` logs hours for them there (asserted); E4 is on leave today. Vacation types `annual|sick|doctor|unpaid`
   are the ids of `EMPLOYEE_SETTINGS`; their display names are not this module's.
-- **`time` module.** 128 entries (owner 36, pm 48, sales 44) over the last 15 working days before today, 2-4 entries and 5-8 h per login per
+- **`time` module.** 130 entries (owner 38, pm 48, sales 44) over the last 15 working days before today, 2-4 entries and 5-8 h per login per
   day (owner 5-7, pm 6.5-8, sales 5.5-7), 07:00-17:00 local, times stored in UTC from the edition's zone (sk Europe/Bratislava, hu
   Europe/Budapest, en America/Denver; the schedule ends by 16:40 so the UTC date never differs). The schedule is **deterministic and the same
   for every edition**; the pack holds only per-login pools of work items (title, note, project ref, link kind, billable). Shares by hours:
   billable owner ~25 / pm ~70 / sales ~45 %, sources timer 50 / manual 30 / calendar 10 / extension 10 (extension: owner only, the only login
   with a device), ~9 % without a project, projects P1/P3/P4 only. Cost snapshot = `ccrm_tc_cost_rate()` on the converted salary and
   `ccrm_holidays_working_days()` of the entry's month (+ `ccrm_tc_entry_cost()`); the settings blob is read for `employerMultiplier` etc.
-  Row total returned by the module = 128 entries + 1 device + 4 activity + 1 settings row when it was absent.
+  Row total returned by the module = 130 entries + 1 device + 4 activity + 1 settings row when it was absent.
 - **Contract for 4A / 4F (links).** The pools ask for tasks and tickets by rule, not by number: `link: task, pick: k` = the k-th (natural id
   order, modulo how many there are) row with `id LIKE 'demo-tasks-%'` whose `related_project_id` is the project; `link: ticket` = the k-th row
   with `id LIKE 'demo-tickets-%'` whose `project_id` is the project, or, when empty, whose `client_id` is that project's client (C1 -> P1,

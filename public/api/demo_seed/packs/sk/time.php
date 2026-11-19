@@ -60,6 +60,14 @@ return [
         ],
     ],
 
+    // The owner's parallel morning (newest day, see demo_time_plan()): 3 overlapping agent-supervision entries, then one afternoon entry.
+    'parallel' => [
+        ['title' => 'Dohľad nad agentom na ponuky: kontrola nočných návrhov', 'note' => '', 'project' => 'P1', 'billable' => true],
+        ['title' => 'Dohľad nad agentom na cenové ponuky dodávateľov: kontrola cien podľa cenníka', 'note' => '', 'project' => 'P3', 'billable' => false],
+        ['title' => 'Schválenie návrhu rezného plánu od plánovacieho agenta', 'note' => '', 'project' => 'P4', 'billable' => false],
+        ['title' => 'Týždenný prehľad práce agentov a vecí, ktoré potrebujú človeka', 'note' => '', 'project' => 'P1', 'billable' => false],
+    ],
+
     'activity' => [
         ['domain' => 'marmi-fiorano.example', 'title' => 'Marmi Fiorano – cenník kremenných dosiek', 'from' => '10:12', 'minutes' => 14, 'project' => 'P3'],
         ['domain' => 'mail.lapidea.example', 'title' => 'Doručená pošta (4) – Lapidea Mail', 'from' => '11:05', 'minutes' => 9, 'project' => null],

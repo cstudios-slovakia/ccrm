@@ -335,6 +335,8 @@ default; managers can pick *Whole team* or one person.
 
 ### C4.1 `time_entries` (in `public/api/schema.php`, covered by `ccrm_schema_fingerprint()`)
 
+> Replaced by [TIME-TRACKING-V2.md, D5.1](TIME-TRACKING-V2.md#d51-the-database-guard): the `running_guard` UNIQUE (one running timer per user) is replaced by the parallel-timer guard.
+
 | Column | Type | Notes |
 |---|---|---|
 | `id` | varchar(64) PK | `te-<uuid>` |
@@ -487,6 +489,8 @@ logging time.**
 
 ### C6.6 Working days
 
+> Replaced by [TIME-TRACKING-V2.md, D4 (C2, C11)](TIME-TRACKING-V2.md#d4-the-monthly-rate-phase-3): leave days and the working-days count are now defined in D4 (see D4.2).
+
 `workingDays(month, country)` = Mon–Fri − public holidays + extra working days − extra days
 off. Vacation and sick days **do not** reduce it (the employee is paid for them).
 
@@ -496,6 +500,8 @@ rest days in 2026, § 4b); HU Oct = 21 (23 Oct is a holiday, a Friday).
 ## C7. Cost rate by employment status
 
 ### C7.1 The table (one pure module `src/utils/timeCost.ts`, no fetching, takes the working-days count as input)
+
+> Replaced by [TIME-TRACKING-V2.md, D4.1](TIME-TRACKING-V2.md#d41-formula): the monthly rows of the cost table follow the new formula.
 
 | `Employee.kind` | `salaryType` | Hourly cost rate for an entry on date D | Multiplier |
 |---|---|---|---|
@@ -528,6 +534,8 @@ monthly types. `multiplier` = employer contributions, default **1.352**. The PHP
 
 ### C7.5 Snapshot and Finance
 
+> Replaced by [TIME-TRACKING-V2.md, D4.3 (C12)](TIME-TRACKING-V2.md#d43-the-rate-card): "never recomputed silently" is now governed by the rate card and its explicit recompute.
+
 `cost_rate` is written when an entry is stopped or saved and is never recomputed silently.
 **Time tracking creates no financial records.** The project **Finances** tab gets a computed
 expense line **"Labour (time tracking)"** (sum of `cost`) included in real profit and the profit
@@ -542,6 +550,8 @@ Writes an audit-log entry.
 ## C8. The timer
 
 ### C8.1 Rules
+
+> Replaced by [TIME-TRACKING-V2.md, D5, D7, D8.5](TIME-TRACKING-V2.md#d5-parallel-timers-phases-4-and-5): several timers can run at once; presence replaces auto-stop, the long-entry warning and the idle reminder.
 
 - **One running timer per user**, enforced by the database. Starting a new one stops the old one and shows an `UndoToast` ("Timer started on *X*. *Y* was stopped at 0:30:00. [Undo]"). Web app, PWA and extension share one running entry.
 - Elapsed = `now − start_at`. Never count ticks.
@@ -705,6 +715,8 @@ toward the contract.
 - **Unsorted inbox** is personal: visible only to its owner, never to managers; purged after N days (default 30).
 
 ## C13. Settings → Time tracking (`projects/time`)
+
+> Replaced by [TIME-TRACKING-V2.md, D7.1, D8.5](TIME-TRACKING-V2.md#d71-state): `autoStopAt` stays; `longEntryWarnHours` and `idleReminderMinutes` are removed.
 
 ```ts
 interface TimeTrackingSettings {
