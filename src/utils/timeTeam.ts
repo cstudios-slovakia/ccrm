@@ -12,6 +12,7 @@ import { isAdminRoleName } from "./permissions.ts";
 import {
   basisFor,
   computeCostRate,
+  computeWorkedCost,
   round2,
   round4,
   type CostRate,
@@ -364,7 +365,12 @@ export const buildTeamMatrix = (input: TeamBuildInput): TeamMatrix => {
           const sec = Math.max(0, Math.round(e.durationSec || 0));
           seconds += Math.max(0, workedOf(e));
           deliveredSeconds += sec;
-          const visible = visibleEntryCost(e, input.viewerUserId, input.canCosts);
+          // A5: the entry's own frozen price; with no stored cost, its frozen rate x worked time, never today's rate
+          const workedSec = Math.max(0, workedOf(e));
+          const stored = visibleEntryCost(e, input.viewerUserId, input.canCosts);
+          const visible =
+            stored ??
+            (showRate && e.costRateSource !== "none" ? computeWorkedCost(workedSec * 1000, e.costRate == null ? null : Number(e.costRate)) : null);
           const code = e.currency || input.currency;
           addMoney(cost, code, visible);
           const key = e.projectId ?? "";

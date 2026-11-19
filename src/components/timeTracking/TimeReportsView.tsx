@@ -14,7 +14,7 @@ import {
   type ReportGroupBy,
 } from "../../utils/timeReports.ts";
 import { entrySeconds, formatDuration, hoursOf, todayIso, type TimeEntry } from "../../utils/timeTracking.ts";
-import { leverage, showsWorkedAndDelivered, totalWorkedSeconds } from "../../utils/timeWorked.ts";
+import { entryWorkedSeconds, liveWorkedShares } from "../../utils/timeWorked.ts";
 import { MoneyText } from "./MoneyText";
 import { TimeSalaryReport } from "./TimeSalaryReport";
 import { useTimeLookups, type TimeDeps } from "./shared";
@@ -61,6 +61,7 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
   const [clientId, setClientId] = useState("");
   const [billable, setBillable] = useState<BillableFilter>("all");
   const [groupBy, setGroupBy] = useState<ReportGroupBy>("title");
+  const [parallelOnly, setParallelOnly] = useState(false);
 
   const { entries, loading } = useTimeEntries({ from, to, userId: viewer.canTeam ? "all" : undefined });
   const clock = entries.some((e) => e.running) ? tt.nowMs : 0;
@@ -78,6 +79,8 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
   const report = useMemo(() => {
     const clientByProject = new Map(deps.projects.map((p) => [p.id, clientIdOf(p, deps.leads)]));
     const workingDays = tt.calendarFor(tt.workCountry).workingDaysInRange(from, to);
+    const nowMs = clock || tt.nowMs;
+    const shares = entries.some((e) => e.running) ? liveWorkedShares(entries, nowMs) : undefined;
     return buildReport({
       entries: entries.map((e: TimeEntry) => ({
         id: e.id,
@@ -87,6 +90,7 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
         entryDate: e.entryDate,
         title: e.title,
         durationSec: entrySeconds(e, clock),
+        workedSec: entryWorkedSeconds(e, nowMs, shares),
         billable: e.billable,
         cost: e.cost,
         currency: deps.currency,
@@ -99,6 +103,7 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
         clientId: clientId || null,
         billable,
         groupBy,
+        parallelOnly,
       },
       rounding: settings.rounding,
       viewerUserId: tt.userId || "",
@@ -106,7 +111,7 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
       currency: deps.currency,
       workingDays,
     });
-  }, [billable, clientId, clock, deps, entries, from, groupBy, projectId, settings.rounding, to, tt.calendarFor, tt.userId, tt.workCountry, userId, viewer.canCosts]);
+  }, [billable, clientId, clock, deps, entries, from, groupBy, parallelOnly, projectId, tt.nowMs, settings.rounding, to, tt.calendarFor, tt.userId, tt.workCountry, userId, viewer.canCosts]);
 
   const personName = (id: string) => deps.users.find((u) => u.id === id)?.name || id;
   const projectName = (id: string | null) => (id ? lookups.projectName(id) : t("Unallocated", "Nepriradené", "Nincs projekt"));
@@ -163,24 +168,14 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
         billable: t("Billable", "Fakturovateľné", "Számlázható"),
         cost: t("Cost", "Náklady", "Költség"),
         total: t("Totals", "Spolu", "Összesen"),
+        workedHours: t("Worked hours", "Odpracované hodiny", "Ledolgozott órák"),
+        leverage: t("Leverage", "Násobok", "Szorzó"),
       },
       { group: groupLabel, person: personName, project: projectName },
     );
     downloadText("time-report.csv", text, "text/csv;charset=utf-8");
   };
 
-  // Worked time of the same entries the report covers (person measure); the report itself stays project time
-  const workedSec = useMemo(() => {
-    const inScope = entries.filter(
-      (e) =>
-        e.entryDate >= from &&
-        e.entryDate <= to &&
-        (!userId || e.userId === userId) &&
-        (!projectId || e.projectId === projectId) &&
-        (billable === "all" || (billable === "yes") === !!e.billable),
-    );
-    return { worked: totalWorkedSeconds(inScope, tt.nowMs), lev: leverage(inScope, tt.nowMs) };
-  }, [entries, from, to, userId, projectId, billable, tt.nowMs]);
   const billablePct = report.totals.seconds > 0 ? Math.round((report.totals.billableSeconds / report.totals.seconds) * 100) : null;
 
   if (mode === "salary") {
@@ -193,6 +188,7 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
   }
 
   const hasCost = Object.keys(report.totals.cost).length > 0;
+  const both = report.showsWorked;
 
   return (
     <div className="grid gap-4" data-testid={mode === "detailed" ? "reports-detailed" : "reports-summary"}>
@@ -236,6 +232,14 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
                 { value: "no", label: t("Non-billable", "Nefakturovateľné", "Nem számlázható") },
               ]}
             />
+            <button
+              type="button"
+              aria-pressed={parallelOnly}
+              onClick={() => setParallelOnly((v) => !v)}
+              className={`inline-flex h-9 items-center rounded-xl border px-3 text-ui font-semibold transition-all hover:bg-slate-50 active:scale-95 focus-visible:outline-2 focus-visible:outline-teal-600 cursor-pointer ${parallelOnly ? "border-teal-600 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-700"}`}
+            >
+              {t("Parallel only", "Len paralelné", "Csak párhuzamos")}
+            </button>
             {mode === "summary" && (
               <CustomSelect
                 size="sm"
@@ -272,14 +276,14 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
       ) : mode === "summary" ? (
         <>
           <StatGrid count={hasCost ? 4 : 3}>
-            <StatTile label={t("Hours", "Hodiny", "Órák")} value={<span className="tabular-nums">{formatDuration(report.totals.seconds)}</span>} />
-            {showsWorkedAndDelivered(report.totals.seconds, workedSec.worked) && (
+            <StatTile label={report.showsWorked ? t("Delivered", "Dodané", "Leszállított") : t("Hours", "Hodiny", "Órák")} value={<span className="tabular-nums">{formatDuration(report.totals.seconds)}</span>} />
+            {report.showsWorked && (
               <StatTile
                 label={t("Worked", "Odpracované", "Ledolgozott")}
                 value={
                   <span className="tabular-nums">
-                    {formatDuration(workedSec.worked)}
-                    {workedSec.lev != null && <span className="type-meta font-normal text-slate-500"> ×{workedSec.lev.toFixed(2)}</span>}
+                    {formatDuration(report.totals.workedSeconds)}
+                    {report.leverage != null && <span className="type-meta font-normal text-slate-500"> ×{report.leverage.toFixed(2)}</span>}
                   </span>
                 }
               />
@@ -313,7 +317,8 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
               <thead>
                 <tr className="border-b border-slate-100 text-left">
                   <th className="px-4 py-3 type-overline text-slate-500">{t("Group", "Skupina", "Csoport")}</th>
-                  <th className="px-4 py-3 type-overline text-slate-500">{t("Hours", "Hodiny", "Órák")}</th>
+                  <th className="px-4 py-3 type-overline text-slate-500">{both ? t("Delivered", "Dodané", "Leszállított") : t("Hours", "Hodiny", "Órák")}</th>
+                  {both && <th className="px-4 py-3 type-overline text-slate-500">{t("Worked", "Odpracované", "Ledolgozott")}</th>}
                   <th className="px-4 py-3 type-overline text-slate-500">{t("Billable", "Fakturovateľné", "Számlázható")}</th>
                   {hasCost && <th className="px-4 py-3 type-overline text-slate-500">{t("Cost", "Náklady", "Költség")}</th>}
                 </tr>
@@ -323,6 +328,7 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
                   <tr key={g.key || "empty"} className="border-b border-slate-100">
                     <td className="px-4 py-2.5 font-semibold text-slate-900">{groupLabel(g.key)}</td>
                     <td className="px-4 py-2.5 tabular-nums text-teal-700">{formatDuration(g.seconds)}</td>
+                    {both && <td className="px-4 py-2.5 tabular-nums">{formatDuration(g.workedSeconds)}</td>}
                     <td className="px-4 py-2.5 tabular-nums">{formatDuration(g.billableSeconds)}</td>
                     {hasCost && <td className="px-4 py-2.5"><MoneyText bag={g.cost} language={deps.language} /></td>}
                   </tr>
@@ -332,6 +338,7 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
                 <tr className="bg-slate-50 font-semibold">
                   <td className="px-4 py-3">{t("Totals", "Spolu", "Összesen")}</td>
                   <td className="px-4 py-3 tabular-nums text-teal-700">{formatDuration(report.totals.seconds)}</td>
+                  {both && <td className="px-4 py-3 tabular-nums">{formatDuration(report.totals.workedSeconds)}</td>}
                   <td className="px-4 py-3 tabular-nums">{formatDuration(report.totals.billableSeconds)}</td>
                   {hasCost && <td className="px-4 py-3"><MoneyText bag={report.totals.cost} language={deps.language} /></td>}
                 </tr>
@@ -348,13 +355,14 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
                 {viewer.canTeam && <th className="px-4 py-3 type-overline text-slate-500">{t("Person", "Osoba", "Személy")}</th>}
                 <th className="px-4 py-3 type-overline text-slate-500">{t("Project", "Projekt", "Projekt")}</th>
                 <th className="px-4 py-3 type-overline text-slate-500">{t("Title", "Názov", "Cím")}</th>
-                <th className="px-4 py-3 type-overline text-slate-500">{t("Hours", "Hodiny", "Órák")}</th>
+                <th className="px-4 py-3 type-overline text-slate-500">{both ? t("Delivered", "Dodané", "Leszállított") : t("Hours", "Hodiny", "Órák")}</th>
+                {both && <th className="px-4 py-3 type-overline text-slate-500">{t("Worked", "Odpracované", "Ledolgozott")}</th>}
                 {hasCost && <th className="px-4 py-3 type-overline text-slate-500">{t("Cost", "Náklady", "Költség")}</th>}
               </tr>
             </thead>
             <tbody>
               {report.lines.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-6 text-body text-slate-500">{t("Nothing in this period.", "V tomto období nič.", "Ebben az időszakban semmi.")}</td></tr>
+                <tr><td colSpan={7} className="px-4 py-6 text-body text-slate-500">{t("Nothing in this period.", "V tomto období nič.", "Ebben az időszakban semmi.")}</td></tr>
               )}
               {report.lines.map((line) => (
                 <tr key={line.id} className="border-b border-slate-100">
@@ -363,6 +371,7 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
                   <td className="px-4 py-2.5">{projectName(line.projectId)}</td>
                   <td className="px-4 py-2.5 font-semibold text-slate-900">{line.title || t("(no title)", "(bez názvu)", "(nincs cím)")}</td>
                   <td className="px-4 py-2.5 tabular-nums text-teal-700">{formatDuration(line.seconds)}</td>
+                  {both && <td className="px-4 py-2.5 tabular-nums">{formatDuration(line.workedSeconds)}</td>}
                   {hasCost && <td className="px-4 py-2.5"><MoneyText bag={line.cost} language={deps.language} /></td>}
                 </tr>
               ))}
@@ -374,6 +383,7 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
                 <td />
                 <td />
                 <td className="px-4 py-3 tabular-nums text-teal-700">{formatDuration(report.totals.seconds)}</td>
+                {both && <td className="px-4 py-3 tabular-nums">{formatDuration(report.totals.workedSeconds)}</td>}
                 {hasCost && <td className="px-4 py-3"><MoneyText bag={report.totals.cost} language={deps.language} /></td>}
               </tr>
             </tfoot>

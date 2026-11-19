@@ -5,6 +5,7 @@ import {
   buildSalaryReport,
   clientPdfRows,
   clientReportHtml,
+  reportCsv,
   roundDurationSec,
   type ReportEntry,
 } from "./timeReports.ts";
@@ -220,4 +221,50 @@ test("report by project stays in project time", () => {
     workingDays: 20,
   });
   assert.deepEqual(report.groups.map((g) => g.seconds), [3600, 3600]);
+});
+
+test("two overlapping 1 h entries: worked 1 h, delivered 2 h, leverage 2; parallel-only keeps them", () => {
+  const mk = (id: string, workedSec: number, title: string): ReportEntry => ({
+    id, userId: "u1", projectId: "p", clientId: null, entryDate: "2026-05-04", title, durationSec: 3600, workedSec, billable: true, cost: 1, currency: "EUR",
+  });
+  const entries = [mk("a", 1800, "A"), mk("b", 1800, "B"), { ...mk("c", 3600, "C"), entryDate: "2026-05-05" }];
+  const filters = { from: "2026-05-01", to: "2026-05-31", userId: null, projectId: null, clientId: null, billable: "all" as const, groupBy: "person" as const };
+  const run = (parallelOnly: boolean) =>
+    buildReport({ entries, filters: { ...filters, parallelOnly }, rounding: { minutes: 0, mode: "nearest" }, viewerUserId: "u1", canCosts: true, currency: "EUR", workingDays: 20 });
+  const all = run(false);
+  assert.equal(all.totals.seconds, 3 * 3600);
+  assert.equal(all.totals.workedSeconds, 2 * 3600);
+  assert.equal(all.showsWorked, true);
+  const par = run(true);
+  assert.deepEqual(par.lines.map((l) => l.id), ["a", "b"]);
+  assert.equal(par.totals.seconds, 7200);
+  assert.equal(par.totals.workedSeconds, 3600);
+  assert.equal(par.leverage, 2);
+  assert.equal(par.groups[0].workedSeconds, 3600);
+  const plain = buildReport({ entries: [mk("c", 3600, "C")], filters, rounding: { minutes: 0, mode: "nearest" }, viewerUserId: "u1", canCosts: true, currency: "EUR", workingDays: 20 });
+  assert.equal(plain.showsWorked, false);
+});
+
+test("CSV carries worked hours next to hours and leverage in summary; the client PDF stays project time", () => {
+  const report = buildReport({
+    entries: [
+      { id: "a", userId: "u1", projectId: "p", clientId: null, entryDate: "2026-05-04", title: "A", durationSec: 3600, workedSec: 1800, billable: true, cost: 1, currency: "EUR" },
+      { id: "b", userId: "u1", projectId: "p", clientId: null, entryDate: "2026-05-04", title: "B", durationSec: 3600, workedSec: 1800, billable: true, cost: 1, currency: "EUR" },
+    ],
+    filters: { from: "2026-05-01", to: "2026-05-31", userId: null, projectId: null, clientId: null, billable: "all", groupBy: "person" },
+    rounding: { minutes: 0, mode: "nearest" },
+    viewerUserId: "u1",
+    canCosts: true,
+    currency: "EUR",
+    workingDays: 20,
+  });
+  const headers = { group: "Group", date: "Date", person: "Person", project: "Project", title: "Title", hours: "Hours", billable: "Billable", cost: "Cost", total: "Total", workedHours: "Worked hours", leverage: "Leverage" };
+  const label = { group: (k: string) => k, person: (u: string) => u, project: (p: string | null) => p ?? "" };
+  const summary = reportCsv(report, "summary", headers, label).split("\n");
+  assert.equal(summary[0], "\uFEFFGroup,Hours,Worked hours,Leverage,Billable,Cost EUR");
+  assert.equal(summary[1], "u1,2.00,1.00,2.00,2.00,2.00");
+  const detailed = reportCsv(report, "detailed", headers, label).split("\n");
+  assert.equal(detailed[0], "\uFEFFDate,Person,Project,Title,Hours,Worked hours,Billable,Cost EUR");
+  assert.equal(detailed[1], "2026-05-04,u1,p,A,1.00,0.50,1,1.00");
+  assert.deepEqual(clientPdfRows(report, { person: () => "x", project: () => "y" }).map((r) => r.hours), ["1.00", "1.00"]);
 });

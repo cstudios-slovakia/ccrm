@@ -12,7 +12,7 @@
 
 import { computeCostRate, round2, type CostRate } from "./timeCost.ts";
 import { hoursOf } from "./timeTracking.ts";
-import { entryWorkedSeconds, liveWorkedShares } from "./timeWorked.ts";
+import { entryWorkedSeconds, liveWorkedShares, showsWorkedAndDelivered } from "./timeWorked.ts";
 import {
   addMoney,
   frozenCostRate,
@@ -37,6 +37,8 @@ export interface ReportEntry {
   entryDate: string;
   title: string;
   durationSec: number;
+  /** Worked seconds (D1). Missing = project time (nothing parallel known). */
+  workedSec?: number | null;
   billable: boolean;
   cost?: number | null;
   currency?: string;
@@ -50,6 +52,8 @@ export interface ReportFilters {
   clientId: string | null;
   billable: BillableFilter;
   groupBy: ReportGroupBy;
+  /** Keep only entries that overlapped another entry of the same person (worked < project time). */
+  parallelOnly?: boolean;
 }
 
 export interface ReportLine {
@@ -61,6 +65,8 @@ export interface ReportLine {
   title: string;
   /** Rounded seconds. */
   seconds: number;
+  /** Worked seconds (D1), not rounded. */
+  workedSeconds: number;
   billable: boolean;
   cost: MoneyByCurrency;
 }
@@ -68,6 +74,7 @@ export interface ReportLine {
 export interface ReportGroup {
   key: string;
   seconds: number;
+  workedSeconds: number;
   billableSeconds: number;
   cost: MoneyByCurrency;
 }
@@ -75,7 +82,11 @@ export interface ReportGroup {
 export interface BuiltReport {
   lines: ReportLine[];
   groups: ReportGroup[];
-  totals: { seconds: number; billableSeconds: number; cost: MoneyByCurrency };
+  totals: { seconds: number; workedSeconds: number; billableSeconds: number; cost: MoneyByCurrency };
+  /** Project time ÷ worked time over the lines (×1 = nothing parallel). Null when nothing was worked. */
+  leverage: number | null;
+  /** True when worked and project time differ, so the views show both measures. */
+  showsWorked: boolean;
   /** Logged seconds ÷ working days in the period. Null when the period has none. */
   perWorkingDaySeconds: number | null;
   shareByProject: { projectId: string | null; seconds: number; ratio: number }[];
@@ -105,6 +116,9 @@ const groupKey = (line: ReportLine, by: ReportGroupBy): string => {
   }
 };
 
+/** Leverage of a project-time / worked-time pair. */
+export const leverageOf = (projectSec: number, workedSec: number): number | null => (workedSec > 0 ? projectSec / workedSec : null);
+
 export const buildReport = (input: {
   entries: readonly ReportEntry[];
   filters: ReportFilters;
@@ -123,6 +137,8 @@ export const buildReport = (input: {
     if (filters.clientId && e.clientId !== filters.clientId) continue;
     if (filters.billable === "yes" && !e.billable) continue;
     if (filters.billable === "no" && e.billable) continue;
+    const workedSeconds = Math.max(0, e.workedSec ?? e.durationSec);
+    if (filters.parallelOnly && !(e.durationSec - workedSeconds >= 1)) continue;
     const seconds = roundDurationSec(e.durationSec, input.rounding);
     const cost: MoneyByCurrency = {};
     addMoney(cost, e.currency || input.currency, visibleEntryCost(e, input.viewerUserId, input.canCosts));
@@ -134,6 +150,7 @@ export const buildReport = (input: {
       entryDate: e.entryDate,
       title: e.title,
       seconds,
+      workedSeconds,
       billable: e.billable,
       cost,
     });
@@ -141,8 +158,9 @@ export const buildReport = (input: {
   const groups = new Map<string, ReportGroup>();
   for (const line of lines) {
     const key = groupKey(line, filters.groupBy);
-    const g = groups.get(key) ?? { key, seconds: 0, billableSeconds: 0, cost: {} };
+    const g = groups.get(key) ?? { key, seconds: 0, workedSeconds: 0, billableSeconds: 0, cost: {} };
     g.seconds += line.seconds;
+    g.workedSeconds += line.workedSeconds;
     if (line.billable) g.billableSeconds += line.seconds;
     g.cost = sumMoney([g.cost, line.cost]);
     groups.set(key, g);
@@ -150,6 +168,7 @@ export const buildReport = (input: {
   const ordered = [...groups.values()].sort((a, b) => b.seconds - a.seconds || a.key.localeCompare(b.key));
   const totals = {
     seconds: lines.reduce((s, l) => s + l.seconds, 0),
+    workedSeconds: lines.reduce((s, l) => s + l.workedSeconds, 0),
     billableSeconds: lines.reduce((s, l) => s + (l.billable ? l.seconds : 0), 0),
     cost: sumMoney(lines.map((l) => l.cost)),
   };
@@ -169,6 +188,8 @@ export const buildReport = (input: {
     lines,
     groups: ordered,
     totals,
+    leverage: leverageOf(totals.seconds, totals.workedSeconds),
+    showsWorked: showsWorkedAndDelivered(totals.seconds, totals.workedSeconds),
     perWorkingDaySeconds: input.workingDays > 0 ? totals.seconds / input.workingDays : null,
     shareByProject,
   };
@@ -182,7 +203,7 @@ export interface ClientPdfRow {
   hours: string;
 }
 
-/** Billable lines only, already rounded, with no cost column. */
+/** Billable lines only, already rounded, project time only (never worked time), with no cost column. */
 export const clientPdfRows = (
   report: BuiltReport,
   label: { person: (userId: string) => string; project: (projectId: string | null) => string },
@@ -244,23 +265,28 @@ const costCells = (bag: MoneyByCurrency, codes: string[]): string[] => codes.map
 export const reportCsv = (
   report: BuiltReport,
   mode: "summary" | "detailed",
-  headers: { group: string; date: string; person: string; project: string; title: string; hours: string; billable: string; cost: string; total: string },
+  headers: { group: string; date: string; person: string; project: string; title: string; hours: string; billable: string; cost: string; total: string; workedHours?: string; leverage?: string },
   label: { group: (key: string) => string; person: (userId: string) => string; project: (id: string | null) => string },
 ): string => {
   const codes = [...new Set(report.lines.flatMap((l) => Object.keys(l.cost)))].sort();
   const lines: string[] = [];
+  const wh = (sec: number) => hoursOf(sec).toFixed(2);
+  const lev = (projectSec: number, workedSec: number) => {
+    const v = leverageOf(projectSec, workedSec);
+    return v == null ? "" : v.toFixed(2);
+  };
   if (mode === "summary") {
-    lines.push([headers.group, headers.hours, headers.billable, ...codes.map((c) => `${headers.cost} ${c}`)].map(csvCell).join(","));
+    lines.push([headers.group, headers.hours, headers.workedHours ?? "Worked hours", headers.leverage ?? "Leverage", headers.billable, ...codes.map((c) => `${headers.cost} ${c}`)].map(csvCell).join(","));
     for (const g of report.groups) {
-      lines.push([label.group(g.key), hoursOf(g.seconds).toFixed(2), hoursOf(g.billableSeconds).toFixed(2), ...costCells(g.cost, codes)].map(csvCell).join(","));
+      lines.push([label.group(g.key), wh(g.seconds), wh(g.workedSeconds), lev(g.seconds, g.workedSeconds), wh(g.billableSeconds), ...costCells(g.cost, codes)].map(csvCell).join(","));
     }
-    lines.push([headers.total, hoursOf(report.totals.seconds).toFixed(2), hoursOf(report.totals.billableSeconds).toFixed(2), ...costCells(report.totals.cost, codes)].map(csvCell).join(","));
+    lines.push([headers.total, wh(report.totals.seconds), wh(report.totals.workedSeconds), report.leverage == null ? "" : report.leverage.toFixed(2), wh(report.totals.billableSeconds), ...costCells(report.totals.cost, codes)].map(csvCell).join(","));
   } else {
-    lines.push([headers.date, headers.person, headers.project, headers.title, headers.hours, headers.billable, ...codes.map((c) => `${headers.cost} ${c}`)].map(csvCell).join(","));
+    lines.push([headers.date, headers.person, headers.project, headers.title, headers.hours, headers.workedHours ?? "Worked hours", headers.billable, ...codes.map((c) => `${headers.cost} ${c}`)].map(csvCell).join(","));
     for (const l of report.lines) {
-      lines.push([l.entryDate, label.person(l.userId), label.project(l.projectId), l.title, hoursOf(l.seconds).toFixed(2), l.billable ? "1" : "0", ...costCells(l.cost, codes)].map(csvCell).join(","));
+      lines.push([l.entryDate, label.person(l.userId), label.project(l.projectId), l.title, wh(l.seconds), wh(l.workedSeconds), l.billable ? "1" : "0", ...costCells(l.cost, codes)].map(csvCell).join(","));
     }
-    lines.push([headers.total, "", "", "", hoursOf(report.totals.seconds).toFixed(2), "", ...costCells(report.totals.cost, codes)].map(csvCell).join(","));
+    lines.push([headers.total, "", "", "", wh(report.totals.seconds), wh(report.totals.workedSeconds), "", ...costCells(report.totals.cost, codes)].map(csvCell).join(","));
   }
   return `\uFEFF${lines.join("\n")}`;
 };

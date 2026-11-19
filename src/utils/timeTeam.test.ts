@@ -197,3 +197,22 @@ test("entries without worked time fall back to project time", () => {
   });
   assert.equal(matrix.rows[0].cells[0].seconds, 3600);
 });
+
+test("Team pricing uses each entry's own frozen rate, never today's", () => {
+  const buckets = weekBuckets("2026-05-10", 2);
+  const matrix = buildTeamMatrix({
+    ...base,
+    buckets,
+    canCosts: true,
+    people: [person({ userId: "u1", name: "Erik", employeeId: "e1", salaryAmount: 9999 })],
+    entries: [
+      entry({ userId: "u1", entryDate: "2026-04-30", cost: null, costRate: 20, costRateSource: "monthly", costRateBasisDays: 20, workedMs: 3600000 }),
+      entry({ userId: "u1", entryDate: "2026-05-05", cost: null, costRate: 30, costRateSource: "monthly", costRateBasisDays: 22, workedMs: 3600000 }),
+      entry({ userId: "u1", entryDate: "2026-05-06", cost: null, costRate: null, costRateSource: "none", workedMs: 3600000 }),
+    ],
+  });
+  const cells = matrix.rows[0].cells;
+  const money = (i: number) => cells[i].cost.EUR;
+  assert.equal(money(0), 20);
+  assert.equal(money(1), 30);
+});
