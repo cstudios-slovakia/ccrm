@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent } from "react";
-import { ChevronLeft, ChevronRight, GripVertical, Play } from "lucide-react";
+import { GripVertical, Play } from "lucide-react";
 import { Surface, Toolbar } from "../layout";
 import { CustomSelect } from "../ui/CustomSelect";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
@@ -43,7 +43,10 @@ import {
 import { isEntryLocked, lockReason, paidMonthsForOwner } from "../../utils/timeLock";
 import { formatDuration, localIsoDate, projectColor, todayIso, type TimeEntry } from "../../utils/timeTracking.ts";
 import { TimeApiError, createEntry, timeErrorMessage, updateEntry, type EntryInput } from "../../utils/timeTrackingApi.ts";
+import { ProjectLabel } from "./ProjectLabel";
 import { ProjectPicker } from "./ProjectPicker";
+import { RangeNav } from "./RangeNav";
+import { RunningBadge } from "./RunningBadge";
 import { scopeParam } from "./TimeListView";
 import { describeTimeLock, useEntryDeletion, useTimeLookups, type TimeDeps } from "./shared";
 import { typePx } from "../../utils/viewSize";
@@ -531,6 +534,15 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
       ? new Date(`${anchor}T12:00:00`).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long" })
       : `${new Date(`${days[0]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })} – ${new Date(`${days[6]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })}`;
 
+  const daySeconds = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const entry of entries) map.set(entry.entryDate, (map.get(entry.entryDate) ?? 0) + entryDurationSec(entry, nowMs));
+    return map;
+  }, [entries, nowMs]);
+  const rangeSeconds = days.reduce((sum, day) => sum + (zoom === "month" && day.slice(0, 7) !== anchor.slice(0, 7) ? 0 : daySeconds.get(day) ?? 0), 0);
+  const totalLabel = zoom === "month" ? t("Month total", "Spolu za mesiac", "Havi összesen") : zoom === "day" ? t("Day total", "Spolu za deň", "Napi összesen") : t("Week total", "Spolu za týždeň", "Heti összesen");
+  const isCurrentRange = days.includes(today) && (zoom !== "month" || anchor.slice(0, 7) === today.slice(0, 7));
+
   const openEntry = byId.get(popover?.kind === "entry" ? popover.id : "");
 
   return (
@@ -538,20 +550,21 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
       <div ref={rootRef} className="relative min-w-0 flex-1">
         <Toolbar
           filters={
-            <div className="flex flex-wrap items-center gap-1">
-              <button type="button" onClick={() => setAnchor(shiftAnchor(zoom, anchor, -1))} aria-label={t("Earlier", "Skôr", "Korábbi")} className="inline-flex size-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 cursor-pointer">
-                <ChevronLeft className="size-4" />
-              </button>
-              <button type="button" onClick={() => setAnchor(todayIso())} className="inline-flex h-9 items-center rounded-xl px-3 text-ui font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer">
-                {t("Today", "Dnes", "Ma")}
-              </button>
-              <button type="button" onClick={() => setAnchor(shiftAnchor(zoom, anchor, 1))} aria-label={t("Later", "Neskôr", "Későbbi")} className="inline-flex size-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 cursor-pointer">
-                <ChevronRight className="size-4" />
-              </button>
-              <span className="px-2 text-ui font-semibold capitalize text-slate-800">{rangeLabel}</span>
-            </div>
+            <RangeNav
+              label={<span className="capitalize">{rangeLabel}</span>}
+              prevLabel={t("Earlier", "Skôr", "Korábbi")}
+              nextLabel={t("Later", "Neskôr", "Későbbi")}
+              onPrev={() => setAnchor(shiftAnchor(zoom, anchor, -1))}
+              onNext={() => setAnchor(shiftAnchor(zoom, anchor, 1))}
+              resetLabel={t("Today", "Dnes", "Ma")}
+              onReset={isCurrentRange ? undefined : () => setAnchor(todayIso())}
+            />
           }
           trailing={
+            <div className="flex items-center gap-3">
+            <span className="type-meta text-slate-500" data-testid="calendar-total">
+              {totalLabel} <span className="text-ui font-semibold tabular-nums text-slate-800">{formatDuration(rangeSeconds)}</span>
+            </span>
             <div data-testid="calendar-zoom">
               <CustomSelect
                 value={zoom}
@@ -564,6 +577,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
                 size="sm"
                 fitLabel
               />
+            </div>
             </div>
           }
         />
@@ -579,6 +593,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
                   <div key={day} className={`border-l border-slate-100 px-1 py-2 text-center ${day === today ? "bg-teal-600 text-white" : off ? "text-slate-400" : "text-slate-700"}`}>
                     <div className="type-overline">{dt.toLocaleDateString(locale, { weekday: "short" })}</div>
                     <div className="text-ui font-bold tabular-nums">{dt.getDate()}</div>
+                    <div className={`type-meta tabular-nums ${day === today ? "text-white/80" : "text-slate-500"}`} data-testid="calendar-day-total">{(daySeconds.get(day) ?? 0) > 0 ? formatDuration(daySeconds.get(day) ?? 0) : "–"}</div>
                   </div>
                 );
               })}
@@ -662,6 +677,8 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
                             style={entry.running ? box({ startMin: block.startMin, endMin: block.endMin }, block.column, block.columns) : { ...box({ startMin: block.startMin, endMin: block.endMin }, block.column, block.columns), borderLeftColor: color, backgroundColor: `${color}22` }}
                           >
                             <div className="truncate text-micro font-semibold">{entry.title || t("Untitled", "Bez názvu", "Névtelen")}</div>
+                            {entry.running && <RunningBadge elapsed={formatDuration(entryDurationSec(entry, nowMs))} />}
+                            {entry.projectId && <ProjectLabel projectId={entry.projectId} name={lookups.projectName(entry.projectId)} compact className="max-w-full text-micro" />}
                             <div className="text-micro tabular-nums text-slate-600">
                               {formatMinute(block.startMin)}–{formatMinute(block.endMin)}
                               {block.plus > 0 ? ` +${block.plus}` : ""}
@@ -672,7 +689,9 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
                         );
                       })}
                       {ghost?.kind === "draft" && ghost.day === day && (
-                        <div className="pointer-events-none absolute z-10 rounded-md border border-teal-600 bg-teal-600/15" style={box(ghost.span)} />
+                        <div className="pointer-events-none absolute z-10 overflow-hidden rounded-md border border-dashed border-teal-600 bg-teal-50/80 px-1 py-0.5 text-micro font-semibold text-teal-700" style={box(ghost.span)}>
+                          + {t("New entry", "Nový záznam", "Új bejegyzés")} <span className="tabular-nums">{formatMinute(ghost.span.startMin)}–{formatMinute(ghost.span.endMin)}</span>
+                        </div>
                       )}
                     </div>
                   ))}
@@ -791,7 +810,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
 
       <aside className="ws-lg:w-64 ws-lg:shrink-0" data-testid="calendar-task-rail">
         <Surface className="flex max-h-[36rem] flex-col gap-2">
-          <h3 className="type-label text-slate-800">{t("Your tasks", "Vaše úlohy", "Az Ön feladatai")}</h3>
+          <h3 className="type-label text-slate-800">{t("Your tasks this week", "Vaše úlohy tento týždeň", "Az Ön feladatai ezen a héten")}</h3>
           <p className="type-meta text-slate-500">{t("Drag a task onto the calendar, or press play to start the timer.", "Úlohu pretiahnite do kalendára alebo spustite časovač.", "Húzza a feladatot a naptárra, vagy indítsa az időzítőt.")}</p>
           <div className="flex flex-col gap-1 overflow-y-auto">
             {myTasks.length === 0 && <p className="text-ui text-slate-500">{t("No open tasks.", "Žiadne otvorené úlohy.", "Nincs nyitott feladat.")}</p>}

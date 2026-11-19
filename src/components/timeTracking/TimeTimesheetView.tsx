@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Surface, Toolbar } from "../layout";
 import { CustomSelect } from "../ui/CustomSelect";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
@@ -18,9 +18,12 @@ import {
   type TimesheetRowKey,
 } from "../../utils/timeTimesheet.ts";
 import { countryForScope } from "../../utils/timeCalendar.ts";
-import { formatDuration, parseDurationInput, projectColor, todayIso, weekDays, weekStart, type TimeEntry } from "../../utils/timeTracking.ts";
+import { formatDuration, parseDurationInput, todayIso, weekDays, weekStart, type TimeEntry } from "../../utils/timeTracking.ts";
 import { TimeApiError, createEntry, timeErrorMessage, updateEntry } from "../../utils/timeTrackingApi.ts";
+import { AssignProjectChip } from "./AssignProjectChip";
+import { ProjectLabel } from "./ProjectLabel";
 import { ProjectPicker } from "./ProjectPicker";
+import { RangeNav } from "./RangeNav";
 import { SubmitWeekButton } from "./SubmitWeekButton";
 import { scopeParam } from "./TimeListView";
 import { describeTimeLock, useTimeLookups, type TimeDeps } from "./shared";
@@ -218,27 +221,20 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
     <div className="grid gap-3" data-testid="time-timesheet">
       <Toolbar
         filters={
-          <div className="flex flex-wrap items-center gap-1">
-            <button type="button" onClick={() => setAnchor(addDays(weekStart(anchor), -7))} aria-label={t("Previous week", "Predošlý týždeň", "Előző hét")} className="inline-flex size-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 cursor-pointer">
-              <ChevronLeft className="size-4" />
-            </button>
-            <button type="button" onClick={() => setAnchor(todayIso())} className="inline-flex h-9 items-center rounded-xl px-3 text-ui font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer">
-              {t("Today", "Dnes", "Ma")}
-            </button>
-            <button type="button" onClick={() => setAnchor(addDays(weekStart(anchor), 7))} aria-label={t("Next week", "Ďalší týždeň", "Következő hét")} className="inline-flex size-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 cursor-pointer">
-              <ChevronRight className="size-4" />
-            </button>
-            <span className="px-2 text-ui font-semibold capitalize text-slate-800">{range}</span>
-          </div>
+          <RangeNav
+            label={<span className="capitalize">{range}</span>}
+            prevLabel={t("Previous week", "Predošlý týždeň", "Előző hét")}
+            nextLabel={t("Next week", "Ďalší týždeň", "Következő hét")}
+            onPrev={() => setAnchor(addDays(weekStart(anchor), -7))}
+            onNext={() => setAnchor(addDays(weekStart(anchor), 7))}
+            resetLabel={t("This week", "Tento týždeň", "Ez a hét")}
+            onReset={from === weekStart(today) ? undefined : () => setAnchor(todayIso())}
+          />
         }
         trailing={
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={copyLastWeek} disabled={!mayEdit} data-testid="timesheet-copy" className="inline-flex h-9 items-center rounded-xl px-3 text-ui font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40 cursor-pointer">
               {t("Copy rows from last week", "Kopírovať riadky z minulého týždňa", "Sorok másolása a múlt hétről")}
-            </button>
-            <button type="button" onClick={() => setAdding(true)} disabled={!mayEdit} data-testid="timesheet-add-row" className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-ui font-semibold text-primary-foreground cursor-pointer disabled:opacity-40">
-              <Plus className="size-4" />
-              {t("Add row", "Pridať riadok", "Sor hozzáadása")}
             </button>
           </div>
         }
@@ -323,13 +319,22 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
               return (
                 <tr key={`${row.userId ?? ""}-${row.projectId ?? ""}-${row.taskId ?? ""}`} className="border-t border-slate-100">
                   <th className="sticky left-0 bg-white px-3 py-1.5 text-left font-normal">
-                    <div className="flex items-center gap-1.5">
-                      <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: projectColor(row.projectId) }} />
-                      <span className="min-w-0">
-                        {byPerson && label.person && <span className="block type-meta text-slate-500">{label.person}</span>}
-                        <span className={`block truncate text-ui font-semibold ${row.projectId ? "text-slate-800" : "text-amber-700"}`}>{label.project}</span>
-                        {label.task && <span className="block truncate type-meta text-slate-500">{label.task}</span>}
-                      </span>
+                    <div className="min-w-0">
+                      {byPerson && label.person && <span className="block type-meta text-slate-500">{label.person}</span>}
+                      <div className="flex min-w-0 items-center gap-1.5 text-ui">
+                        {row.projectId ? (
+                          <ProjectLabel projectId={row.projectId} name={label.project} />
+                        ) : (
+                          <AssignProjectChip
+                            onClick={() => {
+                              const lastId = row.cells.find((c) => c.lastId)?.lastId;
+                              const entry = lastId ? byId.get(lastId) : undefined;
+                              if (entry) onOpen(entry);
+                            }}
+                          />
+                        )}
+                        {label.task && <span className="truncate text-slate-500">· {label.task}</span>}
+                      </div>
                     </div>
                   </th>
                   {row.cells.map((cell) => {
@@ -366,6 +371,14 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
                 <td colSpan={9} className="px-3 py-6 text-ui text-slate-500">{t("No rows this week. Add one, or copy last week's rows.", "Tento týždeň nemá riadky. Pridajte riadok alebo skopírujte minulý týždeň.", "Ezen a héten nincs sor. Adjon hozzá egyet, vagy másolja a múlt hetet.")}</td>
               </tr>
             )}
+            <tr className="border-t border-dashed border-slate-300">
+              <td colSpan={9} className="p-0">
+                <button type="button" onClick={() => setAdding(true)} disabled={!mayEdit} data-testid="timesheet-add-row" className="inline-flex h-10 w-full items-center gap-1.5 px-3 text-ui font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-40 cursor-pointer">
+                  <Plus className="size-4" />
+                  {t("Add row — pick project and task", "Pridať riadok — vyberte projekt a úlohu", "Sor hozzáadása — válasszon projektet és feladatot")}
+                </button>
+              </td>
+            </tr>
           </tbody>
           <tfoot>
             <tr className="border-t border-slate-200 bg-slate-50" data-testid="timesheet-total">
