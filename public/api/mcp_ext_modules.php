@@ -16,6 +16,7 @@ require_once __DIR__ . '/recurring_tasks.php';
 require_once __DIR__ . '/time_entries_lib.php';
 require_once __DIR__ . '/time_settle.php';
 require_once __DIR__ . '/time_locks.php';
+require_once __DIR__ . '/mcp_ext_timers.php';
 require_once __DIR__ . '/tickets.php';
 
 /**
@@ -82,12 +83,12 @@ function mcp_get_module_tool_definitions(): array {
         ],
         [
             'name' => 'get_running_timer',
-            'description' => 'Get the active user\'s currently running time tracker timer, if any (returns null when stopped).',
+            'description' => 'Get the active user\'s running timers. `timers` lists every running entry (several may run in parallel), oldest first; `running` is the first one, or null when nothing runs.',
             'inputSchema' => ['type' => 'object', 'properties' => new \stdClass()],
         ],
         [
             'name' => 'get_time_tracking_summary',
-            'description' => 'Aggregate tracked hours and billable totals over a date range, grouped by project or user (respects time_tracking_team and time_tracking_costs permissions).',
+            'description' => 'Aggregate tracked hours and billable totals over a date range, grouped by project or user (respects time_tracking_team and time_tracking_costs permissions). `hours` is project time; with group_by=user each person also gets `worked_hours` (their own time, which parallel timers share) and `leverage` (hours / worked_hours).',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -121,10 +122,11 @@ function mcp_get_module_tool_definitions(): array {
         ],
         [
             'name' => 'start_timer',
-            'description' => 'Start a live running timer for the active user. If a timer is already running, it is stopped and priced first.',
+            'description' => 'Start a live running timer for the active user. mode "switch" (default) stops and prices every running timer first; mode "parallel" keeps the other timers running. Starting a target that is already running changes nothing and returns success:false with code already_running and that entry.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
+                    'mode' => ['type' => 'string', 'enum' => ['switch', 'parallel'], 'description' => 'switch (default): stop every running timer, then start this one. parallel: keeps other timers running; requires the company setting and the role permission (time_tracking_parallel), and respects the parallel limit and the same-project rule.'],
                     'description' => ['type' => 'string', 'description' => 'Work description'],
                     'task_id' => ['type' => 'string', 'description' => 'Linked task ID'],
                     'ticket_id' => ['type' => 'string', 'description' => 'Linked ticket ID'],
@@ -136,10 +138,12 @@ function mcp_get_module_tool_definitions(): array {
         ],
         [
             'name' => 'stop_timer',
-            'description' => 'Stop the active user\'s currently running timer, compute elapsed duration and rates, and save the completed entry.',
+            'description' => 'Stop the active user\'s running timer, compute elapsed duration and rates, and save the completed entry. With several timers running, pass entry_id (one) or all:true (every one); without either it fails and lists them.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
+                    'entry_id' => ['type' => 'string', 'description' => 'The running entry to stop (see get_running_timer timers)'],
+                    'all' => ['type' => 'boolean', 'description' => 'Stop every running timer; the overrides below are ignored'],
                     'description' => ['type' => 'string', 'description' => 'Optional final description override'],
                     'note' => ['type' => 'string', 'description' => 'Optional final note'],
                     'project_id' => ['type' => 'string', 'description' => 'Optional project ID if required by workspace settings'],
@@ -675,12 +679,8 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             return array_map(fn($r) => ccrm_tt_entry_json($r, $viewer), $stmt->fetchAll(\PDO::FETCH_ASSOC));
         }
 
-        case 'get_running_timer': {
-            $stmt = $pdo->prepare(ccrm_tt_entry_select() . " WHERE te.user_id = ? AND te.start_at IS NOT NULL AND te.end_at IS NULL AND te.deleted_at IS NULL LIMIT 1");
-            $stmt->execute([$uid]);
-            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-            return ['running' => $row ? ccrm_tt_entry_json($row, $viewer) : null];
-        }
+        case 'get_running_timer':
+            return mcp_timer_get_running($pdo, $uid, $viewer);
 
         case 'get_time_tracking_summary': {
             $canTeam = mcp_can('time_tracking_team');
@@ -708,10 +708,14 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             $costCols = $viewer['canCosts']
                 ? ', COALESCE(SUM(e.cost), 0) AS total_cost, COALESCE(SUM(CASE WHEN e.billable = 1 THEN (e.duration_sec / 3600.0) * COALESCE(e.billable_rate, 0) ELSE 0 END), 0) AS total_billable_amount'
                 : '';
+            // D9: a person's sum is worked time (parallel timers share it; hours-only and not yet settled rows count their duration).
+            $byUser = $groupBy === 'user';
+            $workedCol = $byUser ? ', COALESCE(SUM(COALESCE(e.worked_ms, e.duration_sec * 1000)), 0) AS worked_ms' : '';
 
             $sql = "SELECT {$selKey}, COUNT(*) AS entry_count,
                            COALESCE(SUM(e.duration_sec), 0) AS total_seconds,
                            COALESCE(SUM(CASE WHEN e.billable = 1 THEN e.duration_sec ELSE 0 END), 0) AS billable_seconds
+                           {$workedCol}
                            {$costCols}
                     FROM time_entries e
                     LEFT JOIN users u ON u.id = e.user_id
@@ -722,7 +726,7 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
             $rows = [];
-            $totSec = 0; $billSec = 0; $totCost = 0.0; $totBillAmt = 0.0;
+            $totSec = 0; $billSec = 0; $totCost = 0.0; $totBillAmt = 0.0; $totWorkedMs = 0;
             foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
                 $s = (int)$r['total_seconds'];
                 $b = (int)$r['billable_seconds'];
@@ -734,6 +738,12 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
                     'hours' => round($s / 3600, 2),
                     'billable_hours' => round($b / 3600, 2),
                 ];
+                if ($byUser) {
+                    $w = (int)$r['worked_ms'];
+                    $totWorkedMs += $w;
+                    $item['worked_hours'] = round($w / 3600000, 2);
+                    $item['leverage'] = $w > 0 ? round($s * 1000 / $w, 2) : null;
+                }
                 if ($viewer['canCosts']) {
                     $c = round((float)$r['total_cost'], 2);
                     $ba = round((float)$r['total_billable_amount'], 2);
@@ -749,6 +759,10 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
                 'billable_hours' => round($billSec / 3600, 2),
                 'groups' => $rows,
             ];
+            if ($byUser) {
+                $out['total_worked_hours'] = round($totWorkedMs / 3600000, 2);
+                $out['leverage'] = $totWorkedMs > 0 ? round($totSec * 1000 / $totWorkedMs, 2) : null;
+            }
             if ($viewer['canCosts']) {
                 $out['total_cost'] = round($totCost, 2);
                 $out['total_billable_amount'] = round($totBillAmt, 2);
@@ -800,117 +814,11 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             return ['success' => true, 'entry' => $row ? ccrm_tt_entry_json($row, $viewer) : ['id' => $id]];
         }
 
-        case 'start_timer': {
-            $settings = ccrm_tt_load_settings($pdo);
-            $links = ccrm_tt_resolve_links($pdo, [
-                'taskId' => $args['task_id'] ?? null,
-                'ticketId' => $args['ticket_id'] ?? null,
-                'projectId' => $args['project_id'] ?? null,
-                'description' => $args['description'] ?? null,
-            ]);
-            if (!$links['ok']) {
-                throw new \InvalidArgumentException("Invalid timer link: {$links['code']}");
-            }
-            mcp_mod_check_te_link_access($pdo, $user, $links);
+        case 'start_timer':
+            return mcp_timer_start($pdo, $user, $uid, $args, $viewer, fn(array $links) => mcp_mod_check_te_link_access($pdo, $user, $links));
 
-            $nowUtc = ccrm_tt_now_utc();
-            $today = ccrm_tt_local_date($nowUtc);
-            $billable = array_key_exists('billable', $args) ? ($args['billable'] ? 1 : 0) : (!empty($settings['defaultBillable']) ? 1 : 0);
-            $note = isset($args['note']) ? ccrm_tt_clean_note($args['note']) : null;
-            $pricing = ccrm_tt_price($pdo, $uid, $today, null, $settings, false);
-            $billRate = $billable ? ccrm_tt_lookup_billable_rate($pdo, $links['project_id'], $links['ticket_id'], $today) : null;
-            $id = ccrm_tt_new_id();
-
-            $stoppedPrevId = null;
-            mcp_tx($pdo, function () use ($pdo, $uid, $nowUtc, $settings, &$stoppedPrevId, $id, $links, $note, $today, $billable, $pricing, $billRate) {
-                $sel = $pdo->prepare("SELECT * FROM time_entries WHERE user_id = ? AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL FOR UPDATE");
-                $sel->execute([$uid]);
-                if ($prev = $sel->fetch(\PDO::FETCH_ASSOC)) {
-                    $stoppedPrevId = $prev['id'];
-                    $dur = min(86400, ccrm_tt_seconds_between($prev['start_at'], $nowUtc));
-                    $pPricing = ccrm_tt_price($pdo, $uid, $prev['entry_date'], $dur, $settings, false);
-                    $pBill = !empty($prev['billable'])
-                        ? ($prev['billable_rate'] !== null ? (float)$prev['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $prev['project_id'], $prev['ticket_id'], $prev['entry_date']))
-                        : null;
-                    $pdo->prepare(
-                        "UPDATE time_entries
-                         SET end_at = ?, duration_sec = ?, employee_id = ?, cost_rate = ?, cost_rate_source = ?, cost_rate_basis_days = ?, billable_rate = ?
-                         WHERE id = ?"
-                    )->execute([$nowUtc, $dur, $pPricing['employee_id'], $pPricing['cost_rate'], $pPricing['cost_rate_source'], $pPricing['cost_rate_basis_days'], $pBill, $prev['id']]);
-                }
-
-                $pdo->prepare(
-                    "INSERT INTO time_entries
-                        (id, user_id, recorded_by_user_id, employee_id, project_id, task_id, ticket_id,
-                         description, title_snapshot, note, entry_date, start_at, end_at, duration_sec,
-                         billable, billable_rate, cost_rate, cost_rate_source, cost_rate_basis_days, tags, source)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?, ?, ?, ?, ?, '[]', 'timer')"
-                )->execute([
-                    $id, $uid, $uid, $pricing['employee_id'], $links['project_id'], $links['task_id'], $links['ticket_id'],
-                    $links['description'], $links['title_snapshot'], $note, $today, $nowUtc,
-                    $billable, $billRate, $pricing['cost_rate'], $pricing['cost_rate_source'], $pricing['cost_rate_basis_days'],
-                ]);
-                // $prev was running until now, so its row covers the stopped interval.
-                ccrm_tt_settle_rows($pdo, [$prev ?: null]);
-            });
-
-            mcp_audit($pdo, $user, 'timer_start', "Started timer {$id}" . ($stoppedPrevId ? " (stopped {$stoppedPrevId})" : ''));
-            $row = ccrm_tt_fetch_entry($pdo, $id);
-            return ['success' => true, 'stopped_previous_id' => $stoppedPrevId, 'entry' => $row ? ccrm_tt_entry_json($row, $viewer) : ['id' => $id]];
-        }
-
-        case 'stop_timer': {
-            $settings = ccrm_tt_load_settings($pdo);
-            $stmt = $pdo->prepare("SELECT * FROM time_entries WHERE user_id = ? AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL LIMIT 1");
-            $stmt->execute([$uid]);
-            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$row) {
-                throw new \InvalidArgumentException('No running timer found for the current user.');
-            }
-
-            $links = ccrm_tt_resolve_links($pdo, [
-                'taskId' => array_key_exists('task_id', $args) ? $args['task_id'] : $row['task_id'],
-                'ticketId' => $row['ticket_id'],
-                'projectId' => array_key_exists('project_id', $args) ? $args['project_id'] : $row['project_id'],
-                'description' => array_key_exists('description', $args) ? $args['description'] : $row['description'],
-            ]);
-            if (!$links['ok']) {
-                throw new \InvalidArgumentException("Invalid timer link: {$links['code']}");
-            }
-            if (!empty($settings['requireProjectToStop']) && empty($links['project_id'])) {
-                throw new \InvalidArgumentException('Workspace settings require a project_id before stopping a timer.');
-            }
-            if (!empty($settings['requireTask']) && empty($links['task_id'])) {
-                throw new \InvalidArgumentException('Workspace settings require a task_id before stopping a timer.');
-            }
-
-            $nowUtc = ccrm_tt_now_utc();
-            $dur = min(86400, ccrm_tt_seconds_between($row['start_at'], $nowUtc));
-            $pricing = ccrm_tt_price($pdo, $uid, $row['entry_date'], $dur, $settings, true);
-            $billRate = !empty($row['billable'])
-                ? ($row['billable_rate'] !== null ? (float)$row['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $links['project_id'], $links['ticket_id'], $row['entry_date']))
-                : null;
-            $note = array_key_exists('note', $args) ? ccrm_tt_clean_note($args['note']) : $row['note'];
-
-            mcp_tx($pdo, function () use ($pdo, $links, $note, $nowUtc, $dur, $pricing, $billRate, $row) {
-                $pdo->prepare(
-                    "UPDATE time_entries
-                     SET task_id = ?, project_id = ?, title_snapshot = ?, description = ?, note = ?,
-                         end_at = ?, duration_sec = ?, employee_id = ?, cost_rate = ?, cost_rate_source = ?,
-                         cost_rate_basis_days = ?, billable_rate = ?
-                     WHERE id = ?"
-                )->execute([
-                    $links['task_id'], $links['project_id'], $links['title_snapshot'], $links['description'], $note,
-                    $nowUtc, $dur, $pricing['employee_id'], $pricing['cost_rate'], $pricing['cost_rate_source'],
-                    $pricing['cost_rate_basis_days'], $billRate, $row['id'],
-                ]);
-                ccrm_tt_settle_rows($pdo, [$row]); // running until now: covers the stopped interval
-            });
-
-            mcp_audit($pdo, $user, 'timer_stop', "Stopped timer {$row['id']} ({$dur}s)");
-            $updated = ccrm_tt_fetch_entry($pdo, $row['id']);
-            return ['success' => true, 'entry' => $updated ? ccrm_tt_entry_json($updated, $viewer) : ['id' => $row['id']]];
-        }
+        case 'stop_timer':
+            return mcp_timer_stop($pdo, $user, $uid, $args, $viewer);
 
         case 'update_time_entry': {
             $id = mcp_require_string($args, 'id');

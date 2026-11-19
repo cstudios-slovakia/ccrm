@@ -515,11 +515,13 @@ async function main() {
       check('T14 MCP: stop_timer ends the running entry', !m4.isError && m4.data?.success === true && m4.data?.entry?.id === m3.data?.entry?.id && m4.data?.entry?.running === false && runningRows().length === 0, m4.raw);
       const m5 = await mcp('get_running_timer');
       check('T14 MCP: get_running_timer is { running: null } again', m5.data?.running === null, m5.raw);
-      // A4.4: REST answers 409 for the running target; MCP start_timer stops it and opens a new entry (one block of work becomes two).
+      // A4.4: starting the running target changes nothing (REST answers 409; MCP answers success:false, code already_running).
       const s1 = await mcp('start_timer', { description: 'T14 MCP same target' });
       const s2 = await mcp('start_timer', { description: 'T14 MCP same target' });
-      check('T14: MCP start_timer of the running target does not split the entry (A4.4, fixed in phase 4) [EXPECTED TO FAIL today]',
+      check('T14: MCP start_timer of the running target does not split the entry (A4.4, fixed in phase 4)',
         countDesc('T14 MCP same target') === 1 && runningRows().length === 1 && runningRows()[0].id === s1.data?.entry?.id, `${countDesc('T14 MCP same target')} rows; ${s2.raw}`);
+      check('T14 MCP: ...it answers success:false, code already_running, with the running entry (not an error)',
+        !s2.isError && s2.data?.success === false && s2.data?.code === 'already_running' && s2.data?.entry?.id === s1.data?.entry?.id, s2.raw);
 
       // Leave nothing running for whoever uses Erik after this section.
       await te(S.erik, { action: 'stop' });
@@ -768,6 +770,86 @@ async function main() {
       sql(`UPDATE system_settings SET value = JSON_REMOVE(value, '$.parallel') WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
       grant(false);
       check('T17: cleanup: Erik has no running entry, parallel settings and permission removed', runningRows().length === 0);
+    }
+    section('T18: MCP with parallel timers (phase 4)');
+    {
+      // D5.6: the MCP tools follow the REST contract. Erik gets parallel settings and the permission as in T15; the
+      // free-text timers here have no project, so requireProjectToStop is switched off for the section and restored after.
+      const runningRows = () => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL ORDER BY start_at, id`);
+      const countDesc = (d) => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND description=${q(d)} AND deleted_at IS NULL`).length;
+      const setParallel = (p) => sql(`UPDATE system_settings SET value = JSON_SET(value, '$.parallel', CAST(${q(JSON.stringify(p))} AS JSON)) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      const grant = (on) => sql(on
+        ? `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'edit') WHERE \`key\` = 'ROLES_RBAC'`
+        : `UPDATE system_settings SET value = JSON_REMOVE(value, '$[2].permissions.time_tracking_parallel') WHERE \`key\` = 'ROLES_RBAC'`);
+      const ON = { enabled: true, maxParallel: 4, sameProject: 'differentTasks' };
+      const token = 'ccrm_mcp_probe_tt_erik18_' + '0'.repeat(38);
+      sql(`INSERT INTO mcp_keys (id, user_id, key_hash, key_prefix, name, created_at) VALUES ('pk-tt-erik18', 'tt-erik', SHA2(${q(token)}, 256), 'ccrm_mcp_p...', 'probe T18', NOW() - INTERVAL 1 DAY);`);
+      let rpcId = 1000;
+      const mcp = async (tool, args = {}) => {
+        const res = await fetch(`${BASE}/ttprobe/api/mcp.php`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CCRM-MCP-KEY': token },
+          body: JSON.stringify({ jsonrpc: '2.0', id: rpcId++, method: 'tools/call', params: { name: tool, arguments: args } }),
+        });
+        const raw = await res.text();
+        let body = null; try { body = JSON.parse(raw); } catch {}
+        const text = body?.result?.content?.[0]?.text;
+        let data = null; try { data = JSON.parse(text); } catch {}
+        return { status: res.status, raw, isError: !!body?.result?.isError || !!body?.error, data };
+      };
+      sql(`UPDATE system_settings SET value = JSON_SET(value, '$.requireProjectToStop', false) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      await te(S.erik, { action: 'stop', all: true });
+      check('T18: starting point: Erik has no running entry', runningRows().length === 0);
+      setParallel(ON);
+      grant(true);
+
+      const a = await mcp('start_timer', { description: 'T18 MCP A', mode: 'parallel' });
+      const b = await mcp('start_timer', { description: 'T18 MCP B', mode: 'parallel' });
+      check('T18: two parallel start_timer calls both succeed and stop nothing', !a.isError && !b.isError && a.data?.success === true && b.data?.success === true
+        && b.data?.mode === 'parallel' && b.data?.stopped_previous_id === null && Array.isArray(b.data?.stopped_ids) && b.data.stopped_ids.length === 0, `${a.raw} / ${b.raw}`);
+      check('T18: ...two entries run in the database', runningRows().length === 2);
+      const gr = await mcp('get_running_timer');
+      check('T18: get_running_timer lists both in timers (oldest first), running = the first, paused []',
+        !gr.isError && gr.data?.timers?.length === 2 && gr.data.timers[0].id === a.data?.entry?.id && gr.data.running?.id === a.data?.entry?.id
+          && Array.isArray(gr.data.paused) && gr.data.paused.length === 0, gr.raw);
+      const again = await mcp('start_timer', { description: 'T18 MCP A', mode: 'parallel' });
+      check('T18: parallel start_timer of a running target: success:false, already_running, nothing new stored',
+        !again.isError && again.data?.success === false && again.data?.code === 'already_running' && again.data?.entry?.id === a.data?.entry?.id
+          && countDesc('T18 MCP A') === 1 && runningRows().length === 2, again.raw);
+      const amb = await mcp('stop_timer');
+      check('T18: stop_timer without arguments while several run is an error naming several timers', amb.isError && /several/i.test(amb.raw) && runningRows().length === 2, amb.raw);
+      const one = await mcp('stop_timer', { entry_id: b.data?.entry?.id });
+      check('T18: stop_timer {entry_id} stops that entry only', !one.isError && one.data?.entry?.id === b.data?.entry?.id && one.data?.entry?.running === false
+        && runningRows().length === 1 && runningRows()[0].id === a.data?.entry?.id, one.raw);
+      const c = await mcp('start_timer', { description: 'T18 MCP C', mode: 'parallel' });
+      check('T18: a third parallel start runs beside A', !c.isError && c.data?.success === true && runningRows().length === 2, c.raw);
+      setParallel({ ...ON, enabled: false });
+      const off = await mcp('start_timer', { description: 'T18 MCP disabled', mode: 'parallel' });
+      check('T18: parallel disabled: start_timer {mode:parallel} is an error naming parallel_disabled', off.isError && off.raw.includes('parallel_disabled') && countDesc('T18 MCP disabled') === 0 && runningRows().length === 2, off.raw);
+      setParallel(ON);
+      const all = await mcp('stop_timer', { all: true });
+      check('T18: stop_timer {all:true} stops every running timer', !all.isError && all.data?.success === true && all.data?.stopped_ids?.length === 2 && all.data?.stopped?.length === 2 && runningRows().length === 0, all.raw);
+      const allAgain = await mcp('stop_timer', { all: true });
+      check('T18: stop_timer {all:true} with nothing running is idempotent', !allAgain.isError && allAgain.data?.success === true && allAgain.data?.stopped_ids?.length === 0, allAgain.raw);
+      const gr0 = await mcp('get_running_timer');
+      check('T18: get_running_timer is { running: null, timers: [] } again', gr0.data?.running === null && gr0.data?.timers?.length === 0, gr0.raw);
+
+      // D9: a person's sum is worked time. T15 left two parallel 1 h entries (worked 30 min each), so Erik's project hours exceed his worked hours.
+      const sum = await mcp('get_time_tracking_summary', { group_by: 'user' });
+      const erikRow = (sum.data?.groups || []).find((g) => g.key === 'tt-erik');
+      check('T18: get_time_tracking_summary group_by=user carries worked_hours and leverage per person and in total',
+        !sum.isError && typeof erikRow?.worked_hours === 'number' && 'leverage' in (erikRow || {}) && typeof sum.data?.total_worked_hours === 'number', sum.raw);
+      check('T18: ...Erik\'s worked hours are below his project hours (the T15 parallel hour counts once)', erikRow && erikRow.worked_hours < erikRow.hours && erikRow.leverage > 1, JSON.stringify(erikRow));
+      const byProject = await mcp('get_time_tracking_summary', { group_by: 'project' });
+      check('T18: group_by=project is unchanged (no worked_hours)', !byProject.isError && (byProject.data?.groups || []).every((g) => !('worked_hours' in g)) && !('total_worked_hours' in (byProject.data || {})), byProject.raw);
+
+      // Cleanup.
+      await te(S.erik, { action: 'stop', all: true });
+      sql(`UPDATE system_settings SET value = JSON_REMOVE(value, '$.parallel') WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      grant(false);
+      sql(`UPDATE system_settings SET value = JSON_SET(value, '$.requireProjectToStop', true) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      sql(`DELETE FROM mcp_keys WHERE id = 'pk-tt-erik18'`);
+      check('T18: cleanup: Erik has no running entry', runningRows().length === 0);
     }
   } finally {
     teardown();
