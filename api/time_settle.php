@@ -119,7 +119,7 @@ if (!function_exists('ccrm_tt_settle')) {
             $own->execute(array_merge([$userId], $ownIds));
             array_push($candidates, ...$own->fetchAll(\PDO::FETCH_ASSOC));
         }
-        $nowMs = time() * 1000;
+        $nowMs = function_exists('ccrm_tt_now_ms') ? ccrm_tt_now_ms() : time() * 1000;
         $out = [];
         foreach ($candidates as $r) {
             $id = (string)$r['id'];
@@ -148,7 +148,7 @@ if (!function_exists('ccrm_tt_settle')) {
         if ($from === null) {
             return [];
         }
-        $to = ccrm_ts_ms($endUtc) ?? max($from, time() * 1000);
+        $to = ccrm_ts_ms($endUtc) ?? max($from, function_exists('ccrm_tt_now_ms') ? ccrm_tt_now_ms() : time() * 1000);
         if ($to <= $from) {
             return [];
         }
@@ -332,7 +332,7 @@ if (!function_exists('ccrm_tt_settle')) {
      * written even when locked (the caller has already applied the lock rule to them).
      */
     function ccrm_tt_settle_rows(\PDO $pdo, array $rows, bool $force = false): void {
-        $nowMs = time() * 1000;
+        $nowMs = function_exists('ccrm_tt_now_ms') ? ccrm_tt_now_ms() : time() * 1000;
         $timed = [];
         $dates = [];
         $own = [];

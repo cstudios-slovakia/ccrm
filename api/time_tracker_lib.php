@@ -16,6 +16,7 @@ require_once __DIR__ . '/time_entries_lib.php';
 require_once __DIR__ . '/time_settle.php';
 require_once __DIR__ . '/time_lock.php';
 require_once __DIR__ . '/time_parallel.php';
+require_once __DIR__ . '/time_presence_lib.php';
 require_once __DIR__ . '/read_scope.php';
 
 const CCRM_TT_EXT_VERSION = '1.0.0';
@@ -130,8 +131,17 @@ function ccrm_ttx_client_instant($iso, int $nowMs): array {
     return ['ok' => true, 'ms' => $ms];
 }
 
+/** TT2 D7.3: settle the user's presence cycle and autoStopAt first (lazy, exact); never blocks the call. */
+function ccrm_ttx_presence_settle(\PDO $pdo, string $userId, array $settings): void {
+    try {
+        ccrm_tt_presence_settle($pdo, $userId, ccrm_tt_now_utc(), $settings);
+    } catch (\Throwable $e) {
+        ccrm_log_exception($e);
+    }
+}
+
 function ccrm_ttx_now_ms(): int {
-    return (int)floor(microtime(true) * 1000);
+    return ccrm_tt_now_ms(); // the test clock of the probe, else the real one
 }
 
 function ccrm_ttx_public_url(): string {
@@ -513,6 +523,7 @@ function ccrm_ttx_start(\PDO $pdo, array $user, array $device, array $body, arra
         ]);
         // The stopped entries (their running intervals reach now) and the new one, which may be back-dated.
         ccrm_tt_settle_rows($pdo, array_merge($stopped, [['id' => $newId, 'user_id' => $userId, 'start_at' => $startUtc, 'end_at' => null, 'entry_date' => ccrm_tt_local_date($startUtc)]]));
+        ccrm_tt_presence_touch($pdo, $userId, ccrm_tt_now_utc()); // start: anchor = now (TT2 C6)
         $pdo->commit();
     } catch (\Throwable $e) {
         if ($pdo->inTransaction()) {
@@ -624,6 +635,7 @@ function ccrm_ttx_stop(\PDO $pdo, array $user, array $device, array $body, array
         if ($current !== null) {
             ccrm_ttx_close_row($pdo, $current, $endUtc, $settings, $projectId, (string)$device['id']);
             ccrm_tt_settle_rows($pdo, [$current]); // running until now: covers the stopped interval
+            ccrm_tt_presence_touch($pdo, $userId, ccrm_tt_now_utc()); // one of several: anchor = now; the last: NULL (TT2 C6)
         }
         $pdo->commit(); // stopped meanwhile by another client: nothing to do, answer with its state
     } catch (\Throwable $e) {
@@ -682,7 +694,7 @@ function ccrm_ttx_running_payload(\PDO $pdo, string $userId, array $viewer): arr
         'running' => $running,
         'count' => count($running),
         'workedTodaySeconds' => ccrm_ttx_worked_today_seconds($pdo, $userId, $rows),
-        'serverNow' => gmdate('Y-m-d\TH:i:s\Z'),
+        'serverNow' => ccrm_tt_iso(ccrm_tt_now_utc()),
     ];
 }
 

@@ -215,8 +215,45 @@ if (!function_exists('ccrm_tt_default_settings')) {
         return $dt->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
     }
 
+    /**
+     * "Now" for every time-tracking timestamp (start, stop, pause, resume, presence, a running
+     * entry's end in settle), UTC 'Y-m-d H:i:s'. The test clock (TT2 phase 6b): when the constant
+     * CCRM_TT_TEST_CLOCK is defined and true (only the time-tracking probe's scratch config.php
+     * defines it) AND system_settings has `TT_TEST_NOW` (UTC 'Y-m-d H:i:s'), that instant is
+     * returned instead. Never active in production: no shipped config defines the constant.
+     */
     function ccrm_tt_now_utc(): string {
+        if (defined('CCRM_TT_TEST_CLOCK') && constant('CCRM_TT_TEST_CLOCK')) {
+            $fixed = ccrm_tt_test_clock();
+            if ($fixed !== null) {
+                return $fixed;
+            }
+        }
         return gmdate('Y-m-d H:i:s');
+    }
+
+    /** Milliseconds of ccrm_tt_now_utc() (the real clock keeps its milliseconds). */
+    function ccrm_tt_now_ms(): int {
+        if (defined('CCRM_TT_TEST_CLOCK') && constant('CCRM_TT_TEST_CLOCK') && ($fixed = ccrm_tt_test_clock()) !== null) {
+            return (int)strtotime($fixed . ' UTC') * 1000;
+        }
+        return (int)floor(microtime(true) * 1000);
+    }
+
+    /** The probe's fixed instant (system_settings TT_TEST_NOW), or null. Read on every call: the probe moves it between requests. */
+    function ccrm_tt_test_clock(): ?string {
+        $pdo = $GLOBALS['pdo'] ?? null;
+        if (!$pdo instanceof \PDO) {
+            return null;
+        }
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'TT_TEST_NOW' LIMIT 1");
+            $stmt->execute();
+            $v = trim((string)$stmt->fetchColumn());
+        } catch (\Throwable $e) {
+            return null;
+        }
+        return preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $v) ? $v : null;
     }
 
     /** ISO-8601 with a Z suffix, from a UTC database value. */

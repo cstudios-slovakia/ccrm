@@ -180,12 +180,55 @@ export const listEntries = async (params: ListParams = {}): Promise<{ entries: T
   return { entries: body.entries as TimeEntry[], viewer: body.viewer as TimeViewer };
 };
 
+/** Where the caller's presence cycle stands (TT2 D7.1). Derived on the server; instants are ISO strings. */
+export type TimePresencePhase = "idle" | "tracking" | "question" | "paused";
+
+export interface TimePresence {
+  /** Presence checks are on for the company. */
+  enabled: boolean;
+  /** The last answer (start, resume, confirm, ...); null while nothing runs. */
+  anchorAt: string | null;
+  /** When the question is asked (anchor + promptAfterMinutes). */
+  promptAt: string | null;
+  /** No answer by then: every running item ends at promptAt and is paused. */
+  deadlineAt: string | null;
+  phase: TimePresencePhase;
+  /** The deadline of the automatic pause, while its pause can still be resumed. */
+  autoPausedAt: string | null;
+  /** Resume is possible until then (the automatic pause's resume window). */
+  resumeUntil: string | null;
+}
+
+const isoOrNull = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
+
+/** A presence object from the server, or null for an old server / a malformed body. */
+export const parsePresence = (v: unknown): TimePresence | null => {
+  if (!v || typeof v !== "object") return null;
+  const r = v as Record<string, unknown>;
+  const phase = r.phase === "tracking" || r.phase === "question" || r.phase === "paused" ? r.phase : "idle";
+  return {
+    enabled: r.enabled !== false,
+    anchorAt: isoOrNull(r.anchorAt),
+    promptAt: isoOrNull(r.promptAt),
+    deadlineAt: isoOrNull(r.deadlineAt),
+    phase,
+    autoPausedAt: isoOrNull(r.autoPausedAt),
+    resumeUntil: isoOrNull(r.resumeUntil),
+  };
+};
+
+/**
+ * D7.4: answer the presence question ("still working"). Resolves the new state (the cycle restarts now).
+ * After the deadline the server answers 409 `paused` (`TimeApiError.details.presence` has the state).
+ */
+export const confirmPresence = async (): Promise<TimePresence | null> => parsePresence((await post("confirm")).presence);
+
 export interface RunningState {
   /** Every running entry, oldest start first. */
   running: TimeEntry[];
   paused: TimeEntry[];
-  /** The presence engine's state (phase 7 types it). */
-  presence: unknown | null;
+  /** The presence engine's state (D7.1); null from an old server. */
+  presence: TimePresence | null;
   /** The server's clock at the answer (ISO), null from an old server. */
   serverNow: string | null;
 }
@@ -199,7 +242,7 @@ export const getRunningState = async (): Promise<RunningState> => {
   return {
     running,
     paused: entryList(body.paused),
-    presence: body.presence ?? null,
+    presence: parsePresence(body.presence),
     serverNow: typeof body.serverNow === "string" ? body.serverNow : null,
   };
 };

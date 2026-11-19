@@ -128,6 +128,7 @@ try {
         $userId = (string)$user['id'];
         $viewer = ccrm_ttx_viewer($scope, $userId);
         $rules = ccrm_ttx_load_rules($pdo, $userId);
+        ccrm_ttx_presence_settle($pdo, $userId, $settings);
 
         if ($action === 'rules') {
             ccrm_ttx_out(ccrm_ttx_rules_payload($rules, $settings));
@@ -218,6 +219,7 @@ try {
     }
     $userId = (string)$sessionUser['id'];
     $canEdit = ccrm_can($scope, 'time_tracking', 'edit');
+    ccrm_ttx_presence_settle($pdo, $userId, $settings);
 
     if ($action === 'code') {
         if ($method !== 'POST' || !$canEdit) {

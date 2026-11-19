@@ -4,7 +4,7 @@
  *
  *   GET  ?from&to&userId&projectId&taskId&ticketId   list (userId: omitted = me, <id> or "all" need time_tracking_team)
  *   GET  ?running=1                                  {running: Entry[] (oldest start first), paused: Entry[] (live pauses, +pauseExpiresAt),
- *                                                    presence: null, serverNow, entry: running[0]|null}
+ *                                                    presence: the D7.1 state, serverNow, entry: running[0]|null}
  *   GET  ?action=settings                            TimeTrackingSettings + the caller's work calendar
  *   GET  ?action=totals                              byTask/byTicket/byProject{seconds,workedMs,cost,billableValue,billableComplete}, workedByUserDay{userId:{date:ms}}
  *   GET  ?action=overlaps&from=YYYY-MM&to=YYYY-MM    admin/general_config: {months:[{month,entries,users}]} closed timed entries overlapping another of the same user
@@ -20,6 +20,8 @@
  *   POST action=pause        {id | all}              D6: end the running item(s) now, keep a resumable marker -> {entry, paused: Entry[]}
  *   POST action=resume       {id | all, mode?}       D6, C8: a new running entry continues each paused item
  *                                                    -> {entry, entries, resumed: oldIds, stoppedAll}; 409 pause_expired (marker cleared).
+ *   POST action=confirm                              D7.4: the presence answer (session only, no token, C9): while items run and
+ *                                                    now < deadlineAt -> {presence} with anchor = now; after the deadline 409 paused {presence}
  *   POST action=create       manual / hours-only / calendar / timesheet entries
  *   POST action=update       {id, ...fields}
  *   POST action=delete       {id}                    soft delete
@@ -37,6 +39,8 @@
  *  - The title of a linked entry is the task's / ticket's, joined live. Renaming goes
  *    through sync.php (the task / ticket save path); nothing here writes tasks.title.
  *  - Errors cross the wire as stable codes; the client turns them into sentences.
+ *  - The presence engine (time_presence_lib.php, D7.3) settles the caller first on every request
+ *    here; every timer mutation applies the anchor rules (ccrm_tt_presence_touch) inside its lock.
  */
 
 require_once __DIR__ . '/auth.php';
@@ -48,6 +52,7 @@ require_once __DIR__ . '/time_locks.php';
 require_once __DIR__ . '/time_lock.php';
 require_once __DIR__ . '/time_parallel.php';
 require_once __DIR__ . '/time_pause_lib.php';
+require_once __DIR__ . '/time_presence_lib.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
@@ -102,6 +107,14 @@ if ($method === 'POST') {
 }
 $action = trim((string)($body['action'] ?? $_GET['action'] ?? ''));
 $settings = ccrm_tt_load_settings($pdo);
+
+// D7.3 lazy and exact: whatever the presence deadline or autoStopAt already decided for the caller
+// happens before the action runs. Cheap when nothing runs (indexed reads, no lock).
+try {
+    ccrm_tt_presence_settle($pdo, $callerId, ccrm_tt_now_utc(), $settings);
+} catch (\Throwable $e) {
+    ccrm_log_exception($e); // never blocks the request; the next call or the cron settles it
+}
 
 // ---------------------------------------------------------------------------------------
 // Helpers
@@ -295,7 +308,7 @@ if ($method === 'GET') {
 
     if (isset($_GET['running']) || $action === 'running') {
         // D5.3: every running item (oldest first); `entry` = the first, kept for old clients (D5.6).
-        // `paused`: the live pauses (D6; expired markers are cleared on the way). `presence`: phase 6 (b).
+        // `paused`: the live pauses (D6; expired markers are cleared on the way). `presence`: the D7.1 state.
         $running = ccrm_te_json_list($pdo, array_column(ccrm_tt_running_rows($pdo, $callerId), 'id'), $viewer);
         $paused = [];
         foreach (ccrm_tt_paused_rows($pdo, $callerId, $settings) as $p) {
@@ -306,7 +319,7 @@ if ($method === 'GET') {
         ccrm_te_respond([
             'running' => $running,
             'paused' => $paused,
-            'presence' => null,
+            'presence' => ccrm_tt_presence_state($pdo, $callerId, $settings, ccrm_tt_now_utc()),
             'serverNow' => ccrm_tt_iso(ccrm_tt_now_utc()),
             'entry' => $running[0] ?? null,
         ]);
@@ -1073,6 +1086,20 @@ if ($action === 'reprice') {
     ccrm_te_respond(['repriced' => $count]);
 }
 
+// D7.4: the presence answer. Only here, only with the session (time_entries.php has no token path, C9).
+if ($action === 'confirm') {
+    try {
+        $answer = ccrm_tt_presence_confirm($pdo, $callerId, ccrm_tt_now_utc(), $settings);
+    } catch (\Throwable $e) {
+        ccrm_log_exception($e);
+        ccrm_te_fail('save_failed', 500);
+    }
+    if (!$answer['ok']) {
+        ccrm_te_fail($answer['code'], 409, ['presence' => $answer['presence']]);
+    }
+    ccrm_te_respond(['presence' => $answer['presence']]);
+}
+
 if ($action === 'start') {
     $owner = ccrm_te_owner($pdo, $body, $callerId, $canTeam);
     // D5.3: no mode (old clients) = 'switch', exactly today's behaviour for one timer.
@@ -1148,6 +1175,7 @@ if ($action === 'start') {
         }
         if ($alreadyId !== null) {
             ccrm_tt_settle_rows($pdo, $stopped);
+            ccrm_tt_presence_touch($pdo, $owner, $nowUtc); // a deliberate action: the cycle restarts (C6)
             $pdo->commit();
             $stoppedAll = ccrm_te_json_list($pdo, array_column($stopped, 'id'), $viewer);
             ccrm_te_respond([
@@ -1171,6 +1199,7 @@ if ($action === 'start') {
         ]);
         // The stopped entries (their running intervals reach now) and the new one, which may be back-dated.
         ccrm_tt_settle_rows($pdo, array_merge($stopped, [['id' => $newId, 'user_id' => $owner, 'start_at' => $startUtc, 'end_at' => null, 'entry_date' => ccrm_tt_local_date($startUtc)]]));
+        ccrm_tt_presence_touch($pdo, $owner, $nowUtc); // start (also the first after an empty set): anchor = now (C6, D7.4)
         $pdo->commit();
     } catch (\Throwable $e) {
         if ($pdo->inTransaction()) {
@@ -1322,6 +1351,7 @@ if ($action === 'stop') {
         }
         // end_reason 'user'; a row stopped meanwhile is left as it is; settled inside.
         ccrm_tt_end_entries($pdo, $owner, array_column($rows, 'id'), $endUtc, 'user', null, $projectId);
+        ccrm_tt_presence_touch($pdo, $owner, $nowUtc); // stopping one of several: anchor = now; the last one: NULL
         $pdo->commit();
     } catch (\Throwable $e) {
         if ($pdo->inTransaction()) {
@@ -1396,6 +1426,9 @@ if ($action === 'pause') {
         $ids = $id !== null ? [$id] : array_column(ccrm_tt_running_rows($pdo, $owner, true), 'id');
         $ended = ccrm_tt_end_entries($pdo, $owner, $ids, ccrm_tt_now_utc(), null, ['reason' => 'manual', 'until' => null]);
         $pausedIds = array_map('strval', array_column($ended, 'id'));
+        if ($ended) {
+            ccrm_tt_presence_touch($pdo, $owner, ccrm_tt_now_utc()); // a deliberate action; nothing left running: NULL
+        }
         $pdo->commit();
     } catch (\Throwable $e) {
         if ($pdo->inTransaction()) {
@@ -1547,6 +1580,7 @@ if ($action === 'resume') {
                     $touched[] = ['id' => $n, 'user_id' => $owner, 'start_at' => $nowUtc, 'end_at' => null, 'entry_date' => ccrm_tt_local_date($nowUtc)];
                 }
                 ccrm_tt_settle_rows($pdo, $touched);
+                ccrm_tt_presence_touch($pdo, $owner, $nowUtc); // resume: anchor = now (C6)
             }
         }
         $pdo->commit();
@@ -1650,6 +1684,7 @@ if ($action === 'undo_start') {
                 ->execute([(string)$newRow['continues_id'], $owner]);
         }
         ccrm_tt_settle_rows($pdo, $touched);
+        ccrm_tt_presence_touch($pdo, $owner, ccrm_tt_now_utc()); // a deliberate action on the running set
         $pdo->commit();
     } catch (\Throwable $e) {
         if ($pdo->inTransaction()) {
@@ -1697,6 +1732,9 @@ if ($action === 'delete' || $action === 'restore') {
             }
             $pdo->prepare("UPDATE `time_entries` SET `deleted_at` = UTC_TIMESTAMP() WHERE `id` = ? AND `deleted_at` IS NULL")->execute([$id]);
             ccrm_tt_settle_rows($pdo, [$row]); // its neighbours get its share back
+            if ($isTimer) {
+                ccrm_tt_presence_touch($pdo, (string)$row['user_id'], ccrm_tt_now_utc(), false); // the last running one gone: NULL
+            }
             $pdo->commit();
         } catch (\Throwable $e) {
             if ($pdo->inTransaction()) {
@@ -1722,6 +1760,9 @@ if ($action === 'delete' || $action === 'restore') {
         }
         $pdo->prepare("UPDATE `time_entries` SET `deleted_at` = NULL WHERE `id` = ?")->execute([$id]);
         ccrm_tt_settle_rows($pdo, [$row]); // the restored entry and its neighbours share again
+        if ($isTimer && $row['deleted_at'] !== null) {
+            ccrm_tt_presence_touch($pdo, (string)$row['user_id'], ccrm_tt_now_utc(), false); // running again: an anchor if there was none
+        }
         $pdo->commit();
     } catch (\Throwable $e) {
         if ($pdo->inTransaction()) {
@@ -2006,6 +2047,9 @@ if ($action === 'update') {
         ]);
         // The old and the new interval (an owner change settles both people).
         ccrm_tt_settle_rows($pdo, [$row, ['id' => $id, 'user_id' => $owner, 'start_at' => $startUtc, 'end_at' => $endUtc, 'duration_sec' => $duration, 'entry_date' => $entryDate]]);
+        foreach ($lockUsers as $u) {
+            ccrm_tt_presence_touch($pdo, $u, ccrm_tt_now_utc()); // editing a running entry: anchor = now (C6); none left running: NULL
+        }
         $pdo->commit();
     } catch (\Throwable $e) {
         if ($pdo->inTransaction()) {

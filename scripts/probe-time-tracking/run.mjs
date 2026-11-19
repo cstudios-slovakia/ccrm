@@ -87,6 +87,9 @@ function setup() {
   docker('exec', WEB, 'sh', '-c', `rm -rf ${SCRATCH_DIR} && mkdir -p ${SCRATCH_DIR}`);
   docker('cp', publicDir + '.', `${WEB}:${SCRATCH_DIR}/`);
   docker('exec', WEB, 'sh', '-c', `sed "s/define('DB_NAME', '[^']*')/define('DB_NAME', '${SCRATCH_DB}')/" /var/www/html/config.php > ${SCRATCH_DIR}/config.php`);
+  // TT2 phase 6b: the test clock (ccrm_tt_now_utc reads system_settings TT_TEST_NOW only with this constant).
+  // Defined right after the opening tag, so it does not matter whether config.php ends in a closing tag.
+  docker('exec', WEB, 'sh', '-c', `sed -i "1s/^<?php/<?php define('CCRM_TT_TEST_CLOCK', true);/" ${SCRATCH_DIR}/config.php && grep -q CCRM_TT_TEST_CLOCK ${SCRATCH_DIR}/config.php`);
   // The dev container's Apache drops the Authorization header (public/.htaccess forwards it only for api/v1);
   // the extension authenticates with a Bearer key, so forward it in the scratch copy.
   docker('exec', WEB, 'sh', '-c', `printf '%s
@@ -598,9 +601,9 @@ async function main() {
       check('T15: ...both run in the database', runningRows().length === 2 && dbEntry(p1.data?.entry?.id)?.end_at === null);
       const gr = await api(S.erik, 'time_entries.php', { query: '?running=1' });
       // Two starts in one second tie on start_at; the order is (start_at, id), the same as runningRows().
-      check('T15: ?running=1 lists both (oldest first, ties by id), entry = the first, paused [], presence null, serverNow',
+      check('T15: ?running=1 lists both (oldest first, ties by id), entry = the first, paused [], presence tracking (phase 6b), serverNow',
         gr.status === 200 && gr.data?.running?.length === 2 && gr.data.running.map((e) => e.id).join() === runningRows().map((e) => e.id).join() && gr.data.entry?.id === runningRows()[0]?.id
-          && Array.isArray(gr.data.paused) && gr.data.paused.length === 0 && gr.data.presence === null && typeof gr.data.serverNow === 'string', gr.raw);
+          && Array.isArray(gr.data.paused) && gr.data.paused.length === 0 && gr.data.presence?.phase === 'tracking' && typeof gr.data.serverNow === 'string', gr.raw);
 
       // The identical target never runs twice.
       const same = await te(S.erik, { action: 'start', taskId: 'task-tt-p1', mode: 'parallel' });
@@ -1068,6 +1071,123 @@ async function main() {
       const asErik = (await list(S.erik, '?action=totals')).data?.byProject?.['proj-tt-1'];
       check('T21: a caller without time_tracking_costs gets billableValue null', asErik && asErik.billableValue === null, JSON.stringify(asErik));
       sql(`UPDATE time_entries SET deleted_at = NOW() WHERE id IN (${q(e1.data?.entry?.id)}, ${q(e2.data?.entry?.id)})`);
+    }
+    section('T20: presence (phase 6b)');
+    {
+      // D7, C6, C7, C9, A4.2 on the test clock: CCRM_TT_TEST_CLOCK (scratch config.php) + system_settings TT_TEST_NOW.
+      // Defaults: question at +50 min, deadline +10, resume window +10, trimTo 'prompt'. All instants are today
+      // between 06:00 and 13:00 UTC, far from the default autoStopAt (23:59 company time).
+      const MIN = 60000;
+      const utc = (ms) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+      const isoZ = (ms) => new Date(ms).toISOString().slice(0, 19) + 'Z';
+      const setNow = (ms) => sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('TT_TEST_NOW', ${q(utc(ms))})`);
+      const d = new Date();
+      const T0 = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 6, 0, 0);
+      const runningOf = (uid) => rows(`SELECT id FROM time_entries WHERE user_id=${q(uid)} AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL`);
+      const presenceRow = (uid) => rows(`SELECT anchor_at, auto_paused_at FROM time_presence WHERE user_id=${q(uid)}`)[0] || {};
+      const runningNow = (sess) => api(sess, 'time_entries.php', { query: '?running=1' });
+      const settleByCron = (uid) => JSON.parse(php(`require_once '${SCRATCH_DIR}/api/time_presence_lib.php'; echo json_encode(ccrm_tt_presence_settle($pdo, ${q(uid)}, ccrm_tt_now_utc(), ccrm_tt_load_settings($pdo)));`).trim() || 'null');
+
+      await te(S.erik, { action: 'stop', all: true });
+      await te(S.free, { action: 'stop', all: true });
+      setNow(T0);
+      const g0 = await runningNow(S.erik);
+      check('T20: the test clock drives serverNow; nothing runs: presence idle', g0.data?.serverNow === isoZ(T0) && g0.data?.presence?.phase === 'idle' && g0.data.presence.enabled === true && runningOf('tt-erik').length === 0, g0.raw);
+
+      // One cycle, answered at minute 55: nothing is lost.
+      const a = await te(S.erik, { action: 'start', description: 'T20 presence A' });
+      const aId = a.data?.entry?.id;
+      const g1 = await runningNow(S.erik);
+      check('T20: start at T0: tracking, anchor T0, promptAt T0+50, deadlineAt T0+60',
+        a.status === 201 && dbEntry(aId)?.start_at === utc(T0) && g1.data?.presence?.phase === 'tracking' && g1.data.presence.anchorAt === isoZ(T0)
+          && g1.data.presence.promptAt === isoZ(T0 + 50 * MIN) && g1.data.presence.deadlineAt === isoZ(T0 + 60 * MIN) && presenceRow('tt-erik').anchor_at === utc(T0), `${a.raw} / ${g1.raw}`);
+      setNow(T0 + 55 * MIN);
+      const g2 = await runningNow(S.erik);
+      check('T20: at T0+55 the phase is question, the entry still runs', g2.data?.presence?.phase === 'question' && dbEntry(aId)?.end_at === null, g2.raw);
+      const c1 = await te(S.erik, { action: 'confirm' });
+      check('T20: confirm at T0+55: 200, anchor = T0+55, tracking again, nothing lost (still running)',
+        c1.status === 200 && c1.data?.presence?.anchorAt === isoZ(T0 + 55 * MIN) && c1.data.presence.phase === 'tracking' && c1.data.presence.promptAt === isoZ(T0 + 105 * MIN)
+          && presenceRow('tt-erik').anchor_at === utc(T0 + 55 * MIN) && dbEntry(aId)?.end_at === null, c1.raw);
+
+      // No answer in the new cycle: at T0+116 (past the deadline T0+115) the entry ended at the question (T0+105) and is paused.
+      setNow(T0 + 116 * MIN);
+      const g3 = await runningNow(S.erik);
+      const aRow = dbEntry(aId);
+      check('T20: no answer: the entry ends at the new promptAt (T0+105), end_reason presence',
+        aRow?.end_at === utc(T0 + 105 * MIN) && aRow?.duration_sec === String(105 * 60) && aRow?.end_reason === 'presence', JSON.stringify(aRow));
+      check('T20: ...paused: paused_at = deadline (T0+115), pause_reason presence, resume_until = deadline + 10',
+        aRow?.paused_at === utc(T0 + 115 * MIN) && aRow?.pause_reason === 'presence' && aRow?.resume_until === utc(T0 + 125 * MIN), JSON.stringify(aRow));
+      check('T20: ...?running=1: nothing runs, the item is in paused[], presence paused with resumeUntil, anchor NULL',
+        g3.data?.running?.length === 0 && g3.data.paused?.length === 1 && g3.data.paused[0].id === aId && g3.data.presence?.phase === 'paused'
+          && g3.data.presence.resumeUntil === isoZ(T0 + 125 * MIN) && g3.data.presence.autoPausedAt === isoZ(T0 + 115 * MIN) && presenceRow('tt-erik').anchor_at === null, g3.raw);
+      const late = await te(S.erik, { action: 'confirm' });
+      check('T20: confirm after the deadline is 409 paused with the state', late.status === 409 && late.data?.code === 'paused' && late.data?.presence?.phase === 'paused', late.raw);
+
+      // Resume at deadline + 5: a new entry starts then (C8).
+      setNow(T0 + 120 * MIN);
+      const r = await te(S.erik, { action: 'resume', id: aId });
+      const bId = r.data?.entry?.id;
+      check('T20: resume at deadline+5 starts a new entry at T0+120 continuing the paused one; anchor = T0+120',
+        r.status === 201 && dbEntry(bId)?.start_at === utc(T0 + 120 * MIN) && dbEntry(bId)?.continues_id === aId && dbEntry(aId)?.paused_at === null
+          && dbEntry(aId)?.end_reason === 'presence' && presenceRow('tt-erik').anchor_at === utc(T0 + 120 * MIN), r.raw);
+      setNow(T0 + 125 * MIN);
+      const sb = await te(S.erik, { action: 'stop', id: bId });
+      check('T20: stopping the last running entry clears the anchor', sb.status === 200 && dbEntry(bId)?.end_at === utc(T0 + 125 * MIN) && presenceRow('tt-erik').anchor_at === null, sb.raw);
+
+      // A second cycle with no answer until deadline + 11: the pause expired too, the entry is simply stopped.
+      setNow(T0 + 130 * MIN);
+      const c = await te(S.erik, { action: 'start', description: 'T20 presence C' });
+      const cId = c.data?.entry?.id;
+      setNow(T0 + 201 * MIN);
+      const g4 = await runningNow(S.erik);
+      const cRow = dbEntry(cId);
+      check('T20: nothing until deadline+11: ended at promptAt (T0+180), end_reason presence, marker cleared (stopped)',
+        cRow?.end_at === utc(T0 + 180 * MIN) && cRow?.end_reason === 'presence' && cRow?.paused_at === null && cRow?.pause_reason === 'presence' && cRow?.resume_until === utc(T0 + 200 * MIN), JSON.stringify(cRow));
+      check('T20: ...?running=1: nothing runs or is paused, presence idle', g4.data?.running?.length === 0 && g4.data.paused?.length === 0 && g4.data.presence?.phase === 'idle', g4.raw);
+
+      // C9: no answer without the session.
+      const anon = await api(null, 'time_entries.php', { method: 'POST', body: { action: 'confirm' } });
+      check('T20: confirm without a session is refused', anon.status === 401 || anon.status === 403, anon.raw);
+
+      // Lazy (a GET) and the cron-like call give identical rows: the same scenario for two users.
+      const T1 = T0 + 240 * MIN;
+      setNow(T1);
+      const e = await te(S.erik, { action: 'start', description: 'T20 lazy' });
+      const f = await te(S.free, { action: 'start', description: 'T20 cron' });
+      setNow(T1 + 61 * MIN);
+      await runningNow(S.erik); // lazy
+      const cron = settleByCron('tt-free'); // cron-like
+      const [eRow, fRow] = [dbEntry(e.data?.entry?.id), dbEntry(f.data?.entry?.id)];
+      const shape = (x) => x && [x.start_at, x.end_at, x.duration_sec, x.end_reason, x.paused_at, x.pause_reason, x.resume_until].join('|');
+      check('T20: lazy and cron settle give identical rows (end at T1+50, paused at T1+60, resume_until T1+70)',
+        e.status === 201 && f.status === 201 && shape(eRow) === shape(fRow) && eRow?.end_at === utc(T1 + 50 * MIN) && eRow?.paused_at === utc(T1 + 60 * MIN) && eRow?.resume_until === utc(T1 + 70 * MIN),
+        `${shape(eRow)} vs ${shape(fRow)}`);
+      check('T20: ...the cron call reports what it paused', cron?.changed === true && (cron.autoPaused || []).includes(f.data?.entry?.id) && cron.pausedAt === utc(T1 + 60 * MIN), JSON.stringify(cron));
+      const again = settleByCron('tt-erik');
+      check('T20: ...a cron pass after the lazy one changes nothing', again?.changed === false && shape(dbEntry(e.data?.entry?.id)) === shape(eRow), JSON.stringify(again));
+
+      // autoStopAt (A4.2): a running item past the company-time auto-stop instant ends exactly there.
+      const T2 = T0 + 360 * MIN;
+      const stopLocal = php(`echo (new DateTimeImmutable(${q(utc(T2 + 10 * MIN))}, new DateTimeZone('UTC')))->setTimezone(ccrm_tt_company_tz())->format('H:i');`).trim();
+      sql(`UPDATE system_settings SET value = JSON_SET(value, '$.autoStopAt', ${q(stopLocal)}) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      await te(S.erik, { action: 'stop', all: true }); // the T20 lazy pause
+      setNow(T2);
+      const s = await te(S.erik, { action: 'start', description: 'T20 auto stop' });
+      setNow(T2 + 20 * MIN);
+      const g5 = await runningNow(S.erik);
+      const sRow = dbEntry(s.data?.entry?.id);
+      check(`T20: autoStopAt ${stopLocal}: the entry ends exactly at it (T2+10), end_reason auto_stop, not paused`,
+        s.status === 201 && sRow?.end_at === utc(T2 + 10 * MIN) && sRow?.end_reason === 'auto_stop' && sRow?.paused_at === null && g5.data?.running?.length === 0 && presenceRow('tt-erik').anchor_at === null,
+        `${JSON.stringify(sRow)} / ${g5.raw}`);
+
+      // Cleanup: real clock and default auto-stop again; nothing running or paused.
+      sql(`UPDATE system_settings SET value = JSON_REMOVE(value, '$.autoStopAt') WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      await te(S.erik, { action: 'stop', all: true });
+      await te(S.free, { action: 'stop', all: true });
+      sql(`DELETE FROM system_settings WHERE \`key\` = 'TT_TEST_NOW'`);
+      const g6 = await runningNow(S.erik);
+      check('T20: cleanup: the real clock is back, nothing runs for Erik or the freelancer',
+        g6.data?.serverNow !== isoZ(T2 + 20 * MIN) && runningOf('tt-erik').length === 0 && runningOf('tt-free').length === 0, g6.raw);
     }
   } finally {
     teardown();

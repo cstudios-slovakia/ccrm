@@ -18,6 +18,21 @@ require_once __DIR__ . '/time_entries_lib.php';
 require_once __DIR__ . '/time_settle.php';
 require_once __DIR__ . '/time_lock.php';
 require_once __DIR__ . '/time_parallel.php';
+require_once __DIR__ . '/time_presence_lib.php';
+
+/**
+ * TT2 D7.3: settle the caller's presence cycle and autoStopAt before a timer tool runs (lazy and
+ * exact, like time_entries.php). A failure is logged and never blocks the tool.
+ */
+function mcp_timer_presence_settle(\PDO $pdo, string $uid, ?array $settings = null): void {
+    try {
+        ccrm_tt_presence_settle($pdo, $uid, ccrm_tt_now_utc(), $settings ?? ccrm_tt_load_settings($pdo));
+    } catch (\Throwable $e) {
+        if (function_exists('ccrm_log_exception')) {
+            ccrm_log_exception($e);
+        }
+    }
+}
 
 /** JSON of the given entry ids, in that order (missing ones skipped). */
 function mcp_timer_json_list(\PDO $pdo, array $ids, array $viewer): array {
@@ -81,6 +96,7 @@ function mcp_timer_close_row(\PDO $pdo, string $uid, array $row, string $endUtc,
 
 /** get_running_timer: {running: first|null (old clients), timers: Entry[], paused: []}. */
 function mcp_timer_get_running(\PDO $pdo, string $uid, array $viewer): array {
+    mcp_timer_presence_settle($pdo, $uid);
     $timers = mcp_timer_running_json($pdo, $uid, $viewer);
     return ['running' => $timers[0] ?? null, 'timers' => $timers, 'paused' => []];
 }
@@ -89,6 +105,7 @@ function mcp_timer_get_running(\PDO $pdo, string $uid, array $viewer): array {
 function mcp_timer_start(\PDO $pdo, array $user, string $uid, array $args, array $viewer, callable $checkLinkAccess): array {
     $mode = mcp_enum($args, 'mode', ['switch', 'parallel'], 'switch');
     $settings = ccrm_tt_load_settings($pdo);
+    mcp_timer_presence_settle($pdo, $uid, $settings);
     $links = ccrm_tt_resolve_links($pdo, [
         'taskId' => $args['task_id'] ?? null,
         'ticketId' => $args['ticket_id'] ?? null,
@@ -148,6 +165,7 @@ function mcp_timer_start(\PDO $pdo, array $user, string $uid, array $args, array
         ]);
         // The stopped rows ran until now, so they cover the stopped intervals; the new one starts now.
         ccrm_tt_settle_rows($pdo, array_merge($stopped, [['id' => $id, 'user_id' => $uid, 'start_at' => $nowUtc, 'end_at' => null, 'entry_date' => $today]]));
+        ccrm_tt_presence_touch($pdo, $uid, $nowUtc); // start: anchor = now (C6)
         return ['stopped' => $stopped];
     });
 
@@ -186,6 +204,7 @@ function mcp_timer_start(\PDO $pdo, array $user, string $uid, array $args, array
 /** stop_timer {entry_id?, all?, description?, note?, project_id?, task_id?}. */
 function mcp_timer_stop(\PDO $pdo, array $user, string $uid, array $args, array $viewer): array {
     $settings = ccrm_tt_load_settings($pdo);
+    mcp_timer_presence_settle($pdo, $uid, $settings);
     $entryId = isset($args['entry_id']) && trim((string)$args['entry_id']) !== '' ? trim((string)$args['entry_id']) : null;
     $all = $entryId === null && !empty($args['all']);
 
@@ -270,6 +289,7 @@ function mcp_timer_stop(\PDO $pdo, array $user, string $uid, array $args, array 
             mcp_timer_close_row($pdo, $uid, $r, $nowUtc, $settings, $links, $note, $setNote);
         }
         ccrm_tt_settle_rows($pdo, $rows); // running until now: covers the stopped intervals
+        ccrm_tt_presence_touch($pdo, $uid, $nowUtc); // one of several: anchor = now; the last: NULL (C6)
     });
 
     $ids = array_map(fn($r) => (string)$r['id'], $rows);

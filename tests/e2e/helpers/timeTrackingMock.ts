@@ -158,6 +158,15 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
     entries
       .filter((e) => e.userId === caller && e.startAt && !e.endAt && !e.deletedAt)
       .sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt));
+  // TT2 D7.1: the mock never asks the presence question: a running set is always in the tracking phase,
+  // anchored at the last confirm (or now). No timers: idle.
+  let presenceAnchor: string | null = null;
+  const presence = () => {
+    if (!runningSet().length) return { enabled: true, anchorAt: null, promptAt: null, deadlineAt: null, phase: 'idle', autoPausedAt: null, resumeUntil: null };
+    const anchor = Date.parse(presenceAnchor ?? new Date().toISOString());
+    const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+    return { enabled: true, anchorAt: iso(anchor), promptAt: iso(anchor + 50 * 60000), deadlineAt: iso(anchor + 60 * 60000), phase: 'tracking', autoPausedAt: null, resumeUntil: null };
+  };
   const norm = (v: unknown) => String(v ?? '').trim();
   // The server's identical target (ccrm_tt_same_target): same task; else same ticket; else free text on the same project with the same title.
   const sameTarget = (row: Json, links: Json) => {
@@ -207,7 +216,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       if (url.searchParams.has('running')) {
         const set = runningSet().map(view);
         const paused = entries.filter((e) => e.userId === caller && e.pausedAt && !e.deletedAt).map(view);
-        return route.fulfill(ok({ running: set, paused, presence: null, serverNow: new Date().toISOString(), entry: set[0] ?? null }));
+        return route.fulfill(ok({ running: set, paused, presence: presence(), serverNow: new Date().toISOString(), entry: set[0] ?? null }));
       }
       if (url.searchParams.get('action') === 'totals') {
         const byTask: Record<string, number> = {};
@@ -278,6 +287,13 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       if (access.value('general_config') !== 'edit') return route.fulfill(fail('forbidden', 403));
       settings = { ...settings, ...body.settings };
       return route.fulfill(ok({ settings }));
+    }
+
+    if (action === 'confirm') {
+      // D7.4: the answer restarts the cycle now; with nothing running there is nothing to confirm.
+      if (!runningSet().length) return route.fulfill(fail('not_running', 409, { presence: presence() }));
+      presenceAnchor = new Date().toISOString();
+      return route.fulfill(ok({ presence: presence() }));
     }
 
     if (action === 'start') {
