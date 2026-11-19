@@ -6,10 +6,12 @@ import {
   entrySeconds,
   formatDuration,
   importedFrom,
-  projectColor,
   type TimeEntry,
 } from "../../utils/timeTracking.ts";
+import { AssignProjectChip } from "./AssignProjectChip";
 import { ClockDigits } from "./ClockDigits";
+import { ProjectLabel } from "./ProjectLabel";
+import { RunningBadge } from "./RunningBadge";
 import { initials, useMoney, useTimeLookups, type TimeDeps } from "./shared";
 
 interface Props {
@@ -87,6 +89,7 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
         <span className={`flex items-center gap-1.5 font-semibold ${entry.titleDeleted ? "italic text-slate-400" : "text-slate-900"}`}>
           {entry.titleSource !== "entry" && <Link2 className="size-3.5 shrink-0 text-teal-600" aria-label={t("Linked", "Prepojené", "Kapcsolt")} />}
           <span className="truncate">{entry.title || t("(no title)", "(bez názvu)", "(nincs cím)")}</span>
+          {entry.running && <RunningBadge />}
         </span>
         {entry.note && <span className="block truncate type-meta text-slate-500" data-testid="time-entry-note">{entry.note}</span>}
         {entry.legacyNote && <span className="block truncate type-meta text-slate-400">{entry.legacyNote}</span>}
@@ -100,14 +103,9 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
         )}
       </button>
       {entry.projectId ? (
-        <span className="inline-flex max-w-44 items-center gap-1.5 truncate" title={projectName}>
-          <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: projectColor(entry.projectId) }} />
-          <span className="truncate text-slate-600">{projectName}</span>
-        </span>
+        <ProjectLabel projectId={entry.projectId} name={projectName} className="max-w-44" />
       ) : (
-        <button type="button" onClick={() => onOpen(entry)} className="rounded-full border border-dashed border-amber-400 bg-amber-50 px-2.5 py-0.5 text-micro font-semibold text-amber-800 cursor-pointer" data-testid="assign-project-chip">
-          {t("Assign project", "Priradiť projekt", "Projekt hozzárendelése")}
-        </button>
+        <AssignProjectChip onClick={() => onOpen(entry)} />
       )}
       {entry.tags.slice(0, 2).map((tag) => (
         <span key={tag} className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-micro font-semibold text-slate-600 ws-md:inline">

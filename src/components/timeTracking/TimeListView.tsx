@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { Surface } from "../layout";
 import { StatGrid, StatTile } from "../layout/StatGrid";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
@@ -23,6 +23,7 @@ import { TimeApiError, deleteEntry, restoreEntry, timeErrorMessage } from "../..
 import { withoutHiddenCost } from "../../utils/timeTeam.ts";
 import { ClockDigits } from "./ClockDigits";
 import { EntryRow } from "./EntryRow";
+import { RangeNav } from "./RangeNav";
 import { continueInput } from "./TimerBar";
 import { UnsortedListChip } from "./UnsortedInbox";
 import { EntriesFocusBanner, clearEntriesFocus, useEntriesFocus, useViewingAsOptional, viewingFromScope } from "./ViewingAsContext";
@@ -94,6 +95,8 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
   const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-US";
   const longDate = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const weekLabel = `${new Date(`${days[0]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })} – ${new Date(`${days[days.length - 1]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}`;
+  const isCurrentWeek = weekDays(anchor)[0] === weekDays(today)[0];
+  const shortRange = `${new Date(`${days[0]}T12:00:00`).toLocaleDateString(locale, { day: "numeric" })} – ${new Date(`${days[days.length - 1]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })}`;
 
   const cards = [...days].reverse().filter((d) => byDay.has(d) || calendar.holiday(d));
   const holidayLabel = (iso: string) => {
@@ -131,16 +134,16 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
       </StatGrid>
 
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={() => { clearEntriesFocus(); setAnchor(addDays(weekDays(anchor)[0], -7)); }} aria-label={t("Previous week", "Predchádzajúci týždeň", "Előző hét")} className="inline-flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-slate-900 cursor-pointer">
-          <ChevronLeft className="size-4" />
-        </button>
-        <span className="min-w-40 text-center text-ui font-semibold text-slate-800" data-testid="week-label">{weekLabel}</span>
-        <button type="button" onClick={() => { clearEntriesFocus(); setAnchor(addDays(weekDays(anchor)[0], 7)); }} aria-label={t("Next week", "Nasledujúci týždeň", "Következő hét")} className="inline-flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-slate-900 cursor-pointer">
-          <ChevronRight className="size-4" />
-        </button>
-        {weekDays(anchor)[0] !== weekDays(today)[0] && (
-          <button type="button" onClick={() => { clearEntriesFocus(); setAnchor(today); }} className="h-9 rounded-xl px-3 text-ui font-semibold text-primary hover:bg-slate-100 cursor-pointer">{t("Current week", "Aktuálny týždeň", "Aktuális hét")}</button>
-        )}
+        <RangeNav
+          label={isCurrentWeek ? `${t("This week", "Tento týždeň", "Ez a hét")} · ${shortRange}` : weekLabel}
+          labelTestId="week-label"
+          prevLabel={t("Previous week", "Predchádzajúci týždeň", "Előző hét")}
+          nextLabel={t("Next week", "Nasledujúci týždeň", "Következő hét")}
+          onPrev={() => { clearEntriesFocus(); setAnchor(addDays(weekDays(anchor)[0], -7)); }}
+          onNext={() => { clearEntriesFocus(); setAnchor(addDays(weekDays(anchor)[0], 7)); }}
+          resetLabel={t("This week", "Tento týždeň", "Ez a hét")}
+          onReset={isCurrentWeek ? undefined : () => { clearEntriesFocus(); setAnchor(today); }}
+        />
         {/* PHASE5-UNSORTED */}
         {viewScope === "me" && <UnsortedListChip />}
         {/* END-PHASE5-UNSORTED */}

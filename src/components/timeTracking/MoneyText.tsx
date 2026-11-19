@@ -6,12 +6,12 @@ import type { MoneyByCurrency } from "../../utils/timeTeam.ts";
 export function MoneyText({
   bag,
   language,
-  tone = "cost",
+  tone = "plain",
   className = "",
 }: {
   bag: MoneyByCurrency;
   language: Language;
-  /** Cost figures are violet. Salary and other amounts stay slate. */
+  /** Amounts are slate. Only the Team matrix passes "cost" (violet). */
   tone?: "cost" | "plain";
   className?: string;
 }) {
