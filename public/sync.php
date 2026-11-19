@@ -2018,6 +2018,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'addressZip' => $row['address_zip'],
                     'addressCountry' => $row['address_country'] ?? 'Slovakia',
                     'workCountry' => $row['work_country'] ?? null,
+                    'hoursPerDay' => isset($row['hours_per_day']) ? (float)$row['hours_per_day'] : null,
                     'salaryType' => $row['salary_type'] ?? 'monthly',
                     'salaryAmount' => (float)($row['salary_amount'] ?? 0),
                     'salaryDueDay' => $row['salary_due_day'] !== null ? (int)$row['salary_due_day'] : null,
@@ -3020,6 +3021,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!ccrm_column_exists($pdo, 'project_types', 'has_tickets')) {
                 try { $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `has_tickets` TINYINT(1) NOT NULL DEFAULT 0 AFTER `has_files`"); } catch (\Throwable $e) {}
             }
+        }
+        if (isset($payload['employees']) && is_array($payload['employees']) && ccrm_table_exists($pdo, 'employees') && !ccrm_column_exists($pdo, 'employees', 'hours_per_day')) {
+            try { $pdo->exec("ALTER TABLE `employees` ADD COLUMN `hours_per_day` DECIMAL(4,2) NULL COMMENT 'Contracted hours per day; NULL = company hoursPerDay (time tracking settings)' AFTER `salary_due_day`"); } catch (\Throwable $e) {}
         }
         if (isset($payload['projects']) && is_array($payload['projects']) && !$ccrm_skip_writes('projects', 'projects')) {
             if (!ccrm_column_exists($pdo, 'projects', 'value')) {
@@ -6353,8 +6357,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `address_zip`, `address_country`, `salary_type`, `salary_amount`, `salary_due_day`,
                 `vacation_allowances_json`, `time_tracking_provider`, `time_tracking_user_id`,
                 `time_tracking_user_name`, `auto_expense`, `expense_category_id`, `files_json`,
-                `is_active`, `notes`, `work_country`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `is_active`, `notes`, `work_country`, `hours_per_day`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 `name` = VALUES(`name`), `first_name` = VALUES(`first_name`), `last_name` = VALUES(`last_name`),
                 `kind` = VALUES(`kind`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`),
@@ -6367,7 +6371,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `time_tracking_provider` = VALUES(`time_tracking_provider`), `time_tracking_user_id` = VALUES(`time_tracking_user_id`),
                 `time_tracking_user_name` = VALUES(`time_tracking_user_name`), `auto_expense` = VALUES(`auto_expense`),
                 `expense_category_id` = VALUES(`expense_category_id`), `files_json` = VALUES(`files_json`),
-                `is_active` = VALUES(`is_active`), `notes` = VALUES(`notes`), `work_country` = VALUES(`work_country`)");
+                `is_active` = VALUES(`is_active`), `notes` = VALUES(`notes`), `work_country` = VALUES(`work_country`), `hours_per_day` = VALUES(`hours_per_day`)");
 
             foreach ($payload['employees'] as $emp) {
                 if (!is_array($emp) || empty($emp['id'])) {
@@ -6440,7 +6444,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // send it (an older cached app) leaves the stored value alone.
                     ($pay && array_key_exists('workCountry', $emp))
                         ? (in_array(strtoupper((string)$emp['workCountry']), ['SK', 'HU'], true) ? strtoupper((string)$emp['workCountry']) : null)
-                        : $keep('work_country', null)
+                        : $keep('work_country', null),
+                    // Contracted hours per day (part-time); follows pay. Only 0 < h <= 24 is kept.
+                    ($pay && array_key_exists('hoursPerDay', $emp))
+                        ? ((is_numeric($emp['hoursPerDay']) && (float)$emp['hoursPerDay'] > 0 && (float)$emp['hoursPerDay'] <= 24) ? round((float)$emp['hoursPerDay'], 2) : null)
+                        : $keep('hours_per_day', null)
                 ]);
                 $processedEmpIds[] = $empId;
 

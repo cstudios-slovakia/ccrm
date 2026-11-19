@@ -1620,6 +1620,13 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   )}
                 </div>
 
+                {employee.hoursPerDay != null && !isSensitiveHidden && (
+                  <div className="flex items-center justify-between pl-5">
+                    <span className="text-slate-400">{t("Hours per day", "Hodín denne", "Napi óraszám")}:</span>
+                    <span className="font-semibold text-slate-800">{employee.hoursPerDay} h</span>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between pl-5">
                   <span className="text-slate-400">{t("Time Tracking", "Meranie času", "Időkövetés")}:</span>
                   <span className="font-semibold text-slate-800 flex items-center gap-1.5 truncate max-w-47.5">

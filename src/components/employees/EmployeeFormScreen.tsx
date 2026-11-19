@@ -76,6 +76,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
   const [salaryAmount, setSalaryAmount] = useState<number>(0);
   const [salaryDueDay, setSalaryDueDay] = useState<string>("");
   const [workCountry, setWorkCountry] = useState<string>("");
+  const [hoursPerDay, setHoursPerDay] = useState<string>("");
 
   const [vacationAllowances, setVacationAllowances] = useState<Record<string, number>>({});
 
@@ -203,6 +204,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
       setSalaryAmount(employee.salaryAmount || 0);
       setSalaryDueDay(employee.salaryDueDay !== null && employee.salaryDueDay !== undefined ? String(employee.salaryDueDay) : "");
       setWorkCountry(employee.workCountry ?? "");
+      setHoursPerDay(employee.hoursPerDay != null ? String(employee.hoursPerDay) : "");
 
       setVacationAllowances(employee.vacationAllowances || {});
 
@@ -406,6 +408,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
             salaryType,
             salaryAmount: Number(salaryAmount) || 0,
             salaryDueDay: salaryDueDay.trim() ? Number(salaryDueDay) : null,
+            hoursPerDay: hoursPerDay.trim() && Number(hoursPerDay) > 0 && Number(hoursPerDay) <= 24 ? Number(hoursPerDay) : null,
             workCountry: workCountry === "SK" || workCountry === "HU" ? workCountry : null,
             autoExpense,
             expenseCategoryId: expenseCategoryId || null,
@@ -765,6 +768,23 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                   value={salaryDueDay}
                   onChange={(e) => setSalaryDueDay(e.target.value)}
                   placeholder={String(settings.salaryDueDay ?? 15)}
+                  className="w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-ui font-bold text-slate-600 mb-1.5">
+                  {t("Hours per day", "Hodín denne", "Napi óraszám")}
+                </label>
+                <input
+                  type="number"
+                  min="0.25"
+                  max="24"
+                  step="0.25"
+                  value={hoursPerDay}
+                  onChange={(e) => setHoursPerDay(e.target.value)}
+                  placeholder={t("Empty = company default (8 h)", "Prázdne = predvolené podľa firmy (8 h)", "Üres = cég alapértelmezése (8 óra)")}
+                  data-testid="employee-hours-per-day"
                   className="w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
                 />
               </div>

@@ -1359,6 +1359,8 @@ export interface Employee {
   salaryType?: 'monthly' | 'daily' | 'hourly';
   salaryAmount?: number;
   salaryDueDay?: number | null;
+  /** Contracted hours per day (part-time). Null = the company's hoursPerDay time tracking setting. */
+  hoursPerDay?: number | null;
   vacationAllowances?: Record<string, number>;
   timeTrackingProvider?: 'toggl' | 'clockify' | 'manual';
   timeTrackingUserId?: string | null;

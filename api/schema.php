@@ -1048,6 +1048,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `salary_type` ENUM('monthly', 'daily', 'hourly') NOT NULL DEFAULT 'monthly',
               `salary_amount` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
               `salary_due_day` INT NULL COMMENT 'Payout day of month (1-31) or week (1-7)',
+              `hours_per_day` DECIMAL(4,2) NULL COMMENT 'Contracted hours per day; NULL = company hoursPerDay (time tracking settings)',
               `vacation_allowances_json` TEXT NULL,
               `time_tracking_provider` VARCHAR(50) NOT NULL DEFAULT 'toggl',
               `time_tracking_user_id` VARCHAR(100) NULL,
@@ -2553,6 +2554,9 @@ if (!function_exists('ccrm_schema_statements')) {
         if (ccrm_table_exists($pdo, 'employees') && !ccrm_column_exists($pdo, 'employees', 'work_country')) {
             $pdo->exec("ALTER TABLE `employees` ADD COLUMN `work_country` CHAR(2) NULL COMMENT 'SK | HU; NULL = company default' AFTER `address_country`");
         }
+        if (ccrm_table_exists($pdo, 'employees') && !ccrm_column_exists($pdo, 'employees', 'hours_per_day')) {
+            $pdo->exec("ALTER TABLE `employees` ADD COLUMN `hours_per_day` DECIMAL(4,2) NULL COMMENT 'Contracted hours per day; NULL = company hoursPerDay (time tracking settings)' AFTER `salary_due_day`");
+        }
         if (ccrm_table_exists($pdo, 'tasks') && !ccrm_column_exists($pdo, 'tasks', 'estimate_minutes')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `estimate_minutes` INT NULL COMMENT 'Expected minutes; the task drawer compares it with tracked time'");
         }
@@ -3250,6 +3254,7 @@ if (!function_exists('ccrm_schema_statements')) {
                   `salary_type` ENUM('monthly', 'daily', 'hourly') NOT NULL DEFAULT 'monthly',
                   `salary_amount` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
                   `salary_due_day` INT NULL COMMENT 'Payout day of month (1-31) or week (1-7)',
+                  `hours_per_day` DECIMAL(4,2) NULL COMMENT 'Contracted hours per day; NULL = company hoursPerDay (time tracking settings)',
                   `vacation_allowances_json` TEXT NULL,
                   `time_tracking_provider` VARCHAR(50) NOT NULL DEFAULT 'toggl',
                   `time_tracking_user_id` VARCHAR(100) NULL,

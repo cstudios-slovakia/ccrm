@@ -692,6 +692,7 @@ Staff profiles, compensation baseline, Toggl Track integration mapping, and empl
 * `salary_type` ENUM('monthly', 'daily', 'hourly') (Default `monthly`)
 * `salary_amount` DECIMAL(12, 2) (Base compensation rate)
 * `salary_due_day` INT [NULLable] (Individual payout day of month 1-31 or week 1-7; defaults to global setting if NULL)
+* `hours_per_day` DECIMAL(4,2) [NULLable] (Contracted hours per day, 0-24; NULL = company `hoursPerDay` time tracking setting)
 * `vacation_allowances_json` TEXT [NULLable] (JSON map of allowance days per vacation type, e.g. `{"annual":25,"sick":10,"doctor":7}`)
 * `time_tracking_provider` VARCHAR(50) (Default `toggl`)
 * `time_tracking_user_id` VARCHAR(100) [NULLable] (Toggl user ID)
