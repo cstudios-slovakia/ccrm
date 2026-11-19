@@ -9,7 +9,7 @@ const MAX_ROWS = 8;
 
 /**
  * Per-employee preview of the cost rate for the current month, from the unsaved settings
- * (same `computeCostRate` as the entries, without leave). Read-only; shows nothing without employees.
+ * (same `computeCostRate` as the entries). Read-only; shows nothing without employees.
  */
 export function RateCardPreview({
   t,
@@ -32,7 +32,7 @@ export function RateCardPreview({
     return list.map((e) => {
       const country = resolveWorkCountry(e.workCountry ?? null, tt.defaultCountry) as HolidayCountry;
       const days = tt.calendarFor(country, overridesFor(draft.holidayOverrides, country)).workingDaysInMonth(now.getFullYear(), now.getMonth() + 1);
-      const r = computeCostRate({ kind: e.kind ?? "employee", salaryType: e.salaryType ?? null, salaryAmount: e.salaryAmount ?? null }, days, draft, { hoursPerDay: e.hoursPerDay });
+      const r = computeCostRate({ kind: e.kind ?? "employee", salaryType: e.salaryType ?? null, salaryAmount: e.salaryAmount ?? null }, days, draft);
       return { e, r, country };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -47,7 +47,6 @@ export function RateCardPreview({
     const parts: string[] = [];
     if (r.basisDays !== null) parts.push(`${r.basisDays} ${t("working days", "pracovných dní", "munkanap")}`);
     if (r.basisHours !== null && r.basisDays === null) parts.push(`${r.basisHours} h`);
-    if (draft.hoursBasis !== "fixed" && e.salaryType !== "hourly" && r.hoursPerDay) parts.push(`${r.hoursPerDay} h`);
     if (r.multiplier !== 1) parts.push(`× ${r.multiplier}`);
     return parts.length ? parts.join(" · ") : t("hourly, as entered", "hodinová, ako je zadaná", "óradíj, ahogy meg van adva");
   };
@@ -56,7 +55,7 @@ export function RateCardPreview({
   return (
     <div className="overflow-x-auto rounded-2xl border border-slate-200" data-testid="tt-rate-preview">
       <p className="type-overline px-3 pt-3 text-slate-500">
-        {t("Preview", "Náhľad", "Előnézet")} · {monthName} · {t("before paid leave", "pred platenou dovolenkou", "fizetett szabadság előtt")}
+        {t("Preview", "Náhľad", "Előnézet")} · {monthName}
       </p>
       <table className="w-full text-ui">
         <thead>

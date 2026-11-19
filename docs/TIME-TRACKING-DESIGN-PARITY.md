@@ -8,6 +8,7 @@ Canvas: https://claude.ai/artifact/G1ZJkEvLUbzXAQG8bpwwsd ("CCRM Time Tracking")
 **Branches.** The audit was made on `css-main` (which carries time tracking v2). The same FIX commits
 were ported to `1.13-nectarine`, which has no v2: there the Calendar totals sum entry durations
 (no worked-time engine), and rows citing tt2 commits describe `css-main` only.
+On nectarine the later packages (D, H1, H2, K, Review 2) also differ: the entry drawer cost formula is duration × rate and Margin is always shown when there is a billable value (no worked time, no parallel entries); the cost texts say the rate is frozen when the entry is saved (no provisional rate, no V2 D4.3 wording); the Reports stat tiles have no Delivered/Worked pair or parallel-timers note; `RateCardPreview` has no paid-leave or hours-per-day figures (no rate card, no leave-aware rate); the "Re-price" note does not mention worked time.
 
 **Precedence (highest first):** owner decisions after 26 Oct 2026 → `docs/TIME-TRACKING-V2.md` → the
 app's own system (View size, primitives, branding, shell) → the canvas. Px sizes, fonts, radii and
