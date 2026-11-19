@@ -414,6 +414,21 @@ test.describe('Time tracking', () => {
     await expect(imported.getByTestId('project-time-entry-toggl')).toBeVisible();
   });
 
+  test('the project Time tab adds time manually: the drawer opens on a new entry for this project and Save lists it', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#projects/project-1?tab=time');
+    await page.getByTestId('project-add-time').click();
+    await expect(page.getByTestId('entry-drawer')).toBeVisible();
+    // A new entry has no Delete; the project is already chosen, so only the hours are needed.
+    await expect(page.getByTestId('entry-delete')).toHaveCount(0);
+    await page.getByTestId('entry-note').fill('Doplnený čas ručne');
+    await page.getByTestId('entry-duration').fill('1:30');
+    await page.getByTestId('entry-save').click();
+    await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+    // The tab lists only this project's entries, so seeing it there proves the prefilled project.
+    await expect(page.getByTestId('project-time-entry').filter({ hasText: '1:30:00' })).toBeVisible();
+  });
+
   test('a stale screen pressing Start on the running project timer adopts it instead of splitting it into a new entry', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#projects/project-1?tab=time');

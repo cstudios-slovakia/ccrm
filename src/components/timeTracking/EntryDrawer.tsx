@@ -34,6 +34,8 @@ interface Props {
   secondsByProject?: Record<string, number>;
   onClose: () => void;
   onDelete: (entry: TimeEntry) => void;
+  /** A blank draft (not yet on the server): Save creates the entry; no delete or duplicate. */
+  isNew?: boolean;
 }
 
 const SOURCE_LABEL: Record<string, [string, string, string]> = {
@@ -48,7 +50,7 @@ const SOURCE_LABEL: Record<string, [string, string, string]> = {
 };
 
 /** The right-hand drawer for one entry, opened from any list. */
-export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, onClose, onDelete }: Props) {
+export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, onClose, onDelete, isNew = false }: Props) {
   const tt = useTimeTracking();
   const { t, viewer, userId } = tt;
   const lookups = useTimeLookups(deps);
@@ -158,7 +160,11 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
       };
       if (!isLinked) patch.description = ownText.trim() || null;
       if (viewer.canTeam && person !== entry.userId) patch.userId = person;
-      await updateEntry(entry.id, patch);
+      if (isNew) {
+        await createEntry({ ...patch, source: "manual", originType: taskId ? "task" : undefined, originId: taskId ?? undefined });
+      } else {
+        await updateEntry(entry.id, patch);
+      }
       tt.bump();
       close();
     } catch (e) {
@@ -249,7 +255,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <span className="type-overline inline-flex items-center gap-1.5 rounded-full border border-teal-200/80 bg-teal-50 px-2.5 py-0.5 text-teal-700">
             <Clock className="size-3.5" />
-            {readOnly ? t("Time entry", "Záznam času", "Időbejegyzés") : t("Edit time entry", "Upraviť záznam času", "Időbejegyzés szerkesztése")}
+            {readOnly ? t("Time entry", "Záznam času", "Időbejegyzés") : isNew ? t("New time entry", "Nový záznam času", "Új időbejegyzés") : t("Edit time entry", "Upraviť záznam času", "Időbejegyzés szerkesztése")}
           </span>
           <span className="ml-2 flex min-w-0 flex-1 flex-wrap items-center gap-1.5" data-testid="entry-source-chips">
             {(entry.taskId || originTask) && <span className={chipClass}>{t("Started from task", "Spustené z úlohy", "Feladatból indítva")}</span>}
@@ -508,7 +514,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
 
         <div className="mt-auto flex items-center justify-between gap-2 border-t border-slate-100 pt-4">
           <div className="flex items-center gap-1">
-            {!readOnly && (
+            {!readOnly && !isNew && (
               <>
                 <HoldToConfirmButton onConfirm={() => { onDelete(entry); close(); }} what={entry.title} lang={deps.language} icon={<Trash2 className="size-4" />} className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-ui font-semibold text-rose-600 hover:bg-rose-50 cursor-pointer" data-testid="entry-delete">
                   {t("Hold to delete", "Podržte pre odstránenie", "Tartsa a törléshez")}

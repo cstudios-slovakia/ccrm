@@ -5,6 +5,7 @@ import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { ProjectPicker } from "./ProjectPicker";
 import type { TimeDeps } from "./shared";
 import { rememberTimeCreate } from "./timeCreateBridge";
+import { NewEntryHost } from "./NewEntryHost";
 
 /**
  * "Require a project before Stop": when the server answers `project_required`, the timer does not
@@ -19,8 +20,9 @@ export function ProjectRequestDialog({ deps }: { deps: TimeDeps }) {
   });
   useEffect(() => () => rememberTimeCreate({ projectTypes: [], currency: "EUR", language: "en" }), []);
   const { projectRequest, t } = useTimeTracking();
-  if (!projectRequest || typeof document === "undefined") return null;
-  return createPortal(
+  const host = <NewEntryHost deps={deps} />;
+  if (!projectRequest || typeof document === "undefined") return host;
+  return <>{host}{createPortal(
     <div className="fixed inset-0 z-[100001] flex items-center justify-center p-4" data-testid="project-request-dialog">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => projectRequest.resolve(null)} />
       <div className="relative w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl">
@@ -50,5 +52,5 @@ export function ProjectRequestDialog({ deps }: { deps: TimeDeps }) {
       </div>
     </div>,
     document.body,
-  );
+  )}</>;
 }

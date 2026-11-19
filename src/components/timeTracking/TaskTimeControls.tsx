@@ -8,7 +8,7 @@ import { elapsedSeconds, formatDuration } from "../../utils/timeTracking.ts";
 import { ClockDigits } from "./ClockDigits";
 import { TimeApiError, timeErrorMessage, updateEntry } from "../../utils/timeTrackingApi.ts";
 import type { Lead, Project, Task } from "../../types";
-import { readTimeCreate } from "./timeCreateBridge";
+import { readTimeCreate, requestNewTimeEntry } from "./timeCreateBridge";
 import { CustomSelect } from "../ui/CustomSelect";
 
 /**
@@ -244,5 +244,26 @@ export function TaskTimeControls({
         </span>
       )}
     </span>
+  );
+}
+
+/** "+ Add time manually" in the task drawer's Time tracking header: a new entry for this task, today. Same gate as the start button. */
+export function TaskAddTimeLink({ task, projects, leads }: { task: Task; projects: Project[]; leads: Lead[] }) {
+  const tt = useTimeTracking();
+  const statuses = useProjectStatuses();
+  if (!tt.enabled || !tt.viewer.canEdit) return null;
+  return (
+    <button
+      type="button"
+      data-testid="task-add-time"
+      onClick={() => {
+        const resolved = resolveTaskProject(task, projects, leads, (p) => isClosedProjectStatus(p.status, statuses));
+        requestNewTimeEntry({ taskId: task.id, projectId: resolved.projectId });
+      }}
+      className="ml-auto inline-flex items-center gap-1 type-meta font-semibold text-primary hover:underline cursor-pointer"
+    >
+      <Plus className="size-3.5 shrink-0" />
+      {tt.t("Add time manually", "Pridať čas ručne", "Idő felvétele kézzel")}
+    </button>
   );
 }

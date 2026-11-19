@@ -10,6 +10,7 @@ import {
     Lock,
     RotateCcw,
     Ticket as TicketIcon,
+    Timer,
     Trash2,
     UserCheck,
     X,
@@ -23,7 +24,7 @@ import type { Language } from "../utils/translations";
 import { CustomSelect, type DropdownOption } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { TaskEmailReminderField } from "./TaskEmailReminderField";
-import { TaskTimeControls } from "./timeTracking/TaskTimeControls";
+import { TaskAddTimeLink, TaskTimeControls } from "./timeTracking/TaskTimeControls";
 import { TaskTimeBreakdown } from "./timeTracking/TaskTimeBreakdown";
 import { projectDisplayName } from "../utils/projects";
 import { isClientRecord, recordHref } from "../utils/clientRecord";
@@ -1024,7 +1025,11 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         )}
 
                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                            <div className="type-label mb-2 text-slate-700">{t("Time tracking", "Evidencia času", "Időkövetés")}</div>
+                            <div className="type-label mb-2 flex items-center gap-1.5 text-slate-700">
+                                <Timer className="size-4 shrink-0 text-teal-600" />
+                                {t("Time tracking", "Evidencia času", "Időkövetés")}
+                                {!isTemplate && <TaskAddTimeLink task={draft} projects={projects} leads={leads} />}
+                            </div>
                             {!isTemplate && (
                                 <>
                                     <TaskTimeControls
