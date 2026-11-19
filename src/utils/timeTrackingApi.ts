@@ -112,7 +112,7 @@ export interface ListParams {
 export interface TimeTotals {
   byTask: Record<string, number>;
   byTicket: Record<string, number>;
-  byProject: Record<string, { seconds: number; workedMs?: number; cost: number | null }>;
+  byProject: Record<string, { seconds: number; workedMs?: number; cost: number | null; /** Hours x billable rate (information only); null without time_tracking_costs. */ billableValue?: number | null; billableComplete?: boolean }>;
   /** Worked milliseconds per user per entry date (overlaps counted once). */
   workedByUserDay?: Record<string, Record<string, number>>;
 }

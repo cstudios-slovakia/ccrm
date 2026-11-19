@@ -750,6 +750,7 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
                     $totCost += $c; $totBillAmt += $ba;
                     $item['total_cost'] = $c;
                     $item['total_billable_amount'] = $ba;
+                    if (!$byUser) $item['billable_value'] = $ba; // C13 / D3.2: duration x billable rate, parallel work does not reduce it
                 }
                 $rows[] = $item;
             }

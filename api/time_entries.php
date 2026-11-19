@@ -6,7 +6,7 @@
  *   GET  ?running=1                                  {running: Entry[] (oldest start first), paused: Entry[] (live pauses, +pauseExpiresAt),
  *                                                    presence: null, serverNow, entry: running[0]|null}
  *   GET  ?action=settings                            TimeTrackingSettings + the caller's work calendar
- *   GET  ?action=totals                              byTask/byTicket/byProject{seconds,workedMs,cost}, workedByUserDay{userId:{date:ms}}
+ *   GET  ?action=totals                              byTask/byTicket/byProject{seconds,workedMs,cost,billableValue,billableComplete}, workedByUserDay{userId:{date:ms}}
  *   GET  ?action=overlaps&from=YYYY-MM&to=YYYY-MM    admin/general_config: {months:[{month,entries,users}]} closed timed entries overlapping another of the same user
  *   GET  ?action=taskPeople&taskId=                  per-person seconds on one task; cost follows B8
  *   POST action=start        {..., mode?}            mode 'switch' (default): in ONE transaction stop every running entry of the
@@ -353,6 +353,21 @@ if ($method === 'GET') {
         foreach ($byProject as &$proj) {
             $proj['cost'] = $proj['complete'] ? round($proj['cost'], 2) : null;
             unset($proj['complete']);
+        }
+        unset($proj);
+        // Billable work (C13, D3.2): duration x frozen billable rate over billable rows; parallel work does not
+        // reduce it. Information only (D3.4). Billable rates are revenue figures gated like `billableRate` on an
+        // entry: time_tracking_costs, otherwise null.
+        $bvStmt = $pdo->query("SELECT `project_id`, SUM(`duration_sec` / 3600 * `billable_rate`) AS `v`, SUM(`billable_rate` IS NULL) AS `missing`
+            FROM `time_entries` WHERE `deleted_at` IS NULL AND `duration_sec` IS NOT NULL AND `billable` = 1 AND `project_id` IS NOT NULL
+            GROUP BY `project_id`");
+        foreach ($bvStmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            if (!isset($byProject[$r['project_id']])) continue;
+            $byProject[$r['project_id']]['billableValue'] = $canCosts ? round((float)$r['v'], 2) : null;
+            $byProject[$r['project_id']]['billableComplete'] = $canCosts ? ((int)$r['missing'] === 0) : false;
+        }
+        foreach ($byProject as &$proj) {
+            if (!array_key_exists('billableValue', $proj)) { $proj['billableValue'] = $canCosts ? 0.0 : null; $proj['billableComplete'] = $canCosts; }
         }
         unset($proj);
         // Worked time per user per day (D5.3), same visibility as the hours above (hours are not private).

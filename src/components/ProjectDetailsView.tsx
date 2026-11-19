@@ -31,6 +31,7 @@ import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { useTimeTracking } from "../hooks/useTimeTracking";
 import { ProjectTimeTab } from "./timeTracking/ProjectTimeTab";
 import { formatDuration } from "../utils/timeTracking.ts";
+import { ProjectTimeFinanceLines } from "./timeTracking/ProjectTimeFinanceLines";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
@@ -4548,11 +4549,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
                   <div className="text-caption text-slate-500 mt-0.5">
                     {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.totalPlannedExpenses)}</strong>
-                    {revenueAnalysis.labourCost != null && (
-                      <div className="mt-1 type-meta text-violet-700" data-testid="project-labour-line">
-                        {t("Labour (time tracking)", "Práca (evidencia času)", "Munka (időkövetés)")}: {money(revenueAnalysis.labourCost)}
-                      </div>
-                    )}
+                    <ProjectTimeFinanceLines language={userLanguage} money={money} labourCost={revenueAnalysis.labourCost} billableValue={timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.billableValue : null} billableComplete={timeTracking.totals.byProject[project?.id ?? ""]?.billableComplete} />
                   </div>
                 </div>
 

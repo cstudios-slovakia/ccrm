@@ -1044,6 +1044,31 @@ async function main() {
       grant(false);
       check('T19: cleanup: Erik has nothing running and nothing paused', runningRows().length === 0 && pausedRows().length === 0);
     }
+
+    section('T21: billable value (phase 9b)');
+    {
+      // C13 / D3.2: billableValue = duration x frozen billable rate; parallel work does not reduce it. Cost is split by worked time.
+      const totalsOf = async (sess) => (await list(sess, '?action=totals')).data?.byProject || {};
+      const before = await totalsOf(S.admin);
+      const b1 = before['proj-tt-1'] || { billableValue: 0, cost: 0 };
+      const b2 = before['proj-tt-2'] || { billableValue: 0, cost: 0 };
+      const mk = (projectId) => te(S.admin, { action: 'create', projectId, description: 'T21 parallel', entryDate: '2026-10-21', startAt: '2026-10-21T08:00:00Z', endAt: '2026-10-21T09:00:00Z', billable: true, billableRate: 60, source: 'manual' });
+      const e1 = await mk('proj-tt-1');
+      const e2 = await mk('proj-tt-2');
+      check('T21: setup: two overlapping billable entries (rate 60) were created', e1.status === 201 && e2.status === 201, `${e1.raw} / ${e2.raw}`);
+      const after = await totalsOf(S.admin);
+      const a1 = after['proj-tt-1'];
+      const a2 = after['proj-tt-2'];
+      check('T21: each project gains the full hour x 60 (parallel does not reduce billable value)',
+        a1 && a2 && Math.abs((a1.billableValue - b1.billableValue) - 60) < 0.01 && Math.abs((a2.billableValue - b2.billableValue) - 60) < 0.01, JSON.stringify({ a1, a2, b1, b2 }));
+      check('T21: ...billableComplete is a boolean', typeof a1?.billableComplete === 'boolean');
+      const wk = (id) => Number(dbEntry(id)?.worked_ms);
+      check('T21: ...while the worked time is split (the two entries share one hour)',
+        wk(e1.data?.entry?.id) + wk(e2.data?.entry?.id) <= 3600000 + 1000, JSON.stringify({ w1: wk(e1.data?.entry?.id), w2: wk(e2.data?.entry?.id) }));
+      const asErik = (await list(S.erik, '?action=totals')).data?.byProject?.['proj-tt-1'];
+      check('T21: a caller without time_tracking_costs gets billableValue null', asErik && asErik.billableValue === null, JSON.stringify(asErik));
+      sql(`UPDATE time_entries SET deleted_at = NOW() WHERE id IN (${q(e1.data?.entry?.id)}, ${q(e2.data?.entry?.id)})`);
+    }
   } finally {
     teardown();
   }
