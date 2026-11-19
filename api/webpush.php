@@ -447,6 +447,42 @@ if (!function_exists('ccrm_send_push_notification')) {
     }
 }
 
+if (!function_exists('ccrm_send_push_to_user_id')) {
+    /**
+     * Sends one prepared notification payload to every subscription of one user id. Dead subscriptions are
+     * dropped by ccrm_dispatch_webpush(). The payload is sent as given (title, body, tag, data, silent ...);
+     * only icon, badge and timestamp are filled in when missing. Returns the number of subscriptions reached.
+     */
+    function ccrm_send_push_to_user_id(\PDO $pdo, string $userId, array $payload): int {
+        $userId = trim($userId);
+        if ($userId === '') {
+            return 0;
+        }
+        try {
+            $vapidKeys = ccrm_get_or_create_vapid_keys($pdo);
+            $stmt = $pdo->prepare("SELECT `endpoint`, `p256dh`, `auth` FROM `push_subscriptions` WHERE `user_id` = ?");
+            $stmt->execute([$userId]);
+            $subscriptions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\Throwable $e) {
+            error_log('[ccrm webpush] push to user id failed: ' . $e->getMessage());
+            return 0;
+        }
+        $payload += ['icon' => '/icon_192.png', 'badge' => '/favicon.svg', 'timestamp' => time() * 1000];
+        $sent = 0;
+        foreach ($subscriptions as $sub) {
+            try {
+                $res = ccrm_dispatch_webpush($pdo, $sub['endpoint'], $sub['p256dh'], $sub['auth'], $payload, $vapidKeys);
+                if (!empty($res['success'])) {
+                    $sent++;
+                }
+            } catch (\Throwable $e) {
+                error_log('[ccrm webpush] dispatch to user id failed: ' . $e->getMessage());
+            }
+        }
+        return $sent;
+    }
+}
+
 if (!function_exists('ccrm_send_task_assigned_push_notification')) {
     /**
      * Sends a push notification when a task is created and assigned to users.
