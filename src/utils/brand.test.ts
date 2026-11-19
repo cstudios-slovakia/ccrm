@@ -58,7 +58,7 @@ test("{product} is always the product; {title} follows the company's title", () 
 
 // Static files cannot import PRODUCT_NAME; they carry the literal and this keeps them honest.
 test("static files that cannot import the constant carry the product name", () => {
-  for (const file of ["index.html", "public/manifest.json", "public/api/brand.php"]) {
+  for (const file of ["index.html", "public/manifest.json", "extensions/chrome-time-tracker/public/manifest.json", "public/api/brand.php"]) {
     assert.ok(readFileSync(file, "utf8").includes(PRODUCT_NAME), `${file} should say ${PRODUCT_NAME}`);
   }
 });
