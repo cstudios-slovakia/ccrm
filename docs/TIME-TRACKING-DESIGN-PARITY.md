@@ -337,3 +337,354 @@ Commits on `css-main` (the same changes were cherry-picked to `1.13-nectarine`).
   - **`projectStatuses.spec.ts`**, two tests: pre-existing. They fail the same way on `ec7f25df`, before any
     parity change to a project file, and both are in `scripts/qa/known-failing.json`.
 - Screenshots: `test-results/tt-design-parity/before/` and `after/` (local only).
+
+
+---
+
+# Pass 2 (2026-11-20): stricter audit, rendered canvas beside app screenshots
+
+Prompt: [`docs/prompts/time-tracking-design-parity-2.md`](prompts/time-tracking-design-parity-2.md). Audit against
+`css-main` at `d2ea4268`. Canvas renders: `test-results/tt-design-parity-2/canvas/`; app screenshots (QA mock data,
+Normal view size, 1440 wide, phone 390): `test-results/tt-design-parity-2/before/` (local, not committed).
+Review page (canvas beside app): see "Review page" at the end of this part.
+
+**Precedence (highest first):** owner decisions (only for what they actually decided) → `docs/TIME-TRACKING-V2.md`
+(drawn in the canvas's visual language) → the app's tokens only (font, colour tokens, View size, shell, Settings
+navigation, branding) → the canvas for everything else.
+
+**Classes.** FIX: the canvas wins (the default). KEEP-DECISION: an owner decision wins, evidence cited.
+KEEP-V2: time tracking v2 wins, drawn in canvas style. KEEP-TOKEN: font, colour token, View size, shell, branding.
+MISSING: needs new data, API, permission or behaviour. ASK: the owner decides (question number in brackets, see
+"The stop"). Pass 1 rows that were KEEP-SYSTEM are re-judged here; a row not listed below keeps its pass 1 result.
+
+**Known limits of this audit.** The canvas renderer does not draw rows that come from a loop inside a table or a
+list (List rows, Calendar blocks, Timesheet cells, Team cells); those were compared from the canvas source. The
+extension popup has no app screenshot and was compared from code. The Unsorted inbox screenshot failed to capture
+(the QA dataset has no unsorted items), so its rows come from code.
+
+## Shared causes (pass 2)
+
+| # | Cause | Screens | Fix |
+|---|---|---|---|
+| G1 | The frame is the old one: header actions, two-row timer bar with text buttons, tabs alone in their row | every tab | Package F |
+| G2 | Per-view controls (range nav, zoom, totals, Unsorted, Viewing as) sit inside each view, not in the one toolbar row | List, Calendar, Timesheet, Day, Team, Reports | A toolbar slot in the shell that each view fills |
+| G3 | Segmented controls and radio cards drawn as dropdowns | Calendar zoom, Settings hours basis, Settings rounding | Segmented / radio cards (`9f49f3b8` chose the dropdown component only) |
+| G4 | Stat tiles without note line, inline target or progress bar | List, Reports, project Time tab, task drawer | One tile variant with note, target and bar |
+| G5 | No charts anywhere in the module although the data is on the client | Reports (hours per day, donut), project Time tab (hours per week, by task) | One small chart module, reused |
+| G6 | Billable value, margin and client/internal split not shown although entries carry the rate | Reports, project Time tab | Compute in `timeReports.ts`, show as tiles and columns |
+| G7 | Round icon buttons drawn as text buttons or squares | Timer bar, parallel container, list running row, task drawer, mobile card | One round Start/Stop/Pause button |
+| G8 | Popovers and rows hide or rename the canvas's actions | Calendar popover, Day rows | Canvas action set |
+| G9 | Violet or teal money and amber accents outside their role | Day group rate and cost, salary Rate/Tracked, Calendar untimed lane, Client PDF button, Submit week | Slate money (violet only in the Team matrix), amber only for Assign project and Unsorted, `bg-primary` for primary actions |
+| G10 | Copy differs from the canvas where the app has no better wording | all | Canvas copy as `t(en, sk, hu)`, only where true |
+
+## F · The frame (`TimeTrackingView.tsx`, `TimerBar.tsx`, `TimerContainer.tsx`, `StartModePopover.tsx`, `HeaderTimerPill.tsx`, `ViewingAsSelect.tsx`)
+
+| # | Canvas | App now | Class | Evidence or rule | Pkg |
+|---|---|---|---|---|---|
+| F1 | Header actions: "+ Add entry manually" and a ⋯ menu | One "Settings" link, `TimeTrackingView.tsx:85` | FIX | owner decision 20 Nov; Settings into ⋯ is ASK [Q1] | F |
+| F2 | Subtitle "Track work against projects and tasks. Labour cost is calculated from each employee's salary." | Different sentence, `:84` | FIX | copy; true for the app | F |
+| F3 | Timer bar is one slim row | Two rows (Description under it), `TimerBar.tsx:386` | FIX | owner decision 20 Nov: Description behind a small button, field opens under the row and stays open while it has text | F |
+| F4 | Project as a pill chip in the project's colour, dot and chevron; amber when unassigned | Bordered picker trigger | FIX | canvas; `ProjectPicker` gets a chip trigger variant | F |
+| F5 | Linked task as a grey chip (check icon, name) after the project | Teal box that replaces the title field, `:263` | FIX (chip) / KEEP-DECISION (the title is the task's, C5) | canvas; `docs/TIME-TRACKING.md` C5 | F |
+| F6 | Tags icon button | None | ASK [Q3] | entries already carry `tags`; needs a small tag popover | F |
+| F7 | Billable € as a borderless tinted icon | Bordered square, `:314` | FIX | canvas | F |
+| F8 | Hairline divider before the clock | None | FIX | canvas | F |
+| F9 | Big clock, rose while running | Slate, same size as the title, `:340` | FIX | canvas | F |
+| F10 | Round Start (primary) and round Stop (rose), icon only | Text buttons "Start" / "Stop", `:343,349` | FIX | canvas; the presence ring (v2 phase 7) is drawn around the round button | F |
+| F11 | Timer/Manual toggle as two stacked icons, always visible | Text segmented, hidden while running, `:358` | FIX (kind) / ASK [Q4] (visible while running) | canvas | F |
+| F12 | Manual mode: Start → End, "Today" date button, computed duration as the big number, pill "Add" | Date input, two time inputs, duration input, "Add", `:325` | FIX | canvas; the duration stays typeable (hours-only entry, C11.4) | F |
+| F13 | Tabs in a compact pill group on the left, every tab with an icon | Tabs stretch the full row; Team and Reports have no icon, `:95-106` | FIX | canvas | F |
+| F14 | Range navigator on the right of the toolbar row | Inside each view, under the tiles in List | FIX | owner decision 20 Nov; G2 | F |
+| F15 | Amber "Unsorted · N" chip in the toolbar row | Only inside the Day tab | FIX | owner decision 20 Nov; the count is on the client (`UnsortedInbox`) | F |
+| F16 | "Viewing as" as an avatar button | Label and bare select, `ViewingAsSelect.tsx` | FIX | owner decision 20 Nov (same dropdown inside) | F |
+| F17 | Filter button | None | ASK [Q2] | M1 | F |
+| F18 | (single timer) | Parallel container: rows with text "Pause", square Stop, footer with "Pause all" / "Stop all" | KEEP-V2 / FIX (style) | V2 D5.4; each row drawn like the slim bar: title, project chip, clock, round Pause, round Stop | F |
+| F19 | (single timer) | Start-mode popover "Switch / Run in parallel" | KEEP-V2 | V2 D5; canvas popover style | F |
+| F20 | Header pill: title with a project line under it | Title only, project dot, `HeaderTimerPill.tsx:94` | FIX | canvas; V2 "+N" badge stays | F |
+| F21 | Header pill idle: "Start timer" with a round primary play disc | Outline play icon, `:70` | FIX | `Header.dc.html` idle state | F |
+| F22 | Header and timer bar on every tab | Same | match | | — |
+| F23 | Pill opens the timer bar | Same | KEEP-DECISION | `debf869a` | — |
+
+## 1 · List body (`TimeListView.tsx`, `EntryRow.tsx`)
+
+| # | Canvas | App now | Class | Evidence or rule | Pkg |
+|---|---|---|---|---|---|
+| L1 | Today tile note "3 entries + running timer" | No note | FIX | G4 | P1 |
+| L2 | Week tile "28:37 / 40:00" inline, progress bar | "of 40:00 target" below, no bar | FIX | G4 | P1 |
+| L3 | "Billable this week": hours, %, bar | % only | FIX (hours, bar, label) | C11.1 says "Billable %": the % stays, hours are added | P1 |
+| L4 | Cost tile: lock icon, note "at €24.58 / h · monthly salary, loaded" | No lock, no note | FIX (lock) / ASK [Q7] (note) | rates are per entry | P1 |
+| L5 | Day header: select-all checkbox, day cost, day total | Total only | FIX | client-side; cost gated by the cost permission | P1 |
+| L6 | Day label "Today / Yesterday / Tuesday" + short date, neutral | Full date, today in teal | FIX | canvas | P1 |
+| L7 | Running row ends in a round rose Stop | No Stop in the row | FIX | G7; Stop exists | P1 |
+| L8 | Task as its own element after the title | Link icon before the title | ASK [Q6] | C5 vs C11.1 | P1 |
+| L9 | Project name with client after "·" | Name only | FIX | `ProjectLabel` supports a client; pass the project's client from the lookups | P1 |
+| L10 | Hover ▶ and ⋯ in primary | Slate | FIX | colour role | P1 |
+| L11 | "Load earlier entries" | Week navigation | KEEP-DECISION | C11.1 week-scoped; the canvas toolbar has the week navigator too | — |
+| L12 | (no worked line) | "of your time" line | KEEP-V2 | V2 D9, muted | — |
+| L13 | (no bulk bar, no holiday chip drawn) | Present | KEEP-DECISION | C11.1 bulk bar; holidays `docs/TIME-TRACKING.md:174` | — |
+| L14 | Tags and cost always visible | Hidden at narrow widths | KEEP-TOKEN | View size breakpoints | — |
+
+## 2 · Calendar (`TimeCalendarView.tsx`)
+
+| # | Canvas | App now | Class | Evidence or rule | Pkg |
+|---|---|---|---|---|---|
+| C1 | Day/Week/Month segmented | Dropdown, `:575` | FIX | G3 | P2 |
+| C2 | Order: zoom, range nav, "Week total" chip, all in the toolbar row | Range nav first, total as plain text | FIX | G2 | P2 |
+| C3 | Range label with the year | No year | FIX | copy | P2 |
+| C4 | Day total on the head row beside the date | Stacked under it | FIX | canvas | P2 |
+| C5 | Today: filled number circle | Whole column tinted | FIX (shape) / KEEP-TOKEN (hue) | canvas | P2 |
+| C6 | Untimed lane neutral | Amber | FIX | G9; the lane itself is KEEP-DECISION (`docs/TIME-TRACKING.md:376`) | P2 |
+| C7 | Popover: title, project · client line, task / Billable / tag chips | Title, time, editable project picker, billable | FIX (chips) / ASK [Q8] (picker or label) | canvas | P2 |
+| C8 | Popover grid: date and range, duration · cost | Duration only | FIX | cost gated by the cost permission | P2 |
+| C9 | Popover actions: Continue (primary), Edit, Duplicate icon, Delete icon, × top right | Open, Delete, Close as text | FIX | G8; Continue and Duplicate exist | P2 |
+| C10 | Rail "Your tasks this week", icon | "Your tasks" | ASK [Q9] | the rail is not week-filtered | P2 |
+| C11 | Rail row: grip, text, round play at the right, "· 3:27 tracked" | Play at the left, project only | FIX | tracked time derived from loaded entries | P2 |
+| C12 | Rail tip box and canvas subtitle | None, shorter | FIX | copy, both behaviours exist | P2 |
+| C13 | Hours 08–19 | 24 h scroller | KEEP-TOKEN | density | — |
+| C14 | (single block) | Parallel cluster | KEEP-V2 | V2 D5.5 | — |
+
+## 3 · Timesheet (`TimeTimesheetView.tsx`, `SubmitWeekButton.tsx`)
+
+| # | Canvas | App now | Class | Evidence or rule | Pkg |
+|---|---|---|---|---|---|
+| T1 | Range pill "Week 43 · 19 – 25 Oct" | No week number | FIX | copy | P3 |
+| T2 | "Copy rows from last week" bordered with icon | Borderless text | FIX | canvas | P3 |
+| T3 | Submit week in primary | Teal | FIX | G9 | P3 |
+| T4 | Head "PROJECT · TASK"; day heads "19 Oct" | "Project"; number only | FIX | copy | P3 |
+| T5 | Cost column per row and total | None | ASK [Q10] | A2; data and permission exist | P3 |
+| T6 | Cells in bordered boxes | Transparent inputs | FIX | canvas | P3 |
+| T7 | "Add row" in a dashed rounded box | Dashed top border | FIX | canvas | P3 |
+| T8 | Two explainer notes at the foot | None | ASK [Q11] | M4; only sentences that are true | P3 |
+| T9 | (no Worked row) | Worked row | KEEP-V2 | V2 `:746`, muted | — |
+| T10 | Totals row | Same primitive | KEEP-TOKEN | | — |
+
+## 4 · Day and Unsorted (`TimeDayView.tsx`, `UnsortedInbox.tsx`)
+
+| # | Canvas | App now | Class | Evidence or rule | Pkg |
+|---|---|---|---|---|---|
+| D1 | Date heading with a calendar icon tile | No tile | FIX | canvas | P4 |
+| D2 | Group rate and cost in slate | Violet | FIX | G9 | P4 |
+| D3 | Hint "Type 1.5, 1:30 or 90m" | "1:30 or 90m" | FIX | 1.5 is accepted (C11.4) | P4 |
+| D4 | Notes placeholder "What did you do?" | "Notes, or type to find a task" | FIX | copy; the task search stays | P4 |
+| D5 | Row edit and delete icons visible | Hover only | ASK [Q13] | pass 1 D6 | P4 |
+| D6 | Unsorted panel: icon, title, amber count badge | Title only | FIX | canvas | P4 |
+| D7 | Neutral panel, tinted suggestion chip, primary "Assign" | Amber panel, dashed amber chip, amber button | ASK [Q12] | C2 amber role vs canvas | P4 |
+| D8 | Link "Chrome extension settings →" | None | FIX | the page exists in Settings | P4 |
+| D9 | (no bulk bar) | "Assign selected · N" | KEEP-DECISION | phase 5 behaviour, harmless | — |
+| D10 | "Add row" button dark | `bg-primary` | KEEP-TOKEN | primary | — |
+
+## 5 · Team (`TimeTeamView.tsx`, `RoleBadge.tsx`)
+
+| # | Canvas | App now | Class | Evidence or rule | Pkg |
+|---|---|---|---|---|---|
+| W1 | Role badges: Employee green, Manager indigo, Contractor teal, Admin amber | Slate, teal, amber, dark | ASK [Q14] | A6; amber is reserved | P5 |
+| W2 | Amber bar under 75 % only for employees | For everyone | ASK [Q15] | C11.5 has no exemption | P5 |
+| W3 | Header card: icon tile, title, subtitle, controls in one card | Same after pass 1 | match | | — |
+| W4 | Weekly/Monthly segmented in white-on-slate | Teal filled | FIX | same segmented style as the rest of the module | P5 |
+| W5 | (one number per cell) | Worked and Delivered | KEEP-V2 | V2 D5.5, second line muted | — |
+| W6 | Current-week tint | Teal tint | KEEP-TOKEN | | — |
+
+## 6 · Reports and salary allocation (`TimeReportsView.tsx`, `TimeSalaryReport.tsx`)
+
+| # | Canvas | App now | Class | Evidence or rule | Pkg |
+|---|---|---|---|---|---|
+| R1 | One filter card of key-labelled chips: Period, Employees, Projects, Clients, Billable, Group by | Date inputs and unlabelled selects | FIX (chips) / ASK [Q19] (month period) | G3; the dropdown component stays inside | P6 |
+| R2 | Report-type segmented at the right end of the filter card | Own row above | FIX | canvas | P6 |
+| R3 | CSV and "PDF for client" both outline, top right | PDF teal filled | FIX | G9 | P6 |
+| R4 | Tiles with notes: Tracked "5 people · 21 working days", Billable hours with %, Billable value, Labour cost · client work with "+ internal · unallocated" | No notes; % only; no billable value; no split | FIX / ASK [Q17] (Billable tile shows hours) | G4, G6; the Worked tile is KEEP-V2 | P6 |
+| R5 | Hours-per-working-day stacked bar chart | Average tile only | FIX | G5; `report.lines[].entryDate` | P6 |
+| R6 | Share by project as a donut with legend and % | Horizontal bars | FIX | G5 | P6 |
+| R7 | Table "By project" with title, default grouping by project | No title, default by title | ASK [Q16] | A4 | P6 |
+| R8 | Columns Hours, Billable h, Billable value, Labour cost, Margin | Delivered, Worked, Billable, Cost | FIX | G6; Worked column is KEEP-V2 | P6 |
+| R9 | Click a row to split it by employee or task; "Project → Employee" grouping | None | ASK [Q18] | M7; data is on the client, the behaviour is new | P6 |
+| R10 | Salary allocation as a section under the summary (and a segment) | Separate mode only | ASK [Q20] | A3 | P6 |
+| R11 | Salary title with month in one grouped nav | Loose arrows | FIX | SC4 | P6 |
+| R12 | "Client projects" head; Rate and Tracked in slate | "Client"; violet, teal | FIX | G9 | P6 |
+| R13 | Utilisation three colour tiers | Amber below 75 % | ASK [Q15] | A5, same rule as Team | P6 |
+| R14 | (no parallel toggle) | "Parallel only" | KEEP-V2 | V2 `:1098`, drawn as a chip | — |
+
+## 7 · Entry drawer and project picker (`EntryDrawer.tsx`, `ProjectPicker.tsx`)
+
+| # | Canvas | App now | Class | Evidence or rule | Pkg |
+|---|---|---|---|---|---|
+| E1 | Plain title "Edit time entry", source chips under it | Uppercase title, chips beside it | FIX | canvas | P7 |
+| E2 | One Description field | Title and Description | KEEP-DECISION | C11.6 (`docs/TIME-TRACKING.md:700`), C5 | — |
+| E3 | Option meta "Recent · 3:27 this week" | 30-day figure | FIX | this-week seconds are computable from loaded entries | P7 |
+| E4 | "· 186:30 total" per option | None | MISSING | the picker has no all-time totals | — |
+| E5 | Selected option: tint only | Tint and check | KEEP-DECISION | pass 1 review: the check stays for accessibility | — |
+| E6 | Full-width tinted "+ Create project "vill…"" row with "Show finished" beside it | Text link on the right | FIX | canvas | P7 |
+| E7 | Each project once, under its client | A "Recent" group repeats projects | FIX | canvas; recency moves into the meta line | P7 |
+| E8 | Create card "New project": Name, Client, Type, hint, Back, "Create & assign" | Client and Type only, name from the search | ASK [Q21] | A10; `6cc80aee` was an overflow fix | P7 |
+| E9 | Tags as chips | Comma input | ASK [Q22] | A9 | P7 |
+| E10 | Provenance with the start time | Date only | FIX | copy | P7 |
+| E11 | "Edited 11:20 by …" | None | MISSING | entries carry no edit time or editor | — |
+| E12 | Margin always | Hidden for parallel entries | KEEP-DECISION | pass 1 review 2 (`aa5addc5`) | — |
+| E13 | Placeholder "project, client or code" | "Search project or client…" | KEEP-DECISION | the search does not match a code; the copy must be true | — |
+
+## 8 · Start from a task (`TaskTimeControls.tsx`, `TaskTimeBreakdown.tsx`, `TaskEditDrawer.tsx`)
+
+| # | Canvas | App now | Class | Evidence or rule | Pkg |
+|---|---|---|---|---|---|
+| K1 | Round primary play button | Rounded square | FIX | G7 | P8 |
+| K2 | Rose banner "You are tracking this task · Started 13:40" | Rose Stop and chip | FIX (banner) / KEEP-V2 (several timers) | V2 C3 | P8 |
+| K3 | Tiles Tracked / Estimate / Cost and a progress bar | Chip and a cost line | ASK [Q23] | A8; the estimate stays editable | P8 |
+| K4 | Entry rows with avatar and range | Per-person totals | ASK [Q23] | per-entry rows of other people need an API change | P8 |
+| K5 | Start toast names the stopped timer and its time | "N timers were stopped" | FIX | copy; Undo exists | P8 |
+| K6 | Footnote "prefills the description" | None | KEEP-DECISION | not what the code does (C5) | — |
+| K7 | ▶ on task cards, popover on the card | In the drawer | KEEP-DECISION | `aad2b344` | — |
+
+## 9 · Project → Time (`ProjectTimeTab.tsx`)
+
+| # | Canvas | App now | Class | Evidence or rule | Pkg |
+|---|---|---|---|---|---|
+| P1 | Period segmented (All time, This month, Last month, Custom) and "Export CSV" | None | FIX | entries are on the client; `reportCsv` exists | P8 |
+| P2 | Five tiles: Tracked, Labour cost, Billable value, Hours budget %, Time margin | Tracked block only | FIX | G4, G6; totals carry `cost` and `billableValue` | P8 |
+| P3 | Hours per week, stacked by person | None | FIX | G5 | P8 |
+| P4 | By-task bars with "of estimate" | None | FIX | `totals.byTask` | P8 |
+| P5 | By-employee table, cost columns for managers | None | FIX | cost gated as elsewhere | P8 |
+| P6 | Start only | Start / Stop | KEEP-DECISION | `d74adb2b` | — |
+| P7 | (no entries list, no budget and rate inputs) | Present | KEEP-DECISION | `9c6d0dcc`, `e2a3adda`; they move under the canvas blocks, the Internal checkbox becomes a switch | P8 |
+
+## 10 · Settings → Time tracking (`TimeTrackingSettingsPanel.tsx`)
+
+| # | Canvas | App now | Class | Evidence or rule | Pkg |
+|---|---|---|---|---|---|
+| S1 | Hours basis as two radio cards, fixed-hours input inside the second | Dropdown and a separate input | FIX | G3 | P9 |
+| S2 | Row of three: hours per day, multiplier, Contractors "Hourly rate, no multiplier" | Two fields; the contractor rule is hard-coded | ASK [Q24] | a real choice would be a new setting | P9 |
+| S3 | Hints "Also divides daily salaries." / "1.000 = gross salary only." | Other wording | FIX | copy, true | P9 |
+| S4 | One card "Timer and entry rules": every rule a row with note and switch | Three switches, inputs and weekly approval in other cards | FIX | grouping | P9 |
+| S5 | Rounding: segmented Off / 5 / 15 / 30 and two radios | Two dropdowns | FIX | G3 | P9 |
+| S6 | "Who sees what" | None | ASK [Q25] | M11 | P9 |
+| S7 | "Import from Toggl or Clockify" | Toggl panel | KEEP-DECISION (Toggl) / ASK [Q26] (Clockify) | 13 Nov commits; A5.5 | — |
+| S8 | "Re-price a period…" plain button | Hold to confirm | KEEP-TOKEN | the app's safety pattern; canvas helper copy | P9 |
+| S9 | "Warn about long entries", "Idle reminder" | Removed | KEEP-V2 | `docs/TIME-TRACKING.md:719`, V2 D7.1, D8.5 | — |
+| S10 | (none) | Holidays, Parallel, Presence blocks, Save bar | KEEP-DECISION / KEEP-V2 / KEEP-TOKEN | drawn as canvas cards | P9 |
+| S11 | Own page with sub-navigation | Settings registry section | KEEP-TOKEN | `docs/SETTINGS.md` | — |
+
+## 11 · Chrome extension (`ExtensionSettings.tsx`, `PairedBrowsers.tsx`, `extensions/chrome-time-tracker/`)
+
+| # | Canvas | App now | Class | Evidence or rule | Pkg |
+|---|---|---|---|---|---|
+| X1 | Intro "Start and stop timers from the Chrome toolbar…" | Technical sentence about the zip | FIX | copy | P9 |
+| X2 | "Setup guide" button | None | ASK [Q27] | M13 | P9 |
+| X3 | Three step cards Install / Pair / Track | Numbered list | FIX | pass 1 X3 was only partly done | P9 |
+| X4 | Pairing card: code, "expires in 9:12", primary Copy, refresh icon | "New code" button, expiry in the subtitle | FIX | `expiresAt` exists | P9 |
+| X5 | Capture switch in the "Suggest entries" card header | Own section | FIX | placement | P9 |
+| X6 | Watched sites: "no suggestion" in amber | "no project" in slate | FIX | colour role | P9 |
+| X7 | Revoke as a plain red outline button | Hold to confirm | KEEP-TOKEN | safety pattern | — |
+| X8 | Retention and company switches | Company box | KEEP-DECISION | C13 | — |
+| X9 | Popup running: big clock, round Stop, Recent with ▶, footer "Open … · N unsorted" | Different layout | FIX / KEEP-V2 (several timers, still-working) | V2 phase 10 | P11 |
+| X10 | Popup start: title, project, "Start timer" | Also a Task select | KEEP-DECISION | phase 10 behaviour | — |
+| X11 | Popup connect: address, code, Connect, help line | Code only | FIX (help line) / KEEP-DECISION (no address field: the build knows its server) | | P11 |
+| X12 | (translated copy) | Raw server codes such as `already_running` | FIX | smaller open item | P11 |
+| X13 | Zip name | `ccrm-time-tracker.zip` | ASK [Q28] | branding | P11 |
+
+## 12 · Mobile (`TimeTrackingMobileBar.tsx`, phone width of the views)
+
+| # | Canvas | App now | Class | Evidence or rule | Pkg |
+|---|---|---|---|---|---|
+| M1 | Large running card: "Running since 13:40", title, project / task / billable chips, big clock, round Stop, hint | Small card with a text Stop | FIX | canvas; several timers open the v2 sheet (KEEP-V2) | P10 |
+| M2 | No input bar on the phone | Full timer bar | ASK [Q5] | owner said "timer bar on every tab" | P10 |
+| M3 | Today only, with the day total | Week day cards | ASK [Q5] | A7 | P10 |
+| M4 | No stat tiles, no tab row | Both | ASK [Q5] | | P10 |
+| M5 | Bottom bar Timer / Calendar / Tasks / Add | Same | match | | — |
+| M6 | Own top bar | App shell | KEEP-TOKEN | | — |
+
+## Counts (pass 2)
+
+Counted per row; a row with two classes counts in both.
+
+| Class | Rows |
+|---|---|
+| FIX | 86 |
+| KEEP-DECISION | 18 |
+| KEEP-V2 | 11 |
+| KEEP-TOKEN | 11 |
+| MISSING | 2 |
+| ASK | 31 rows, 31 questions |
+| match | 3 |
+
+## The stop: questions for the owner
+
+Recommendation first in each line. Answers are recorded in "Owner answers" below.
+
+**Frame**
+- Q1 Settings link moves into the ⋯ menu. *Recommended: yes.*
+- Q2 Filter button in the toolbar (M1). *Recommended: build it on the client: project, billable, tag; applies to List.*
+- Q3 Tags button in the timer bar (M2). *Recommended: build it, with the same tag chips as Q22.*
+- Q4 Timer/Manual toggle stays visible while a timer runs, so a manual entry can be added then. *Recommended: yes.*
+- Q5 Phone: no input bar (the bottom bar's Timer and Add open it), Today only with a "Whole week" link, no stat tiles; the tab row stays. *Recommended: yes to all three.*
+
+**List**
+- Q6 Task shown as its own element only when the entry's title differs from the task's. *Recommended: yes.*
+- Q7 Cost tile note. *Recommended: "avg €x / h" (cost ÷ hours of the week), because rates are per entry.*
+
+**Calendar, Timesheet, Day**
+- Q8 Calendar popover: project as a label; changing it goes through Edit. *Recommended: canvas (label).*
+- Q9 Rail title. *Recommended: keep "Your tasks" (all open tasks) and add the time tracked this week.*
+- Q10 Timesheet Cost column (A2), for people who may see cost. *Recommended: add.*
+- Q11 Timesheet explainer notes (M4). *Recommended: add, only the sentences the code makes true.*
+- Q12 Unsorted panel colours: neutral panel and primary "Assign"; amber stays on the count badge, the toolbar chip and "no suggestion". *Recommended: canvas.*
+- Q13 Day row edit and delete icons always visible. *Recommended: canvas.*
+
+**Team, Reports**
+- Q14 Role badges (A6). *Recommended: Employee emerald, Manager indigo, Contractor teal, Admin slate (amber stays reserved).*
+- Q15 Under-75 % amber only for people with a weekly target; contractors and people without an employee record are exempt, in Team and in salary Utilisation (A5). *Recommended: canvas.*
+- Q16 Reports default grouping "by project" (A4). *Recommended: yes.*
+- Q17 Reports Billable tile shows hours, with the % in its note. *Recommended: canvas.*
+- Q18 Reports row drill-down (M7): a row opens to its employees or tasks. *Recommended: build on the client; it also gives "Project → Employee".*
+- Q19 Reports period as a month chip with presets and "Custom range". *Recommended: yes.*
+- Q20 Salary allocation (A3): a section under the summary for people who may see it, and still reachable from the segment. *Recommended: canvas.*
+
+**Drawers**
+- Q21 Picker create form with a Name field, hint and "Create & assign" (A10). *Recommended: canvas.*
+- Q22 Tags as chips with add and remove (A9). *Recommended: build one small chip input, used by the drawer and the timer bar.*
+- Q23 Task drawer (A8): three tiles Tracked / Estimate / Cost with a bar; the per-person list stays (per-entry rows of colleagues need an API change). *Recommended: tiles yes, rows stay.*
+
+**Settings, extension, other**
+- Q24 Contractors field in Settings. *Recommended: a read-only line "Hourly rate, no multiplier" (what the code does), no new setting.*
+- Q25 "Who sees what" (M11). *Recommended: a read-only summary from the existing roles, with a link to Users & roles.*
+- Q26 Clockify (M12). *Recommended: declined; the card says Toggl.*
+- Q27 "Setup guide" button (M13). *Recommended: declined; the three step cards are the guide.*
+- Q28 Extension zip name. *Recommended: rename to the product's name, built from `KOPERNIQ_PRODUCT_NAME`.*
+- Q29 "Require a task" also on manual create and Add time (behaviour change). *Recommended: yes.*
+- Q30 Sidebar colour. *Recommended: keep rust (section palette `7bece137`) and correct C2 in the docs.*
+- Q31 Branch policy. *Recommended: stop porting to `1.13-nectarine`; this pass depends on v2 throughout.*
+
+Not built without an API change, recorded as MISSING: picker all-time totals (E4), "Edited by" line (E11).
+
+## Package plan (pass 2)
+
+Package F runs first and alone. Then at most three editing agents at a time, disjoint files. Every package is
+reviewed by `ccrm-reviewer` before it merges.
+
+| Pkg | Scope | Files |
+|---|---|---|
+| F | F1–F21, G2 toolbar slot, round button, tile variant, tag chips if approved | `TimeTrackingView.tsx`, `TimerBar.tsx`, `TimerContainer.tsx`, `StartModePopover.tsx`, `HeaderTimerPill.tsx`, `ViewingAsSelect.tsx`, `RangeNav.tsx`, `ProjectPicker.tsx` (trigger variant only), new small modules |
+| P1 | List L1–L10 | `TimeListView.tsx`, `EntryRow.tsx` |
+| P2 | Calendar C1–C12 | `TimeCalendarView.tsx` |
+| P3 | Timesheet T1–T8 | `TimeTimesheetView.tsx`, `SubmitWeekButton.tsx` |
+| P4 | Day and Unsorted D1–D8 | `TimeDayView.tsx`, `UnsortedInbox.tsx` |
+| P5 | Team W1, W2, W4 | `TimeTeamView.tsx`, `RoleBadge.tsx` |
+| P6 | Reports R1–R13, chart module | `TimeReportsView.tsx`, `TimeSalaryReport.tsx`, `src/utils/timeReports.ts`, new chart module |
+| P7 | Drawer and picker E1–E10 | `EntryDrawer.tsx`, `ProjectPicker.tsx` (panel) |
+| P8 | Task drawer K1–K5, project tab P1–P7 (after P6, uses its charts) | `TaskTimeControls.tsx`, `TaskTimeBreakdown.tsx`, `ProjectTimeTab.tsx` |
+| P9 | Settings S1–S10, extension settings X1–X6 | `TimeTrackingSettingsPanel.tsx`, `ExtensionSettings.tsx`, `PairedBrowsers.tsx` |
+| P10 | Phone M1–M4 (after F and P1) | `TimeTrackingMobileBar.tsx`, phone branches |
+| P11 | Extension popup X9–X13 | `extensions/chrome-time-tracker/` |
+
+Order: F → (P1, P2, P3) → (P4, P5, P6) → (P7, P8, P9) → (P10, P11).
+
+## Owner answers
+
+Pending (the stop, 2026-11-20).
+
+## Done log (pass 2)
+
+| Package | Commit(s) | Rows done | Rows not done, and why |
+|---|---|---|---|
+| Audit | this commit | this part | |
+
+## Review page
+
+https://claude.ai/artifact/Nw7ptoiMgUg4LFDhsVPQSW (canvas beside the app before the fixes, pins on the questions).
