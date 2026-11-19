@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, Lock } from "lucide-react";
+import { Switch } from "../ui/Switch";
 import { Surface } from "../layout";
 import type { Language } from "../../utils/translations";
 import { EXTENSION_VERSION } from "../../utils/timeTrackerRules.ts";
@@ -86,36 +87,38 @@ export function ExtensionSettings({ language, t, canEdit, isAdmin, extension, on
           href={`${import.meta.env.BASE_URL}downloads/ccrm-time-tracker.zip`}
           download
           data-testid="tt-extension-download"
-          className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-teal-600 px-3 text-ui font-semibold text-white transition-all hover:bg-teal-700 active:scale-95 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+          className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-3 text-ui font-semibold text-primary-foreground transition-all hover:opacity-90 active:scale-95 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
         >
           <Download className="size-4" />
           {t("Download", "Stiahnuť", "Letöltés")}
-          <span className="text-micro font-semibold text-teal-50">v{EXTENSION_VERSION}</span>
+          <span className="text-micro font-semibold opacity-80">v{EXTENSION_VERSION}</span>
         </a>
       </div>
-      <ol className="grid list-decimal gap-1 pl-5 text-body text-slate-600">
-        <li>{t("Download the zip and unzip it.", "Stiahnite zip a rozbaľte ho.", "Töltse le a zipet, és csomagolja ki.")}</li>
-        <li>{t("Chrome → Extensions → Developer mode → Load unpacked.", "Chrome → Rozšírenia → Režim pre vývojárov → Načítať rozbalené.", "Chrome → Bővítmények → Fejlesztői mód → Kicsomagolt betöltése.")}</li>
-        <li>{t("Choose the unzipped folder, then press New code and enter it in the extension.", "Vyberte rozbalený priečinok, stlačte Nový kód a zadajte ho do rozšírenia.", "Válassza a kicsomagolt mappát, nyomja meg az Új kódot, és írja be a bővítménybe.")}</li>
+      <ol className="grid list-none gap-3 ws-sm:grid-cols-3" data-testid="tt-extension-steps">
+        {[
+          { n: 1, title: t("Install", "Inštalácia", "Telepítés"), body: t("Download the zip and unzip it. In Chrome open Extensions, turn on Developer mode and press Load unpacked.", "Stiahnite zip a rozbaľte ho. V Chrome otvorte Rozšírenia, zapnite Režim pre vývojárov a stlačte Načítať rozbalené.", "Töltse le a zipet, és csomagolja ki. A Chrome-ban nyissa meg a Bővítményeket, kapcsolja be a Fejlesztői módot, és nyomja meg a Kicsomagolt betöltése gombot.") },
+          { n: 2, title: t("Pair", "Spárovanie", "Párosítás"), body: t("Choose the unzipped folder, then press New code below and enter it in the extension.", "Vyberte rozbalený priečinok, nižšie stlačte Nový kód a zadajte ho do rozšírenia.", "Válassza a kicsomagolt mappát, nyomja meg lent az Új kódot, és írja be a bővítménybe.") },
+          { n: 3, title: t("Track", "Sledovanie", "Követés"), body: t("Start and stop timers from the extension, or switch on activity capture below.", "Spúšťajte a zastavujte časovače z rozšírenia, alebo nižšie zapnite zaznamenávanie aktivity.", "Indítsa és állítsa le az időzítőket a bővítményből, vagy kapcsolja be lent a tevékenység rögzítését.") },
+        ].map((step) => (
+          <li key={step.n} className="rounded-xl border border-slate-200 p-3">
+            <span className="mb-2 flex size-6 items-center justify-center rounded-full bg-teal-50 text-micro font-semibold text-teal-700">{step.n}</span>
+            <p className="text-ui font-semibold text-slate-900">{step.title}</p>
+            <p className="text-body text-slate-600">{step.body}</p>
+          </li>
+        ))}
       </ol>
 
       {isAdmin && (
         <div className="grid gap-3 rounded-xl border border-slate-200 p-3">
           <p className="type-label text-slate-600">{t("Company", "Firma", "Cég")}</p>
-          <label className="flex cursor-pointer items-center gap-3 text-ui text-slate-800">
-            <input type="checkbox" disabled={!canEdit} checked={extension.enabled} onChange={(e) => onExtension({ ...extension, enabled: e.target.checked })} className="size-4 accent-teal-600" />
+          <div className="flex items-center gap-3 text-ui text-slate-800">
+            <Switch checked={extension.enabled} disabled={!canEdit} onChange={(next) => onExtension({ ...extension, enabled: next })} label={t("Extension can pair", "Rozšírenie sa môže spárovať", "A bővítmény párosíthat")} />
             {t("Extension can pair", "Rozšírenie sa môže spárovať", "A bővítmény párosíthat")}
-          </label>
-          <label className="flex cursor-pointer items-center gap-3 text-ui text-slate-800">
-            <input
-              type="checkbox"
-              disabled={!canEdit}
-              checked={extension.activityCaptureAllowed}
-              onChange={(e) => onExtension({ ...extension, activityCaptureAllowed: e.target.checked })}
-              className="size-4 accent-teal-600"
-            />
+          </div>
+          <div className="flex items-center gap-3 text-ui text-slate-800">
+            <Switch checked={extension.activityCaptureAllowed} disabled={!canEdit} onChange={(next) => onExtension({ ...extension, activityCaptureAllowed: next })} label={t("Allow activity capture", "Povoliť zaznamenávanie aktivity", "Tevékenység rögzítésének engedélyezése")} />
             {t("Allow activity capture", "Povoliť zaznamenávanie aktivity", "Tevékenység rögzítésének engedélyezése")}
-          </label>
+          </div>
           <label className="grid max-w-48 gap-1">
             <span className="type-label text-slate-600">{t("Keep unsorted items (days)", "Ponechať nezaradené (dni)", "Rendezetlen elemek megőrzése (nap)")}</span>
             <input
@@ -140,12 +143,17 @@ export function ExtensionSettings({ language, t, canEdit, isAdmin, extension, on
       <div className="grid gap-3 border-t border-slate-100 pt-4">
         <div>
           <h4 className="type-card-title text-slate-900">{t("Activity capture", "Zaznamenávanie aktivity", "Tevékenység rögzítése")}</h4>
-          <p className="text-body text-slate-500">{t("Off until you turn it on. It records the domain, the page title and the times — never the address path or the page itself — and only while no timer is running.", "Vypnuté, kým to nezapnete. Zaznamenáva doménu, názov stránky a časy — nikdy nie cestu adresy ani samotnú stránku — a len kým nebeží časovač.", "Kikapcsolva, amíg be nem kapcsolja. A domaint, az oldal címét és az időket rögzíti — soha nem a cím elérési útját vagy magát az oldalt — és csak akkor, ha nem fut időzítő.")}</p>
+          <p className="flex items-start gap-1.5 text-body text-slate-500">
+            <Lock className="mt-0.5 size-4 shrink-0 text-slate-400" />
+            <span>{t("Off until you turn it on. It records the domain, the page title and the times — never the address path or the page itself — and only while no timer is running. Unsorted activity is private: managers never see it.", "Vypnuté, kým to nezapnete. Zaznamenáva doménu, názov stránky a časy — nikdy nie cestu adresy ani samotnú stránku — a len kým nebeží časovač. Nezaradená aktivita je súkromná: manažéri ju nikdy nevidia.", "Kikapcsolva, amíg be nem kapcsolja. A domaint, az oldal címét és az időket rögzíti — soha nem a cím elérési útját vagy magát az oldalt — és csak akkor, ha nem fut időzítő. A rendezetlen tevékenység privát: a vezetők soha nem látják.")}</span>
+          </p>
         </div>
-        <label className="flex cursor-pointer items-center gap-3 text-ui text-slate-800">
-          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="size-4 accent-amber-600" data-testid="tt-activity-opt-in" />
+        <div className="flex items-center gap-3 text-ui text-slate-800">
+          <span data-testid="tt-activity-opt-in" className="inline-flex">
+            <Switch checked={enabled} onChange={setEnabled} label={t("Capture watched sites", "Sledovať vybrané stránky", "Figyelt oldalak rögzítése")} />
+          </span>
           {t("Capture watched sites", "Sledovať vybrané stránky", "Figyelt oldalak rögzítése")}
-        </label>
+        </div>
         <label className="grid max-w-48 gap-1">
           <span className="type-label text-slate-600">{t("Ignore visits shorter than (minutes)", "Ignorovať návštevy kratšie ako (minúty)", "Ennél rövidebb látogatások kihagyása (perc)")}</span>
           <input type="number" min={1} max={120} value={minMinutes} onChange={(e) => setMinMinutes(Math.max(1, Math.min(120, Number(e.target.value) || 5)))} className={field} />
