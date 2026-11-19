@@ -1,1 +1,0 @@
-- **Time tracking: presence pushes** (`public/api/webpush.php`, `time_presence_push.php`): `ccrm_send_push_to_user_id()` plus the question, "paused", "stopped" and silent "cleared" payloads in en/sk/hu, without action buttons. Nothing calls them yet.

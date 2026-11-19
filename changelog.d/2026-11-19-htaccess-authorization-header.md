@@ -1,1 +1,0 @@
-- **Bearer-key calls work on hosts that drop the Authorization header** (`.htaccess`): Apache now hands the header to PHP on every request, so the time-tracker extension, `mcp.php` and `cron.php` no longer answer 401 under PHP as CGI/FPM (seen on the dev container).

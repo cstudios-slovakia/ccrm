@@ -1,1 +1,0 @@
-- **Employees: `hours_per_day`** (`public/api/schema.php`, `public/sync.php`, `src/types/index.ts`, `EmployeeFormScreen.tsx`, `entities_overview.md`): an employee can have their own contracted hours per day (part-time); empty means the company setting. Stored and editable in the employee form; nothing computes with it yet.

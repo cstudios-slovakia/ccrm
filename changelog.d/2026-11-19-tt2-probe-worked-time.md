@@ -1,1 +1,0 @@
-- **Tests**: the time tracking server probe no longer trips over the 14-day age lock (it writes the settings with the lock off) and gains section T13 for worked time and parallel cost (TT2 phase 1).

@@ -1,2 +1,0 @@
-- **Presence cycle ring, "Still working?" dialog and phase-aware tab title** (`CycleRing.tsx`, `PresenceDialog.tsx`, `src/utils/timePresenceUi.ts`, `HeaderTimerPill.tsx`, `TimerBar.tsx`, `TimerContainer.tsx`, `TimeTrackingMobileBar.tsx`, `useTimeTracking.tsx`): every Stop control shows the presence cycle as a ring; at minute 50 every open tab asks "Still working?" with a countdown to the automatic pause, afterwards "Paused at 09:50" with Resume / Stop; the tab title follows the phase.
-- **Tests**: `timePresenceUi.test.ts` (ring arcs, countdown format, tab title by phase).

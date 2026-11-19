@@ -1,1 +1,0 @@
-- **Time tracking: review fixes** (`EntryDrawer.tsx`, `RateCardPreview.tsx`, `TimeSalaryReport.tsx`, `ExtensionSettings.tsx`): the cost formula and margin use worked time, rule and cost texts match what the server enforces, the rate preview skips inactive or unlinked people, and watched sites show client names.

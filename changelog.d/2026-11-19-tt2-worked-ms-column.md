@@ -1,1 +1,0 @@
-- **Time tracking: `worked_ms` column** (`public/api/schema.php`, `time_worked_ms_migration.php`, `src/utils/timeTracking.ts`, `entities_overview.md`): `time_entries` gets `worked_ms` (worked time, backfilled from `duration_sec` for closed entries) and `cost` is widened to DECIMAL(14,4). Nothing reads or writes the column yet.

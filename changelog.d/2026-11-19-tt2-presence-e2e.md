@@ -1,1 +1,0 @@
-- **Tests**: `tests/e2e/timeTrackingPresence.spec.ts` (tt2 phase 7e: ring in the tracking phase, the Still working dialog at minute 50 and its confirm, the paused dialog and Resume after the deadline, the question closing in a second tab, presence switched off).
