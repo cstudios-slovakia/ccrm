@@ -69,7 +69,7 @@ test.describe('Time tracking: parallel timers', () => {
     await expect(page.getByTestId('timer-container-delivered')).toBeVisible();
 
     await page.getByTestId('timer-container-stop').first().click();
-    await expect(page.getByTestId('timer-container-row')).toHaveCount(1);
+    await expect(page.getByTestId('timer-container')).toHaveCount(0); // one item left: the bar looks single again (D5.4)
     await expect(page.getByTestId('header-timer-extra')).toHaveCount(0);
     await expect(page.getByTestId('header-timer-running')).toHaveCount(1);
   });
