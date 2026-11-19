@@ -132,7 +132,9 @@ Symptom → root cause → proposed fix. Fixed only in the phase named.
    Phase 4 starts with the tests.
 9. **Three status writers skip the server's status-change hook:** MCP `update_task` /
    `complete_task` (`mcp_ext_writes.php:232`) and WAAI (`integration_tasks.php:668`, `:882`)
-   write SQL directly; only the UI blob path reaches `sync.php:5069`. Fix: phase 8.
+   write SQL directly; only the UI blob path reaches `sync.php:5069`. Phase 8 covers the MCP
+   tools, because they act as a known user. The WAAI writers have no acting person, so they
+   fire no timer action (C14).
 10. **The idle reminder sees one browser page only** (`IdleReminder.tsx`) and has no server side.
     Replaced in phase 7.
 
@@ -225,8 +227,8 @@ Symptom → root cause → proposed fix. Fixed only in the phase named.
 **Statuses**
 
 19. **Whose timer?** A manager moving someone's task to "In progress" must not start a timer for
-    a person who may not be there. Starting needs a present human; stopping is safe from
-    anywhere (D10.2).
+    a person who may not be there. Every status action touches only the timer of the person who
+    changed the status (C14, D10.2).
 20. **Bulk edits and automations.** Ten tasks set to "In progress" at once must not start ten
     timers. Status writes from MCP and WAAI bypass the hook the UI path reaches (A4.9).
 21. **Statuses are identified by name.** The list is one JSON array (`TASK_STATES`); renaming a
@@ -255,7 +257,7 @@ owner's brief.
 | C11 | 🟡 | Leave that counts: `employee_vacations` rows with status `approved` or `taken`. A leave type with `isPaid: true` raises the rate; `isPaid: false` (default for sick and unpaid leave) leaves it unchanged. No partial sick-pay model. | 3 |
 | C12 | 🟡 | A month's rate is **provisional while the month is open** and is re-priced automatically when salary, leave or holidays change. The month closes when its payroll record is closed, else at the end of the following month. After that only the admin "Re-price a period" changes it. Replaces TIME-TRACKING C7.5. | 3 |
 | C13 | 🟡 | The project Finances tab gains an information line "Billable work (time tracking)" = Σ project time × billable rate. It does **not** change `invoicable` or any income figure. Invoicing from time is not in this plan. | 9 |
-| C14 | 🟡 | Status actions: **start** fires only for the person who changed the status, only on a single-task change, and only when that person is an assignee or the task has none. **Pause** and **stop** apply to every person's timer on that task, and its owner is notified. One-way only: starting a timer never changes a status. | 8 |
+| C14 | ✅ | **Every status action applies only to the person who changed the status** (owner, 2026-11-19). Start, pause and stop touch that person's own timer on the task and nobody else's. A colleague's timer on the same task keeps running when someone else sets the task to Done; the presence question is what catches it if it was forgotten. Still 🟡 inside this decision: **start** fires only on a single-task change and only when that person is an assignee or the task has none. One-way only: starting a timer never changes a status. | 8 |
 | C15 | 🟡 | Hours-only entries (Day, Timesheet) are never parallel: their worked time equals their duration. | 1 |
 | C16 | 🟡 | **History is not rewritten.** The migration sets worked time = duration for existing entries, so no closed month changes. Settings shows how many existing entries overlap, and the admin "Re-price a period" re-allocates a chosen period. | 1 |
 | C17 | 🟡 | A manual or status pause stays paused until the day's `autoStopAt`; an automatic pause expires after the 10-minute resume window. | 6 |
@@ -707,16 +709,19 @@ and after and hands the changed ones to the module. For the **current user**:
 | pause | Pauses the user's running item on that task, if there is one. |
 | stop | Stops the user's running or paused item on that task. "Require a project" applies as for a manual Stop. |
 
-**On the server,** `ccrm_tt_task_status_changed($pdo, $taskId, $newStatus, $actorUserId)` in
-`public/api/time_status_lib.php`: **pause and stop only**, for **every** user's item on that
-task, idempotent, `end_reason = 'status'`, never blocked by "require a project", and a push to
-each owner who is not the actor ("Marek set *Task* to Done; your timer was stopped at 14:02").
-Called after the commit from the status-change detection in `sync.php:5069`, from MCP
-`update_task` and `complete_task`, and from the two WAAI writers. The server **never starts** a
-timer: a start needs a person at a screen.
+Pause and stop also apply on a bulk edit: they only ever end the user's own items. Each sets
+`end_reason = 'status'`.
 
-The browser and the server may both act on the actor's own item; both actions are idempotent, so
-the second is a no-op.
+**Nobody else's timer is touched (C14).** If Marek sets a task to Done while Jana's timer runs
+on it, Jana's timer keeps running. No notification is sent.
+
+**On the server,** only for the MCP tools, where no browser runs the rule above:
+`ccrm_tt_task_status_changed($pdo, $taskId, $newStatus, $actorUserId)` in
+`public/api/time_status_lib.php`, called from MCP `update_task` and `complete_task` with the
+user the MCP key belongs to. It applies **pause and stop only**, to **that user's** item on the
+task, idempotent, never blocked by "require a project". The server **never starts** a timer: a
+start needs a person at a screen. `sync.php` gets no call (the browser already acted for the
+person who made the change), and the WAAI writers get none (they have no acting person).
 
 ## D11. Edge cases every phase keeps in mind
 
@@ -886,11 +891,13 @@ Spec: D10. Decision: C14. Needs 5, 6.
 - [ ] The dropdown in Task states (new component) and the one-click suggestion
 - [ ] `taskStatusTimer.ts` + PHP twin + shared fixtures
 - [ ] The hook in `updateTasksAndSync`; start, pause, stop for the current user; Undo toast
-- [ ] `time_status_lib.php`; calls from `sync.php`, MCP `update_task` / `complete_task`, WAAI;
-      the push to the owner
+- [ ] `time_status_lib.php`; calls from MCP `update_task` / `complete_task` only (no `sync.php`
+      call, no WAAI call, no push)
 - [ ] e2e: status → Start starts the timer on the task; → Pause pauses; → Stop stops; a bulk
-      change starts nothing; renaming a status keeps its action
-- [ ] Probe: MCP `complete_task` stops another user's timer on that task
+      change starts nothing; renaming a status keeps its action; another person's running
+      timer on the task is untouched
+- [ ] Probe: MCP `complete_task` stops the caller's own timer on that task and leaves another
+      user's timer on it running
 
 **Left over:**
 
