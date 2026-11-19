@@ -1,0 +1,2 @@
+- **Parallel work is drawn as one cluster** (`src/utils/timeClusters.ts`, `ClusterChip.tsx`, `TimeCalendarView.tsx`, `TimeListView.tsx`, `TimeDayView.tsx`): timed entries of one person that overlap are framed in the Calendar and grouped in List and Day under a header "∥ 3 · worked 2:24" (with "Worked · Delivered" in List and Day). Derived, never stored. A paused timer in the container now has a Stop button next to Resume.
+- **Tests**: `timeClusters.test.ts` (transitive chain, touching, two users, a running item, row segmentation).

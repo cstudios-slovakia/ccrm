@@ -63,10 +63,16 @@ export function TimerContainer({ projectName, renderAdd, onAdd, footer, touch = 
         </div>
         <ClockDigits value={formatDuration(seconds, true)} className="font-bold text-slate-900" data-testid="timer-container-elapsed" />
         {isPaused ? (
-          <button type="button" disabled={busy} onClick={() => void act(() => resume(e.id))} data-testid="timer-container-resume" className={`${BTN} ${size} bg-teal-50 text-ui text-teal-800 hover:bg-teal-100`}>
-            <Play className="size-4 fill-current" />
-            {t("Resume", "Pokračovať", "Folytatás")}
-          </button>
+          <>
+            <button type="button" disabled={busy} onClick={() => void act(() => resume(e.id))} data-testid="timer-container-resume" className={`${BTN} ${size} bg-teal-50 text-ui text-teal-800 hover:bg-teal-100`}>
+              <Play className="size-4 fill-current" />
+              {t("Resume", "Pokračovať", "Folytatás")}
+            </button>
+            <button type="button" disabled={busy} onClick={() => void act(() => stop(e.id))} data-testid="timer-container-stop-paused" aria-label={t("Stop", "Zastaviť", "Leállítás")} className={`${BTN} ${size} bg-rose-600 text-ui text-white hover:bg-rose-700`}>
+              <Square className="size-4 fill-current" />
+              {touch && t("Stop", "Zastaviť", "Leállítás")}
+            </button>
+          </>
         ) : (
           <>
             <button type="button" disabled={busy} onClick={() => void act(() => pause(e.id))} data-testid="timer-container-pause" className={`${BTN} ${size} border border-slate-200 bg-white text-ui text-slate-700 hover:bg-slate-100`}>

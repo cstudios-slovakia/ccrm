@@ -48,6 +48,8 @@ import { ProjectPicker } from "./ProjectPicker";
 import { RangeNav } from "./RangeNav";
 import { RunningBadge } from "./RunningBadge";
 import { scopeParam } from "./TimeListView";
+import { clusterEntries } from "../../utils/timeClusters.ts";
+import { ClusterFrames } from "./ClusterChip";
 import { describeTimeLock, useEntryDeletion, useTimeLookups, type TimeDeps } from "./shared";
 import { typePx } from "../../utils/viewSize";
 
@@ -115,6 +117,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
     return out;
   }, [loaded, tt.running, scopeUserId, range.from, range.to]);
   const byId = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
+  const clusters = useMemo(() => clusterEntries(entries, nowMs), [entries, nowMs]);
 
   const people = useMemo(
     () => deps.employees.filter((e) => e.userId).map((e) => ({ userId: e.userId as string, workCountry: e.workCountry ?? null })),
@@ -662,6 +665,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
                       {HOURS.map((hour) => (
                         <div key={hour} className="h-12 border-t border-slate-100" />
                       ))}
+                      <ClusterFrames blocks={timedOn(day)} clusters={clusters} />
                       {timedOn(day).map((block) => {
                         const entry = byId.get(block.id);
                         if (!entry) return null;

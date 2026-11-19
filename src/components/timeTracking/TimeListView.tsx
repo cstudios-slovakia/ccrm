@@ -23,6 +23,8 @@ import { WorkedTotal } from "./WorkedLine";
 import { addDays } from "../../utils/holidays.ts";
 import { TimeApiError, deleteEntry, restoreEntry, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
 import { withoutHiddenCost } from "../../utils/timeTeam.ts";
+import { clusterEntries, segmentByCluster } from "../../utils/timeClusters.ts";
+import { ClusterGroup } from "./ClusterChip";
 import { ClockDigits } from "./ClockDigits";
 import { EntryRow } from "./EntryRow";
 import { RangeNav } from "./RangeNav";
@@ -186,7 +188,8 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
               <WorkedTotal projectSec={totalSeconds(list, nowMs)} workedSec={totalWorkedSeconds(list, nowMs)} className="font-semibold text-slate-900" />
             </div>
             <div role="table" className="divide-y divide-slate-100">
-              {rows.map(({ entry, members }) => {
+              {segmentByCluster(rows, clusterEntries(list, nowMs), (r) => r.members.map((m) => m.id)).map((seg, si) => {
+              const inner = seg.items.map(({ entry, members }) => {
                 const visible = members.map((m) => withoutHiddenCost(m, tt.userId || "", tt.viewer.canCosts));
                 const isOpen = members.length > 1 && expanded.has(entry.id);
                 const toggleSelect = (ids: string[]) => (checked: boolean) =>
@@ -233,7 +236,9 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
                       ))}
                   </Fragment>
                 );
-              })}
+              });
+              return seg.cluster ? <ClusterGroup key={`c${si}`} cluster={seg.cluster}>{inner}</ClusterGroup> : <Fragment key={`s${si}`}>{inner}</Fragment>;
+            })}
             </div>
           </Surface>
         );

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Surface } from "../layout";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
@@ -19,6 +19,8 @@ import { WorkedTotal } from "./WorkedLine";
 import { TimeApiError, createEntry, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
 import { teamRoleBadge, visibleEntryCost, withoutHiddenCost } from "../../utils/timeTeam.ts";
 import type { Task } from "../../types";
+import { clusterEntries, segmentByCluster } from "../../utils/timeClusters.ts";
+import { ClusterGroup } from "./ClusterChip";
 import { ClockDigits } from "./ClockDigits";
 import { EntryRow } from "./EntryRow";
 import { ProjectPicker } from "./ProjectPicker";
@@ -303,9 +305,12 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
                 </span>
               </div>
               <div role="table" className="divide-y divide-slate-100">
-                {list.map((e) => (
-                  <EntryRow key={e.id} entry={withoutHiddenCost(e, tt.userId || "", tt.viewer.canCosts)} deps={deps} onOpen={onOpen} />
-                ))}
+                {segmentByCluster(list, clusterEntries(list, nowMs), (e) => [e.id]).map((seg, si) => {
+                  const rows = seg.items.map((e) => (
+                    <EntryRow key={e.id} entry={withoutHiddenCost(e, tt.userId || "", tt.viewer.canCosts)} deps={deps} onOpen={onOpen} />
+                  ));
+                  return seg.cluster ? <ClusterGroup key={`c${si}`} cluster={seg.cluster}>{rows}</ClusterGroup> : <Fragment key={`s${si}`}>{rows}</Fragment>;
+                })}
               </div>
             </Surface>
           );
