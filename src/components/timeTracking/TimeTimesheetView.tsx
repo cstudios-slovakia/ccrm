@@ -325,13 +325,11 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
                         {row.projectId ? (
                           <ProjectLabel projectId={row.projectId} name={label.project} />
                         ) : (
-                          <AssignProjectChip
-                            onClick={() => {
-                              const lastId = row.cells.find((c) => c.lastId)?.lastId;
-                              const entry = lastId ? byId.get(lastId) : undefined;
-                              if (entry) onOpen(entry);
-                            }}
-                          />
+                          (() => {
+                            const lastId = row.cells.find((c) => c.lastId)?.lastId;
+                            const entry = lastId ? byId.get(lastId) : undefined;
+                            return <AssignProjectChip onClick={entry ? () => onOpen(entry) : undefined} />;
+                          })()
                         )}
                         {label.task && <span className="truncate text-slate-500">· {label.task}</span>}
                       </div>
