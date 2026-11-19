@@ -110,8 +110,9 @@ export interface TimeTrackingSettings {
   requireTask: boolean;
   billableByDefault: boolean;
   autoStopAt: string | null;
-  longEntryWarnHours: number | null;
-  idleReminderMinutes: number | null;
+  /** Retired from the UI (TT2 D8.5); kept optional for old data. */
+  longEntryWarnHours?: number | null;
+  idleReminderMinutes?: number | null;
   lockAfterDays: number | null;
   weeklyApproval: boolean;
   rounding: { minutes: 0 | 5 | 15 | 30; mode: "nearest" | "up" };

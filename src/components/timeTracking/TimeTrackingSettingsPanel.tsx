@@ -20,6 +20,7 @@ import { ExtensionSettings } from "./ExtensionSettings";
 import { ParallelTrackingBlock, StartWhileRunningBlock } from "./ParallelSettings";
 import { PresenceSoundBlock } from "./PresenceSoundBlock";
 import { TogglImportPanel } from "./TogglImportPanel";
+import { PresenceBlock } from "./PresenceSettings";
 import { formatMoney } from "../../utils/currency";
 import type { Language } from "../../utils/translations";
 import { PRODUCT_NAME } from "../../utils/brand";
@@ -296,10 +297,6 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
             <input disabled={!canEdit} type="time" value={draft.autoStopAt ?? ""} onChange={(e) => set("autoStopAt", e.target.value || null)} className={field} />
           </label>
           <label className="grid gap-1">
-            <span className={label}>{t("Warn about entries longer than (hours)", "Upozorniť na záznamy dlhšie ako (hodiny)", "Figyelmeztetés ennél hosszabb bejegyzésre (óra)")}</span>
-            <input disabled={!canEdit} type="number" min={1} value={draft.longEntryWarnHours ?? ""} onChange={(e) => set("longEntryWarnHours", e.target.value ? num(e.target.value, 10) : null)} className={field} />
-          </label>
-          <label className="grid gap-1">
             <span className={label}>{t("Rounding in reports and client PDFs", "Zaokrúhľovanie v reportoch a PDF pre klientov", "Kerekítés riportokban és ügyfél-PDF-ekben")}</span>
             <div className="flex gap-2">
               <div className="min-w-0 flex-1">
@@ -332,23 +329,20 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
       </Surface>
 
       <ParallelTrackingBlock t={t} canEdit={canEdit} parallel={draft.parallel ?? DEFAULT_TIME_TRACKING_SETTINGS.parallel} onChange={(parallel) => set("parallel", parallel)} />
+      <PresenceBlock t={t} canEdit={canEdit} isAdmin={isAdmin} presence={draft.presence ?? DEFAULT_TIME_TRACKING_SETTINGS.presence} onChange={(presence) => set("presence", presence)} />
       <StartWhileRunningBlock />
       <PresenceSoundBlock />
 
       {/* PHASE6-SETTINGS */}
       <Surface className="space-y-4">
-        <h3 className="type-card-title text-slate-900">{t("Locking, approval and idle reminder", "Zamykanie, schvaľovanie a pripomenutie nečinnosti", "Zárolás, jóváhagyás és tétlenségi emlékeztető")}</h3>
+        <h3 className="type-card-title text-slate-900">{t("Locking and approval", "Zamykanie a schvaľovanie", "Zárolás és jóváhagyás")}</h3>
         <p className="text-body text-slate-500">{t(
-          "Entries older than the lock, in a paid payroll month, or in a submitted week can be changed only by an admin. That change is written to the audit log. Leave a field empty to turn that rule off. The idle reminder appears while a timer is running.",
-          "Záznamy staršie ako zámok, v uhradenom mzdovom mesiaci alebo v odoslanom týždni môže zmeniť len administrátor. Zmena sa zapíše do auditu. Prázdne pole pravidlo vypne. Pripomenutie nečinnosti sa zobrazí, kým beží časovač.",
-          "A zárolásnál régebbi, kifizetett bérhónapba eső vagy beküldött heti bejegyzést csak adminisztrátor módosíthatja. A módosítás az auditnaplóba kerül. Az üres mező kikapcsolja a szabályt. A tétlenségi emlékeztető futó időzítő mellett jelenik meg.",
+          "Entries older than the lock, in a paid payroll month, or in a submitted week can be changed only by an admin. That change is written to the audit log. Leave a field empty to turn that rule off.",
+          "Záznamy staršie ako zámok, v uhradenom mzdovom mesiaci alebo v odoslanom týždni môže zmeniť len administrátor. Zmena sa zapíše do auditu. Prázdne pole pravidlo vypne.",
+          "A zárolásnál régebbi, kifizetett bérhónapba eső vagy beküldött heti bejegyzést csak adminisztrátor módosíthatja. A módosítás az auditnaplóba kerül. Az üres mező kikapcsolja a szabályt.",
         )}</p>
         {toggle("weeklyApproval", t("Weekly approval of timesheets", "Týždenné schvaľovanie výkazov", "Heti munkalap-jóváhagyás"))}
         <div className="grid gap-4 ws-sm:grid-cols-2">
-          <label className="grid gap-1">
-            <span className={label}>{t("Idle reminder after (minutes)", "Pripomenutie nečinnosti po (minútach)", "Tétlenségi emlékeztető ennyi perc után")}</span>
-            <input disabled={!canEdit} type="number" min={1} value={draft.idleReminderMinutes ?? ""} onChange={(e) => set("idleReminderMinutes", e.target.value ? num(e.target.value, 15) : null)} className={field} data-testid="tt-idle-reminder" />
-          </label>
           <label className="grid gap-1">
             <span className={label}>{t("Lock entries older than (days)", "Zamknúť záznamy staršie ako (dni)", "Ennél régebbi bejegyzések zárolása (nap)")}</span>
             <input disabled={!canEdit} type="number" min={0} value={draft.lockAfterDays ?? ""} onChange={(e) => set("lockAfterDays", e.target.value ? num(e.target.value, 14) : null)} className={field} data-testid="tt-lock-after-days" />

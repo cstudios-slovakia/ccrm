@@ -49,6 +49,7 @@ import { usePresenceSound } from "./usePresenceSound.ts";
 import { DEFAULT_PRESENCE_SOUND, sanitizePresenceSound, unlockPresenceAudio, type PresenceSoundPrefs } from "../utils/presenceSound.ts";
 import { IDLE_PRESENCE_VIEW, nextPresenceBoundary, presenceView as derivePresenceView, type PresenceView } from "../utils/timePresence.ts";
 import { StartModePopover } from "../components/timeTracking/StartModePopover.tsx";
+import { PresenceSwListener } from "../components/timeTracking/PresenceSwListener";
 
 export interface StartOptions {
   /** The control that was clicked: the "Switch / Run in parallel" popover opens next to it (default: the focused element). */
@@ -898,6 +899,7 @@ export function TimeTrackingProvider({
   return (
     <Ctx.Provider value={value}>
       {children}
+      <PresenceSwListener />
       {modeRequest && (
         <StartModePopover
           key={modeRequest.id}

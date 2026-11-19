@@ -3,7 +3,6 @@ import { ArrowRight, Play, Square } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { useRecentProjects } from "../../hooks/useRecentProjects";
 import { CycleRing } from "./CycleRing";
-import { IdleReminder } from "./IdleReminder";
 import { ClockDigits } from "./ClockDigits";
 import { TimerBar } from "./TimerBar";
 import type { TimeDeps } from "./shared";
@@ -50,7 +49,6 @@ export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
 
   return (
     <>
-      <IdleReminder />
       {!running ? (
         <button
           type="button"

@@ -46,6 +46,22 @@ self.addEventListener("push", (event) => {
     }
   }
 
+  // TT2 D8.4: the server sends a silent "cleared" push when the presence question was
+  // answered elsewhere or the cycle ended. Close the open notification and tell the open
+  // pages; show nothing. Limitation: browsers that insist on a visible notification per
+  // push (Safari/iOS web push) may show their generic fallback; a SW cannot prevent that.
+  if (payload.data && payload.data.kind === "tt-presence-cleared") {
+    event.waitUntil(
+      self.registration.getNotifications({ tag: "tt-presence" }).then((open) => {
+        open.forEach((n) => n.close());
+        return clients.matchAll({ type: "window", includeUncontrolled: true });
+      }).then((windowClients) => {
+        windowClients.forEach((c) => c.postMessage({ type: "tt-presence-cleared" }));
+      })
+    );
+    return;
+  }
+
   const notificationOptions = {
     body: payload.body,
     icon: payload.icon || "/icon_192.png",
@@ -69,9 +85,12 @@ self.addEventListener("notificationclick", (event) => {
   // opened. Anything else (an absolute URL to another site, javascript:, data:) falls
   // back to the tasks view instead of sending the user — or the focused CRM window —
   // somewhere an attacker chose.
-  let targetUrl = "/#tasks";
+  // A presence notification only opens the app at the time-tracking view (D8.4/C9): the
+  // question is answered in the app, never from the notification.
+  const isPresence = !!(event.notification.data && event.notification.data.kind === "tt-presence");
+  let targetUrl = isPresence ? "/#time-tracking" : "/#tasks";
   try {
-    const requested = event.notification.data && event.notification.data.url;
+    const requested = isPresence ? "/#time-tracking" : event.notification.data && event.notification.data.url;
     if (requested) {
       const parsed = new URL(requested, self.location.origin);
       if (parsed.origin === self.location.origin) {

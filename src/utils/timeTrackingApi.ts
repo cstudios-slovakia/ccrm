@@ -9,7 +9,7 @@
 
 import type { HolidayDay, HolidayCountry } from "./holidays.ts";
 import type { TaskPersonTime } from "./taskTimeSummary.ts";
-import type { StartWhileRunning, TimeEntry, TimeTrackingSettings } from "./timeTracking.ts";
+import type { StartWhileRunning, TimeEntry, TimeTrackingCronStatus, TimeTrackingSettings } from "./timeTracking.ts";
 import type { RateCard } from "./timeCost.ts";
 import type { PresenceSoundPrefs } from "./presenceSound.ts";
 
@@ -255,6 +255,9 @@ export const getSettings = async (): Promise<TimeSettingsResponse> => {
   const body = await get({ action: "settings" });
   return { settings: body.settings, defaultCountry: body.defaultCountry, me: body.me, viewer: body.viewer };
 };
+
+/** Admins only: when the server's scheduled task last ran (null = not an admin / unknown). */
+export const getCronStatus = async (): Promise<TimeTrackingCronStatus | null> => ((await get({ action: "settings" })).cron ?? null);
 
 export interface TimePrefs {
   startWhileRunning: StartWhileRunning;
