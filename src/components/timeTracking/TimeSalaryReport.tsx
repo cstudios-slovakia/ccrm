@@ -81,15 +81,29 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
     const w = (n: number) => (total > 0 ? (n / total) * 100 : 0);
     return (
       <span className="flex h-2 w-full overflow-hidden rounded-full bg-slate-100">
-        <span className="h-full bg-emerald-500 transition-[width] duration-500" style={{ width: `${w(client)}%` }} />
-        <span className="h-full bg-teal-700 transition-[width] duration-500" style={{ width: `${w(internal)}%` }} />
-        <span className="h-full bg-amber-400 transition-[width] duration-500" style={{ width: `${w(unallocated)}%` }} />
+        <span className="h-full bg-primary transition-[width] duration-500" style={{ width: `${w(client)}%` }} />
+        <span className="h-full bg-slate-400 transition-[width] duration-500" style={{ width: `${w(internal)}%` }} />
+        <span className="h-full bg-amber-300 transition-[width] duration-500" style={{ width: `${w(unallocated)}%`, backgroundImage: HATCH }} />
       </span>
     );
   };
 
+  const basisRow = report.rows.find((r) => r.rate.basisDays != null);
+  const basisDays = basisRow?.rate.basisDays ?? tt.calendarFor(tt.defaultCountry).workingDaysInMonth(y, m);
+  const basisPerDay = basisRow?.rate.hoursPerDay ?? settings.hoursPerDay;
+  const basisHours = settings.hoursBasis === "fixed" ? settings.fixedHoursPerMonth : basisDays * basisPerDay;
+  const mult = settings.employerMultiplier;
+  const basisSentence =
+    settings.hoursBasis === "fixed"
+      ? t(`Fixed ${basisHours} h per month; × ${mult} employer multiplier`, `Pevných ${basisHours} h mesačne; × ${mult} zamestnávateľský násobok`, `Fix ${basisHours} óra havonta; × ${mult} munkáltatói szorzó`)
+      : t(`${basisDays} working days × ${basisPerDay} h = ${basisHours} h; × ${mult} employer multiplier`, `${basisDays} pracovných dní × ${basisPerDay} h = ${basisHours} h; × ${mult} zamestnávateľský násobok`, `${basisDays} munkanap × ${basisPerDay} óra = ${basisHours} óra; × ${mult} munkáltatói szorzó`);
+
   return (
     <div className="grid gap-4" data-testid="salary-report">
+      <div>
+        <h3 className="type-card-title capitalize text-slate-900">{t("Salary allocation", "Rozdelenie mzdy", "Bérfelosztás")} · {monthLabel}</h3>
+        <p className="mt-1 type-meta text-slate-500" data-testid="salary-basis">{basisSentence}</p>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" aria-label={t("Previous month", "Predchádzajúci mesiac", "Előző hónap")} onClick={() => setMonth(shiftMonthAnchor(month, -1, 1))} className="inline-flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-all hover:text-slate-900 active:scale-95 cursor-pointer">
           <ChevronLeft className="size-4" />
@@ -131,9 +145,9 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
         )}
       </p>
       <div className="flex flex-wrap gap-3 type-meta text-slate-500">
-        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-emerald-500" />{t("Client", "Klient", "Ügyfél")}</span>
-        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-teal-700" />{t("Internal", "Interné", "Belső")}</span>
-        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-400" />{t("Unallocated", "Nepriradené", "Nincs projekt")}</span>
+        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-primary" />{t("Client", "Klient", "Ügyfél")}</span>
+        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-slate-400" />{t("Internal", "Interné", "Belső")}</span>
+        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-300" style={{ backgroundImage: HATCH }} />{t("Unallocated", "Nepriradené", "Nincs projekt")}</span>
       </div>
       <Surface padding="none" className="overflow-x-auto">
         {loading && report.rows.length === 0 ? (
@@ -144,9 +158,9 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
               <tr className="border-b border-slate-100 text-left">
                 {[
                   t("Person", "Osoba", "Személy"),
-                  t("Salary", "Mzda", "Bér"),
+                  t("Loaded salary", "Mzda s odvodmi", "Teljes bérköltség"),
                   t("Rate", "Sadzba", "Díj"),
-                  t("Hours", "Hodiny", "Órák"),
+                  t("Tracked", "Sledované", "Rögzített"),
                   t("Split", "Rozdelenie", "Megoszlás"),
                   t("Client", "Klient", "Ügyfél"),
                   t("Internal", "Interné", "Belső"),
@@ -164,7 +178,10 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
                 const util = row.utilisation == null ? null : Math.round(row.utilisation * 100);
                 return (
                   <tr key={row.userId} className="border-b border-slate-100">
-                    <td className="px-3 py-3 font-semibold text-slate-900">{row.name}</td>
+                    <td className="px-3 py-3">
+                      <span className="block font-semibold text-slate-900">{row.name}</span>
+                      {employee?.position && <span className="block type-meta text-slate-500">{employee.position}</span>}
+                    </td>
                     <td className="px-3 py-3 tabular-nums">
                       {row.loadedSalary == null ? "—" : moneyStr(row.loadedSalary)}
                       {row.rateBasis === "contract" && row.loadedSalary != null && (
@@ -196,7 +213,7 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
             <tfoot>
               <tr className="bg-slate-50 font-semibold">
                 <td className="px-3 py-3">{t("Totals", "Spolu", "Összesen")}</td>
-                <td className="px-3 py-3"><MoneyText bag={report.totals.loadedSalary} language={deps.language} tone="plain" /></td>
+                <td className="px-3 py-3"><MoneyText bag={report.totals.loadedSalary} language={deps.language} /></td>
                 <td />
                 <td className="px-3 py-3 tabular-nums text-teal-700">{formatDuration(report.totals.trackedSeconds)}</td>
                 <td />
@@ -230,6 +247,8 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
     </div>
   );
 }
+
+const HATCH = "repeating-linear-gradient(45deg, rgb(255 255 255 / 0.55) 0 2px, transparent 2px 5px)";
 
 const downloadText = (filename: string, text: string) => {
   const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
