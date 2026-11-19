@@ -489,7 +489,7 @@ logging time.**
 
 ### C6.6 Working days
 
-> Replaced by [TIME-TRACKING-V2.md, D4 (C2, C11)](TIME-TRACKING-V2.md#d4-the-monthly-rate-phase-3): leave days and the working-days count are now defined in D4 (see D4.2).
+> Replaced by [TIME-TRACKING-V2.md, D4 (C2, C11)](TIME-TRACKING-V2.md#d4-the-monthly-rate-phase-3): approved leave now changes the monthly rate: paid leave raises it (same salary, fewer hours), unpaid leave lowers salary and hours together (D4.1, D4.2).
 
 `workingDays(month, country)` = Mon–Fri − public holidays + extra working days − extra days
 off. Vacation and sick days **do not** reduce it (the employee is paid for them).
@@ -534,7 +534,7 @@ monthly types. `multiplier` = employer contributions, default **1.352**. The PHP
 
 ### C7.5 Snapshot and Finance
 
-> Replaced by [TIME-TRACKING-V2.md, D4.3 (C12)](TIME-TRACKING-V2.md#d43-the-rate-card): "never recomputed silently" is now governed by the rate card and its explicit recompute.
+> Replaced by [TIME-TRACKING-V2.md, D4.3 (C12)](TIME-TRACKING-V2.md#d43-the-rate-card): a month's rate is provisional while the month is open and is re-priced automatically when salary, leave or holidays change; it freezes when payroll closes (or at month + 2).
 
 `cost_rate` is written when an entry is stopped or saved and is never recomputed silently.
 **Time tracking creates no financial records.** The project **Finances** tab gets a computed
@@ -551,7 +551,7 @@ Writes an audit-log entry.
 
 ### C8.1 Rules
 
-> Replaced by [TIME-TRACKING-V2.md, D5, D7, D8.5](TIME-TRACKING-V2.md#d5-parallel-timers-phases-4-and-5): several timers can run at once; presence replaces auto-stop, the long-entry warning and the idle reminder.
+> Replaced by [TIME-TRACKING-V2.md, D5, D7, D8.5](TIME-TRACKING-V2.md#d5-parallel-timers-phases-4-and-5): several timers can run at once; the presence check replaces the long-entry warning and the idle reminder; `autoStopAt` stays and is now enforced by the presence engine.
 
 - **One running timer per user**, enforced by the database. Starting a new one stops the old one and shows an `UndoToast` ("Timer started on *X*. *Y* was stopped at 0:30:00. [Undo]"). Web app, PWA and extension share one running entry.
 - Elapsed = `now − start_at`. Never count ticks.

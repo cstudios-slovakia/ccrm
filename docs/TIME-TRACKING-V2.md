@@ -116,12 +116,12 @@ Legend: ⬜ not started · 🟡 built, not finished (see Left over) · ✅ done
 | 2 | Foundation, client: worked time in every personal sum | 1 | ✅ | `264ebee5` | 2026-11-19 |
 | 3 | Leave-aware monthly rate and the rate card | 1 | ✅ | `f89a5610` | 2026-11-19 |
 | 4 | Parallel timers, server and API | 1 | ✅ | `fda1a127` | 2026-11-19 |
-| 5 | Parallel timers, UI (the container) | 2, 4 | ⬜ | | |
-| 6 | Pause and the presence engine, server | 4 | ⬜ | | |
-| 7 | Presence UI: ring, prompt, sound, push actions | 5, 6 | ⬜ | | |
-| 8 | Task status actions | 5, 6 | ⬜ | | |
-| 9 | Reports, project finances, exports, demo data, MCP summary | 2, 3 | ⬜ | | |
-| 10 | Chrome extension and mobile | 7 | ⬜ | | |
+| 5 | Parallel timers, UI (the container) | 2, 4 | ✅ | `332b73f4` | 2026-11-19 |
+| 6 | Pause and the presence engine, server | 4 | ✅ | `9f2931d2` | 2026-11-19 |
+| 7 | Presence UI: ring, prompt, sound, push actions | 5, 6 | 🟡 | `bbc429f2` | 2026-11-19 |
+| 8 | Task status actions | 5, 6 | ✅ | `9a469799` | 2026-11-19 |
+| 9 | Reports, project finances, exports, demo data, MCP summary | 2, 3 | ✅ | `3295a141` | 2026-11-19 |
+| 10 | Chrome extension and mobile | 7 | ✅ | `81d3d5c0` | 2026-11-19 |
 
 **Waves.** Phases of one wave do not depend on each other. Each phase session fans out into
 subagents (A1b), and the limit of three editing agents is for the whole machine: run the phases
@@ -198,6 +198,14 @@ Symptom → root cause → proposed fix. Fixed only in the phase named.
     their close helpers (`ccrm_ttx_close_row`, `mcp_timer_close_row`) write `end_reason` 'user'
     for a stop and 'switch' for a start that stopped something (they keep their own UPDATE for
     the extension's `device_id` and MCP's link / note overrides).
+18. **The probe deleted the task a later section used:** T6 deletes `task-tt-1` on purpose; later
+    sections create their own task (`task-tt-23`).
+19. **The floating AI copilot button overlaps the right edge of bottom cards on phones**
+    (fixed, z 9990). The paused card now stacks its button on the left like the running card; any
+    new phone card should do the same.
+20. **`projectsEquationPanel.spec.ts` "Detail / Summary … survive a reload" is flaky** (failed once,
+    passed on re-run; TT2 does not touch the projects list panel).
+
 ---
 
 # Part B. Review of the owner's proposal
@@ -968,16 +976,23 @@ API client and the QA mock. Then (b) timer bar container, header pill, tab title
 (c) Calendar frame and the List and Day groups ∥ (d) task, ticket and project start buttons,
 the two settings blocks. Last: the e2e cases.
 
-- [ ] Provider: `running[]`, `paused[]`, `primaryRunning`; start with the preference and the
+- [x] Provider: `running[]`, `paused[]`, `primaryRunning`; start with the preference and the
       "Switch / Run in parallel" popover
-- [ ] Timer bar container; header pill for several items; tab title; mobile bar
-- [ ] Calendar cluster frame; List and Day cluster groups
-- [ ] Task card, task drawer, ticket and project start buttons read the running set
-- [ ] Settings → Time tracking: the Parallel block; Personal settings: the preference
-- [ ] e2e: start two in parallel, the day total shows worked and delivered, stop one, the
+- [x] Timer bar container; header pill for several items; tab title; mobile bar
+- [x] Calendar cluster frame; List and Day cluster groups
+- [x] Task card, task drawer, ticket and project start buttons read the running set
+- [x] Settings → Time tracking: the Parallel block; Personal settings: the preference
+- [x] e2e: start two in parallel, the day total shows worked and delivered, stop one, the
       calendar draws the frame; with parallel off a second start switches as before
 
-**Left over:**
+**Left over:** none. Notes from the build:
+- There is no Personal settings section in the registry: the per-user "When I start while a timer
+  runs" preference (and phase 7's sound controls) sit at the bottom of Settings → Time tracking.
+- With several items a plain `stop()` without an id answers 409 `ambiguous` and the running set is
+  re-read; the pill, bar and container always pass an id.
+- A collapsed `collapseIdentical` row joins a cluster when any of its members does; only the
+  Calendar's hour grid draws cluster frames (the month grid does not).
+- ▶ Continue is hidden when its target already runs (no Stop state there).
 
 ### Phase 6. Pause and the presence engine, server
 
@@ -988,18 +1003,30 @@ Spec: D6, D7. Decisions: C6, C7, C8, C9, C17. Needs 4.
 push sender and the three pushes in `webpush.php`. Then (d) the `cron.php` pass and
 `autoStopAt` ∥ (e) the settings and the probe with the controllable clock.
 
-- [ ] Schema: the five columns of D6
-- [ ] `pause`, `resume`, `stop` on a paused item; the three states in the API
-- [ ] `time_presence_lib.php`: settle (D7.3), confirm, the anchor rules (D7.4)
-- [ ] `cron.php`: the per-minute pass, `autoStopAt` enforced (A4.2), the cron-age warning value
-- [ ] `webpush.php`: `ccrm_send_push_to_user_id()`, the three pushes (no action buttons, no
+- [x] Schema: the five columns of D6
+- [x] `pause`, `resume`, `stop` on a paused item; the three states in the API
+- [x] `time_presence_lib.php`: settle (D7.3), confirm, the anchor rules (D7.4)
+- [x] `cron.php`: the per-minute pass, `autoStopAt` enforced (A4.2), the cron-age warning value
+- [x] `webpush.php`: `ccrm_send_push_to_user_id()`, the three pushes (no action buttons, no
       token, C9), the silent "cleared"
-- [ ] Settings `presence` (server sanitizer + defaults)
-- [ ] Probe with a controllable clock: answer at minute 55 → nothing lost; no answer → entries
+- [x] Settings `presence` (server sanitizer + defaults)
+- [x] Probe with a controllable clock: answer at minute 55 → nothing lost; no answer → entries
       end at minute 50 and are paused; resume at 65 → a new entry from 65; nothing by 70 →
       stopped; lazy settle and cron give the same rows; a confirm without a session is refused
 
-**Left over:**
+**Left over:** none. Notes from the build:
+- A pause leaves `end_reason` NULL; the reason is written when the pause expires or is stopped.
+  Clearing a marker clears only `paused_at` (`pause_reason`, `resume_until` stay as history).
+- `resume {mode: auto}` resumes beside running items when the parallel rules allow, else switches.
+- Timers already running at deploy have no anchor: the cycle anchors at the latest running start.
+- An automatic pause wins over auto-stop when both are due. A manager acting on someone else's
+  timer settles presence for themselves only.
+- Test clock: `ccrm_tt_now_utc()` honours `system_settings.TT_TEST_NOW` only when the constant
+  `CCRM_TT_TEST_CLOCK` is defined (the probe's scratch `config.php`); never in production.
+- Cron: `ccrm_tt_presence_cron_pass()` (`time_presence_cron.php`, block "2d3" of `cron.php`);
+  one conditional UPDATE claims `last_push_at` per minute, so overlapping cron runs send once.
+  The silent "cleared" push goes out after confirm and after start/stop/pause/resume that answered a
+  pending question (REST only; the extension and MCP send none).
 
 ### Phase 7. Presence UI
 
@@ -1010,17 +1037,24 @@ Spec: D8. Decisions: C9, C18. Needs 5, 6.
 lock and the Personal settings controls ∥ (d) `sw.js`, the Settings block, removing the idle
 reminder. Last: the e2e cases.
 
-- [ ] `CycleRing` on the three Stop buttons; the pause and resume states
-- [ ] The question dialog, cross-tab close, tab title
+- [x] `CycleRing` on the three Stop buttons; the pause and resume states
+- [x] The question dialog, cross-tab close, tab title
 - [ ] Sound: pattern, audio unlock, the one-tab lock, volume and mute in Personal settings;
       **the owner picks the sound** from two or three candidates before the phase closes
-- [ ] `sw.js`: close the notification on "cleared"; the click only opens the app (D8.4)
-- [ ] Settings → Time tracking: the Presence block and the cron warning
-- [ ] `IdleReminder` and the two dead settings removed from the UI
-- [ ] e2e (mocked clock): ring fills, dialog appears at 50, confirm restarts, no answer shows the
+- [x] `sw.js`: close the notification on "cleared"; the click only opens the app (D8.4)
+- [x] Settings → Time tracking: the Presence block and the cron warning
+- [x] `IdleReminder` and the two dead settings removed from the UI
+- [x] e2e (mocked clock): ring fills, dialog appears at 50, confirm restarts, no answer shows the
       paused state, resume starts a new entry; two tabs → one dialog action closes both
 
 **Left over:**
+- **Open: the owner picks the sound.** Three candidates are built (Settings → Time tracking →
+  Presence sound, each with ▶ Preview): `chimeA` "Chime" (today's two-tone sine D5→A5), `chimeB`
+  "Marimba" (soft triangle G4→C5), `chimeC` "Bell" (clear E6→B5 with a long ring). The default is
+  `chimeA` until the owner chooses; then set the default and close this phase.
+- Notes: the tab title keeps the page name (`⏰ 9:12 · Still working? · <app>`). With several items
+  the ring decorates the pill/container control, not each row. Elapsed times follow the server
+  clock (`serverNow`), D11.
 
 ### Phase 8. Task status actions
 
@@ -1031,19 +1065,25 @@ component ∥ (b) the pure function in both languages with fixtures, the hook in
 `updateTasksAndSync` and the toast ∥ (c) `time_status_lib.php`, the two MCP calls and the
 probe case. Last: the e2e cases.
 
-- [ ] `TASK_STATE_TIMER_ACTIONS`: defaults, sync mapping, rename cascade, delete
-- [ ] The dropdown in Task states (new component) and the one-click suggestion
-- [ ] `taskStatusTimer.ts` + PHP twin + shared fixtures
-- [ ] The hook in `updateTasksAndSync`; start, pause, stop for the current user; Undo toast
-- [ ] `time_status_lib.php`; calls from MCP `update_task` / `complete_task` only (no `sync.php`
+- [x] `TASK_STATE_TIMER_ACTIONS`: defaults, sync mapping, rename cascade, delete
+- [x] The dropdown in Task states (new component) and the one-click suggestion
+- [x] `taskStatusTimer.ts` + PHP twin + shared fixtures
+- [x] The hook in `updateTasksAndSync`; start, pause, stop for the current user; Undo toast
+- [x] `time_status_lib.php`; calls from MCP `update_task` / `complete_task` only (no `sync.php`
       call, no WAAI call, no push)
-- [ ] e2e: status → Start starts the timer on the task; → Pause pauses; → Stop stops; a bulk
+- [x] e2e: status → Start starts the timer on the task; → Pause pauses; → Stop stops; a bulk
       change starts nothing; renaming a status keeps its action; another person's running
       timer on the task is untouched
-- [ ] Probe: MCP `complete_task` stops the caller's own timer on that task and leaves another
+- [x] Probe: MCP `complete_task` stops the caller's own timer on that task and leaves another
       user's timer on it running
 
-**Left over:**
+**Left over:** notes from the build:
+- `SettingsView.tsx` (size-capped) grew by about 12 lines for the rename/delete cascade — inside
+  the ratchet's slack, but A2 says capped files must not grow; trim it in a later pass.
+- Status names are matched trimmed and case-sensitive; a task counts as changed only when its
+  content differs, so a writer that rebuilds every row does not turn one edit into a bulk edit.
+- The start path may open the "Which project?" dialog for a task with several projects;
+  cancelling it starts nothing.
 
 ### Phase 9. Reports, project finances, exports, demo, MCP summary
 
@@ -1053,17 +1093,21 @@ Spec: D9, C13. Needs 2, 3.
 Finances, `totals.billableValue` and the MCP summary ∥ (c) demo data and its assert script.
 Last: the notes in `TIME-TRACKING.md`.
 
-- [ ] Reports: worked and delivered columns, leverage, filter "parallel only"; CSV carries both;
+- [x] Reports: worked and delivered columns, leverage, filter "parallel only"; CSV carries both;
       the client PDF stays project time only
-- [ ] Salary report: buckets by worked time; the Team matrix prices with the rate card (A4.5)
-- [ ] Project Finances: "Billable work (time tracking)" (C13); "Labour" already follows worked
+- [x] Salary report: buckets by worked time; the Team matrix prices with the rate card (A4.5)
+- [x] Project Finances: "Billable work (time tracking)" (C13); "Labour" already follows worked
       cost through phase 1: verify, and state it in the tooltip
-- [ ] `totals` adds `billableValue` per project; MCP `get_time_tracking_summary` adds worked
-- [ ] Demo data: one person with a parallel morning; `scripts/demo-assert/time.php` updated (it
+- [x] `totals` adds `billableValue` per project; MCP `get_time_tracking_summary` adds worked
+- [x] Demo data: one person with a parallel morning; `scripts/demo-assert/time.php` updated (it
       assumes no overlaps today)
-- [ ] `docs/TIME-TRACKING.md`: a note at each replaced section pointing here
+- [x] `docs/TIME-TRACKING.md`: a note at each replaced section pointing here
 
-**Left over:**
+**Left over:** none. Notes from the build:
+- `billableValue` follows the existing gate on billable rates (`time_tracking_costs`); callers
+  without it get `null`.
+- Demo: the owner has the parallel morning (the D2 staggered example) on the newest working day;
+  `scripts/demo-assert/time.php` allows exactly that one cluster and checks its invariants.
 
 ### Phase 10. Chrome extension and mobile
 
@@ -1072,14 +1116,20 @@ Needs 7.
 **Work packages:** (a) the extension (popup, badge, `chrome.idle`, the zip) ∥ (b) the mobile
 container and the ring on the bottom bar.
 
-- [ ] Extension popup: the running set, per-item stop, the question with **Still working**
+- [x] Extension popup: the running set, per-item stop, the question with **Still working**
       inside the popup (no notification buttons, C9), the badge in the question and paused states
-- [ ] `chrome.idle`: when the system is locked or idle past the question, do not wait for the
+- [x] `chrome.idle`: when the system is locked or idle past the question, do not wait for the
       deadline to show "paused" locally (the server stays the judge)
-- [ ] Mobile: the container as a bottom sheet, 44 px targets, the ring on the bottom bar
-- [ ] Extension zip rebuilt (`npm run build:extension`)
+- [x] Mobile: the container as a bottom sheet, 44 px targets, the ring on the bottom bar
+- [x] Extension zip rebuilt (`npm run build:extension`)
 
-**Left over:**
+**Left over:** notes from the build:
+- The extension (1.1.0, `idle` permission) has a device-authenticated `confirm` (the phase 10
+  checklist allows **Still working** inside the popup) and `resume {id}` (always a switch).
+- The extension has no i18n: its new strings are English only.
+- `npm run check` does not type-check the extension sources (checked by hand with `tsc --strict`);
+  worth adding to the check.
+
 
 ---
 
