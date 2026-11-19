@@ -59,6 +59,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
   const entries: Json[] = ctx.seed.map((e) => ({ ...e }));
   let settings: TimeTrackingSettings = JSON.parse(JSON.stringify(DEFAULT_TIME_TRACKING_SETTINGS));
   let idSeq = 100;
+  let startWhileRunning: 'ask' | 'switch' | 'parallel' = 'ask';
   const access = buildAccess(ctx.user as any, ctx.roles);
   const canEdit = access.canEdit('time_tracking');
   const canTeam = access.can('time_tracking_team');
@@ -162,8 +163,9 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
     if (req.method() === 'GET') {
       settleWorked();
       if (url.searchParams.get('action') === 'settings') {
-        return route.fulfill(ok({ settings, defaultCountry: 'SK', me: { userId: caller, employeeId: ctx.employees[caller]?.id ?? null, workCountry: country(caller) }, viewer: { canEdit, canTeam, canCosts } }));
+        return route.fulfill(ok({ settings, defaultCountry: 'SK', me: { userId: caller, employeeId: ctx.employees[caller]?.id ?? null, workCountry: country(caller), startWhileRunning }, viewer: { canEdit, canTeam, canCosts } }));
       }
+      if (url.searchParams.get('action') === 'prefs') return route.fulfill(ok({ startWhileRunning }));
       if (url.searchParams.has('running')) {
         const r = running();
         return route.fulfill(ok({ entry: r ? view(r) : null }));
@@ -210,6 +212,12 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
     if (!canEdit) return route.fulfill(fail('forbidden', 403));
     const body = (req.postDataJSON() ?? {}) as Json;
     const action = body.action as string;
+
+    if (action === 'prefs') {
+      if (!['ask', 'switch', 'parallel'].includes(body.startWhileRunning as string)) return route.fulfill(fail('invalid_start_while_running', 422));
+      startWhileRunning = body.startWhileRunning as typeof startWhileRunning;
+      return route.fulfill(ok({ startWhileRunning }));
+    }
 
     if (action === 'settings') {
       if (access.value('general_config') !== 'edit') return route.fulfill(fail('forbidden', 403));

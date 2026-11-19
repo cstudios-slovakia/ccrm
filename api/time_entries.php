@@ -251,9 +251,14 @@ if ($method === 'GET') {
                 'userId' => $callerId,
                 'employeeId' => $employee['id'] ?? null,
                 'workCountry' => ccrm_tt_work_country($pdo, $employee),
+                'startWhileRunning' => ccrm_tt_load_prefs($pdo, $callerId)['startWhileRunning'],
             ],
             'viewer' => ['canEdit' => $canEdit, 'canTeam' => $canTeam, 'canCosts' => $canCosts],
         ]);
+    }
+
+    if ($action === 'prefs') {
+        ccrm_te_respond(ccrm_tt_load_prefs($pdo, $callerId));
     }
 
     if (isset($_GET['running']) || $action === 'running') {
@@ -452,6 +457,16 @@ if ($method !== 'POST') {
 // ---------------------------------------------------------------------------------------
 // POST
 // ---------------------------------------------------------------------------------------
+
+if ($action === 'prefs') {
+    $mode = $body['startWhileRunning'] ?? null;
+    if (!in_array($mode, ['ask', 'switch', 'parallel'], true)) {
+        ccrm_te_fail('invalid_start_while_running', 422);
+    }
+    $prefs = ['startWhileRunning' => $mode];
+    ccrm_tt_save_prefs($pdo, $callerId, $prefs);
+    ccrm_te_respond($prefs);
+}
 
 if ($action === 'settings') {
     if (!ccrm_is_admin($sessionUser) && !ccrm_can($scope, 'general_config', 'edit')) {

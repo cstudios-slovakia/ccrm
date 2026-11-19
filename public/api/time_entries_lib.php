@@ -36,8 +36,34 @@ if (!function_exists('ccrm_tt_default_settings')) {
             'weeklyApproval' => false,
             'rounding' => ['minutes' => 0, 'mode' => 'nearest'],
             'extension' => ['enabled' => true, 'activityCaptureAllowed' => true, 'unsortedRetentionDays' => 30],
+            'parallel' => ['enabled' => false, 'maxParallel' => 4, 'sameProject' => 'differentTasks'],
             'ticketTimeVisibleToClients' => false,
         ];
+    }
+
+    function ccrm_tt_prefs_key(string $userId): string {
+        $key = 'TIME_TRACKING_PREFS:' . $userId;
+        return strlen($key) <= 100 ? $key : 'TT_PREFS:' . hash('sha256', $userId);
+    }
+
+    /** The caller's own time-tracking preferences (system_settings, one JSON row per user). */
+    function ccrm_tt_load_prefs(\PDO $pdo, string $userId): array {
+        $out = ['startWhileRunning' => 'ask'];
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = ? LIMIT 1");
+            $stmt->execute([ccrm_tt_prefs_key($userId)]);
+            $raw = json_decode((string)$stmt->fetchColumn(), true);
+            if (is_array($raw) && in_array($raw['startWhileRunning'] ?? null, ['ask', 'switch', 'parallel'], true)) {
+                $out['startWhileRunning'] = $raw['startWhileRunning'];
+            }
+        } catch (\Throwable $e) {
+        }
+        return $out;
+    }
+
+    function ccrm_tt_save_prefs(\PDO $pdo, string $userId, array $prefs): void {
+        $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)")
+            ->execute([ccrm_tt_prefs_key($userId), json_encode($prefs, JSON_UNESCAPED_UNICODE)]);
     }
 
     function ccrm_tt_load_settings(\PDO $pdo): array {
@@ -103,6 +129,15 @@ if (!function_exists('ccrm_tt_default_settings')) {
                 'enabled' => array_key_exists('enabled', $in['extension']) ? (bool)$in['extension']['enabled'] : $ext['enabled'],
                 'activityCaptureAllowed' => array_key_exists('activityCaptureAllowed', $in['extension']) ? (bool)$in['extension']['activityCaptureAllowed'] : $ext['activityCaptureAllowed'],
                 'unsortedRetentionDays' => (int)ccrm_tt_clamp_num($in['extension']['unsortedRetentionDays'] ?? null, 1, 365, (float)$ext['unsortedRetentionDays']),
+            ];
+        }
+        if (isset($in['parallel']) && is_array($in['parallel'])) {
+            $par = $base['parallel'];
+            $same = $in['parallel']['sameProject'] ?? $par['sameProject'];
+            $out['parallel'] = [
+                'enabled' => array_key_exists('enabled', $in['parallel']) ? (bool)$in['parallel']['enabled'] : $par['enabled'],
+                'maxParallel' => (int)ccrm_tt_clamp_num($in['parallel']['maxParallel'] ?? null, 2, 10, (float)$par['maxParallel']),
+                'sameProject' => in_array($same, ['differentTasks', 'never', 'always'], true) ? $same : $par['sameProject'],
             ];
         }
         if (isset($in['holidayOverrides']) && is_array($in['holidayOverrides'])) {

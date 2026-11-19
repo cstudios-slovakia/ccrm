@@ -9,7 +9,7 @@
 
 import type { HolidayDay, HolidayCountry } from "./holidays.ts";
 import type { TaskPersonTime } from "./taskTimeSummary.ts";
-import type { TimeEntry, TimeTrackingSettings } from "./timeTracking.ts";
+import type { StartWhileRunning, TimeEntry, TimeTrackingSettings } from "./timeTracking.ts";
 
 export class TimeApiError extends Error {
   readonly code: string;
@@ -35,7 +35,7 @@ export interface TimeSettingsResponse {
   settings: TimeTrackingSettings;
   /** The company's own calendar country (COMPANY_BILLING_SETTINGS.country mapped to SK/HU, else SK). */
   defaultCountry: HolidayCountry;
-  me: { userId: string; employeeId: string | null; workCountry: HolidayCountry };
+  me: { userId: string; employeeId: string | null; workCountry: HolidayCountry; startWhileRunning: StartWhileRunning };
   viewer: TimeViewer;
 }
 
@@ -171,6 +171,12 @@ export const getSettings = async (): Promise<TimeSettingsResponse> => {
   const body = await get({ action: "settings" });
   return { settings: body.settings, defaultCountry: body.defaultCountry, me: body.me, viewer: body.viewer };
 };
+
+export const getPrefs = async (): Promise<{ startWhileRunning: StartWhileRunning }> =>
+  (await get({ action: "prefs" })) as { startWhileRunning: StartWhileRunning };
+
+export const savePrefs = async (startWhileRunning: StartWhileRunning): Promise<{ startWhileRunning: StartWhileRunning }> =>
+  (await post("prefs", { startWhileRunning })) as { startWhileRunning: StartWhileRunning };
 
 export const saveSettings = async (settings: Partial<TimeTrackingSettings>): Promise<TimeTrackingSettings> =>
   (await post("settings", { settings })).settings as TimeTrackingSettings;

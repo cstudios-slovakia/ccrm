@@ -18,6 +18,8 @@ export type TFn = (en: string, sk: string, hu: string) => string;
 /** The `t(en, sk, hu)` helper for a UI language. */
 export const makeT = (language: string): TFn => (en, sk, hu) => (language === "sk" ? sk : language === "hu" ? hu : en);
 
+export type StartWhileRunning = "ask" | "switch" | "parallel";
+
 export type TimeEntrySource =
   | "timer"
   | "manual"
@@ -97,6 +99,7 @@ export interface TimeTrackingSettings {
   weeklyApproval: boolean;
   rounding: { minutes: 0 | 5 | 15 | 30; mode: "nearest" | "up" };
   extension: { enabled: boolean; activityCaptureAllowed: boolean; unsortedRetentionDays: number };
+  parallel: { enabled: boolean; maxParallel: number; sameProject: "differentTasks" | "never" | "always" };
   ticketTimeVisibleToClients: boolean;
 }
 
@@ -117,6 +120,7 @@ export const DEFAULT_TIME_TRACKING_SETTINGS: TimeTrackingSettings = {
   weeklyApproval: false,
   rounding: { minutes: 0, mode: "nearest" },
   extension: { enabled: true, activityCaptureAllowed: true, unsortedRetentionDays: 30 },
+  parallel: { enabled: false, maxParallel: 4, sameProject: "differentTasks" },
   ticketTimeVisibleToClients: false,
 };
 
