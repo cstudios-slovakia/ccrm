@@ -71,6 +71,10 @@ function setup() {
   docker('exec', WEB, 'sh', '-c', `rm -rf ${SCRATCH_DIR} && mkdir -p ${SCRATCH_DIR}`);
   docker('cp', publicDir + '.', `${WEB}:${SCRATCH_DIR}/`);
   docker('exec', WEB, 'sh', '-c', `sed "s/define('DB_NAME', '[^']*')/define('DB_NAME', '${SCRATCH_DB}')/" /var/www/html/config.php > ${SCRATCH_DIR}/config.php`);
+  // The dev container's Apache drops the Authorization header (public/.htaccess forwards it only for api/v1);
+  // the extension authenticates with a Bearer key, so forward it in the scratch copy.
+  docker('exec', WEB, 'sh', '-c', `printf '%s
+' 'SetEnvIf Authorization "(.+)" HTTP_AUTHORIZATION=$1' >> ${SCRATCH_DIR}/.htaccess`);
   docker('exec', WEB, 'chown', '-R', 'www-data:www-data', SCRATCH_DIR);
   // A fresh database: the real schema code builds every table.
   docker('exec', '-u', 'www-data', WEB, 'php', '-r',
@@ -163,14 +167,14 @@ async function main() {
     check('T2: create returns 201', oct.status === 201, oct.raw);
     const octRow = dbEntry(oct.data?.entry?.id);
     check('T2: Erik Oct 2026 SK -> 24.5818/h, source monthly, 22 days', octRow?.cost_rate === '24.5818' && octRow?.cost_rate_source === 'monthly' && octRow?.cost_rate_basis_days === '22', JSON.stringify(octRow));
-    check('T2: a 2:15:00 entry costs 55.31', octRow?.cost === '55.31', octRow?.cost);
+    check('T2: a 2:15:00 entry costs 55.3091 (4 decimals, D3.2)', octRow?.cost === '55.3091', octRow?.cost);
     check('T2: employee_id is resolved from the owner', octRow?.employee_id === 'emp-erik');
     const may = await te(S.erik, { action: 'create', description: 'May work', entryDate: '2026-05-12', durationSec: 3600, source: 'day' });
     const mayRow = dbEntry(may.data?.entry?.id);
     check('T2: Erik May 2026 (20 days) -> 27.04/h, differs from October', mayRow?.cost_rate === '27.0400' && mayRow?.cost_rate_basis_days === '20', JSON.stringify(mayRow));
     const free = await te(S.free, { action: 'create', description: 'Contract work', entryDate: '2026-10-14', durationSec: 3600, source: 'day' });
     const freeRow = dbEntry(free.data?.entry?.id);
-    check('T2: freelancer hourly 20 -> flat 20.00, no multiplier', freeRow?.cost_rate === '20.0000' && freeRow?.cost_rate_source === 'contractor_hourly' && freeRow?.cost === '20.00', JSON.stringify(freeRow));
+    check('T2: freelancer hourly 20 -> flat 20.00, no multiplier', freeRow?.cost_rate === '20.0000' && freeRow?.cost_rate_source === 'contractor_hourly' && freeRow?.cost === '20.0000', JSON.stringify(freeRow));
     const pmEntry = await te(S.pm, { action: 'create', description: 'Manager work', entryDate: '2026-10-14', durationSec: 3600, source: 'day' });
     const pmRow = dbEntry(pmEntry.data?.entry?.id);
     check('T2: no employee linked -> no rate, cost NULL', pmRow?.cost_rate === null && pmRow?.cost_rate_source === 'none' && pmRow?.cost === null && pmRow?.employee_id === null, JSON.stringify(pmRow));
@@ -187,13 +191,13 @@ async function main() {
     const erikFromPm = (asPm.data?.entries || []).find((e) => e.id === oct.data.entry.id);
     check('T3: a manager (team, no costs) sees the entry', !!erikFromPm);
     check('T3: ...without cost, rate, source or billable rate', erikFromPm && !('cost' in erikFromPm) && !('costRate' in erikFromPm) && !('costRateSource' in erikFromPm) && !('billableRate' in erikFromPm), JSON.stringify(erikFromPm));
-    check('T3: no cost number appears anywhere in the raw body of that list', !asPm.raw.includes('24.58') && !asPm.raw.includes('55.31'), 'found a cost figure');
+    check('T3: no cost number appears anywhere in the raw body of that list', !asPm.raw.includes('24.58') && !asPm.raw.includes('55.30'), 'found a cost figure');
     const asCosts = await list(S.costs, '?userId=all&from=2026-01-01&to=2026-12-31');
     const erikFromCosts = (asCosts.data?.entries || []).find((e) => e.id === oct.data.entry.id);
-    check('T3: a role with time_tracking_costs sees cost 55.31 and rate 24.5818', erikFromCosts?.cost === 55.31 && erikFromCosts?.costRate === 24.5818, JSON.stringify(erikFromCosts));
+    check('T3: a role with time_tracking_costs sees cost 55.3091 and rate 24.5818', erikFromCosts?.cost === 55.3091 && erikFromCosts?.costRate === 24.5818, JSON.stringify(erikFromCosts));
     const own = await list(S.erik, '?from=2026-01-01&to=2026-12-31');
     const ownEntry = (own.data?.entries || []).find((e) => e.id === oct.data.entry.id);
-    check('T3: the owner always sees their own cost', ownEntry?.cost === 55.31);
+    check('T3: the owner always sees their own cost', ownEntry?.cost === 55.3091);
     check('T3: ...but not the billable rate', ownEntry && !('billableRate' in ownEntry));
     const spy = await list(S.erik, `?userId=${USERS.free.id}&from=2026-01-01&to=2026-12-31`);
     check('T3: asking for a colleague without time_tracking_team returns only own entries', (spy.data?.entries || []).every((e) => e.userId === USERS.erik.id) && !spy.raw.includes('Contract work'), spy.raw.slice(0, 200));
@@ -296,7 +300,7 @@ async function main() {
     const rp = await te(S.admin, { action: 'reprice', from: '2026-10-01', to: '2026-10-31' });
     check('T11: the admin re-prices October (a month-picker end of the 31st is accepted)', rp.status === 200 && rp.data?.repriced >= 3, rp.raw);
     const pricedRow = dbEntry(pmEntry.data.entry.id);
-    check('T11: the entry that had no rate is now priced: hourly 10 x 1.4 (saved multiplier)', pricedRow?.cost_rate === '14.0000' && pricedRow?.cost === '14.00' && pricedRow?.employee_id === 'emp-pm', JSON.stringify(pricedRow));
+    check('T11: the entry that had no rate is now priced: hourly 10 x 1.4 (saved multiplier)', pricedRow?.cost_rate === '14.0000' && pricedRow?.cost === '14.0000' && pricedRow?.employee_id === 'emp-pm', JSON.stringify(pricedRow));
 
     section('T10: holidays');
     const hol = await api(S.erik, 'holidays.php', { query: '?country=SK&year=2026' });
@@ -329,6 +333,7 @@ async function main() {
     check('T12: an entry with no rate of its own freezes the project billable rate', dbEntry(rated.data?.entry?.id)?.billable_rate === '80.00', JSON.stringify(dbEntry(rated.data?.entry?.id)));
 
     section('T13: worked time and parallel cost (TT2 phase 1)');
+    sql(`UPDATE system_settings SET value = JSON_SET(value, '$.requireProjectToStop', false) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
     {
       const round4 = (n) => Math.round(n * 10000) / 10000;
       const near = (a, b, tol = 0.00011) => Math.abs(Number(a) - Number(b)) <= tol;
@@ -515,6 +520,9 @@ async function main() {
       sql(`DELETE FROM mcp_keys WHERE id = 'pk-tt-erik'`);
       check('T14: cleanup: Erik has no running entry', runningRows().length === 0);
     }
+    // T13/T14 stop free-text timers; Erik can pick a project, so "require a project" would refuse those stops
+    // (that rule is T5's subject). Restore it for anything that runs after.
+    sql(`UPDATE system_settings SET value = JSON_SET(value, '$.requireProjectToStop', true) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
   } finally {
     teardown();
   }
