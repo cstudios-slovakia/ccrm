@@ -114,8 +114,8 @@ Legend: ⬜ not started · 🟡 built, not finished (see Left over) · ✅ done
 |---|---|---|---|---|---|
 | 1 | Foundation, server: allocation engine, worked time, one pricing path | — | ✅ | `1936c4dc` | 2026-11-19 |
 | 2 | Foundation, client: worked time in every personal sum | 1 | ✅ | `264ebee5` | 2026-11-19 |
-| 3 | Leave-aware monthly rate and the rate card | 1 | ⬜ | | |
-| 4 | Parallel timers, server and API | 1 | ⬜ | | |
+| 3 | Leave-aware monthly rate and the rate card | 1 | ✅ | `f89a5610` | 2026-11-19 |
+| 4 | Parallel timers, server and API | 1 | ✅ | `fda1a127` | 2026-11-19 |
 | 5 | Parallel timers, UI (the container) | 2, 4 | ⬜ | | |
 | 6 | Pause and the presence engine, server | 4 | ⬜ | | |
 | 7 | Presence UI: ring, prompt, sound, push actions | 5, 6 | ⬜ | | |
@@ -189,6 +189,13 @@ Symptom → root cause → proposed fix. Fixed only in the phase named.
     checkout live, a merge reloads the page mid-test and fails unrelated specs (seen in phase 1:
     two time-tracking specs failed, then passed 32/32 on a stable tree).
 
+15. **The probe's fetch reused sockets Apache had closed** (KeepAliveTimeout 5 s) after a long
+    `docker exec` pause, failing with "other side closed" before PHP saw the request. The probe
+    retries exactly that failure once.
+16. **A paused free-text timer can be stopped without a project** (pause skips "require a
+    project"; stopping a paused item adds no time). The UI may still ask; noted, not changed.
+17. **The extension's own stop and the MCP stop do not set `end_reason` yet** (phase 6a covered
+    REST); to be routed through `ccrm_tt_end_entries()` in phase 6.
 ---
 
 # Part B. Review of the owner's proposal
@@ -883,21 +890,34 @@ Spec: D4. Decisions: C2, C10, C11, C12. Needs 1.
 form. Then (c) the rate card table, `ccrm_tt_rate_for()`, the cron pass, the freeze rule and
 re-pricing. Last: (d) the drawer and tooltip text, the Settings text, the probe case.
 
-- [ ] `leaveDaysInMonth` in TypeScript and PHP + fixtures (a leave crossing a month end, a half
+- [x] `leaveDaysInMonth` in TypeScript and PHP + fixtures (a leave crossing a month end, a half
       day, a leave over a public holiday, pending and rejected rows ignored)
-- [ ] The formula of D4.1 in `timeCost.ts` / `time_cost.php`; the four Erik fixtures; the
+- [x] The formula of D4.1 in `timeCost.ts` / `time_cost.php`; the four Erik fixtures; the
       existing fixtures still pass (no leave = today's numbers)
-- [ ] `employees.hours_per_day` (C10): **all four places** of the database rule, the employee
+- [x] `employees.hours_per_day` (C10): **all four places** of the database rule, the employee
       form, the sync mapping
-- [ ] Table `time_rate_months`; `ccrm_tt_rate_for()`; pricing reads it; the daily cron pass;
+- [x] Table `time_rate_months`; `ccrm_tt_rate_for()`; pricing reads it; the daily cron pass;
       the freeze rule; audit-log lines
-- [ ] "Re-price a period" recomputes frozen months
-- [ ] Entry drawer and Team tooltip explain the rate from the rate card, with "provisional"
-- [ ] Settings → Time tracking: the text under "hours basis" explains leave; no new switch
-- [ ] Server probe: book leave after tracking → the month's entries are re-priced once; a closed
+- [x] "Re-price a period" recomputes frozen months
+- [x] Entry drawer and Team tooltip explain the rate from the rate card, with "provisional"
+- [x] Settings → Time tracking: the text under "hours basis" explains leave; no new switch
+- [x] Server probe: book leave after tracking → the month's entries are re-priced once; a closed
       payroll month is not
 
-**Left over:**
+**Left over:** none. Notes from the build:
+- Leave days are summed exactly and rounded once to 0.1 (half up), so a rate can be recomputed
+  from the DECIMAL(4,1) values the rate card stores.
+- A leave type counts as paid only with `isPaid === true` in `EMPLOYEE_SETTINGS.vacationTypes`;
+  a type without the flag (e.g. `doctor`, shipped with `isPaid: null`) counts as unpaid.
+  Unknown type ids fall back to the shipped defaults (annual, worked_days paid).
+- Daily pay divides by the person's own hours per day (C10 read for daily pay too).
+- The automatic re-pricing settles with `ownIds`, never `force` (force would rewrite locked
+  neighbours); only the admin "Re-price a period" forces and recomputes frozen months.
+- Daily and hourly persons get no rate-card row (their rate does not depend on the month).
+- Read API: `GET action=rateCard&employeeId=&month=` (own, or `time_tracking_costs`); never writes.
+- The probe uses the previous and the current month (always open: a month freezes at month+2),
+  so it no longer depends on the date. The SK/HU calendar difference is proven offline in
+  `test-time-cost.php` (Oct 2026: 22 vs 21).
 
 ### Phase 4. Parallel timers, server and API
 
@@ -908,20 +928,34 @@ schema, the per-user lock and the REST actions in `time_entries.php`, **one agen
 model**. Then (c) the extension endpoints ∥ (d) the MCP tools ∥ (e) settings, the RBAC key
 with its labels and the per-user preference.
 
-- [ ] **First** the missing tests for today's behaviour (A4.8): single start/stop/undo over REST,
+- [x] **First** the missing tests for today's behaviour (A4.8): single start/stop/undo over REST,
       the extension endpoints and the MCP tools, in the server probe
-- [ ] Schema: `uq_te_running` → plain index; table `time_presence` (all columns of D7.1)
-- [ ] The per-user lock in every timer mutation
-- [ ] `start` with `mode`, the refusals of D5.3, `stop { id | all }`, `undo_start` for several
-- [ ] `GET ?running=1` in the new shape with the legacy `entry`
-- [ ] Settings `parallel`, RBAC `time_tracking_parallel` (en/sk/hu labels), the per-user
+- [x] Schema: `uq_te_running` → plain index; table `time_presence` (all columns of D7.1)
+- [x] The per-user lock in every timer mutation
+- [x] `start` with `mode`, the refusals of D5.3, `stop { id | all }`, `undo_start` for several
+- [x] `GET ?running=1` in the new shape with the legacy `entry`
+- [x] Settings `parallel`, RBAC `time_tracking_parallel` (en/sk/hu labels), the per-user
       preference
-- [ ] Extension endpoints and MCP tools made parallel-safe (D5.6); MCP `start_timer` gets the
+- [x] Extension endpoints and MCP tools made parallel-safe (D5.6); MCP `start_timer` gets the
       identical-target guard
-- [ ] Probe: two parallel starts; the cap; the same-project rule; a race of two starts; `switch`
+- [x] Probe: two parallel starts; the cap; the same-project rule; a race of two starts; `switch`
       with three running stops three
 
-**Left over:**
+**Left over:** none. Notes from the build:
+- C4's permission is the **owner's**: a parallel start / restore / hand-over for X needs X's role
+  to allow it (an admin owner bypasses), also when a manager acts for X.
+- Lock: `INSERT IGNORE` into `time_presence` before the transaction, `SELECT … FOR UPDATE` on that
+  row as the transaction's **first** statement; running rows are then read without `FOR UPDATE`
+  (a gap lock on the non-unique `idx_te_running` could deadlock two users).
+- A switch-start of a target that already runs among others stops the others and answers 200 with
+  `alreadyRunning: true`; with only that one running it is still 409 `already_running`.
+- `undo_start` reopens only entries the undone start actually stopped (their `end_at` = its
+  `start_at`), only when the start still exists, and only if they fit (else 409 `conflict`).
+- A `same_project` check skips the identical target (that answers `already_running`); a target
+  without a project is not checked by the same-project rule.
+- Per-user preference store: `system_settings` key `TIME_TRACKING_PREFS:<userId>`.
+- Extension popup strings for "N timers running" are English only (the extension has no i18n);
+  phase 10 can add it.
 
 ### Phase 5. Parallel timers, UI
 

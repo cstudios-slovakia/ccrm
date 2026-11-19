@@ -1006,7 +1006,7 @@ async function main() {
       const dId = d.data?.entry?.id;
       const eId = e.data?.entry?.id;
       check('T19: a switch-start sets end_reason switch on what it stops', dbEntry(dId)?.end_reason === 'switch' && e.data?.stopped?.endReason === 'switch', e.raw);
-      await te(S.erik, { action: 'stop', id: eId });
+      await te(S.erik, { action: 'stop', id: eId, projectId: 'proj-tt-1' }); // "require a project" is on again here
       check('T19: a stop sets end_reason user', dbEntry(eId)?.end_reason === 'user', JSON.stringify(dbEntry(eId)));
 
       // Pause all / resume all with two parallel items.
