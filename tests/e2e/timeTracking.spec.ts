@@ -426,7 +426,7 @@ test.describe('Time tracking', () => {
     await page.getByTestId('entry-save').click();
     await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
     // The tab lists only this project's entries, so seeing it there proves the prefilled project.
-    await expect(page.getByTestId('project-time-entry').filter({ hasText: '1:30:00' })).toBeVisible();
+    await expect(page.getByTestId('project-time-entry').filter({ hasText: 'Doplnený čas ručne' })).toContainText('1:30');
   });
 
   test('the task drawer adds time manually: the new-entry drawer opens with the task linked', async ({ page }) => {
