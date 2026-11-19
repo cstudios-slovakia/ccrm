@@ -1,0 +1,13 @@
+[
+ {"screen":"Main","out":"c-main","pins":[{"n":"M1","sel":"[aria-label=\"Filter\"]"},{"n":"M2","sel":"[aria-label=\"Tags\"]"}]},
+ {"screen":"Calendar","out":"c-calendar","pins":[{"n":"M3","sel":"[aria-label=\"Your tasks\"]"},{"n":"A1","sel":"[aria-label=\"Entry details\"]","color":"#2563eb"}]},
+ {"screen":"Timesheet","out":"c-timesheet","pins":[{"n":"M4","text":"Typing into a cell","up":1},{"n":"M4","text":"Submitting locks the week","up":1},{"n":"A2","sel":"table","color":"#2563eb","colsel":"Cost"}]},
+ {"screen":"EntryDrawer","out":"c-entrydrawer","pins":[{"n":"M5","text":"9:50 this week"},{"n":"A9","text":"+ add","up":1,"color":"#2563eb"},{"n":"A10","sel":"[aria-label=\"Create project\"]","color":"#2563eb"}]},
+ {"screen":"Reports","out":"c-reports","height":1560,"pins":[{"n":"M6","sel":"[aria-label=\"Hours per day\"]"},{"n":"M7","text":"Click a row to split it by employee or task"},{"n":"A3","sel":"section[aria-label=\"Salary allocation\"]","color":"#2563eb"},{"n":"A4","sel":"[aria-label=\"By project\"]","color":"#2563eb"},{"n":"A5","text":"Utilisation","color":"#2563eb"}]},
+ {"screen":"ProjectTime","out":"c-projecttime","height":1480,"pins":[{"n":"M8","sel":"[aria-label=\"Hours per week\"]"},{"n":"M9","text":"By task","up":2},{"n":"M10","sel":"[aria-label=\"By employee\"]"}]},
+ {"screen":"Settings","out":"c-settings","height":1420,"pins":[{"n":"M11","text":"Who sees what","up":2},{"n":"M12","sel":"[aria-label=\"Toggl and Clockify\"]"}]},
+ {"screen":"Extension","out":"c-extension","pins":[{"n":"M13","text":"Setup guide"}]},
+ {"screen":"Team","out":"c-team","pins":[{"n":"A6","sel":"tbody th","color":"#2563eb"},{"n":"A6","sel":"tbody th","nth":2,"color":"#2563eb"}]},
+ {"screen":"Mobile","out":"c-mobile","width":390,"height":844,"pins":[{"n":"A7","text":"Today","up":1,"color":"#2563eb"}]},
+ {"screen":"TaskStart","out":"c-taskstart","pins":[{"n":"A8","text":"Tracked","up":2,"color":"#2563eb"},{"n":"A8b","text":"Lucia Bartošová","up":3,"color":"#2563eb"}]}
+]

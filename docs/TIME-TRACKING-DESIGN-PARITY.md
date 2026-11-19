@@ -9,6 +9,10 @@ Canvas: https://claude.ai/artifact/G1ZJkEvLUbzXAQG8bpwwsd ("CCRM Time Tracking")
 were ported to `1.13-nectarine`, which has no v2: there the Calendar totals sum entry durations
 (no worked-time engine), and rows citing tt2 commits describe `css-main` only.
 
+**Pass 2.** This first pass left most screens looking like the old design (lenient KEEP calls, the frame
+never touched). A stricter second pass is planned in
+[`docs/prompts/time-tracking-design-parity-2.md`](prompts/time-tracking-design-parity-2.md).
+
 **Precedence (highest first):** owner decisions after 26 Oct 2026 → `docs/TIME-TRACKING-V2.md` → the
 app's own system (View size, primitives, branding, shell) → the canvas. Px sizes, fonts, radii and
 shadows are never findings on their own.
