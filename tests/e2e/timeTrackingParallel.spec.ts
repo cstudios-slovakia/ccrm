@@ -20,7 +20,7 @@ async function setParallel(page: Page, enabled: boolean) {
     const res = await fetch('/api/time_entries.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'settings', settings: { parallel: { enabled, maxParallel: 4, sameProject: 'differentTasks' } } }),
+      body: JSON.stringify({ action: 'settings', settings: { requireProjectToStop: false, parallel: { enabled, maxParallel: 4, sameProject: 'differentTasks' } } }),
     });
     if (!res.ok) throw new Error(`settings failed: ${res.status}`);
   }, enabled);

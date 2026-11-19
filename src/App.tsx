@@ -4906,7 +4906,7 @@ ${log.payload || ''}
       leadSources={leadSources}
       canCreate={access.canEdit("leads") || access.canEdit("clients")}
     >
-    {timeDeps && timeEnabled && <><ProjectRequestDialog deps={timeDeps} /><TaskStatusTimerBridge deps={timeDeps} /></>}
+    {timeDeps && timeEnabled && <><ProjectRequestDialog deps={timeDeps} /><TaskStatusTimerBridge deps={timeDeps} actions={taskStateTimerActions} /></>}
     <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50 transition-colors duration-[230ms]">
       {/* Dynamic Aurora Ambient Background Blobs (Themed per active view) */}
       <AuroraBackground
