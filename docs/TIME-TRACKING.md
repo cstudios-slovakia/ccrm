@@ -285,6 +285,15 @@ where Part B overrides them (B1). Do not copy another Cstudios app's code or sty
 
 ## C2. Screens
 
+**Design canvas:** https://claude.ai/artifact/G1ZJkEvLUbzXAQG8bpwwsd ("CCRM Time Tracking", 12 screens
+plus the header and sidebar components; read it with the Artifact tool). It shows what is on each
+screen, where, and in which hierarchy. Where it disagrees with something else, the higher item wins:
+(1) the owner's later decisions (phase **Left over** notes, Part B, `docs/TIME-TRACKING-V2.md` and
+owner-requested commits), (2) `docs/TIME-TRACKING-V2.md`'s UI decisions, (3) the app's own system
+(`docs/VIEW-SIZE.md`, the shared primitives, branding, the app header, sidebar and Settings layout),
+(4) the canvas. Its px sizes, fonts, radii and shadows are never copied. Every difference is
+classified, with evidence, in [`TIME-TRACKING-DESIGN-PARITY.md`](TIME-TRACKING-DESIGN-PARITY.md).
+
 The route is `time-tracking`. Tabs: **List · Day · Calendar · Timesheet · Team · Reports**
 (phase 1 ships List and Day). The "Viewing as" selector sits right of the tab bar: *Me* by
 default; managers can pick *Whole team* or one person.
