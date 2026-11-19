@@ -29,6 +29,10 @@ interface Props {
   adding?: boolean;
   /** Called after a start from this bar succeeded. */
   onStarted?: () => void;
+  /** One timer runs and parallel timers are allowed: show "+ Add timer" (toggles a fresh bar below). */
+  onAddTimer?: () => void;
+  /** Whether that fresh bar is open (for aria-expanded). */
+  addOpen?: boolean;
 }
 
 /**
@@ -44,6 +48,11 @@ interface Props {
 export function TimerBar(props: Props) {
   const tt = useTimeTracking();
   const lookups = useTimeLookups(props.deps);
+  const [addOpen, setAddOpen] = useState(false);
+  const canAdd = !props.adding && !!tt.primaryRunning && !!tt.settings.parallel?.enabled;
+  useEffect(() => {
+    if (!canAdd) setAddOpen(false);
+  }, [canAdd]);
   // Two or more items (running or paused): the bar becomes a container (D5.4).
   if (!props.adding && tt.running.length + tt.paused.length >= 2) {
     return (
@@ -54,10 +63,21 @@ export function TimerBar(props: Props) {
       />
     );
   }
-  return <SingleTimerBar {...props} />;
+  if (!canAdd) return <SingleTimerBar {...props} />;
+  // One timer runs: "+ Add timer" opens a fresh bar under it, so a second timer can start from scratch.
+  return (
+    <div className="flex flex-col gap-2">
+      <SingleTimerBar {...props} onAddTimer={() => setAddOpen((v) => !v)} addOpen={addOpen} />
+      {addOpen && (
+        <div data-testid="timer-add-panel">
+          <SingleTimerBar {...props} adding footer={undefined} onStarted={() => setAddOpen(false)} />
+        </div>
+      )}
+    </div>
+  );
 }
 
-function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, adding, onStarted }: Props) {
+function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, adding, onStarted, onAddTimer, addOpen }: Props) {
   const tt = useTimeTracking();
   const { t, nowMs, settings } = tt;
   const running = adding ? null : tt.primaryRunning;
@@ -125,16 +145,20 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
   const onStart = async () => {
     if (busy) return;
     setBusy(true);
-    const started = await tt.start({
-      description: task || ticket ? null : text.trim() || null,
-      taskId: task?.id ?? null,
-      ticketId: task ? null : ticket?.id ?? null,
-      note: note.trim() || null,
-      projectId: projectId ?? undefined,
-      billable,
-      originType: task ? "task" : ticket ? "ticket" : undefined,
-      originId: task?.id ?? ticket?.id,
-    });
+    const started = await tt.start(
+      {
+        description: task || ticket ? null : text.trim() || null,
+        taskId: task?.id ?? null,
+        ticketId: task ? null : ticket?.id ?? null,
+        note: note.trim() || null,
+        projectId: projectId ?? undefined,
+        billable,
+        originType: task ? "task" : ticket ? "ticket" : undefined,
+        originId: task?.id ?? ticket?.id,
+      },
+      // "+ Add timer" already said "alongside": no Switch / Parallel question.
+      adding && tt.running.length > 0 && tt.settings.parallel?.enabled ? { mode: "parallel" } : {},
+    );
     setBusy(false);
     if (started) {
       onStarted?.();
@@ -351,7 +375,21 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
                 {t("Stop", "Zastaviť", "Leállítás")}
               </button>
             </CycleRing>
-          ) : (
+          ) : null}
+          {running && onAddTimer && (
+            <button
+              type="button"
+              onClick={onAddTimer}
+              aria-expanded={!!addOpen}
+              title={t("Start another timer alongside this one", "Spustiť ďalší časovač popri tomto", "Újabb időzítő indítása emellett")}
+              data-testid="timer-add"
+              className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-ui font-semibold text-primary transition-all hover:bg-slate-100 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <Plus className="size-4" />
+              {t("Add timer", "Pridať časovač", "Időzítő hozzáadása")}
+            </button>
+          )}
+          {running ? null : (
             <button type="button" onClick={onStart} disabled={busy} data-testid="timer-start" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-ui font-semibold text-primary-foreground transition-all hover:opacity-90 active:scale-95 disabled:opacity-60 cursor-pointer">
               <Play className="size-4 fill-current" />
               {t("Start", "Spustiť", "Indítás")}

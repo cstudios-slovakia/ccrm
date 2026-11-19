@@ -61,7 +61,10 @@ export function CycleRing({ children, radius = 12, swap = false, label = false, 
   return (
     <span className={`relative inline-flex ${className}`}>
       {inner}
-      <svg role="img" aria-label={text} data-testid="cycle-ring" data-phase={phase} className="pointer-events-none absolute overflow-visible" style={{ inset: -3 }}>
+      <svg role="img" aria-label={text} data-testid="cycle-ring" data-phase={phase} className="pointer-events-none absolute overflow-visible"
+        // An <svg> is a replaced element: `inset` alone does not stretch it, it keeps the 300×150
+        // default. Size it explicitly to the control plus 3px on each side.
+        style={{ top: -3, left: -3, width: "calc(100% + 6px)", height: "calc(100% + 6px)" }}>
         <title>{text}</title>
 
           {phase === "paused" ? (
