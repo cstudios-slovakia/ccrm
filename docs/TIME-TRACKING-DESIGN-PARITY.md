@@ -5,6 +5,10 @@ Canvas: https://claude.ai/artifact/G1ZJkEvLUbzXAQG8bpwwsd ("CCRM Time Tracking")
 2026-11-19 against `css-main` at `fda1a127`. Screenshots: `test-results/tt-design-parity/before/` and
 `after/` (local, not committed).
 
+**Branches.** The audit was made on `css-main` (which carries time tracking v2). The same FIX commits
+were ported to `1.13-nectarine`, which has no v2: there the Calendar totals sum entry durations
+(no worked-time engine), and rows citing tt2 commits describe `css-main` only.
+
 **Precedence (highest first):** owner decisions after 26 Oct 2026 → `docs/TIME-TRACKING-V2.md` → the
 app's own system (View size, primitives, branding, shell) → the canvas. Px sizes, fonts, radii and
 shadows are never findings on their own.
@@ -302,6 +306,27 @@ Run one at a time (the machine is short on RAM and a tt2 session is running its 
 
 ## Done log
 
-| Package | Commit | Rows |
-|---|---|---|
-| (filled in as packages merge) | | |
+Commits on `css-main` (the same changes were cherry-picked to `1.13-nectarine`).
+
+| Package | Commit(s) | Rows done | Rows not done, and why |
+|---|---|---|---|
+| Audit | `ac83a56d` | this report; canvas link back at the top of C2 | |
+| S | `ab549491`, `4d54e949` | SC1–SC6, L12, L17, L18, L21, R10 (and List costs slate) | L11/SC8: no single "at €x/h" rate on the client (rates are per entry); client names are not on entries, so `ProjectLabel` shows no client in List yet |
+| B | `e894b4e8`, `17a6cc8f` | C2–C6, C9, T3, T4, T5, T10 | T10 label is the date range only (no "Week 43"); C11 copy reverted in review: the rail is not filtered to the week, so "Your tasks" stays |
+| C | `dfc1aa06` | D2, D4, D7, W4, W7, W8, W11, W13, W14, W15 | D7 has no "Chrome extension settings →" link (new navigation) |
+| E | `4e22c843` | E3, E5, E6, K3, K4, P1 | E4: the picker has no "this week" seconds (needs a new prop from its callers); E8: search does not match a project code, wording kept |
+| G | `4ad809d3` | X2, X3, X4, X6, X9 | X7 held: showing project names needs `projects` passed from `TimeTrackingSettingsPanel.tsx` (held file) |
+| Review | `efd1c277`, `f6f77498` | Calendar totals count worked time; translated week labels; dark-mode project names; selected project keeps a check (accessibility, over the canvas); extension switches toggle from their text; task-drawer costs slate (SC5) | |
+| D | — | — | held: tt2 phase 9 was editing `TimeReportsView.tsx` / `TimeSalaryReport.tsx` during this pass |
+| held | — | — | E1, E9–E11, E13, E14, S2, S4, S5, S7, H2, X7, X16b, all of D (R2, R4, R7, R8, R12–R15), drawer cost colour (SC5) |
+
+## Checks and QA (2026-11-19)
+
+- `npm run check` green on `css-main` and on `1.13-nectarine` after every merge.
+- One scoped QA run over all changed files (`css-main` at `4ad809d3`): 66 passed, 3 failed.
+  - **Dark mode: project names below 3:1** (`darkmode.spec.ts` › Time Tracking). Root cause: `ProjectLabel`
+    darkened the project colour with an inline style the dark palette cannot remap. Fix: it now uses the
+    theme's accent-lift mix (`f6f77498`); the test passes.
+  - **`projectStatuses.spec.ts`**, two tests: pre-existing. They fail the same way on `ec7f25df`, before any
+    parity change to a project file, and both are in `scripts/qa/known-failing.json`.
+- Screenshots: `test-results/tt-design-parity/before/` and `after/` (local only).
