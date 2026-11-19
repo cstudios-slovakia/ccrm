@@ -6,14 +6,14 @@
  *
  *   ccrm_tt_settle($pdo, $userId, $fromUtc, $toUtc, $force = false, $ownIds = [])
  *     S1     = the user's closed, timed, not-deleted entries intersecting [from, to].
- *     inputs = the user's timed, not-deleted entries (the running one ends "now") that intersect
+ *     inputs = the user's timed, not-deleted entries (running ones end "now") that intersect
  *              the span of S1 and [from, to]; run through ccrm_ta_allocate().
  *     For each S1 row: worked_ms = its share; cost = round4(worked_ms / 3 600 000 x cost_rate)
  *     with the row's frozen rate, or the rate of its entry_date month when it has none (that
  *     also freezes employee_id / cost_rate / cost_rate_source / cost_rate_basis_days).
  *     Hours-only entries (start_at NULL) whose entry_date falls on the local dates of
  *     [from, to]: worked_ms = duration_sec x 1000 (C15), priced the same way.
- *     The running entry of the user carries worked_ms NULL and cost NULL.
+ *     Every running entry of the user carries worked_ms NULL and cost NULL (several may run, D5.1).
  *     Deleted entries keep their stored values (a restore re-settles them).
  *     Only rows whose values change are written.
  *
@@ -32,7 +32,7 @@
  * [start_at, now], never ending before it starts. Timed rows are looked up by entry_date
  * (idx_te_user_date) from two days before the window's first local date to one day after its
  * last; an entry whose entry_date was typed far away from its own start is only seen when the
- * caller names it in $ownIds. The running row is read through the unique `running_guard`.
+ * caller names it in $ownIds. The running rows are read through the indexed `running_guard`.
  */
 
 require_once __DIR__ . '/time_cost.php';
@@ -91,17 +91,16 @@ if (!function_exists('ccrm_tt_settle')) {
         return [$start, max($start, (int)ccrm_ts_ms($endAt))];
     }
 
-    /** The user's running entry (unique key running_guard), or null. */
-    function ccrm_ts_running_row(\PDO $pdo, string $userId, string $columns): ?array {
-        $stmt = $pdo->prepare("SELECT {$columns} FROM `time_entries` WHERE `running_guard` = ? LIMIT 1");
+    /** Every running entry of the user (indexed running_guard; several may run, D5.1). */
+    function ccrm_ts_running_rows(\PDO $pdo, string $userId, string $columns): array {
+        $stmt = $pdo->prepare("SELECT {$columns} FROM `time_entries` WHERE `running_guard` = ?");
         $stmt->execute([$userId]);
-        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        return $row ?: null;
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     /**
      * The user's timed, not-deleted entries whose interval meets [fromMs, toMs] (strictly overlapping
-     * when $strict): closed rows by entry_date, the running row unless $closedOnly, and the $ownIds rows.
+     * when $strict): closed rows by entry_date, the running rows unless $closedOnly, and the $ownIds rows.
      */
     function ccrm_ts_timed_rows(\PDO $pdo, string $userId, int $fromMs, int $toMs, bool $closedOnly, bool $strict, string $columns, array $ownIds = []): array {
         $stmt = $pdo->prepare("SELECT {$columns} FROM `time_entries`
@@ -109,8 +108,8 @@ if (!function_exists('ccrm_tt_settle')) {
                                   AND `deleted_at` IS NULL AND `start_at` IS NOT NULL AND `end_at` IS NOT NULL");
         $stmt->execute([$userId, ccrm_ts_local_date($fromMs, -2), ccrm_ts_local_date($toMs, 1)]);
         $candidates = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        if (!$closedOnly && ($running = ccrm_ts_running_row($pdo, $userId, $columns))) {
-            $candidates[] = $running;
+        if (!$closedOnly) {
+            array_push($candidates, ...ccrm_ts_running_rows($pdo, $userId, $columns));
         }
         $ownIds = array_values(array_unique(array_filter(array_map('strval', $ownIds), fn($id) => $id !== '')));
         if ($ownIds) {
@@ -221,11 +220,12 @@ if (!function_exists('ccrm_tt_settle')) {
 
     function ccrm_ts_settle_window(\PDO $pdo, string $userId, int $fromMs, int $toMs, bool $force, array $ownIds): void {
         $own = array_flip(array_map('strval', $ownIds));
-        // A running entry has no worked time and no cost yet (also after undo_start reopened one).
-        $running = ccrm_ts_running_row($pdo, $userId, "`id`, `worked_ms`, `cost`");
-        if ($running && ($running['worked_ms'] !== null || $running['cost'] !== null)) {
-            $pdo->prepare("UPDATE `time_entries` SET `worked_ms` = NULL, `cost` = NULL WHERE `id` = ? AND `end_at` IS NULL")
-                ->execute([$running['id']]);
+        // A running entry has no worked time and no cost yet (also after undo_start reopened some).
+        foreach (ccrm_ts_running_rows($pdo, $userId, "`id`, `worked_ms`, `cost`") as $running) {
+            if ($running['worked_ms'] !== null || $running['cost'] !== null) {
+                $pdo->prepare("UPDATE `time_entries` SET `worked_ms` = NULL, `cost` = NULL WHERE `id` = ? AND `end_at` IS NULL")
+                    ->execute([$running['id']]);
+            }
         }
 
         $s1 = ccrm_ts_timed_rows($pdo, $userId, $fromMs, $toMs, true, false, ccrm_ts_columns(), $ownIds);

@@ -870,10 +870,18 @@ Time tracking: one row per stretch of work, owned by the login that did it. No f
 * `device_id` VARCHAR(64) [NULLable]
 * `external_id` VARCHAR(100) [NULLable] (Toggl/Clockify id, or `tte:<id>` for migrated ticket time)
 * `approval_status` VARCHAR(16) [NULLable]
-* `running_guard` VARCHAR(50) (Generated: `user_id` while running and not deleted; UNIQUE, one running timer per user)
+* `running_guard` VARCHAR(50) (Generated: `user_id` while running and not deleted; plain index `idx_te_running` since TT2 phase 4: several entries of one user may run (parallel timers). The former UNIQUE `uq_te_running` is dropped by `time_parallel_migration.php`; serialisation is the per-user lock row in `time_presence`)
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP
 * `deleted_at` DATETIME [NULLable]
+
+### `time_presence`
+One row per user (TT2 D5.1, D7.1). Every timer mutation in `public/api/time_entries.php` locks the user's row first (`ccrm_tt_lock_user()` in `public/api/time_lock.php`: the row is created with `INSERT IGNORE` before the transaction, then `SELECT ... FOR UPDATE` inside it), so two clients never interleave a start, stop or undo. The presence columns are written from phase 6 (the presence engine). Not written by `sync.php` (no column healing).
+* `user_id` VARCHAR(50) [PK]
+* `anchor_at` DATETIME [NULLable] (UTC; the last answer of the presence cycle, NULL when nothing runs)
+* `last_push_at` DATETIME [NULLable] (UTC; the last presence push sent)
+* `auto_paused_at` DATETIME [NULLable] (UTC; when the presence engine paused everything)
+* `updated_at` TIMESTAMP
 
 ### `weekly_plan_cards`
 Standalone planning cards displayed on the Weekly Plan board (by day date and vertical position). Cards are independent of `tasks` (no automatic sync), while their `refs_json` can reference projects, leads, clients, employees, tickets, tasks, and `#tags`.

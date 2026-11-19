@@ -1349,11 +1349,11 @@ if (!function_exists('ccrm_schema_statements')) {
               `device_id` VARCHAR(64) NULL,
               `external_id` VARCHAR(100) NULL COMMENT 'Toggl/Clockify id, or tte:<id> for migrated ticket time',
               `approval_status` VARCHAR(16) NULL,
-              `running_guard` VARCHAR(50) GENERATED ALWAYS AS (IF(`start_at` IS NOT NULL AND `end_at` IS NULL AND `deleted_at` IS NULL, `user_id`, NULL)) STORED COMMENT 'UNIQUE: one running timer per user',
+              `running_guard` VARCHAR(50) GENERATED ALWAYS AS (IF(`start_at` IS NOT NULL AND `end_at` IS NULL AND `deleted_at` IS NULL, `user_id`, NULL)) STORED COMMENT 'user_id while running; indexed, several may run (per-user lock in time_presence)',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               `deleted_at` DATETIME NULL,
-              UNIQUE KEY `uq_te_running` (`running_guard`),
+              INDEX `idx_te_running` (`running_guard`),
               UNIQUE KEY `uq_te_external` (`source`, `external_id`),
               INDEX `idx_te_user_date` (`user_id`, `entry_date`),
               INDEX `idx_te_project_date` (`project_id`, `entry_date`),
@@ -1361,6 +1361,9 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX `idx_te_ticket` (`ticket_id`),
               INDEX `idx_te_employee_date` (`employee_id`, `entry_date`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+            // TT2 D5.1/D7.1: the per-user timer lock row (time_lock.php) and the presence state of phase 6.
+            "CREATE TABLE IF NOT EXISTS `time_presence` (`user_id` VARCHAR(50) NOT NULL PRIMARY KEY, `anchor_at` DATETIME NULL, `last_push_at` DATETIME NULL, `auto_paused_at` DATETIME NULL,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Newsletter module (docs/NEWSLETTER.md C2). Written only by api/newsletter*.php, never by
             // sync.php, so there is no column healing. No foreign keys, like the rest of the schema.
@@ -2607,6 +2610,8 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         require_once __DIR__ . '/time_worked_ms_migration.php'; // listed in ccrm_schema_fingerprint()
         ccrm_migrate_time_worked_ms($pdo);
+        require_once __DIR__ . '/time_parallel_migration.php'; // listed in ccrm_schema_fingerprint()
+        ccrm_migrate_time_parallel($pdo);
         require_once __DIR__ . '/ticket_time_migration.php';
         ccrm_migrate_ticket_time_entries($pdo);
     }
@@ -3633,7 +3638,7 @@ if (!function_exists('ccrm_schema_statements')) {
      */
     function ccrm_schema_fingerprint(): string {
         $parts = [];
-        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/time_worked_ms_migration.php'] as $file) {
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/time_worked_ms_migration.php', __DIR__ . '/time_parallel_migration.php'] as $file) {
             $parts[] = is_file($file) ? md5_file($file) : '-';
         }
         return md5(implode('|', $parts));

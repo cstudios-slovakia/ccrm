@@ -224,12 +224,11 @@ async function main() {
     check('T5: starting the running target again is refused with the running entry', restart.status === 409 && restart.data?.code === 'already_running' && restart.data?.entry?.id === b.data.entry.id && dbEntry(b.data.entry.id)?.end_at === null, restart.raw);
     const stoppedRow = dbEntry(a.data.entry.id);
     check('T5: the stopped entry was priced when it stopped', stoppedRow?.cost_rate !== null && stoppedRow?.duration_sec !== null, JSON.stringify(stoppedRow));
-    // The database itself refuses a second running row.
-    let dup = false;
-    try {
-      sql(`INSERT INTO time_entries (id, user_id, recorded_by_user_id, entry_date, start_at) VALUES ('te-dup', 'tt-erik', 'tt-erik', CURDATE(), UTC_TIMESTAMP())`);
-    } catch { dup = true; }
-    check('T5: UNIQUE running_guard rejects a second running timer for the same user', dup);
+    // Phase 4 (D5.1): running_guard is a plain index, so the database accepts a second running row; the per-user
+    // lock in time_presence serialises timer writes instead (T15 races two starts).
+    const guardIdx = rows(`SELECT INDEX_NAME, NON_UNIQUE FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'time_entries' AND COLUMN_NAME = 'running_guard'`);
+    check('T5: running_guard has the plain index idx_te_running and no unique key (D5.1)', guardIdx.length === 1 && guardIdx[0].INDEX_NAME === 'idx_te_running' && guardIdx[0].NON_UNIQUE === '1', JSON.stringify(guardIdx));
+    check('T5: the per-user lock table time_presence exists', rows(`SHOW TABLES LIKE 'time_presence'`).length === 1);
     const undo = await te(S.erik, { action: 'undo_start', newId: b.data.entry.id, stoppedId: a.data.entry.id });
     check('T5: Undo removes B and reopens A', undo.status === 200 && undo.data?.entry?.running === true && !dbEntry(b.data.entry.id), undo.raw);
     const runningNow = await api(S.erik, 'time_entries.php', { query: '?running=1' });
@@ -519,6 +518,113 @@ async function main() {
       await te(S.erik, { action: 'stop' });
       sql(`DELETE FROM mcp_keys WHERE id = 'pk-tt-erik'`);
       check('T14: cleanup: Erik has no running entry', runningRows().length === 0);
+    }
+    section('T15: parallel timers (phase 4)');
+    {
+      // D5.1–D5.3. Erik (role Employee, index 2 of ROLES_RBAC in setup) gets `time_tracking_parallel` here and loses it at the end;
+      // `parallel` settings are written straight into TIME_TRACKING_SETTINGS and removed at the end. requireProjectToStop is still
+      // false (T13 switched it off; restored after this section).
+      const runningRows = () => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL ORDER BY start_at, id`);
+      const setParallel = (p) => sql(`UPDATE system_settings SET value = JSON_SET(value, '$.parallel', CAST(${q(JSON.stringify(p))} AS JSON)) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      const grant = (on) => sql(on
+        ? `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'edit') WHERE \`key\` = 'ROLES_RBAC'`
+        : `UPDATE system_settings SET value = JSON_REMOVE(value, '$[2].permissions.time_tracking_parallel') WHERE \`key\` = 'ROLES_RBAC'`);
+      const iso = (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const ON = { enabled: true, maxParallel: 4, sameProject: 'differentTasks' };
+
+      const roleName = rows(`SELECT JSON_UNQUOTE(JSON_EXTRACT(value, '$[2].name')) AS n FROM system_settings WHERE \`key\` = 'ROLES_RBAC'`)[0]?.n;
+      check('T15: setup: ROLES_RBAC[2] is the Employee role Erik has', roleName === 'Employee', roleName);
+      await te(S.erik, { action: 'stop', all: true });
+      check('T15: starting point: Erik has no running entry', runningRows().length === 0);
+      for (const [id, title] of [['task-tt-p1', 'T15 task one'], ['task-tt-p2', 'T15 task two'], ['task-tt-p3', 'T15 task three']]) {
+        sql(`INSERT INTO tasks (id, title, priority, deadline, status, owner, created_by, related_project_id) VALUES (${q(id)}, ${q(title)}, 'medium', '2026-12-31', 'todo', 'TT Erik', 'TT Erik', 'proj-tt-1');`);
+      }
+      setParallel(ON);
+      grant(true);
+
+      // Two parallel starts; differentTasks lets two different tasks of proj-tt-1 run together.
+      const p1 = await te(S.erik, { action: 'start', taskId: 'task-tt-p1', startedAt: iso(Date.now() - 120000) });
+      const p2 = await te(S.erik, { action: 'start', taskId: 'task-tt-p2', mode: 'parallel' });
+      check('T15: a parallel start (two different tasks of one project) returns 201 and stops nothing', p1.status === 201 && p2.status === 201 && p2.data?.stopped === null && Array.isArray(p2.data?.stoppedAll) && p2.data.stoppedAll.length === 0, `${p1.raw} / ${p2.raw}`);
+      check('T15: ...both run in the database', runningRows().length === 2 && dbEntry(p1.data?.entry?.id)?.end_at === null);
+      const gr = await api(S.erik, 'time_entries.php', { query: '?running=1' });
+      check('T15: ?running=1 lists both (oldest first), entry = the first, paused [], presence null, serverNow',
+        gr.status === 200 && gr.data?.running?.length === 2 && gr.data.running[0].id === p1.data?.entry?.id && gr.data.entry?.id === p1.data?.entry?.id
+          && Array.isArray(gr.data.paused) && gr.data.paused.length === 0 && gr.data.presence === null && typeof gr.data.serverNow === 'string', gr.raw);
+
+      // The identical target never runs twice.
+      const same = await te(S.erik, { action: 'start', taskId: 'task-tt-p1', mode: 'parallel' });
+      check('T15: parallel start of the running target is 409 already_running with that entry', same.status === 409 && same.data?.code === 'already_running' && same.data?.entry?.id === p1.data?.entry?.id && runningRows().length === 2, same.raw);
+      const sameSwitch = await te(S.erik, { action: 'start', taskId: 'task-tt-p2' });
+      check('T15: switch start of a target among several running is 409 already_running too (nothing stopped)', sameSwitch.status === 409 && sameSwitch.data?.code === 'already_running' && sameSwitch.data?.entry?.id === p2.data?.entry?.id && runningRows().length === 2, sameSwitch.raw);
+
+      // sameProject 'never'.
+      setParallel({ ...ON, sameProject: 'never' });
+      const never = await te(S.erik, { action: 'start', taskId: 'task-tt-p3', mode: 'parallel' });
+      check('T15: sameProject never: a third task of the same project is 409 same_project', never.status === 409 && never.data?.code === 'same_project' && runningRows().length === 2, never.raw);
+
+      // The cap.
+      setParallel({ ...ON, maxParallel: 2, sameProject: 'always' });
+      const cap = await te(S.erik, { action: 'start', description: 'T15 over the cap', mode: 'parallel' });
+      check('T15: maxParallel 2 with two running: a third is 409 parallel_limit', cap.status === 409 && cap.data?.code === 'parallel_limit' && runningRows().length === 2, cap.raw);
+
+      // Off, and no permission.
+      setParallel({ ...ON, enabled: false });
+      const off = await te(S.erik, { action: 'start', description: 'T15 disabled', mode: 'parallel' });
+      check('T15: parallel disabled: 409 parallel_disabled', off.status === 409 && off.data?.code === 'parallel_disabled' && runningRows().length === 2, off.raw);
+      setParallel(ON);
+      grant(false);
+      const noPerm = await te(S.erik, { action: 'start', description: 'T15 forbidden', mode: 'parallel' });
+      check('T15: without time_tracking_parallel: 409 parallel_forbidden', noPerm.status === 409 && noPerm.data?.code === 'parallel_forbidden' && runningRows().length === 2, noPerm.raw);
+      grant(true);
+
+      // A third item (free text, no project), then stop without an id is ambiguous.
+      const p3 = await te(S.erik, { action: 'start', description: 'T15 free C', mode: 'parallel' });
+      check('T15: a third parallel item (free text) starts', p3.status === 201 && runningRows().length === 3, p3.raw);
+      const amb = await te(S.erik, { action: 'stop' });
+      check('T15: stop without an id while several run is 409 ambiguous with running[]', amb.status === 409 && amb.data?.code === 'ambiguous' && amb.data?.running?.length === 3 && runningRows().length === 3, amb.raw);
+
+      // switch with three running stops three; undo reopens all three.
+      const sw = await te(S.erik, { action: 'start', description: 'T15 switch D' });
+      const threeIds = [p1, p2, p3].map((r) => r.data?.entry?.id);
+      check('T15: switch (no mode) with three running stops all three: stoppedAll 3, stopped = the first',
+        sw.status === 201 && sw.data?.stoppedAll?.length === 3 && sw.data.stopped?.id === p1.data?.entry?.id && threeIds.every((id) => sw.data.stoppedAll.some((e) => e.id === id && e.running === false)), sw.raw);
+      check('T15: ...only the new entry runs', runningRows().length === 1 && runningRows()[0].id === sw.data?.entry?.id);
+      const undo = await te(S.erik, { action: 'undo_start', newId: sw.data?.entry?.id, stoppedIds: threeIds });
+      check('T15: undo_start with stoppedIds removes the new entry and reopens all three',
+        undo.status === 200 && undo.data?.reopened?.length === 3 && undo.data.entry?.id === threeIds[0] && !dbEntry(sw.data?.entry?.id) && runningRows().length === 3 && threeIds.every((id) => dbEntry(id)?.end_at === null), undo.raw);
+
+      // stop all.
+      const all = await te(S.erik, { action: 'stop', all: true });
+      check('T15: stop {all:true} ends every running item', all.status === 200 && all.data?.stoppedAll?.length === 3 && runningRows().length === 0 && threeIds.every((id) => dbEntry(id)?.end_at !== null), all.raw);
+      const allAgain = await te(S.erik, { action: 'stop', all: true });
+      check('T15: stop {all:true} with nothing running is idempotent (200, empty)', allAgain.status === 200 && allAgain.data?.stoppedAll?.length === 0, allAgain.raw);
+
+      // Two parallel 1 h entries share the hour: 30 min worked each. A window 5 h back, clear of the probe's own timers.
+      const t0 = Date.now() - 5 * 3600000;
+      const w1 = await te(S.erik, { action: 'start', description: 'T15 worked 1', startedAt: iso(t0) });
+      const w2 = await te(S.erik, { action: 'start', description: 'T15 worked 2', startedAt: iso(t0), mode: 'parallel' });
+      const s1 = await te(S.erik, { action: 'stop', id: w1.data?.entry?.id, stoppedAt: iso(t0 + 3600000) });
+      const s2 = await te(S.erik, { action: 'stop', id: w2.data?.entry?.id, stoppedAt: iso(t0 + 3600000) });
+      const [r1, r2] = [dbEntry(w1.data?.entry?.id), dbEntry(w2.data?.entry?.id)];
+      check('T15: two parallel 1 h entries: duration 3600 each (project time is not split)', w1.status === 201 && w2.status === 201 && s1.status === 200 && s2.status === 200 && r1?.duration_sec === '3600' && r2?.duration_sec === '3600', `${JSON.stringify(r1)} / ${JSON.stringify(r2)}`);
+      check('T15: ...and worked_ms 1 800 000 each (C1)', r1?.worked_ms === '1800000' && r2?.worked_ms === '1800000', `${r1?.worked_ms} / ${r2?.worked_ms}`);
+
+      // A race: two switch starts at the same moment leave exactly one running entry (the per-user lock).
+      // Two sessions of Erik (two devices): one PHP session would serialise the requests on its own session-file lock.
+      const erik2 = await login(USERS.erik.email);
+      const race = await Promise.all([
+        te(S.erik, { action: 'start', description: 'T15 race A' }),
+        te(erik2, { action: 'start', description: 'T15 race B' }),
+      ]);
+      check('T15: race: two concurrent switch starts both answer 201', race.every((r) => r.status === 201), race.map((r) => r.raw).join(' / '));
+      check('T15: race: exactly one running entry afterwards', runningRows().length === 1, JSON.stringify(runningRows()));
+
+      // Cleanup.
+      await te(S.erik, { action: 'stop', all: true });
+      sql(`UPDATE system_settings SET value = JSON_REMOVE(value, '$.parallel') WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      grant(false);
+      check('T15: cleanup: Erik has no running entry, parallel settings and permission removed', runningRows().length === 0);
     }
     // T13/T14 stop free-text timers; Erik can pick a project, so "require a project" would refuse those stops
     // (that rule is T5's subject). Restore it for anything that runs after.
