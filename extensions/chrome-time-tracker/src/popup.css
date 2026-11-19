@@ -95,3 +95,24 @@ button:disabled { opacity: 0.55; cursor: default; transform: none; }
 .footer a { color: #0f766e; font-weight: 700; }
 .check { display: flex; gap: 8px; align-items: center; font-size: 12px; font-weight: 600; color: #334155; }
 .check input { width: auto; height: auto; }
+
+/* TT2 phase 10: the container and the presence question */
+.grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.tiny.danger { background: #ffe4e6; color: #be123c; }
+.item-elapsed { font-variant-numeric: tabular-nums; font-weight: 700; color: #e11d48; font-size: 13px; }
+.question {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  color: #92400e;
+  border-radius: 12px;
+  padding: 10px;
+  animation: question-in var(--dur-fast) var(--ease-out);
+}
+.question strong { font-size: 15px; }
+.question .muted { color: #92400e; }
+.countdown { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 18px; }
+.paused-banner { color: #92400e; background: #fffbeb; border: 1px dashed #f59e0b; border-radius: 10px; padding: 8px; font-size: 12px; }
+@keyframes question-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .question { animation: none; } }

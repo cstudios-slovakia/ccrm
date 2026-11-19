@@ -19,7 +19,7 @@ require_once __DIR__ . '/time_parallel.php';
 require_once __DIR__ . '/time_presence_lib.php';
 require_once __DIR__ . '/read_scope.php';
 
-const CCRM_TT_EXT_VERSION = '1.0.0';
+const CCRM_TT_EXT_VERSION = '1.1.0';
 const CCRM_TTX_PAIR_TTL = 600;
 const CCRM_TTX_OFFLINE_MS = 86400000;
 const CCRM_TTX_MERGE_GAP_MS = 60000;
@@ -550,7 +550,8 @@ function ccrm_ttx_start(\PDO $pdo, array $user, array $device, array $body, arra
 }
 
 /**
- * Stop a timer from the extension, under the per-user lock. With `id`: that entry of the user.
+ * Stop a timer from the extension, under the per-user lock. With `id`: that entry of the user
+ * (any running one: the popup stops item by item; a paused one loses its marker).
  * Without: the single running entry; with several running, 409 `ambiguous` and `running` (the
  * count), because the extension cannot tell which one the user means (TT2 D5.3, D5.6).
  *
@@ -578,6 +579,21 @@ function ccrm_ttx_stop(\PDO $pdo, array $user, array $device, array $body, array
         return ['ok' => false, 'code' => 'not_found', 'status' => 404];
     }
     if ($row['end_at'] !== null) {
+        // A paused item (D6): the stop clears its marker (end_reason 'user'); no new time. Else idempotent.
+        if (!empty($row['paused_at'])) {
+            ccrm_tt_lock_prepare($pdo, $userId);
+            try {
+                $pdo->beginTransaction();
+                ccrm_tt_lock_user($pdo, $userId);
+                ccrm_tt_clear_pause($pdo, (string)$row['id'], 'user');
+                $pdo->commit();
+            } catch (\Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                throw $e;
+            }
+        }
         return ['ok' => true, 'entry' => ccrm_ttx_entry($pdo, $row['id'], $viewer)];
     }
 

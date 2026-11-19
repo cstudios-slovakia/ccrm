@@ -7,7 +7,7 @@
  * No fetching and no DOM.
  */
 
-export const EXTENSION_VERSION = "1.0.0";
+export const EXTENSION_VERSION = "1.1.0";
 
 /** How long a pairing code stays valid. */
 export const PAIRING_TTL_MS = 10 * 60 * 1000;

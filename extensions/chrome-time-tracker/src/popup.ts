@@ -2,6 +2,7 @@ import "./popup.css";
 import { EXTENSION_VERSION, badgeLabel, hostOnly } from "../../../src/utils/timeTrackerRules.ts";
 import { TrackerError, trackerCall } from "./client.ts";
 import { loadLocal, saveLocal, type QueueItem } from "./storage.ts";
+import { formatClock, formatCountdown, serverOffset, timeOfDay, type PresenceState } from "./presence.ts";
 
 declare const chrome: any;
 
@@ -9,6 +10,16 @@ const app = document.querySelector("#app") as HTMLElement;
 const esc = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] || ch);
 
 let clock: number | undefined;
+let questionClock: number | undefined;
+
+/** What the `running` answer adds since phase 10: the presence state and the paused items. */
+interface Extras {
+  presence: PresenceState | null;
+  paused: any[];
+  offsetMs: number;
+  ccrmUrl: string;
+}
+const noExtras = (ccrmUrl: string): Extras => ({ presence: null, paused: [], offsetMs: 0, ccrmUrl });
 
 function originOf(input: string): string | null {
   try {
@@ -122,11 +133,17 @@ async function showTracker(): Promise<void> {
     const entry = state.optimistic
       ? { running: true, title: state.optimistic.title, projectName: state.optimistic.projectName, startAt: state.optimistic.startedAt, taskId: state.optimistic.taskTitle ? "local" : null, titleSource: "entry" }
       : running.entry;
-    // Several timers run (started in the app): the extension is a single-timer client and does
-    // not pick one; it points to the app and shows the worked clock (TT2 D5.6).
-    if (!state.optimistic && (running.count || 0) > 1) renderMany(running, count.count || 0, rules, state.ccrmUrl);
-    else if (entry?.running) renderRunning(entry, recent, count.count || 0, rules, state.ccrmUrl);
-    else renderIdle(recent, count.count || 0, rules, state.ccrmUrl);
+    const extras: Extras = {
+      presence: running.presence && typeof running.presence.phase === "string" ? running.presence : null,
+      paused: Array.isArray(running.paused) ? running.paused : [],
+      offsetMs: serverOffset(running.serverNow),
+      ccrmUrl: state.ccrmUrl,
+    };
+    // Several timers run (started in the app): the container lists them, each with its own Stop,
+    // under the worked clock. Start stays a switch (TT2 D5.6, phase 10).
+    if (!state.optimistic && (running.count || 0) > 1) renderMany(running, count.count || 0, rules, state.ccrmUrl, extras);
+    else if (entry?.running) renderRunning(entry, recent, count.count || 0, rules, state.ccrmUrl, false, state.optimistic ? noExtras(state.ccrmUrl) : extras);
+    else renderIdle(recent, count.count || 0, rules, state.ccrmUrl, false, extras);
   } catch (error) {
     if (error instanceof TrackerError && error.code === "not_paired") {
       const lost = (await loadLocal()).lost;
@@ -152,7 +169,7 @@ function renderLost(lost: QueueItem[]): void {
   });
 }
 
-function renderRunning(entry: any, recent: any, unsorted: number, rules: { enabled?: boolean }, ccrmUrl: string, offline = false): void {
+function renderRunning(entry: any, recent: any, unsorted: number, rules: { enabled?: boolean }, ccrmUrl: string, offline = false, extras: Extras = noExtras(ccrmUrl)): void {
   const started = Date.parse(entry.startAt);
   const paint = () => {
     const node = app.querySelector("#elapsed");
@@ -167,6 +184,7 @@ function renderRunning(entry: any, recent: any, unsorted: number, rules: { enabl
   app.innerHTML = `
     <div class="stack">
       ${offline ? `<p class="amber">Offline. Stop will be sent when you are back.</p>` : ""}
+      ${extrasTop(extras)}
       <div>
         <h1>${esc(entry.title || "Running")}</h1>
         <p class="muted">${esc(subtitle || "No project yet")}</p>
@@ -174,6 +192,7 @@ function renderRunning(entry: any, recent: any, unsorted: number, rules: { enabl
       <div class="elapsed" id="elapsed">0:00</div>
       <button id="stop" class="stop" type="button">Stop</button>
       <p class="muted">Today <strong id="today"></strong></p>
+      ${pausedRows(extras)}
       ${recentRows(recent.entries || [])}
       ${captureRow(!!rules.enabled)}
       ${footer(unsorted, ccrmUrl)}
@@ -184,50 +203,172 @@ function renderRunning(entry: any, recent: any, unsorted: number, rules: { enabl
   window.clearInterval(clock);
   clock = window.setInterval(paint, 1000);
   app.querySelector("#stop")?.addEventListener("click", () => void stop(entry));
+  wireExtras(extras);
   wireContinue(recent.entries || []);
   wireCapture(!!rules.enabled);
   wireOpen(ccrmUrl);
 }
 
-function renderMany(running: { count?: number; workedTodaySeconds?: number }, unsorted: number, rules: { enabled?: boolean }, ccrmUrl: string): void {
+function renderMany(running: { count?: number; workedTodaySeconds?: number; running?: any[] }, unsorted: number, rules: { enabled?: boolean }, ccrmUrl: string, extras: Extras): void {
   const loadedAt = Date.now();
   const base = Number(running.workedTodaySeconds) || 0;
+  const items = Array.isArray(running.running) ? running.running : [];
   // The union of the running intervals grows one second per second, however many run.
   const paint = () => {
     const node = app.querySelector("#worked");
-    if (!node) return;
-    const sec = base + Math.max(0, Math.floor((Date.now() - loadedAt) / 1000));
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    node.textContent = `${h}:${String(m).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
+    if (node) node.textContent = formatClock(base + (Date.now() - loadedAt) / 1000);
+    app.querySelectorAll<HTMLElement>(".item-elapsed").forEach((cell) => {
+      const started = Date.parse(cell.dataset.start || "");
+      if (Number.isFinite(started)) cell.textContent = formatClock((Date.now() + extras.offsetMs - started) / 1000);
+    });
   };
+  const rows = items.map((item, index) => `
+    <div class="card spread">
+      <span class="grow">${esc(item.title || "Untitled")}<br /><span class="muted">${esc(item.projectName || "No project")}</span></span>
+      <span class="item-elapsed" data-start="${esc(item.startAt)}">0:00:00</span>
+      <button class="tiny danger stop-item" type="button" data-index="${index}" aria-label="Stop ${esc(item.title || "timer")}">Stop</button>
+    </div>`).join("");
   app.innerHTML = `
     <div class="stack">
-      <div>
-        <h1>${esc(running.count || 0)} timers running</h1>
-        <p class="muted">Open the app to stop or switch them.</p>
+      ${extrasTop(extras)}
+      <div class="spread">
+        <h1>${esc(running.count || items.length)} timers running</h1>
+        <span><span class="muted">Worked today</span> <strong id="worked">0:00:00</strong></span>
       </div>
-      <div class="elapsed" id="worked">0:00</div>
-      <p class="muted">Worked today</p>
-      <button id="open-app" class="primary" type="button">Open the app</button>
+      <div class="stack">${rows}</div>
+      ${pausedRows(extras)}
+      <button id="open-app" class="ghost" type="button">Open the app</button>
       ${captureRow(!!rules.enabled)}
       ${footer(unsorted, ccrmUrl)}
     </div>`;
   paint();
   window.clearInterval(clock);
   clock = window.setInterval(paint, 1000);
+  app.querySelectorAll<HTMLElement>(".stop-item").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = items[Number(button.dataset.index)];
+      if (item) void stop(item);
+    });
+  });
   app.querySelector("#open-app")?.addEventListener("click", () => {
     void chrome.tabs.create({ url: `${ccrmUrl}/#time-tracking` });
   });
+  wireExtras(extras);
   wireCapture(!!rules.enabled);
   wireOpen(ccrmUrl);
 }
 
-function renderIdle(recent: any,unsorted: number, rules: { enabled?: boolean }, ccrmUrl: string, offline = false): void {
+/** The question banner (Still working? + countdown) or the paused banner, above the timers. */
+function extrasTop(extras: Extras): string {
+  const p = extras.presence;
+  if (p?.phase === "question" && p.enabled !== false) {
+    return `
+      <div class="question" role="alert">
+        <div class="spread"><strong>Still working?</strong><span class="countdown" id="countdown"></span></div>
+        <p class="muted">Without an answer the timers pause at ${esc(timeOfDay(p.deadlineAt))}.</p>
+        <button id="confirm" class="primary" type="button">Still working</button>
+      </div>`;
+  }
+  if (p?.phase === "paused") {
+    const how = extras.paused.length ? "resume below or open the app" : "open the app to resume";
+    return `<div class="paused-banner"><strong>Paused at ${esc(timeOfDay(p.autoPausedAt))}</strong> · ${how}</div>`;
+  }
+  return "";
+}
+
+/** The paused items, each with Resume and Stop. */
+function pausedRows(extras: Extras): string {
+  if (!extras.paused.length) return "";
+  const rows = extras.paused.map((item, index) => `
+    <div class="card spread">
+      <span class="grow">${esc(item.title || "Untitled")}<br /><span class="muted">${esc(item.projectName || "No project")} · paused ${esc(timeOfDay(item.pausedAt))}</span></span>
+      <button class="tiny resume-item" type="button" data-index="${index}">Resume</button>
+      <button class="tiny danger stop-paused" type="button" data-index="${index}">Stop</button>
+    </div>`).join("");
+  return `<div class="stack"><span class="muted">Paused</span>${rows}</div>`;
+}
+
+function wireExtras(extras: Extras): void {
+  window.clearInterval(questionClock);
+  const p = extras.presence;
+  const node = app.querySelector("#countdown");
+  const deadline = p?.deadlineAt ? Date.parse(p.deadlineAt) : Number.NaN;
+  if (node && Number.isFinite(deadline)) {
+    const tickDown = () => {
+      const left = deadline - (Date.now() + extras.offsetMs);
+      node.textContent = formatCountdown(left);
+      if (left <= 0) {
+        // The deadline passed: the server has paused the timers; read it again.
+        window.clearInterval(questionClock);
+        void refreshBadge().then(() => showTracker());
+      }
+    };
+    tickDown();
+    questionClock = window.setInterval(tickDown, 1000);
+  }
+  app.querySelector("#confirm")?.addEventListener("click", () => void confirmPresence());
+  app.querySelectorAll<HTMLElement>(".resume-item").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = extras.paused[Number(button.dataset.index)];
+      if (item) void resume(item);
+    });
+  });
+  app.querySelectorAll<HTMLElement>(".stop-paused").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = extras.paused[Number(button.dataset.index)];
+      if (item) void stop(item);
+    });
+  });
+}
+
+function showNotice(message: string): void {
+  app.querySelector(".stack")?.insertAdjacentHTML("afterbegin", `<p class="error">${esc(message)}</p>`);
+}
+
+/** "Still working" (D7.4): only before the deadline; after it the server answers 409 paused. */
+async function confirmPresence(): Promise<void> {
+  const button = app.querySelector("#confirm") as HTMLButtonElement | null;
+  if (button) button.disabled = true;
+  const state = await loadLocal();
+  try {
+    await trackerCall(state.ccrmUrl, state.deviceKey, "POST", "confirm");
+  } catch (error) {
+    if (error instanceof TrackerError && error.code === "offline") {
+      if (button) button.disabled = false;
+      showNotice("Could not reach CCRM. Try again.");
+      return;
+    }
+    /* paused or not_running: the repaint below shows what the server decided */
+  }
+  await refreshBadge();
+  await showTracker();
+}
+
+/** Resume one paused item: a switch, like Start (the others stop). */
+async function resume(item: any): Promise<void> {
+  const state = await loadLocal();
+  try {
+    await trackerCall(state.ccrmUrl, state.deviceKey, "POST", "resume", { id: item.id });
+  } catch (error) {
+    const code = error instanceof TrackerError ? error.code : "offline";
+    await refreshBadge();
+    await showTracker();
+    if (code === "pause_expired") showNotice("This pause has expired. Start the work again.");
+    else if (code === "offline") showNotice("Could not reach CCRM.");
+    else if (code !== "already_running" && code !== "not_paused") showNotice(code);
+    return;
+  }
+  await refreshBadge();
+  await showTracker();
+}
+
+function renderIdle(recent: any, unsorted: number, rules: { enabled?: boolean }, ccrmUrl: string, offline = false, extras: Extras = noExtras(ccrmUrl)): void {
   window.clearInterval(clock);
   app.innerHTML = `
     <div class="stack">
       ${offline ? `<p class="amber">Offline. A start is queued and sent later.</p>` : ""}
+      ${extrasTop(extras)}
+      ${pausedRows(extras)}
       <h1>What are you working on?</h1>
       <label>Title<input id="title" placeholder="Title" /></label>
       <label>Project<input id="project" placeholder="Search projects" /></label>
@@ -261,6 +402,7 @@ function renderIdle(recent: any,unsorted: number, rules: { enabled?: boolean }, 
     taskId: (app.querySelector("#task") as HTMLSelectElement).value,
     taskTitle: (app.querySelector("#task") as HTMLSelectElement).selectedOptions[0]?.textContent || "",
   }));
+  wireExtras(extras);
   wireContinue(recent.entries || []);
   wireCapture(!!rules.enabled);
   wireOpen(ccrmUrl);

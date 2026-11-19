@@ -1339,6 +1339,79 @@ async function main() {
            UPDATE tasks SET status = 'todo', completed_at = NULL, completed_by = NULL WHERE id = ${q(TASK)};`);
       check('T23: cleanup: nothing runs on the task', runningOn('tt-erik').length === 0 && runningOn('tt-admin').length === 0);
     }
+    section('T24: extension presence (phase 10)');
+    {
+      // The popup answers the question itself ("Still working", phase 10 checklist; C9 still forbids notification
+      // buttons): device `running` carries presence + paused[], device `confirm` moves the anchor before the deadline
+      // and is 409 paused after it, device `resume` continues the paused item, device `stop {id}` ends one item.
+      // Test clock as T20/T22; 18:00 UTC today, after T22's instants and far from autoStopAt (23:59 company time).
+      // Uses task-tt-p1 (proj-tt-1), so requireProjectToStop never refuses the stop.
+      const MIN = 60000;
+      const utc = (ms) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+      const isoZ = (ms) => new Date(ms).toISOString().slice(0, 19) + 'Z';
+      const setNow = (ms) => sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('TT_TEST_NOW', ${q(utc(ms))})`);
+      const d = new Date();
+      const T4 = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 18, 0, 0);
+      const runningRows = () => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL ORDER BY start_at, id`);
+      const anchorOf = () => (rows(`SELECT anchor_at FROM time_presence WHERE user_id='tt-erik'`)[0] || {}).anchor_at;
+      const ext = (method, action, body, key) =>
+        fetch(`${BASE}/ttprobe/api/time_tracker_ext.php${method === 'GET' ? `?action=${action}` : ''}`, {
+          method,
+          headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(key ? { Authorization: `Bearer ${key}` } : {}) },
+          body: body === undefined ? undefined : JSON.stringify({ action, ...body }),
+        }).then(async (res) => { const raw = await res.text(); let data = null; try { data = JSON.parse(raw); } catch {} return { status: res.status, raw, data }; });
+
+      await te(S.erik, { action: 'stop', all: true });
+      const code = await api(S.erik, 'time_tracker_ext.php', { method: 'POST', body: { action: 'code' } });
+      const key = (await ext('POST', 'pair', { code: code.data?.code, deviceName: 'T24 probe', version: '1.1.0' })).data?.deviceKey;
+      check('T24: a device is paired, nothing runs', /^ttk_[a-f0-9]{64}$/.test(key || '') && runningRows().length === 0, code.raw);
+
+      setNow(T4);
+      const st = await ext('POST', 'start', { taskId: 'task-tt-p1' }, key);
+      const aId = st.data?.entry?.id;
+      const r0 = await ext('GET', 'running', undefined, key);
+      check('T24: device running carries presence (tracking, anchor T4, promptAt T4+50, deadlineAt T4+60) and paused []',
+        st.status === 201 && r0.status === 200 && r0.data?.presence?.phase === 'tracking' && r0.data.presence.anchorAt === isoZ(T4)
+          && r0.data.presence.promptAt === isoZ(T4 + 50 * MIN) && r0.data.presence.deadlineAt === isoZ(T4 + 60 * MIN)
+          && Array.isArray(r0.data.paused) && r0.data.paused.length === 0 && r0.data.count === 1, `${st.raw} / ${r0.raw}`);
+
+      setNow(T4 + 55 * MIN);
+      const r1 = await ext('GET', 'running', undefined, key);
+      check('T24: at T4+55 device running reports the question', r1.data?.presence?.phase === 'question', r1.raw);
+      const getConfirm = await ext('GET', 'confirm', undefined, key);
+      check('T24: device confirm is POST only', getConfirm.status === 405, getConfirm.raw);
+      const c1 = await ext('POST', 'confirm', {}, key);
+      check('T24: device confirm at T4+55: 200, anchor = T4+55, tracking, the entry still runs',
+        c1.status === 200 && c1.data?.presence?.anchorAt === isoZ(T4 + 55 * MIN) && c1.data.presence.phase === 'tracking'
+          && anchorOf() === utc(T4 + 55 * MIN) && dbEntry(aId)?.end_at === null, c1.raw);
+
+      // No answer in the new cycle (question T4+105, deadline T4+115): at T4+116 the confirm is too late.
+      setNow(T4 + 116 * MIN);
+      const late = await ext('POST', 'confirm', {}, key);
+      check('T24: device confirm after the deadline is 409 paused with the state', late.status === 409 && late.data?.code === 'paused' && late.data?.presence?.phase === 'paused', late.raw);
+      check('T24: ...the entry ended at the question (T4+105) and is paused', dbEntry(aId)?.end_at === utc(T4 + 105 * MIN) && dbEntry(aId)?.pause_reason === 'presence', JSON.stringify(dbEntry(aId)));
+      const r2 = await ext('GET', 'running', undefined, key);
+      check('T24: device running: count 0, paused[] holds the item with pauseExpiresAt, presence paused (autoPausedAt T4+115)',
+        r2.data?.count === 0 && r2.data.paused?.length === 1 && r2.data.paused[0].id === aId && typeof r2.data.paused[0].pauseExpiresAt === 'string'
+          && r2.data.presence?.phase === 'paused' && r2.data.presence.autoPausedAt === isoZ(T4 + 115 * MIN), r2.raw);
+
+      setNow(T4 + 118 * MIN);
+      const rs = await ext('POST', 'resume', { id: aId }, key);
+      const bId = rs.data?.entry?.id;
+      check('T24: device resume continues the paused item: 201, a new running entry with continues_id, source extension, marker cleared',
+        rs.status === 201 && bId && bId !== aId && dbEntry(bId)?.continues_id === aId && dbEntry(bId)?.source === 'extension'
+          && dbEntry(bId)?.start_at === utc(T4 + 118 * MIN) && dbEntry(aId)?.paused_at === null && runningRows().length === 1, rs.raw);
+      check('T24: ...resume restarts the cycle (anchor = T4+118)', anchorOf() === utc(T4 + 118 * MIN), anchorOf());
+      const again = await ext('POST', 'resume', { id: aId }, key);
+      check('T24: resuming the same (no longer paused) item again is 409 not_paused', again.status === 409 && again.data?.code === 'not_paused', again.raw);
+
+      const sp = await ext('POST', 'stop', { id: bId }, key);
+      check('T24: device stop {id} ends that item', sp.status === 200 && sp.data?.entry?.id === bId && dbEntry(bId)?.end_at !== null && runningRows().length === 0, sp.raw);
+
+      sql(`DELETE FROM system_settings WHERE \`key\` = 'TT_TEST_NOW'`);
+      await te(S.erik, { action: 'stop', all: true });
+      check('T24: cleanup: Erik has no running entry, the test clock is off', runningRows().length === 0);
+    }
   } finally {
     teardown();
   }
