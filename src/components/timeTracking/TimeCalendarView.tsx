@@ -42,7 +42,6 @@ import {
 } from "../../utils/timeCalendar.ts";
 import { isEntryLocked, lockReason, paidMonthsForOwner } from "../../utils/timeLock";
 import { formatDuration, localIsoDate, projectColor, todayIso, type TimeEntry } from "../../utils/timeTracking.ts";
-import { totalWorkedSeconds } from "../../utils/timeWorked.ts";
 import { TimeApiError, createEntry, timeErrorMessage, updateEntry, type EntryInput } from "../../utils/timeTrackingApi.ts";
 import { ProjectLabel } from "./ProjectLabel";
 import { ProjectPicker } from "./ProjectPicker";
@@ -534,11 +533,8 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
       : `${new Date(`${days[0]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })} – ${new Date(`${days[6]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })}`;
 
   const daySeconds = useMemo(() => {
-    // Worked time, like List and the Timesheet Worked row: parallel timers in one hour count once.
-    const byDay = new Map<string, TimeEntry[]>();
-    for (const entry of entries) byDay.set(entry.entryDate, [...(byDay.get(entry.entryDate) ?? []), entry]);
     const map = new Map<string, number>();
-    for (const [day, list] of byDay) map.set(day, totalWorkedSeconds(list, nowMs));
+    for (const entry of entries) map.set(entry.entryDate, (map.get(entry.entryDate) ?? 0) + entryDurationSec(entry, nowMs));
     return map;
   }, [entries, nowMs]);
   const rangeSeconds = days.reduce((sum, day) => sum + (zoom === "month" && day.slice(0, 7) !== anchor.slice(0, 7) ? 0 : daySeconds.get(day) ?? 0), 0);

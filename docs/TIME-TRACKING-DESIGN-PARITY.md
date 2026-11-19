@@ -5,6 +5,10 @@ Canvas: https://claude.ai/artifact/G1ZJkEvLUbzXAQG8bpwwsd ("CCRM Time Tracking")
 2026-11-19 against `css-main` at `fda1a127`. Screenshots: `test-results/tt-design-parity/before/` and
 `after/` (local, not committed).
 
+**Branches.** The audit was made on `css-main` (which carries time tracking v2). The same FIX commits
+were ported to `1.13-nectarine`, which has no v2: there the Calendar totals sum entry durations
+(no worked-time engine), and rows citing tt2 commits describe `css-main` only.
+
 **Precedence (highest first):** owner decisions after 26 Oct 2026 → `docs/TIME-TRACKING-V2.md` → the
 app's own system (View size, primitives, branding, shell) → the canvas. Px sizes, fonts, radii and
 shadows are never findings on their own.
