@@ -14,6 +14,8 @@ import {
   totalSeconds,
   type TimeEntry,
 } from "../../utils/timeTracking.ts";
+import { totalWorkedSeconds } from "../../utils/timeWorked.ts";
+import { WorkedTotal } from "./WorkedLine";
 import { TimeApiError, createEntry, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
 import { teamRoleBadge, visibleEntryCost, withoutHiddenCost } from "../../utils/timeTeam.ts";
 import type { Task } from "../../types";
@@ -74,8 +76,8 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
 
   const dayEntries = byDay.get(selected) ?? [];
   const holiday = calendar.holiday(selected);
-  const myTotal = totalSeconds(dayEntries.filter((e) => e.userId === tt.userId), nowMs);
-  const teamTotal = totalSeconds(dayEntries, nowMs);
+  const myTotal = totalWorkedSeconds(dayEntries.filter((e) => e.userId === tt.userId), nowMs);
+  const teamTotal = totalWorkedSeconds(dayEntries, nowMs);
 
   const groups = useMemo(() => {
     const m = new Map<string, TimeEntry[]>();
@@ -153,7 +155,7 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
         </button>
         {strip.map((d) => {
           const list = byDay.get(d) ?? [];
-          const sec = totalSeconds(list, nowMs);
+          const sec = totalWorkedSeconds(list, nowMs);
           const off = calendar.isOffDay(d);
           const dot = dayDot(sec, perDayTarget(d));
           const h = calendar.holiday(d);
@@ -289,7 +291,7 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
                 )}
                 <span className="ml-auto flex items-center gap-4">
                   {cost !== null && <span className="tabular-nums text-violet-700">{money(cost)}</span>}
-                  <ClockDigits value={formatDuration(totalSeconds(list, nowMs), true)} className="font-semibold text-slate-900" />
+                  <WorkedTotal projectSec={totalSeconds(list, nowMs)} workedSec={totalWorkedSeconds(list, nowMs)} className="font-semibold text-slate-900" />
                 </span>
               </div>
               <div role="table" className="divide-y divide-slate-100">

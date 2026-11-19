@@ -1,0 +1,2 @@
+- **Worked time in List, Day and the entry drawer** (`TimeListView.tsx`, `TimeDayView.tsx`, `EntryRow.tsx`, `EntryDrawer.tsx`, `WorkedLine.tsx`, `timeWorkedView.ts`): Today, This week, the day-strip dots and day totals use worked time; where it differs from project time the day total reads "Worked 2:00 · Delivered 6:00", a row shows "0:40 of your time" under its duration and the drawer shows "Your time: 0:40 of 2:00 · in parallel with ...".
+- **Tests**: `timeWorkedView.test.ts`.

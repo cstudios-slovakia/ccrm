@@ -10,6 +10,7 @@ import {
   type TimeEntry,
 } from "../../utils/timeTracking.ts";
 import { ClockDigits } from "./ClockDigits";
+import { OfYourTime } from "./WorkedLine";
 import { initials, useMoney, useTimeLookups, type TimeDeps } from "./shared";
 
 interface Props {
@@ -116,7 +117,10 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
       ))}
       <Euro className={`size-4 shrink-0 ${entry.billable ? "text-emerald-600" : "text-slate-300"}`} aria-label={entry.billable ? t("Billable", "Fakturovateľné", "Számlázható") : t("Not billable", "Nefakturovateľné", "Nem számlázható")} />
       <span className="w-28 shrink-0 text-right tabular-nums text-slate-500">{range}</span>
-      <ClockDigits value={formatDuration(sec, true)} className="w-18 shrink-0 justify-end font-semibold text-slate-900" data-testid="time-entry-duration" />
+      <span className="flex w-18 shrink-0 flex-col items-end">
+        <ClockDigits value={formatDuration(sec, true)} className="justify-end font-semibold text-slate-900" data-testid="time-entry-duration" />
+        <OfYourTime entries={group} />
+      </span>
       {rate && (
         <span className="hidden w-20 shrink-0 text-right tabular-nums text-violet-700 ws-lg:inline" data-testid="time-entry-cost">
           {cost !== null ? money(cost) : entry.costRate === null && !entry.running ? <span className="text-amber-600" title={t("No rate — no employee linked", "Bez sadzby — nie je pripojený zamestnanec", "Nincs díj — nincs munkatárs hozzárendelve")}>—</span> : ""}

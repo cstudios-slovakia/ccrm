@@ -22,6 +22,7 @@ import {
 import { TimeApiError, createEntry, timeErrorMessage, updateEntry, type EntryInput } from "../../utils/timeTrackingApi.ts";
 import type { Task } from "../../types";
 import { ProjectPicker } from "./ProjectPicker";
+import { DrawerWorkedLine } from "./WorkedLine";
 import { canRenameTitle, renameHint, useMoney, useTimeLookups, type TimeDeps } from "./shared";
 
 interface Props {
@@ -419,6 +420,8 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
             <span className="text-ui font-semibold text-slate-800">{t("Billable", "Fakturovateľné", "Számlázható")}</span>
             {viewer.canCosts && entry.billableRate ? <span className="type-meta tabular-nums text-emerald-700">{money(entry.billableRate)}/h</span> : null}
           </label>
+
+          {showCost && <DrawerWorkedLine entry={entry} />}
 
           {/* Cost */}
           {showCost && (
