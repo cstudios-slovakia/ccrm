@@ -836,7 +836,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
                   </span>
                   <button
                     type="button"
-                    onClick={() => void tt.start({ taskId: task.id, projectId, originType: "task", originId: task.id, billable: settings.billableByDefault })}
+                    onClick={(ev) => void tt.start({ taskId: task.id, projectId, originType: "task", originId: task.id, billable: settings.billableByDefault }, { anchor: ev.currentTarget })}
                     className="inline-flex size-7 items-center justify-center rounded-lg text-teal-700 hover:bg-teal-50 cursor-pointer"
                     aria-label={t("Start timer", "Spustiť časovač", "Időzítő indítása")}
                   >

@@ -198,7 +198,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
                     for (const id of ids) (checked ? next.add(id) : next.delete(id));
                     return next;
                   });
-                const onContinue = viewScope === "me" || entry.userId === tt.userId ? (e: TimeEntry) => void tt.start(continueInput(e)) : undefined;
+                const onContinue = viewScope === "me" || entry.userId === tt.userId ? (e: TimeEntry, anchor?: Element) => void tt.start(continueInput(e), { anchor }) : undefined;
                 return (
                   <Fragment key={entry.id}>
                     <EntryRow

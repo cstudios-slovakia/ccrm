@@ -32,12 +32,12 @@ interface Props {
   selected?: boolean;
   onSelect?: (checked: boolean) => void;
   onOpen: (entry: TimeEntry) => void;
-  onContinue?: (entry: TimeEntry) => void;
+  onContinue?: (entry: TimeEntry, anchor?: Element) => void;
 }
 
 /** One entry as a row, shared by the List and the Day view. */
 export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps, showPerson, selected, onSelect, onOpen, onContinue }: Props) {
-  const { t, nowMs } = useTimeTracking();
+  const { t, nowMs, isRunningTarget } = useTimeTracking();
   const lookups = useTimeLookups(deps);
   const money = useMoney(deps);
   const person = lookups.userById.get(entry.userId);
@@ -125,8 +125,8 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
         </span>
       )}
       <span className="flex shrink-0 justify-end gap-1 opacity-100 ws-sm:w-16 ws-sm:opacity-0 ws-sm:transition-opacity ws-sm:group-hover:opacity-100 ws-sm:focus-within:opacity-100">
-        {onContinue && !entry.running && (
-          <button type="button" onClick={() => onContinue(entry)} title={t("Continue", "Pokračovať", "Folytatás")} aria-label={t("Continue", "Pokračovať", "Folytatás")} data-testid="time-entry-continue" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-primary hover:text-white cursor-pointer ws-sm:size-7 ws-sm:min-h-0 ws-sm:min-w-0">
+        {onContinue && !entry.running && !isRunningTarget({ taskId: entry.taskId, ticketId: entry.ticketId, projectId: entry.projectId, title: entry.description }) && (
+          <button type="button" onClick={(ev) => onContinue(entry, ev.currentTarget)} title={t("Continue", "Pokračovať", "Folytatás")} aria-label={t("Continue", "Pokračovať", "Folytatás")} data-testid="time-entry-continue" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-primary hover:text-white cursor-pointer ws-sm:size-7 ws-sm:min-h-0 ws-sm:min-w-0">
             <Play className="size-3.5 fill-current" />
           </button>
         )}

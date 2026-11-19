@@ -50,7 +50,7 @@ export function TaskTimeControls({
   const tracked = (tt.totals.byTask[task.id] ?? 0) + (runningHere ? elapsedSeconds(runningEntry?.startAt ?? null, tt.nowMs) : 0);
   const t = tt.t;
 
-  const begin = async (projectId: string | null, remember: boolean) => {
+  const begin = async (projectId: string | null, remember: boolean, anchor?: Element | null) => {
     setAsk(null);
     if (remember && projectId) onSaveProject?.(task.id, projectId);
     const started = await tt.start({
@@ -60,7 +60,7 @@ export function TaskTimeControls({
       note: note.trim() || null,
       originType: "task",
       originId: task.id,
-    });
+    }, { anchor });
     if (started) setNote("");
   };
 
@@ -74,7 +74,7 @@ export function TaskTimeControls({
     }
   };
 
-  const onPlay = () => {
+  const onPlay = (anchor: Element) => {
     if (runningEntry) {
       void tt.stop(runningEntry.id);
       return;
@@ -88,7 +88,7 @@ export function TaskTimeControls({
       setNewType(readTimeCreate().projectTypes[0]?.id ?? "");
       return;
     }
-    void begin(resolved.projectId, false);
+    void begin(resolved.projectId, false, anchor);
   };
 
   const party = clientForTask(task, leads);
@@ -106,7 +106,7 @@ export function TaskTimeControls({
       type="button"
       onClick={(e) => {
         e.stopPropagation();
-        onPlay();
+        onPlay(e.currentTarget);
       }}
       data-testid="task-time-start"
       title={runningHere ? t("Stop timer", "Zastaviť časovač", "Időzítő leállítása") : t("Start timer", "Spustiť časovač", "Időzítő indítása")}
@@ -137,7 +137,7 @@ export function TaskTimeControls({
           if (e.key !== "Enter") return;
           e.preventDefault();
           if (runningHere) (e.currentTarget as HTMLInputElement).blur();
-          else onPlay();
+          else onPlay(e.currentTarget);
         }}
         maxLength={1000}
         placeholder={t("Description (optional)", "Popis (voliteľné)", "Leírás (nem kötelező)")}

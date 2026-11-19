@@ -17,6 +17,7 @@ import { DEFAULT_TIME_TRACKING_SETTINGS, type TimeTrackingSettings } from "../..
 import type { OverlapMonth } from "../../utils/timeTrackingApi.ts";
 import { TimeApiError, getOverlaps, repriceEntries, saveSettings, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
 import { ExtensionSettings } from "./ExtensionSettings";
+import { ParallelTrackingBlock, StartWhileRunningBlock } from "./ParallelSettings";
 import { TogglImportPanel } from "./TogglImportPanel";
 import { formatMoney } from "../../utils/currency";
 import type { Language } from "../../utils/translations";
@@ -328,6 +329,9 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
           </label>
         </div>
       </Surface>
+
+      <ParallelTrackingBlock t={t} canEdit={canEdit} parallel={draft.parallel ?? DEFAULT_TIME_TRACKING_SETTINGS.parallel} onChange={(parallel) => set("parallel", parallel)} />
+      <StartWhileRunningBlock />
 
       {/* PHASE6-SETTINGS */}
       <Surface className="space-y-4">

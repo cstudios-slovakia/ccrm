@@ -79,9 +79,9 @@ export function ProjectTimeTab({
             <button
               type="button"
               data-testid="project-start-timer"
-              onClick={() => {
+              onClick={(ev) => {
                 if (runningHere) void tt.stop(runningHere.id);
-                else void tt.start({ projectId: project.id, description: null, originType: "project", originId: project.id });
+                else void tt.start({ projectId: project.id, description: null, originType: "project", originId: project.id }, { anchor: ev.currentTarget });
               }}
               className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-ui font-bold shadow-sm transition-all active:scale-95 cursor-pointer ${runningHere ? "bg-rose-600 text-white hover:bg-rose-700" : "bg-primary text-primary-foreground hover:opacity-90"}`}
             >
