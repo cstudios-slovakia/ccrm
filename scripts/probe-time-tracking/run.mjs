@@ -417,6 +417,104 @@ async function main() {
       const proj = totals.data?.byProject?.['proj-tt-1'];
       check('T13 [later package]: action=totals carries workedMs next to seconds', !!proj && typeof proj.seconds === 'number' && typeof proj.workedMs === 'number', totals.raw);
     }
+    section("T14: today's timer behaviour (REST, extension, MCP)");
+    {
+      // Baseline for phase 4 (parallel timers): single-timer use must keep behaving like this (A4.4, A4.8, D5.6).
+      // Fixture user Erik; every description is unique to this section so earlier counts are untouched.
+      const runningRows = () => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL`);
+      const countDesc = (d) => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND description=${q(d)} AND deleted_at IS NULL`).length;
+      await te(S.erik, { action: 'stop' }); // leftovers of earlier sections (404 when nothing runs)
+      check('T14: starting point: Erik has no running entry', runningRows().length === 0);
+
+      // ---- REST (api/time_entries.php) ----
+      const ra = await te(S.erik, { action: 'start', description: 'T14 REST A' });
+      check('T14 REST: start returns 201, a running entry and stopped null', ra.status === 201 && ra.data?.entry?.running === true && ra.data?.stopped === null, ra.raw);
+      const runA = await api(S.erik, 'time_entries.php', { query: '?running=1' });
+      // Shape today: { entry: <entry|null>, success }. Phase 4 keeps `entry` and adds running[], paused[], presence, serverNow.
+      check('T14 REST: ?running=1 returns { entry } with the running entry', runA.status === 200 && 'entry' in (runA.data || {}) && runA.data.entry?.id === ra.data?.entry?.id, runA.raw);
+      const rb = await te(S.erik, { action: 'start', description: 'T14 REST B' });
+      check('T14 REST: starting another target returns the stopped entry', rb.status === 201 && rb.data?.stopped?.id === ra.data?.entry?.id && rb.data?.stopped?.running === false, rb.raw);
+      check('T14 REST: ...the first entry now has end_at and a duration, only B runs', dbEntry(ra.data?.entry?.id)?.end_at !== null && dbEntry(ra.data?.entry?.id)?.duration_sec !== null && runningRows().length === 1 && runningRows()[0].id === rb.data?.entry?.id);
+      const rb2 = await te(S.erik, { action: 'start', description: 'T14 REST B' });
+      check('T14 REST: starting the running target again is 409 already_running with the running entry', rb2.status === 409 && rb2.data?.code === 'already_running' && rb2.data?.entry?.id === rb.data?.entry?.id, rb2.raw);
+      check('T14 REST: ...and nothing new was stored', countDesc('T14 REST B') === 1 && runningRows().length === 1);
+      const undo = await te(S.erik, { action: 'undo_start', newId: rb.data?.entry?.id, stoppedId: ra.data?.entry?.id });
+      check('T14 REST: undo_start removes the new entry and reopens the stopped one', undo.status === 200 && undo.data?.entry?.id === ra.data?.entry?.id && undo.data?.entry?.running === true && !dbEntry(rb.data?.entry?.id) && runningRows().length === 1 && runningRows()[0].id === ra.data?.entry?.id, undo.raw);
+      const st1 = await te(S.erik, { action: 'stop' });
+      const endAfterFirstStop = dbEntry(ra.data?.entry?.id)?.end_at;
+      const st2 = await te(S.erik, { action: 'stop', id: ra.data?.entry?.id });
+      check('T14 REST: stop ends the running entry', st1.status === 200 && st1.data?.entry?.id === ra.data?.entry?.id && st1.data?.entry?.running === false && endAfterFirstStop !== null, st1.raw);
+      check('T14 REST: stopping again is idempotent (200, end_at unchanged)', st2.status === 200 && dbEntry(ra.data?.entry?.id)?.end_at === endAfterFirstStop, st2.raw);
+      const runNone = await api(S.erik, 'time_entries.php', { query: '?running=1' });
+      check('T14 REST: ?running=1 is { entry: null } with nothing running', runNone.status === 200 && runNone.data?.entry === null, runNone.raw);
+
+      // ---- Chrome extension (api/time_tracker_ext.php, Authorization: Bearer ttk_...) ----
+      const ext = (method, action, body, key) =>
+        fetch(`${BASE}/ttprobe/api/time_tracker_ext.php${method === 'GET' ? `?action=${action}` : ''}`, {
+          method,
+          headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(key ? { Authorization: `Bearer ${key}` } : {}) },
+          body: body === undefined ? undefined : JSON.stringify({ action, ...body }),
+        }).then(async (res) => { const raw = await res.text(); let data = null; try { data = JSON.parse(raw); } catch {} return { status: res.status, raw, data }; });
+      const code = await api(S.erik, 'time_tracker_ext.php', { method: 'POST', body: { action: 'code' } });
+      const paired = await ext('POST', 'pair', { code: code.data?.code, deviceName: 'T14 probe', version: '1.0.0' });
+      const key = paired.data?.deviceKey;
+      check('T14 EXT: a pairing code (session) pairs a device and returns a ttk_ key', code.status === 200 && paired.status === 200 && /^ttk_[a-f0-9]{64}$/.test(key || ''), `${code.raw} / ${paired.raw}`);
+      const e0 = await ext('GET', 'running', undefined, key);
+      // If this fails with 401 not_paired while the key is right, the container's Apache drops the Authorization header
+      // (the same trap scripts/probe-mcp documents); the remaining EXT checks then fail for that reason alone.
+      check('T14 EXT: running with the device key returns { entry: null }', e0.status === 200 && e0.data?.entry === null, e0.raw);
+      const ea = await ext('POST', 'start', { description: 'T14 EXT A' }, key);
+      check('T14 EXT: start returns 201 with a running entry (source extension)', ea.status === 201 && ea.data?.entry?.running === true && dbEntry(ea.data?.entry?.id)?.source === 'extension', ea.raw);
+      const e1 = await ext('GET', 'running', undefined, key);
+      check('T14 EXT: running returns that entry', e1.data?.entry?.id === ea.data?.entry?.id, e1.raw);
+      const rToday = await ext('GET', 'recent', undefined, key); // the popup's "today" data: last 3 stopped entries + todaySeconds
+      check('T14 EXT: recent returns { entries[], todaySeconds }', rToday.status === 200 && Array.isArray(rToday.data?.entries) && typeof rToday.data?.todaySeconds === 'number', rToday.raw);
+      const rSwitch = await te(S.erik, { action: 'start', description: 'T14 EXT then REST' });
+      check('T14 EXT: a REST start while the extension timer runs stops it', rSwitch.status === 201 && rSwitch.data?.stopped?.id === ea.data?.entry?.id && runningRows().length === 1, rSwitch.raw);
+      const eSwitch = await ext('POST', 'start', { description: 'T14 EXT B' }, key);
+      check('T14 EXT: an extension start while a REST timer runs stops it', eSwitch.status === 201 && eSwitch.data?.stopped?.id === rSwitch.data?.entry?.id && runningRows().length === 1, eSwitch.raw);
+      const eStop = await ext('POST', 'stop', {}, key);
+      check('T14 EXT: stop ends the running entry', eStop.status === 200 && eStop.data?.entry?.id === eSwitch.data?.entry?.id && eStop.data?.entry?.running === false && runningRows().length === 0, eStop.raw);
+
+      // ---- MCP (api/mcp.php, tools get_running_timer / start_timer / stop_timer) ----
+      const token = 'ccrm_mcp_probe_tt_erik_' + '0'.repeat(40);
+      sql(`INSERT INTO mcp_keys (id, user_id, key_hash, key_prefix, name, created_at) VALUES ('pk-tt-erik', 'tt-erik', SHA2(${q(token)}, 256), 'ccrm_mcp_p...', 'probe', NOW() - INTERVAL 1 DAY);`);
+      let rpcId = 1;
+      const mcp = async (tool, args = {}) => {
+        const res = await fetch(`${BASE}/ttprobe/api/mcp.php`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CCRM-MCP-KEY': token },
+          body: JSON.stringify({ jsonrpc: '2.0', id: rpcId++, method: 'tools/call', params: { name: tool, arguments: args } }),
+        });
+        const raw = await res.text();
+        let body = null; try { body = JSON.parse(raw); } catch {}
+        const text = body?.result?.content?.[0]?.text;
+        let data = null; try { data = JSON.parse(text); } catch {}
+        return { status: res.status, raw, isError: !!body?.result?.isError || !!body?.error, data };
+      };
+      const m0 = await mcp('get_running_timer');
+      check('T14 MCP: get_running_timer with nothing running is { running: null }', m0.status === 200 && !m0.isError && m0.data?.running === null, m0.raw);
+      const m1 = await mcp('start_timer', { description: 'T14 MCP A' });
+      check('T14 MCP: start_timer returns success, a running entry and stopped_previous_id null', !m1.isError && m1.data?.success === true && m1.data?.entry?.running === true && m1.data?.stopped_previous_id === null, m1.raw);
+      const m2 = await mcp('get_running_timer');
+      check('T14 MCP: get_running_timer returns that entry', m2.data?.running?.id === m1.data?.entry?.id, m2.raw);
+      const m3 = await mcp('start_timer', { description: 'T14 MCP B' });
+      check('T14 MCP: starting another target reports stopped_previous_id and leaves one running', m3.data?.stopped_previous_id === m1.data?.entry?.id && dbEntry(m1.data?.entry?.id)?.end_at !== null && runningRows().length === 1, m3.raw);
+      const m4 = await mcp('stop_timer');
+      check('T14 MCP: stop_timer ends the running entry', !m4.isError && m4.data?.success === true && m4.data?.entry?.id === m3.data?.entry?.id && m4.data?.entry?.running === false && runningRows().length === 0, m4.raw);
+      const m5 = await mcp('get_running_timer');
+      check('T14 MCP: get_running_timer is { running: null } again', m5.data?.running === null, m5.raw);
+      // A4.4: REST answers 409 for the running target; MCP start_timer stops it and opens a new entry (one block of work becomes two).
+      const s1 = await mcp('start_timer', { description: 'T14 MCP same target' });
+      const s2 = await mcp('start_timer', { description: 'T14 MCP same target' });
+      check('T14: MCP start_timer of the running target does not split the entry (A4.4, fixed in phase 4) [EXPECTED TO FAIL today]',
+        countDesc('T14 MCP same target') === 1 && runningRows().length === 1 && runningRows()[0].id === s1.data?.entry?.id, `${countDesc('T14 MCP same target')} rows; ${s2.raw}`);
+
+      // Leave nothing running for whoever uses Erik after this section.
+      await te(S.erik, { action: 'stop' });
+      sql(`DELETE FROM mcp_keys WHERE id = 'pk-tt-erik'`);
+      check('T14: cleanup: Erik has no running entry', runningRows().length === 0);
+    }
   } finally {
     teardown();
   }

@@ -1,0 +1,1 @@
+- **Tests**: time tracking probe section T14 pins today's single-timer behaviour over REST, the Chrome extension and MCP (start, switch, 409 already_running, undo, stop, running); one check documents the MCP same-target split (A4.4) and fails until phase 4.
