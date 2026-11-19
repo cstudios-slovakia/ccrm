@@ -47,9 +47,9 @@ test.describe('Time tracking: phone container', () => {
     await page.getByTestId('mobile-running-summary').click();
     await expect(page.getByTestId('mobile-timer-sheet')).toBeVisible();
     await expect(page.getByTestId('mobile-timer-sheet-handle')).toBeVisible();
-    await expect(page.getByTestId('timer-container-row')).toHaveCount(2);
+    await expect(page.getByTestId('mobile-timer-sheet').getByTestId('timer-container-row')).toHaveCount(2);
 
-    await page.getByTestId('timer-container-stop').first().click();
+    await page.getByTestId('mobile-timer-sheet').getByTestId('timer-container-stop').first().click();
     await expect(page.getByTestId('mobile-timer-sheet')).toHaveCount(0);
     await expect(page.getByTestId('mobile-running-card')).toBeVisible();
   });
@@ -58,7 +58,7 @@ test.describe('Time tracking: phone container', () => {
     await twoTimersSession(page);
 
     await page.getByTestId('mobile-running-summary').click();
-    await page.getByTestId('timer-container-add').click();
+    await page.getByTestId('mobile-timer-sheet').getByTestId('timer-container-add').click();
     await expect(page.getByTestId('mobile-timer-sheet').getByTestId('timer-title')).toBeVisible();
     await page.getByTestId('mobile-timer-sheet-close').click();
     await expect(page.getByTestId('mobile-timer-sheet')).toHaveCount(0);
@@ -68,7 +68,7 @@ test.describe('Time tracking: phone container', () => {
     await twoTimersSession(page);
 
     await page.getByTestId('mobile-running-summary').click();
-    await page.getByTestId('timer-container-pause-all').click();
+    await page.getByTestId('mobile-timer-sheet').getByTestId('timer-container-pause-all').click();
     await page.getByTestId('mobile-timer-sheet-close').click();
     await expect(page.getByTestId('mobile-paused-card')).toBeVisible();
     await expect(page.getByTestId('mobile-paused-resume')).toBeVisible();

@@ -113,15 +113,16 @@ export function TimeTrackingMobileBar({ onNavigate, deps, recentProjectIds, seco
         </div>
       )}
       {pausedOnly && (
-        <div data-testid="mobile-paused-card" className="fixed inset-x-3 bottom-20 z-40 flex items-center gap-3 rounded-3xl border border-amber-200 bg-white p-4 shadow-xl">
-          <span className="min-w-0 flex-1">
+        <div data-testid="mobile-paused-card" className="fixed inset-x-3 bottom-20 z-40 rounded-3xl border border-amber-200 bg-white p-4 shadow-xl">
+          {/* Stacked like the running card: the button sits left, clear of the floating copilot at the right edge. */}
+          <span className="block min-w-0">
             <span className="block type-overline text-amber-600">{t("Paused", "Pozastavené", "Szüneteltetve")}</span>
             <span className="block truncate text-body text-slate-700">
               {firstPaused?.title || t("No title", "Bez názvu", "Nincs cím")}
               {tt.paused.length > 1 && <span className="font-bold text-amber-700"> {extraItemsLabel(tt.paused.length)}</span>}
             </span>
           </span>
-          <CycleRing radius={16}>
+          <CycleRing radius={16} className="mt-3">
             <button
               type="button"
               onClick={() => void (tt.paused.length > 1 ? tt.resumeAll() : tt.resume(firstPaused.id))}

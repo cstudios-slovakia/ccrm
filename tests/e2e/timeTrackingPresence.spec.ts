@@ -31,7 +31,7 @@ test.describe('Time tracking: presence', () => {
     await gotoView(page, '#time-tracking');
     await startTimer(page, 'Prezencia');
 
-    await expect(page.getByTestId('cycle-ring')).toHaveAttribute('data-phase', 'tracking');
+    await expect(page.getByTestId('cycle-ring').first()).toHaveAttribute('data-phase', 'tracking');
     await expect(page.getByTestId('presence-dialog')).toHaveCount(0);
 
     await nudge(page, { minutesIn: 51 });
@@ -39,12 +39,12 @@ test.describe('Time tracking: presence', () => {
     await expect(dialog).toBeVisible();
     await expect(dialog).toHaveAttribute('data-phase', 'question');
     await expect(page.getByTestId('presence-countdown')).toContainText(/\d:\d\d/);
-    await expect(page.getByTestId('cycle-ring')).toHaveAttribute('data-phase', 'question');
+    await expect(page.getByTestId('cycle-ring').first()).toHaveAttribute('data-phase', 'question');
     await expect.poll(() => page.title()).toMatch(/^⏰/);
 
     await page.getByTestId('presence-confirm').click();
     await expect(dialog).toHaveCount(0);
-    await expect(page.getByTestId('cycle-ring')).toHaveAttribute('data-phase', 'tracking');
+    await expect(page.getByTestId('cycle-ring').first()).toHaveAttribute('data-phase', 'tracking');
     await expect.poll(() => page.title()).not.toMatch(/^⏰/);
     await expect(page.getByTestId('header-timer-running')).toContainText('Prezencia');
   });
@@ -64,7 +64,7 @@ test.describe('Time tracking: presence', () => {
     await page.getByTestId('presence-resume').click();
     await expect(dialog).toHaveCount(0);
     await expect(page.getByTestId('header-timer-running')).toContainText('Bez odpovede');
-    await expect(page.getByTestId('cycle-ring')).toHaveAttribute('data-phase', 'tracking');
+    await expect(page.getByTestId('cycle-ring').first()).toHaveAttribute('data-phase', 'tracking');
 
     // The paused entry was closed at the prompt, the resumed one runs: two rows with that title.
     await gotoView(page, '#time-tracking');

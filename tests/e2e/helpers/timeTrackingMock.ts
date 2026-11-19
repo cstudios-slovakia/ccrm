@@ -437,6 +437,17 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       return route.fulfill(ok({ entry: view(e) }));
     }
 
+    if (action === 'pause' && body.all) {
+      // D6: pause every running item of the caller.
+      const now = new Date().toISOString();
+      const items = runningSet();
+      for (const e of items) {
+        finish(e, now);
+        Object.assign(e, { pausedAt: now, pauseReason: body.reason === 'status' ? 'status' : 'manual', resumeUntil: null, endReason: null });
+      }
+      settleWorked();
+      return route.fulfill(ok({ entry: items[0] ? view(items[0]) : null, paused: items.map(view) }));
+    }
     if (action === 'pause') {
       // D6: the running item ends now and keeps a resumable marker; "require a project" does not apply.
       const e = body.id ? entries.find((x) => x.id === body.id && !x.deletedAt) : runningSet()[0];
