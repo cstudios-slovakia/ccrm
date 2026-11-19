@@ -15,6 +15,7 @@ import {
 import { entrySeconds, formatDuration, todayIso } from "../../utils/timeTracking.ts";
 import { shiftMonthAnchor } from "../../utils/timeTeam.ts";
 import { MoneyText } from "./MoneyText";
+import { WorkedDelivered } from "./WorkedDelivered";
 import type { TimeDeps } from "./shared";
 
 /** Where each salary went in a month that has already closed. Admins with time_tracking_salary_report. */
@@ -35,7 +36,12 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
     const employeeByUser = new Map(deps.employees.filter((e) => e.userId).map((e) => [e.userId as string, e]));
     const ids = new Set<string>([...deps.users.map((u) => u.id).filter(Boolean) as string[], ...employeeByUser.keys()]);
     return buildSalaryReport({
+      nowMs: tt.nowMs,
       entries: entries.map((e) => ({
+        id: e.id,
+        running: e.running,
+        startAt: e.startAt,
+        workedMs: e.workedMs,
         userId: e.userId,
         projectId: e.projectId,
         entryDate: e.entryDate,
@@ -183,7 +189,7 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
                     <td className="px-3 py-3 tabular-nums text-violet-700" title={costRateTooltip(row.rate, { t, money: moneyStr, monthLabel, country })}>
                       {row.rate.rate == null ? "—" : `${moneyStr(row.rate.rate)}/h`}
                     </td>
-                    <td className="px-3 py-3 tabular-nums text-teal-700">{formatDuration(row.trackedSeconds)}</td>
+                    <td className="px-3 py-3 tabular-nums text-teal-700"><WorkedDelivered worked={row.trackedSeconds} delivered={row.deliveredSeconds} t={t} plain /></td>
                     <td className="min-w-28 px-3 py-3">{bar(row.clientSeconds, row.internalSeconds, row.unallocatedSeconds)}</td>
                     <td className="px-3 py-3"><MoneyText bag={row.clientCost} language={deps.language} /></td>
                     <td className="px-3 py-3"><MoneyText bag={row.internalCost} language={deps.language} /></td>
@@ -198,7 +204,7 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
                 <td className="px-3 py-3">{t("Totals", "Spolu", "Összesen")}</td>
                 <td className="px-3 py-3"><MoneyText bag={report.totals.loadedSalary} language={deps.language} tone="plain" /></td>
                 <td />
-                <td className="px-3 py-3 tabular-nums text-teal-700">{formatDuration(report.totals.trackedSeconds)}</td>
+                <td className="px-3 py-3 tabular-nums text-teal-700"><WorkedDelivered worked={report.totals.trackedSeconds} delivered={report.totals.deliveredSeconds} t={t} plain /></td>
                 <td />
                 <td className="px-3 py-3"><MoneyText bag={report.totals.clientCost} language={deps.language} /></td>
                 <td className="px-3 py-3"><MoneyText bag={report.totals.internalCost} language={deps.language} /></td>

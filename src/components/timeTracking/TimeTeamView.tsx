@@ -24,6 +24,7 @@ import {
 import { entrySeconds, formatDuration, todayIso, weekStart, type TFn } from "../../utils/timeTracking.ts";
 import { viewSizeScale } from "../../utils/viewSize";
 import { MoneyText } from "./MoneyText";
+import { WorkedDelivered } from "./WorkedDelivered";
 import { RoleBadge } from "./RoleBadge";
 import { requestOpenList } from "./ViewingAsContext";
 import { initials, useTimeLookups, type TimeDeps } from "./shared";
@@ -99,7 +100,12 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
     const employeeByUser = new Map(deps.employees.filter((e) => e.userId).map((e) => [e.userId as string, e]));
     const ids = new Set<string>([...people.keys(), ...employeeByUser.keys()]);
     return buildTeamMatrix({
+      nowMs: tt.nowMs,
       entries: entries.map((e) => ({
+        id: e.id,
+        running: e.running,
+        startAt: e.startAt,
+        workedMs: e.workedMs,
         userId: e.userId,
         projectId: e.projectId,
         entryDate: e.entryDate,
@@ -341,7 +347,7 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
                             }}
                             className="block w-full rounded-lg text-left transition-colors hover:bg-white/80 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-600"
                           >
-                            <span className="block font-bold tabular-nums text-teal-700">{formatDuration(cell.seconds)}</span>
+                            <WorkedDelivered worked={cell.seconds} delivered={cell.deliveredSeconds} t={t} />
                             {Object.keys(cell.cost).length > 0 && <MoneyText bag={cell.cost} language={deps.language} className="type-meta" />}
                             <span className="mt-1 block h-1 overflow-hidden rounded-full bg-slate-200">
                               <span className={`block h-full rounded-full transition-[width] duration-500 ${ratio < 0.75 ? "bg-amber-500" : "bg-teal-600"}`} style={{ width: `${Math.min(100, ratio * 100)}%` }} />
@@ -352,7 +358,7 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
                     );
                   })}
                   <td className="px-3 py-3">
-                    <span className="block font-bold tabular-nums text-teal-700">{formatDuration(row.totalSeconds)}</span>
+                    <WorkedDelivered worked={row.totalSeconds} delivered={row.totalDeliveredSeconds} t={t} />
                     <MoneyText bag={row.totalCost} language={deps.language} className="type-meta" />
                   </td>
                 </tr>
@@ -363,12 +369,12 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
                 <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-left">{t("Totals", "Spolu", "Összesen")}</th>
                 {matrix.buckets.map((b, i) => (
                   <td key={b.id} className="px-3 py-3">
-                    <span className="block tabular-nums text-teal-700">{formatDuration(matrix.totals.seconds[i])}</span>
+                    <WorkedDelivered worked={matrix.totals.seconds[i]} delivered={matrix.totals.deliveredSeconds[i]} t={t} plain />
                     <MoneyText bag={matrix.totals.cost[i]} language={deps.language} className="type-meta" />
                   </td>
                 ))}
                 <td className="px-3 py-3">
-                  <span className="block tabular-nums text-teal-700">{formatDuration(matrix.totals.totalSeconds)}</span>
+                  <WorkedDelivered worked={matrix.totals.totalSeconds} delivered={matrix.totals.totalDeliveredSeconds} t={t} plain />
                   <MoneyText bag={matrix.totals.totalCost} language={deps.language} className="type-meta" />
                 </td>
               </tr>

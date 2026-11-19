@@ -19,6 +19,7 @@ import {
   type CostSettings,
 } from "./timeCost.ts";
 import { hoursOf, weekStart, type TimeTrackingSettings } from "./timeTracking.ts";
+import { entryWorkedSeconds, liveWorkedShares } from "./timeWorked.ts";
 
 export const WEEK_COLUMNS = 8;
 export const MONTH_COLUMNS = 6;
@@ -60,7 +61,13 @@ export interface TeamProjectRef {
 }
 
 export interface TeamEntry {
+  /** Needed to allocate a running entry (v2); optional for older callers. */
+  id?: string;
   userId: string;
+  running?: boolean;
+  startAt?: string | null;
+  /** Worked ms settled by the server (D1); missing = project time. */
+  workedMs?: number | null;
   projectId: string | null;
   /** YYYY-MM-DD */
   entryDate: string;
@@ -89,7 +96,10 @@ export interface TeamCell {
   bucketId: string;
   from: string;
   to: string;
+  /** Worked time (D1): what the person did, overlaps counted once. Project slices stay project time. */
   seconds: number;
+  /** Project time delivered in the bucket (Σ durationSec). */
+  deliveredSeconds: number;
   cost: MoneyByCurrency;
   /** Every working day of the bucket is vacation, and nothing was logged. */
   vacation: boolean;
@@ -110,6 +120,7 @@ export interface TeamRow {
   noEmployee: boolean;
   cells: TeamCell[];
   totalSeconds: number;
+  totalDeliveredSeconds: number;
   totalCost: MoneyByCurrency;
 }
 
@@ -118,8 +129,10 @@ export interface TeamMatrix {
   rows: TeamRow[];
   totals: {
     seconds: number[];
+    deliveredSeconds: number[];
     cost: MoneyByCurrency[];
     totalSeconds: number;
+    totalDeliveredSeconds: number;
     totalCost: MoneyByCurrency;
   };
 }
@@ -235,6 +248,8 @@ const csvCell = (value: string | number): string => {
 
 export interface TeamBuildInput {
   entries: readonly TeamEntry[];
+  /** Clock for running entries; defaults to Date.now(). */
+  nowMs?: number;
   people: readonly TeamPerson[];
   projects: readonly TeamProjectRef[];
   vacations: readonly TeamVacation[];
@@ -289,6 +304,19 @@ const wholeVacation = (
 };
 
 export const buildTeamMatrix = (input: TeamBuildInput): TeamMatrix => {
+  const nowMs = input.nowMs ?? Date.now();
+  const toWorked = (e: TeamEntry) => ({
+    id: e.id ?? "",
+    userId: e.userId,
+    durationSec: e.durationSec,
+    running: !!e.running,
+    startAt: e.startAt ?? null,
+    workedMs: e.workedMs,
+  });
+  const live = input.entries.some((e) => e.running)
+    ? liveWorkedShares(input.entries.map(toWorked), nowMs)
+    : undefined;
+  const workedOf = (e: TeamEntry) => entryWorkedSeconds(toWorked(e), nowMs, live);
   const projectActive = new Map(input.projects.map((p) => [p.id, p.active]));
   const peopleById = new Map(input.people.map((p) => [p.userId, p]));
   let entries = input.entries.filter((e) => input.buckets.some((b) => inBucket(e.entryDate, b)));
@@ -329,11 +357,13 @@ export const buildTeamMatrix = (input: TeamBuildInput): TeamMatrix => {
         const slices = new Map<string, TeamProjectSlice>();
         const rateKeys = new Map<string, TeamRateNote>();
         let seconds = 0;
+        let deliveredSeconds = 0;
         const cost: MoneyByCurrency = {};
         for (const e of mine) {
           if (!inBucket(e.entryDate, bucket)) continue;
           const sec = Math.max(0, Math.round(e.durationSec || 0));
-          seconds += sec;
+          seconds += Math.max(0, workedOf(e));
+          deliveredSeconds += sec;
           const visible = visibleEntryCost(e, input.viewerUserId, input.canCosts);
           const code = e.currency || input.currency;
           addMoney(cost, code, visible);
@@ -356,7 +386,8 @@ export const buildTeamMatrix = (input: TeamBuildInput): TeamMatrix => {
           bucketId: bucket.id,
           from: bucket.from,
           to: bucket.to,
-          seconds,
+          seconds: Math.round(seconds * 1000) / 1000,
+          deliveredSeconds,
           cost,
           vacation,
           basisSeconds: basisSecondsFor(bucket, country, input.settings, monthBucket, input.isWorkingDay, input.monthWorkingDays),
@@ -375,20 +406,24 @@ export const buildTeamMatrix = (input: TeamBuildInput): TeamMatrix => {
         noEmployee,
         cells,
         totalSeconds: cells.reduce((s, c) => s + c.seconds, 0),
+        totalDeliveredSeconds: cells.reduce((s, c) => s + c.deliveredSeconds, 0),
         totalCost: sumMoney(cells.map((c) => c.cost)),
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name) || a.userId.localeCompare(b.userId));
 
   const seconds = input.buckets.map((_, i) => rows.reduce((s, row) => s + row.cells[i].seconds, 0));
+  const deliveredSeconds = input.buckets.map((_, i) => rows.reduce((s, row) => s + row.cells[i].deliveredSeconds, 0));
   const cost = input.buckets.map((_, i) => sumMoney(rows.map((row) => row.cells[i].cost)));
   return {
     buckets: [...input.buckets],
     rows,
     totals: {
       seconds,
+      deliveredSeconds,
       cost,
       totalSeconds: seconds.reduce((s, n) => s + n, 0),
+      totalDeliveredSeconds: deliveredSeconds.reduce((s, n) => s + n, 0),
       totalCost: sumMoney(cost),
     },
   };

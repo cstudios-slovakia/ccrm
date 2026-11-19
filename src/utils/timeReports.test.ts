@@ -184,3 +184,40 @@ test("a person without a priced entry falls back to today's contract", () => {
   assert.equal(erik.rateBasis, "contract");
   assert.equal(erik.loadedSalary, 3500);
 });
+
+test("salary bucket and utilisation use worked time for overlapping entries", () => {
+  const e = (id: string) => ({ id, userId: "u1", projectId: "client", entryDate: "2026-05-04", startAt: "2026-05-04T08:00:00Z", durationSec: 3600, workedMs: 1800000, cost: 10, currency: "EUR" });
+  const report = buildSalaryReport({
+    entries: [e("a"), e("b")],
+    people: [{ userId: "u1", name: "Erik", employeeId: "e1", active: true, kind: "employee", salaryType: "monthly", salaryAmount: 3200, workCountry: "SK" }],
+    projects: [{ id: "client", isInternal: false }],
+    from: "2026-05-01",
+    to: "2026-05-31",
+    viewerUserId: "u1",
+    canCosts: true,
+    currency: "EUR",
+    settings: DEFAULT_COST_SETTINGS,
+    monthWorkingDays: () => 20,
+  });
+  const row = report.rows[0];
+  assert.equal(row.trackedSeconds, 3600);
+  assert.equal(row.clientSeconds, 3600);
+  assert.equal(row.deliveredSeconds, 7200);
+  assert.equal(row.utilisation, 3600 / (20 * DEFAULT_COST_SETTINGS.hoursPerDay * 3600));
+});
+
+test("report by project stays in project time", () => {
+  const report = buildReport({
+    entries: [
+      { id: "a", userId: "u1", projectId: "p", clientId: null, entryDate: "2026-05-04", title: "A", durationSec: 3600, billable: true },
+      { id: "b", userId: "u1", projectId: "q", clientId: null, entryDate: "2026-05-04", title: "B", durationSec: 3600, billable: true },
+    ],
+    filters: { from: "2026-05-01", to: "2026-05-31", userId: null, projectId: null, clientId: null, billable: "all", groupBy: "project" },
+    rounding: { minutes: 0, mode: "nearest" },
+    viewerUserId: "u1",
+    canCosts: false,
+    currency: "EUR",
+    workingDays: 20,
+  });
+  assert.deepEqual(report.groups.map((g) => g.seconds), [3600, 3600]);
+});

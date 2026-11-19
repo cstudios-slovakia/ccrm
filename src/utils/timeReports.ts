@@ -12,6 +12,7 @@
 
 import { computeCostRate, round2, type CostRate } from "./timeCost.ts";
 import { hoursOf } from "./timeTracking.ts";
+import { entryWorkedSeconds, liveWorkedShares } from "./timeWorked.ts";
 import {
   addMoney,
   frozenCostRate,
@@ -284,6 +285,12 @@ export interface SalaryPerson {
 }
 
 export interface SalaryEntry {
+  /** Needed to allocate a running entry (v2); optional for older callers. */
+  id?: string;
+  running?: boolean;
+  startAt?: string | null;
+  /** Worked ms settled by the server (D1); missing = project time. */
+  workedMs?: number | null;
   userId: string;
   projectId: string | null;
   entryDate: string;
@@ -309,7 +316,10 @@ export interface SalaryRow {
    * valid then); "contract" = today's contract, because the person has no priced entry that month.
    */
   rateBasis: "snapshot" | "contract";
+  /** Worked time (D1). */
   trackedSeconds: number;
+  /** Project time delivered (Σ durationSec). */
+  deliveredSeconds: number;
   clientSeconds: number;
   internalSeconds: number;
   unallocatedSeconds: number;
@@ -325,6 +335,7 @@ export interface SalaryReport {
   totals: {
     loadedSalary: MoneyByCurrency;
     trackedSeconds: number;
+    deliveredSeconds: number;
     clientCost: MoneyByCurrency;
     internalCost: MoneyByCurrency;
     unallocatedCost: MoneyByCurrency;
@@ -332,6 +343,15 @@ export interface SalaryReport {
   /** Logged-in users with time and no employee record. */
   withoutSalary: { userId: string; name: string; seconds: number; cost: MoneyByCurrency }[];
 }
+
+const salaryWorked = (e: SalaryEntry) => ({
+  id: e.id ?? "",
+  userId: e.userId,
+  durationSec: e.durationSec,
+  running: !!e.running,
+  startAt: e.startAt ?? null,
+  workedMs: e.workedMs,
+});
 
 export const allocationOf = (projectId: string | null, projects: readonly SalaryProject[]): SalaryBucket => {
   if (!projectId) return "unallocated";
@@ -368,12 +388,14 @@ export const snapshotSalaryRate = (
   workingDays: number,
 ): CostRate | null => {
   const weight = new Map<string, { seconds: number; rate: CostRate }>();
+  const nowMs = Date.now();
+  const live = entries.some((e) => e.running) ? liveWorkedShares(entries.map(salaryWorked), nowMs) : undefined;
   for (const e of entries) {
     const frozen = frozenCostRate(e, settings);
     if (!frozen) continue;
     const key = `${frozen.rate}|${frozen.source}|${frozen.basisDays ?? ""}`;
     const slot = weight.get(key) ?? { seconds: 0, rate: frozen };
-    slot.seconds += Math.max(0, Math.round(e.durationSec || 0));
+    slot.seconds += Math.max(0, entryWorkedSeconds(salaryWorked(e), nowMs, live));
     weight.set(key, slot);
   }
   let best: { seconds: number; rate: CostRate } | null = null;
@@ -401,7 +423,10 @@ export const buildSalaryReport = (input: {
   currency: string;
   settings: { hoursBasis: "workingDays" | "fixed"; fixedHoursPerMonth: number; hoursPerDay: number; employerMultiplier: number };
   monthWorkingDays: (country: "SK" | "HU", year: number, month: number) => number;
+  /** Clock for running entries; defaults to Date.now(). */
+  nowMs?: number;
 }): SalaryReport => {
+  const nowMs = input.nowMs ?? Date.now();
   const [y, m] = input.from.split("-").map(Number);
   const inRange = input.entries.filter((e) => e.entryDate >= input.from && e.entryDate <= input.to);
   const employed = input.people.filter((p) => p.employeeId);
@@ -410,6 +435,7 @@ export const buildSalaryReport = (input: {
   const bucket = (userId: string) => {
     const acc = {
       seconds: 0,
+      delivered: 0,
       clientSeconds: 0,
       internalSeconds: 0,
       unallocatedSeconds: 0,
@@ -417,10 +443,12 @@ export const buildSalaryReport = (input: {
       internalCost: {} as MoneyByCurrency,
       unallocatedCost: {} as MoneyByCurrency,
     };
-    for (const e of inRange) {
-      if (e.userId !== userId) continue;
-      const sec = Math.max(0, Math.round(e.durationSec || 0));
+    const mine = inRange.filter((e) => e.userId === userId);
+    const live = mine.some((e) => e.running) ? liveWorkedShares(mine.map(salaryWorked), nowMs) : undefined;
+    for (const e of mine) {
+      const sec = Math.max(0, entryWorkedSeconds(salaryWorked(e), nowMs, live));
       acc.seconds += sec;
+      acc.delivered += Math.max(0, Math.round(e.durationSec || 0));
       const where = allocationOf(e.projectId, input.projects);
       const visible = visibleEntryCost(e, input.viewerUserId, input.canCosts);
       const code = e.currency || input.currency;
@@ -473,6 +501,7 @@ export const buildSalaryReport = (input: {
         rate,
         rateBasis: snapshot ? ("snapshot" as const) : ("contract" as const),
         trackedSeconds: acc.seconds,
+        deliveredSeconds: acc.delivered,
         clientSeconds: acc.clientSeconds,
         internalSeconds: acc.internalSeconds,
         unallocatedSeconds: acc.unallocatedSeconds,
@@ -504,6 +533,7 @@ export const buildSalaryReport = (input: {
     totals: {
       loadedSalary: salaryBag,
       trackedSeconds: rows.reduce((s, r) => s + r.trackedSeconds, 0),
+      deliveredSeconds: rows.reduce((s, r) => s + r.deliveredSeconds, 0),
       clientCost: sumMoney(rows.map((r) => r.clientCost)),
       internalCost: sumMoney(rows.map((r) => r.internalCost)),
       unallocatedCost: sumMoney(rows.map((r) => r.unallocatedCost)),

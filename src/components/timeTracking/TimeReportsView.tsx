@@ -14,6 +14,7 @@ import {
   type ReportGroupBy,
 } from "../../utils/timeReports.ts";
 import { entrySeconds, formatDuration, hoursOf, todayIso, type TimeEntry } from "../../utils/timeTracking.ts";
+import { leverage, showsWorkedAndDelivered, totalWorkedSeconds } from "../../utils/timeWorked.ts";
 import { MoneyText } from "./MoneyText";
 import { TimeSalaryReport } from "./TimeSalaryReport";
 import { useTimeLookups, type TimeDeps } from "./shared";
@@ -168,6 +169,18 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
     downloadText("time-report.csv", text, "text/csv;charset=utf-8");
   };
 
+  // Worked time of the same entries the report covers (person measure); the report itself stays project time
+  const workedSec = useMemo(() => {
+    const inScope = entries.filter(
+      (e) =>
+        e.entryDate >= from &&
+        e.entryDate <= to &&
+        (!userId || e.userId === userId) &&
+        (!projectId || e.projectId === projectId) &&
+        (billable === "all" || (billable === "yes") === !!e.billable),
+    );
+    return { worked: totalWorkedSeconds(inScope, tt.nowMs), lev: leverage(inScope, tt.nowMs) };
+  }, [entries, from, to, userId, projectId, billable, tt.nowMs]);
   const billablePct = report.totals.seconds > 0 ? Math.round((report.totals.billableSeconds / report.totals.seconds) * 100) : null;
 
   if (mode === "salary") {
@@ -260,6 +273,17 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
         <>
           <StatGrid count={hasCost ? 4 : 3}>
             <StatTile label={t("Hours", "Hodiny", "Órák")} value={<span className="tabular-nums">{formatDuration(report.totals.seconds)}</span>} />
+            {showsWorkedAndDelivered(report.totals.seconds, workedSec.worked) && (
+              <StatTile
+                label={t("Worked", "Odpracované", "Ledolgozott")}
+                value={
+                  <span className="tabular-nums">
+                    {formatDuration(workedSec.worked)}
+                    {workedSec.lev != null && <span className="type-meta font-normal text-slate-500"> ×{workedSec.lev.toFixed(2)}</span>}
+                  </span>
+                }
+              />
+            )}
             <StatTile label={t("Billable", "Fakturovateľné", "Számlázható")} value={<span className="tabular-nums">{billablePct == null ? "—" : `${billablePct} %`}</span>} />
             <StatTile
               label={t("Hours per working day", "Hodiny na pracovný deň", "Óra munkanaponként")}
