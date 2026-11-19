@@ -1,0 +1,1 @@
+- Time tracking project picker shows the client in the trigger, a tinted selected row and Create project beside Show finished; the task project popover explains itself and shows status pills; the project Time tab carries the tracked total as a badge.

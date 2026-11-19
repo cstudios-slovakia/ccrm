@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronDown, Plus, Search, X } from "lucide-react";
+import { ChevronDown, Plus, Search, X } from "lucide-react";
 import type { Lead, Project, ProjectType } from "../../types";
 import { useProjectStatuses } from "../../hooks/useProjectStatuses";
 import {
@@ -9,6 +9,7 @@ import {
   projectStatusLabel,
 } from "../../utils/projects";
 import { formatDuration, projectColor, type TFn } from "../../utils/timeTracking.ts";
+import { ProjectLabel } from "./ProjectLabel";
 import { ClientSelect } from "../ui/ClientSelect";
 import { CustomSelect } from "../ui/CustomSelect";
 
@@ -155,8 +156,14 @@ export function ProjectPicker({
         selected ? "border-slate-200 bg-white text-slate-800 hover:border-slate-300" : "border-dashed border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100"
       }`}
     >
-      <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: selected ? projectColor(selected.id) : "#d97706" }} />
-      <span className="truncate">{label}</span>
+      {selected ? (
+        <ProjectLabel projectId={selected.id} name={label} client={clientOf(selected)?.name} className="text-ui" />
+      ) : (
+        <>
+          <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: "#d97706" }} />
+          <span className="truncate">{label}</span>
+        </>
+      )}
       <ChevronDown className="size-3.5 shrink-0 text-slate-400" />
     </button>
   );
@@ -199,7 +206,7 @@ export function ProjectPicker({
                   type="button"
                   onClick={() => choose(p.id)}
                   data-testid="project-option"
-                  className={`flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-slate-50 cursor-pointer ${p.id === value ? "bg-slate-50" : ""}`}
+                  className={`flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-slate-50 cursor-pointer ${p.id === value ? "bg-primary/10" : ""}`}
                 >
                   <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: projectColor(p.id) }} />
                   <span className="min-w-0 flex-1">
@@ -209,7 +216,6 @@ export function ProjectPicker({
                   <span className="shrink-0 rounded-full px-2 py-0.5 text-micro font-semibold" style={{ color: projectStatusColor(p.status, statuses), backgroundColor: `${projectStatusColor(p.status, statuses)}1a` }}>
                     {projectStatusLabel(p.status, t, statuses)}
                   </span>
-                  {p.id === value && <Check className="size-4 shrink-0 text-teal-600" />}
                 </button>
               );
             })}
@@ -218,16 +224,18 @@ export function ProjectPicker({
         {groups.length === 0 && <div className="px-3 py-4 text-ui text-slate-500">{t("No project matches.", "Žiadny projekt nevyhovuje.", "Nincs találat.")}</div>}
       </div>
       <div className="max-h-64 shrink-0 overflow-y-auto border-t border-slate-100 px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <label className="flex cursor-pointer items-center gap-2 text-ui text-slate-600">
           <input type="checkbox" checked={showFinished} onChange={(e) => setShowFinished(e.target.checked)} className="size-4 accent-teal-600" />
           {t("Show finished", "Zobraziť dokončené", "Befejezettek mutatása")}
         </label>
         {onCreateProject && query.trim() && !creating && (
-          <button type="button" onClick={() => setCreating(true)} data-testid="project-create-open" className="mt-2 inline-flex items-center gap-1.5 text-ui font-semibold text-primary hover:underline cursor-pointer">
+          <button type="button" onClick={() => setCreating(true)} data-testid="project-create-open" className="inline-flex items-center gap-1.5 text-ui font-semibold text-primary hover:underline cursor-pointer">
             <Plus className="size-4" />
             {t(`Create project "${query.trim()}"`, `Vytvoriť projekt „${query.trim()}“`, `Projekt létrehozása: „${query.trim()}”`)}
           </button>
         )}
+        </div>
         {onCreateProject && creating && (
           <div className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-2 rounded-xl bg-slate-50 p-2.5">
             <ClientSelect
