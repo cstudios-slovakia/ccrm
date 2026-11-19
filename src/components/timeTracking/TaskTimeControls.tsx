@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Play, Plus, Square } from "lucide-react";
 import { useProjectStatuses } from "../../hooks/useProjectStatuses";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
-import { isClosedProjectStatus } from "../../utils/projects";
+import { isClosedProjectStatus, projectStatusColor, projectStatusLabel } from "../../utils/projects";
 import { clientForTask, resolveTaskProject } from "../../utils/timeLinks.ts";
 import { elapsedSeconds, formatDuration } from "../../utils/timeTracking.ts";
 import { ClockDigits } from "./ClockDigits";
@@ -153,6 +153,15 @@ export function TaskTimeControls({
           onClick={(e) => e.stopPropagation()}
         >
           <span className="type-label block text-slate-800">{t("Which project is this for?", "Pre ktorý projekt to je?", "Melyik projekthez tartozik?")}</span>
+          {party && (
+            <span className="type-meta mt-1 block text-slate-500">
+              {t(
+                `The task has no project, and ${party.name} has ${ask.length}. Pick one${onSaveProject ? " — it can also be saved on the task" : ""}.`,
+                `Úloha nemá projekt a ${party.name} ich má ${ask.length}. Vyberte jeden${onSaveProject ? " — možno ho uložiť aj na úlohu" : ""}.`,
+                `A feladatnak nincs projektje, ${party.name} ügyfélnek ${ask.length} van. Válasszon egyet${onSaveProject ? " — a feladatra is elmenthető" : ""}.`,
+              )}
+            </span>
+          )}
           <span className="mt-2 flex max-h-40 flex-col gap-1 overflow-y-auto">
             {ask.map((p) => (
               <button
@@ -160,9 +169,12 @@ export function TaskTimeControls({
                 type="button"
                 data-testid="task-project-option"
                 onClick={() => void begin(p.id, saveOnTask)}
-                className="rounded-lg px-2 py-1.5 text-left text-ui font-semibold text-slate-700 transition hover:bg-teal-50 cursor-pointer"
+                className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-ui font-semibold text-slate-700 transition hover:bg-teal-50 cursor-pointer"
               >
-                {p.name || p.id}
+                <span className="min-w-0 truncate">{p.name || p.id}</span>
+                <span className="shrink-0 rounded-full px-2 py-0.5 text-micro font-semibold" style={{ color: projectStatusColor(p.status, statuses), backgroundColor: `${projectStatusColor(p.status, statuses)}1a` }}>
+                  {projectStatusLabel(p.status, t, statuses)}
+                </span>
               </button>
             ))}
           </span>

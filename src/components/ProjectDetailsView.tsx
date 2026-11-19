@@ -30,6 +30,7 @@ import { evaluateProjectDeadline, finishedAtForStatus, projectDisplayName, proje
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { useTimeTracking } from "../hooks/useTimeTracking";
 import { ProjectTimeTab } from "./timeTracking/ProjectTimeTab";
+import { formatDuration } from "../utils/timeTracking.ts";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
@@ -708,7 +709,6 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const projectExpenses = useMemo(() => {
     return projectFinancials.filter((r) => r.type === "expense");
   }, [projectFinancials]);
-
   const timeTracking = useTimeTracking();
   const labourCost = timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.cost ?? null : null;
 
@@ -3141,7 +3141,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   // Open tasks, counted by the same visibility rule the tab lists them with.
                   count: openTasksCount || undefined,
                 },
-                { key: "time", hidden: !timeTracking.enabled, icon: <Icons.Timer />, label: t("Time", "Čas", "Idő") },
+                { key: "time", hidden: !timeTracking.enabled, icon: <Icons.Timer />, label: t("Time", "Čas", "Idő"), badge: timeTracking.totals.byProject[project?.id ?? ""]?.seconds ? <span className="px-1.5 rounded-full text-micro font-semibold tabular-nums bg-teal-500/15 text-teal-700">{formatDuration(timeTracking.totals.byProject[project?.id ?? ""].seconds)}</span> : undefined },
                 { key: "gantt", hidden: !projectType.hasGantt, icon: <Icons.GanttChartSquare />, label: t("Gantt Chart", "Ganttov diagram", "Gantt diagram") },
                 {
                   key: "finances",
