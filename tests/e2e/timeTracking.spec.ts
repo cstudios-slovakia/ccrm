@@ -429,6 +429,17 @@ test.describe('Time tracking', () => {
     await expect(page.getByTestId('project-time-entry').filter({ hasText: '1:30:00' })).toBeVisible();
   });
 
+  test('the task drawer adds time manually: the new-entry drawer opens with the task linked', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#tasks');
+    await page.getByRole('button', { name: /Budúce|Future|Jövőbeli/ }).click();
+    await page.getByTestId('task-card').filter({ hasText: 'Objednať krytinu' }).getByText('Objednať krytinu').first().click();
+    await page.getByTestId('task-add-time').click();
+    await expect(page.getByTestId('entry-drawer')).toBeVisible();
+    await expect(page.getByTestId('entry-delete')).toHaveCount(0);
+    await expect(page.getByTestId('entry-linked-task')).toContainText('Objednať krytinu');
+  });
+
   test('a stale screen pressing Start on the running project timer adopts it instead of splitting it into a new entry', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#projects/project-1?tab=time');

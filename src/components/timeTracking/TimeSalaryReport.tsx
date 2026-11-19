@@ -94,11 +94,11 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
     );
   };
 
-  const basisRow = report.rows.find((r) => r.rate.basisDays != null);
-  const basisDays = basisRow?.rate.basisDays ?? tt.calendarFor(tt.defaultCountry).workingDaysInMonth(y, m);
-  const basisPerDay = basisRow?.rate.hoursPerDay ?? settings.hoursPerDay;
+  const basisDays = tt.calendarFor(tt.defaultCountry).workingDaysInMonth(y, m);
+  const basisPerDay = settings.hoursPerDay;
   const basisHours = settings.hoursBasis === "fixed" ? settings.fixedHoursPerMonth : basisDays * basisPerDay;
-  const mult = settings.employerMultiplier;
+  const mult = settings.employerMultiplier > 0 ? settings.employerMultiplier : 1;
+  const own = t(" (each person's own country and hours apply)", " (platí krajina a hodiny každej osoby)", " (mindenki saját országa és órái számítanak)");
   const basisSentence =
     settings.hoursBasis === "fixed"
       ? t(`Fixed ${basisHours} h per month; × ${mult} employer multiplier`, `Pevných ${basisHours} h mesačne; × ${mult} zamestnávateľský násobok`, `Fix ${basisHours} óra havonta; × ${mult} munkáltatói szorzó`)
@@ -108,7 +108,7 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
     <div className="grid gap-4" data-testid="salary-report">
       <div>
         <h3 className="type-card-title capitalize text-slate-900">{t("Salary allocation", "Rozdelenie mzdy", "Bérfelosztás")} · {monthLabel}</h3>
-        <p className="mt-1 type-meta text-slate-500" data-testid="salary-basis">{basisSentence}</p>
+        <p className="mt-1 type-meta text-slate-500" data-testid="salary-basis">{basisSentence}{own}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" aria-label={t("Previous month", "Predchádzajúci mesiac", "Előző hónap")} onClick={() => setMonth(shiftMonthAnchor(month, -1, 1))} className="inline-flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-all hover:text-slate-900 active:scale-95 cursor-pointer">

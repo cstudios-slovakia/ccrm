@@ -220,7 +220,9 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
   const sourceText = SOURCE_LABEL[entry.source] ? t(...SOURCE_LABEL[entry.source]) : entry.source;
   const importTool = importedFrom(entry.source);
   const hoursOnly = !entry.running && !entry.startAt && !entry.endAt;
-  const sourceChip = importTool
+  const workedSec = entry.workedMs !== null && entry.workedMs !== undefined ? Math.round(entry.workedMs / 1000) : entry.durationSec;
+  const workedMatchesDuration = !entry.durationSec || !workedSec || Math.abs(workedSec - entry.durationSec) < 1;
+  const sourceChip = isNew ? null : importTool
     ? t("Imported", "Importované", "Importált")
     : entry.source === "timer"
       ? t("Timer", "Časovač", "Időzítő")
@@ -327,7 +329,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
           <div className="grid gap-1">
             <span className="type-label text-slate-600">
               {t("Task", "Úloha", "Feladat")}
-              <span className="type-meta ml-1 font-normal text-slate-400">{t("· optional, tasks of this project", "· voliteľné, úlohy tohto projektu", "· nem kötelező, a projekt feladatai")}</span>
+              <span className="type-meta ml-1 font-normal text-slate-400">{!tt.settings.requireTask && t("· optional", "· voliteľné", "· nem kötelező")}</span>
             </span>
             {taskId ? (
               <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-ui font-semibold text-slate-800" data-testid="entry-linked-task">
@@ -465,9 +467,9 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
                     <span className="text-ui text-slate-600">{money(entry.costRate)}/h · {sourceName(entry.costRateSource)}</span>
                     <span className="text-title font-bold tabular-nums text-slate-900">{entry.cost !== null && entry.cost !== undefined ? money(entry.cost) : "—"}</span>
                   </div>
-                  {entry.cost !== null && entry.cost !== undefined && !!entry.durationSec && (
+                  {entry.cost !== null && entry.cost !== undefined && !!workedSec && (
                     <div className="mt-1 text-ui tabular-nums text-slate-600" data-testid="entry-cost-formula">
-                      {formatDuration(entry.durationSec)} × {money(entry.costRate)}/h = {money(entry.cost)}
+                      {formatDuration(workedSec)} × {money(entry.costRate)}/h {Math.abs((workedSec / 3600) * Number(entry.costRate) - Number(entry.cost)) < 0.005 ? "=" : "≈"} {money(entry.cost)}
                     </div>
                   )}
                   <RateExplanation
@@ -480,7 +482,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
                     fallback={
                       <>
                         {entry.costRateBasisDays ? `${monthLabel} · ${country} · ${entry.costRateBasisDays} ${t("working days", "pracovných dní", "munkanap")} · ` : `${monthLabel} · `}
-                        {t("the rate is frozen when the entry is saved", "sadzba sa zafixuje pri uložení záznamu", "a díj a mentéskor rögzül")}
+                        {t("the rate stays provisional until the month's payroll is closed, then it is frozen", "sadzba ostáva predbežná, kým sa neuzavrie výplata mesiaca, potom sa zafixuje", "a díj ideiglenes, amíg a hónap bérszámfejtése le nem zárul, utána rögzül")}
                       </>
                     }
                   />
@@ -492,7 +494,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
                   <span className="font-semibold tabular-nums text-emerald-700">{money(billableValue)}</span>
                 </div>
               )}
-              {billableValue !== null && entry.cost !== null && entry.cost !== undefined && (
+              {billableValue !== null && entry.cost !== null && entry.cost !== undefined && workedMatchesDuration && (
                 <div className="mt-1 flex justify-between text-ui" data-testid="entry-margin">
                   <span className="text-slate-600">{t("Margin", "Marža", "Árrés")}</span>
                   <span className="font-semibold tabular-nums text-slate-900">{money(billableValue - entry.cost)}</span>

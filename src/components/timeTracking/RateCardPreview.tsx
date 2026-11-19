@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { overridesFor, type HolidayCountry } from "../../utils/holidays.ts";
+import { overridesFor, resolveWorkCountry, type HolidayCountry } from "../../utils/holidays.ts";
 import { computeCostRate } from "../../utils/timeCost.ts";
 import type { TFn, TimeTrackingSettings } from "../../utils/timeTracking.ts";
 import type { Employee } from "../../types";
@@ -28,9 +28,9 @@ export function RateCardPreview({
 }) {
   const now = new Date();
   const rows = useMemo(() => {
-    const list = (employees ?? []).filter((e) => (e.kind ?? "employee") !== "ledger" && Number(e.salaryAmount) > 0);
+    const list = (employees ?? []).filter((e) => (e.kind ?? "employee") !== "ledger" && e.isActive !== false && !!e.userId && Number(e.salaryAmount) > 0);
     return list.map((e) => {
-      const country = (e.workCountry ?? tt.defaultCountry) as HolidayCountry;
+      const country = resolveWorkCountry(e.workCountry ?? null, tt.defaultCountry) as HolidayCountry;
       const days = tt.calendarFor(country, overridesFor(draft.holidayOverrides, country)).workingDaysInMonth(now.getFullYear(), now.getMonth() + 1);
       const r = computeCostRate({ kind: e.kind ?? "employee", salaryType: e.salaryType ?? null, salaryAmount: e.salaryAmount ?? null }, days, draft, { hoursPerDay: e.hoursPerDay });
       return { e, r, country };
@@ -47,7 +47,7 @@ export function RateCardPreview({
     const parts: string[] = [];
     if (r.basisDays !== null) parts.push(`${r.basisDays} ${t("working days", "pracovných dní", "munkanap")}`);
     if (r.basisHours !== null && r.basisDays === null) parts.push(`${r.basisHours} h`);
-    if (e.salaryType !== "hourly" && r.hoursPerDay) parts.push(`${r.hoursPerDay} h`);
+    if (draft.hoursBasis !== "fixed" && e.salaryType !== "hourly" && r.hoursPerDay) parts.push(`${r.hoursPerDay} h`);
     if (r.multiplier !== 1) parts.push(`× ${r.multiplier}`);
     return parts.length ? parts.join(" · ") : t("hourly, as entered", "hodinová, ako je zadaná", "óradíj, ahogy meg van adva");
   };
@@ -56,7 +56,7 @@ export function RateCardPreview({
   return (
     <div className="overflow-x-auto rounded-2xl border border-slate-200" data-testid="tt-rate-preview">
       <p className="type-overline px-3 pt-3 text-slate-500">
-        {t("Preview", "Náhľad", "Előnézet")} · {monthName}
+        {t("Preview", "Náhľad", "Előnézet")} · {monthName} · {t("before paid leave", "pred platenou dovolenkou", "fizetett szabadság előtt")}
       </p>
       <table className="w-full text-ui">
         <thead>
