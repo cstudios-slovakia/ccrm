@@ -2612,6 +2612,8 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_time_worked_ms($pdo);
         require_once __DIR__ . '/time_parallel_migration.php'; // listed in ccrm_schema_fingerprint()
         ccrm_migrate_time_parallel($pdo);
+        require_once __DIR__ . '/time_rate_months_migration.php'; // listed in ccrm_schema_fingerprint(); before anything that prices
+        ccrm_migrate_time_rate_months($pdo);
         require_once __DIR__ . '/ticket_time_migration.php';
         ccrm_migrate_ticket_time_entries($pdo);
     }
@@ -3638,7 +3640,7 @@ if (!function_exists('ccrm_schema_statements')) {
      */
     function ccrm_schema_fingerprint(): string {
         $parts = [];
-        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/time_worked_ms_migration.php', __DIR__ . '/time_parallel_migration.php'] as $file) {
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/time_worked_ms_migration.php', __DIR__ . '/time_parallel_migration.php', __DIR__ . '/time_rate_months_migration.php'] as $file) {
             $parts[] = is_file($file) ? md5_file($file) : '-';
         }
         return md5(implode('|', $parts));

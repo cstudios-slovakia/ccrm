@@ -883,6 +883,24 @@ One row per user (TT2 D5.1, D7.1). Every timer mutation in `public/api/time_entr
 * `auto_paused_at` DATETIME [NULLable] (UTC; when the presence engine paused everything)
 * `updated_at` TIMESTAMP
 
+### `time_rate_months`
+Time tracking rate card (docs/TIME-TRACKING-V2.md D4.3): the hourly cost rate of a person paid monthly, per employee and month, and the inputs it came from (leave-aware formula D4.1). Written only by `ccrm_tt_rate_for()` (`public/api/time_rate_card.php`), never by `sync.php`. While the month is open a changed `inputs_hash` re-prices the person's entries of the month; the row freezes when the month's `employee_salaries` record is closed, else from the first day of month + 2; after that only the admin "Re-price a period" recomputes it. Daily and hourly pay have no rows. Created by `time_rate_months_migration.php`.
+* `employee_id` VARCHAR(50) [PK part]
+* `month` CHAR(7) [PK part] (`YYYY-MM`)
+* `rate` DECIMAL(10,4) [NULLable] (Hourly cost rate)
+* `source` VARCHAR(32) (`monthly` | `contractor_monthly`)
+* `salary_type` VARCHAR(20) [NULLable]
+* `salary_amount` DECIMAL(12,2) [NULLable]
+* `working_days` INT [NULLable] (Working days of the month in the person's country)
+* `paid_leave_days` DECIMAL(4,1) (default 0; approved/taken leave of a paid type)
+* `unpaid_leave_days` DECIMAL(4,1) (default 0)
+* `hours_per_day` DECIMAL(4,2) [NULLable] (Effective: `employees.hours_per_day`, else the company's)
+* `multiplier` DECIMAL(6,4) [NULLable] (Employer multiplier; 1 for contractors)
+* `fallback` TINYINT(1) (1 = the whole month was leave; the no-leave basis was used)
+* `inputs_hash` CHAR(40) (sha1 of the inputs)
+* `frozen_at` DATETIME [NULLable] (UTC; set when the month froze)
+* `updated_at` TIMESTAMP
+
 ### `weekly_plan_cards`
 Standalone planning cards displayed on the Weekly Plan board (by day date and vertical position). Cards are independent of `tasks` (no automatic sync), while their `refs_json` can reference projects, leads, clients, employees, tickets, tasks, and `#tags`.
 * `id` VARCHAR(64) [PK]

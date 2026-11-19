@@ -974,9 +974,18 @@ if ($action === 'reprice') {
     $rows = $sel->fetchAll(\PDO::FETCH_ASSOC);
     // Re-freeze the rates first (may fetch holidays, so outside the transaction), then write them and
     // settle the period per user: that re-prices AND re-allocates overlapping entries (C16).
+    // A frozen month's rate card row is recomputed first (D4.3, C16: frozen_at kept), so the price
+    // below reads the new rate; open months re-price themselves inside ccrm_tt_price().
+    require_once __DIR__ . '/time_rate_card.php';
     $prices = [];
     foreach ($rows as $r) {
         $key = $r['user_id'] . '|' . substr((string)$r['entry_date'], 0, 7);
+        if (!isset($prices[$key])) {
+            $emp = ccrm_tt_employee_for_user($pdo, (string)$r['user_id']);
+            if ($emp !== null) {
+                ccrm_tt_rate_for($pdo, (string)$emp['id'], substr((string)$r['entry_date'], 0, 7), $settings, true, true);
+            }
+        }
         $prices[$key] ??= ccrm_tt_price($pdo, (string)$r['user_id'], (string)$r['entry_date'], null, $settings, true);
     }
     $upd = $pdo->prepare("UPDATE `time_entries` SET `employee_id` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ? WHERE `id` = ?");

@@ -286,6 +286,24 @@ if (!function_exists('ccrm_tt_default_settings')) {
         if ($employee === null) {
             return ['employee_id' => null, 'cost_rate' => null, 'cost_rate_source' => 'none', 'cost_rate_basis_days' => null, 'country' => $country, 'workingDays' => $days];
         }
+        // Monthly pay: the leave-aware rate of the month's rate card (D4.3). Computing it may re-price
+        // the person's other entries of that month when its inputs changed while it is open.
+        if ((string)$employee['salary_type'] === 'monthly' && (string)$employee['kind'] !== 'ledger') {
+            if (!function_exists('ccrm_tt_rate_for')) {
+                require_once __DIR__ . '/time_rate_card.php';
+            }
+            $card = ccrm_tt_rate_for($pdo, (string)$employee['id'], substr($entryDate, 0, 7), $settings, $fetch);
+            if (($card['source'] ?? 'none') !== 'none' || $card['rate'] !== null) {
+                return [
+                    'employee_id' => $employee['id'],
+                    'cost_rate' => $card['rate'],
+                    'cost_rate_source' => $card['source'],
+                    'cost_rate_basis_days' => $card['basisDays'],
+                    'country' => $country,
+                    'workingDays' => $days,
+                ];
+            }
+        }
         $r = ccrm_tc_cost_rate(
             ['kind' => $employee['kind'], 'salaryType' => $employee['salary_type'], 'salaryAmount' => $employee['salary_amount']],
             $days,

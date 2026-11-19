@@ -214,6 +214,17 @@ try {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
 }
 
+// 2d2. Time tracking rate card (docs/TIME-TRACKING-V2.md D4.3): once a day, recompute the monthly
+// rate of the current and previous month for every monthly employee, which re-prices a month whose
+// leave, salary or holidays changed since its last entry. Equal inputs write nothing.
+$rateCard = null;
+try {
+    require_once __DIR__ . '/time_rate_card.php';
+    $rateCard = ccrm_tt_rate_card_cron($pdo);
+} catch (Throwable $e) {
+    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+}
+
 // 2e. Autonomous AI Agent Connectors heartbeat (Marveen + CCRM MCP)
 $agentTicks = null;
 try {
@@ -246,6 +257,7 @@ try {
         'ticketPoll' => $ticketPollResult,
         'holidayRefresh' => $holidayRefresh,
         'activityPurge' => $activityPurge,
+        'rateCard' => $rateCard,
         'newsletter' => $newsletter,
         'agentTicks' => $agentTicks,
         'mailFiling' => $mailFiling === null ? null : [
