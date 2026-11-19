@@ -113,6 +113,11 @@ done and says to list pre-existing failures, not fix them.
 Built in phases from ONE file, [`docs/TIME-TRACKING.md`](docs/TIME-TRACKING.md): status table,
 decisions, per-phase checklists, spec. When asked to "make phase N", follow its Part A.
 
+**Second generation** (parallel tracking, auto-pause, status-driven timers):
+[`docs/TIME-TRACKING-V2.md`](docs/TIME-TRACKING-V2.md). It overrides the first file where they
+disagree. When asked to "make tt2 phase N", follow its Part A. Bill project time
+(`duration_sec`), pay and measure worked time (`worked_ms`); only `ccrm_tt_settle()` writes cost.
+
 ## Demo mode rebuild
 
 Planned in phases in ONE file, [`docs/DEMO-MODE.md`](docs/DEMO-MODE.md): analysis, decisions,

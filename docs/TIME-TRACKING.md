@@ -6,6 +6,11 @@ plan and the two prompts (`docs/plans/time-tracking-plan.md`,
 `docs/prompts/time-tracking-implementation.md`, `docs/prompts/time-tracking-module.md`).
 Those three are gone; git history keeps them.
 
+> **Second generation:** parallel tracking, auto-pause and status-driven timers are planned in
+> [`TIME-TRACKING-V2.md`](TIME-TRACKING-V2.md). Where the two files disagree, that one wins. It
+> replaces C4.1 (`running_guard`), C6.6 (leave and working days), the monthly rows of C7.1, C7.5
+> ("never recomputed silently") and C8.1 (one timer, auto-stop, idle reminder); see its D12.
+
 > **To start work, tell any coding agent:** `make phase 2` (or "make the next phase").
 > The agent reads this file and follows Part A.
 

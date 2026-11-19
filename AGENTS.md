@@ -7,6 +7,10 @@ bite you) and `.agents/rules/`. They apply to every agent and every change.
 to "make phase N", follow Part A of that file (status table, checklist, tests, tick the boxes,
 report, stop).
 
+**Time tracking v2** (parallel tracking, auto-pause, status-driven timers): one file,
+[`docs/TIME-TRACKING-V2.md`](docs/TIME-TRACKING-V2.md); it overrides the first file where they
+disagree. When asked to "make tt2 phase N", follow Part A of that file.
+
 **Demo mode rebuild:** one file, [`docs/DEMO-MODE.md`](docs/DEMO-MODE.md). When asked to
 "make demo phase N", follow Part A of that file.
 
