@@ -591,6 +591,13 @@ if (!function_exists('ccrm_tt_default_settings')) {
             'durationSec' => $r['duration_sec'] === null ? null : (int)$r['duration_sec'],
             'workedMs' => $running || ($r['worked_ms'] ?? null) === null ? null : (int)$r['worked_ms'],
             'running' => $running,
+            // D6: three states. A paused item is an ordinary closed entry with a resumable marker.
+            'state' => $running ? 'ongoing' : (!empty($r['paused_at']) ? 'paused' : 'stopped'),
+            'pausedAt' => ccrm_tt_iso($r['paused_at'] ?? null),
+            'pauseReason' => $r['pause_reason'] ?? null,
+            'resumeUntil' => ccrm_tt_iso($r['resume_until'] ?? null),
+            'continuesId' => $r['continues_id'] ?? null,
+            'endReason' => $r['end_reason'] ?? null,
             'billable' => (bool)$r['billable'],
             'tags' => ccrm_tt_decode_tags($r['tags'] ?? null),
             'source' => $r['source'],

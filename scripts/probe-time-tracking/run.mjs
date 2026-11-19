@@ -927,6 +927,123 @@ async function main() {
       sql(`DELETE FROM mcp_keys WHERE id = 'pk-tt-erik18'`);
       check('T18: cleanup: Erik has no running entry', runningRows().length === 0);
     }
+    section('T19: pause and resume (phase 6a)');
+    {
+      // D6, C8, C17. Erik again; parallel settings and the Erik permission are set here and removed at the end
+      // (T18 cleaned both up). requireProjectToStop is true again after T18; Erik cannot pick a project, so it does not block him.
+      const runningRows = () => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL ORDER BY start_at, id`);
+      const pausedRows = () => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND paused_at IS NOT NULL AND deleted_at IS NULL ORDER BY start_at, id`);
+      const setParallel = (p) => sql(`UPDATE system_settings SET value = JSON_SET(value, '$.parallel', CAST(${q(JSON.stringify(p))} AS JSON)) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      const grant = (on) => sql(on
+        ? `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'edit') WHERE \`key\` = 'ROLES_RBAC'`
+        : `UPDATE system_settings SET value = JSON_REMOVE(value, '$[2].permissions.time_tracking_parallel') WHERE \`key\` = 'ROLES_RBAC'`);
+      const runningNow = () => api(S.erik, 'time_entries.php', { query: '?running=1' });
+
+      await te(S.erik, { action: 'stop', all: true }); // also clears any pause left over
+      check('T19: starting point: Erik has nothing running and nothing paused', runningRows().length === 0 && pausedRows().length === 0);
+      const cols = rows(`SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'time_entries' AND COLUMN_NAME IN ('paused_at','pause_reason','resume_until','continues_id','end_reason')`);
+      check('T19: the five D6 columns exist', cols.length === 5, JSON.stringify(cols));
+
+      // Pause one item.
+      const a = await te(S.erik, { action: 'start', description: 'T19 pause A' });
+      const aId = a.data?.entry?.id;
+      const pa = await te(S.erik, { action: 'pause', id: aId });
+      const aRow = dbEntry(aId);
+      check('T19: pause closes the entry and sets the marker (manual, resume_until NULL, end_reason NULL)',
+        pa.status === 200 && pa.data?.paused?.length === 1 && pa.data.entry?.id === aId && pa.data.entry.state === 'paused' && pa.data.entry.running === false
+          && aRow?.end_at !== null && aRow?.duration_sec !== null && aRow?.paused_at === aRow?.end_at && aRow?.pause_reason === 'manual' && aRow?.resume_until === null && aRow?.end_reason === null, `${pa.raw} / ${JSON.stringify(aRow)}`);
+      const pa2 = await te(S.erik, { action: 'pause', id: aId });
+      check('T19: pausing a paused item again is idempotent', pa2.status === 200 && pa2.data?.entry?.state === 'paused' && dbEntry(aId)?.paused_at === aRow?.paused_at, pa2.raw);
+      const g1 = await runningNow();
+      check('T19: ?running=1 lists it in paused[] with pauseExpiresAt, nothing running',
+        g1.data?.running?.length === 0 && g1.data?.paused?.length === 1 && g1.data.paused[0].id === aId && typeof g1.data.paused[0].pauseExpiresAt === 'string', g1.raw);
+
+      // Resume it: a new running entry continues it, the old marker goes.
+      const ra = await te(S.erik, { action: 'resume', id: aId });
+      const newId = ra.data?.entry?.id;
+      const newRow = dbEntry(newId);
+      check('T19: resume starts a new running entry with continues_id = the paused one (201, resumed [old])',
+        ra.status === 201 && newId && newId !== aId && ra.data.entry.state === 'ongoing' && ra.data.entry.continuesId === aId && ra.data.resumed?.[0] === aId
+          && newRow?.continues_id === aId && newRow?.end_at === null && newRow?.description === 'T19 pause A' && newRow?.source === 'timer', `${ra.raw} / ${JSON.stringify(newRow)}`);
+      const aAfter = dbEntry(aId);
+      check('T19: ...the old entry lost its marker, keeps its pause_reason and has no end_reason', aAfter?.paused_at === null && aAfter?.pause_reason === 'manual' && aAfter?.end_reason === null, JSON.stringify(aAfter));
+      check('T19: ...it is no longer in paused[]', ((await runningNow()).data?.paused || []).length === 0);
+
+      // Undo of the resume: the new entry goes, the old one is paused again.
+      const undo = await te(S.erik, { action: 'undo_start', newId, stoppedIds: [] });
+      check('T19: undo_start of a resume removes the new entry and re-marks the old one paused',
+        undo.status === 200 && !dbEntry(newId) && dbEntry(aId)?.paused_at === dbEntry(aId)?.end_at && runningRows().length === 0, `${undo.raw} / ${JSON.stringify(dbEntry(aId))}`);
+
+      // Stop on a paused item clears the marker, adds no time.
+      const durBefore = dbEntry(aId)?.duration_sec;
+      const sp = await te(S.erik, { action: 'stop', id: aId });
+      const aStopped = dbEntry(aId);
+      check('T19: stop on a paused item clears the marker, end_reason user, no new time',
+        sp.status === 200 && sp.data?.entry?.state === 'stopped' && sp.data.entry.endReason === 'user' && aStopped?.paused_at === null && aStopped?.end_reason === 'user' && aStopped?.duration_sec === durBefore && runningRows().length === 0, `${sp.raw} / ${JSON.stringify(aStopped)}`);
+      const rs = await te(S.erik, { action: 'resume', id: aId });
+      check('T19: resuming a stopped item is 409 not_paused', rs.status === 409 && rs.data?.code === 'not_paused' && runningRows().length === 0, rs.raw);
+
+      // An expired pause: resume answers 409 pause_expired and clears the marker.
+      const b = await te(S.erik, { action: 'start', description: 'T19 expired B' });
+      const bId = b.data?.entry?.id;
+      await te(S.erik, { action: 'pause', id: bId });
+      sql(`UPDATE time_entries SET resume_until = UTC_TIMESTAMP() - INTERVAL 1 MINUTE WHERE id = ${q(bId)}`);
+      const rb = await te(S.erik, { action: 'resume', id: bId });
+      const bRow = dbEntry(bId);
+      check('T19: resume of an expired pause is 409 pause_expired, the marker is cleared, nothing starts',
+        rb.status === 409 && rb.data?.code === 'pause_expired' && bRow?.paused_at === null && bRow?.end_reason === 'user' && runningRows().length === 0, `${rb.raw} / ${JSON.stringify(bRow)}`);
+      // The lazy read clears an expired marker too.
+      const c = await te(S.erik, { action: 'start', description: 'T19 lazy C' });
+      const cId = c.data?.entry?.id;
+      await te(S.erik, { action: 'pause', id: cId });
+      sql(`UPDATE time_entries SET resume_until = UTC_TIMESTAMP() - INTERVAL 1 MINUTE WHERE id = ${q(cId)}`);
+      const g2 = await runningNow();
+      check('T19: ?running=1 leaves out an expired pause and clears its marker', (g2.data?.paused || []).length === 0 && dbEntry(cId)?.paused_at === null, g2.raw);
+
+      // end_reason of stop and switch.
+      const d = await te(S.erik, { action: 'start', description: 'T19 switch D' });
+      const e = await te(S.erik, { action: 'start', description: 'T19 switch E' }); // switch: stops D
+      const dId = d.data?.entry?.id;
+      const eId = e.data?.entry?.id;
+      check('T19: a switch-start sets end_reason switch on what it stops', dbEntry(dId)?.end_reason === 'switch' && e.data?.stopped?.endReason === 'switch', e.raw);
+      await te(S.erik, { action: 'stop', id: eId });
+      check('T19: a stop sets end_reason user', dbEntry(eId)?.end_reason === 'user', JSON.stringify(dbEntry(eId)));
+
+      // Pause all / resume all with two parallel items.
+      setParallel({ enabled: true, maxParallel: 4, sameProject: 'always' });
+      grant(true);
+      const p1 = await te(S.erik, { action: 'start', description: 'T19 parallel 1' });
+      const p2 = await te(S.erik, { action: 'start', description: 'T19 parallel 2', mode: 'parallel' });
+      check('T19: setup: two parallel items run', p1.status === 201 && p2.status === 201 && runningRows().length === 2, `${p1.raw} / ${p2.raw}`);
+      const pAll = await te(S.erik, { action: 'pause', all: true });
+      check('T19: pause all pauses both, nothing runs', pAll.status === 200 && pAll.data?.paused?.length === 2 && runningRows().length === 0 && pausedRows().length === 2, pAll.raw);
+      const rAll = await te(S.erik, { action: 'resume', all: true });
+      const conts = rows(`SELECT continues_id FROM time_entries WHERE user_id='tt-erik' AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL ORDER BY continues_id`).map((r) => r.continues_id).sort();
+      check('T19: resume all with parallel allowed resumes both side by side (continues_id = the paused pair)',
+        rAll.status === 201 && rAll.data?.entries?.length === 2 && rAll.data.resumed?.length === 2 && rAll.data.stoppedAll?.length === 0 && runningRows().length === 2 && pausedRows().length === 0
+          && JSON.stringify(conts) === JSON.stringify([p1.data?.entry?.id, p2.data?.entry?.id].sort()), `${rAll.raw} / ${JSON.stringify(conts)}`);
+      // Parallel off: resume all after pause all switches and resumes one; the other stays paused (skipped).
+      await te(S.erik, { action: 'pause', all: true });
+      setParallel({ enabled: false, maxParallel: 4, sameProject: 'always' });
+      const rOff = await te(S.erik, { action: 'resume', all: true });
+      check('T19: resume all with parallel off resumes one, the other stays paused (skipped)',
+        rOff.status === 201 && rOff.data?.entries?.length === 1 && rOff.data.skipped?.length === 1 && runningRows().length === 1 && pausedRows().length === 1, rOff.raw);
+      // A resume while something else runs and parallel is off is a switch.
+      const skippedId = rOff.data?.skipped?.[0];
+      const runId = runningRows()[0]?.id;
+      const rSw = await te(S.erik, { action: 'resume', id: skippedId });
+      check('T19: resuming one while another runs (parallel off) switches: the running one ends with end_reason switch',
+        rSw.status === 201 && rSw.data?.stoppedAll?.length === 1 && dbEntry(runId)?.end_reason === 'switch' && runningRows().length === 1 && runningRows()[0].id === rSw.data?.entry?.id, rSw.raw);
+      // Stop all ends the pauses too.
+      await te(S.erik, { action: 'pause', all: true });
+      const stAll = await te(S.erik, { action: 'stop', all: true });
+      check('T19: stop all with nothing running clears every pause (unpaused)', stAll.status === 200 && stAll.data?.unpaused?.length === 1 && pausedRows().length === 0 && runningRows().length === 0, stAll.raw);
+
+      // Cleanup.
+      sql(`UPDATE system_settings SET value = JSON_REMOVE(value, '$.parallel') WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      grant(false);
+      check('T19: cleanup: Erik has nothing running and nothing paused', runningRows().length === 0 && pausedRows().length === 0);
+    }
   } finally {
     teardown();
   }

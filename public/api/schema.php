@@ -1334,6 +1334,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `entry_date` DATE NOT NULL COMMENT 'Company-timezone date the time counts for',
               `start_at` DATETIME NULL COMMENT 'UTC; NULL for hours-only entries',
               `end_at` DATETIME NULL COMMENT 'UTC; NULL while running or hours-only',
+              `paused_at` DATETIME NULL COMMENT 'UTC; set = paused and resumable (D6)', `pause_reason` VARCHAR(16) NULL COMMENT 'manual | status | presence', `resume_until` DATETIME NULL COMMENT 'UTC; the pause expires after this, NULL = the day''s autoStopAt', `continues_id` VARCHAR(64) NULL COMMENT 'The entry this one resumed', `end_reason` VARCHAR(16) NULL COMMENT 'user | switch | status | presence | auto_stop',
               `duration_sec` INT NULL,
               `worked_ms` INT UNSIGNED NULL COMMENT 'Share of the person''s real clock time (ms); NULL while running. Written only by ccrm_tt_settle()',
               `billable` TINYINT(1) NOT NULL DEFAULT 1,
@@ -2614,6 +2615,8 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_time_parallel($pdo);
         require_once __DIR__ . '/time_rate_months_migration.php'; // listed in ccrm_schema_fingerprint(); before anything that prices
         ccrm_migrate_time_rate_months($pdo);
+        require_once __DIR__ . '/time_pause_migration.php'; // listed in ccrm_schema_fingerprint()
+        ccrm_migrate_time_pause($pdo);
         require_once __DIR__ . '/ticket_time_migration.php';
         ccrm_migrate_ticket_time_entries($pdo);
     }
@@ -3640,7 +3643,7 @@ if (!function_exists('ccrm_schema_statements')) {
      */
     function ccrm_schema_fingerprint(): string {
         $parts = [];
-        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/time_worked_ms_migration.php', __DIR__ . '/time_parallel_migration.php', __DIR__ . '/time_rate_months_migration.php'] as $file) {
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/time_worked_ms_migration.php', __DIR__ . '/time_parallel_migration.php', __DIR__ . '/time_rate_months_migration.php', __DIR__ . '/time_pause_migration.php'] as $file) {
             $parts[] = is_file($file) ? md5_file($file) : '-';
         }
         return md5(implode('|', $parts));

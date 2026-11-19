@@ -265,6 +265,39 @@ export const undoStart = async (newId: string, stoppedIds: string[] = []): Promi
   return { entry, reopened: Array.isArray(body.reopened) ? entryList(body.reopened) : entry ? [entry] : [] };
 };
 
+/** D6: pause one running item (`id`) or every one (`all`). The entries end now and keep a resumable marker. */
+export const pauseEntries = async (opts: { id: string } | { all: true }): Promise<TimeEntry[]> =>
+  ((await post("pause", opts)).paused as TimeEntry[] | undefined) ?? [];
+
+export interface ResumeResult {
+  /** The first new running entry (or the already-running identical one). */
+  entry: TimeEntry | null;
+  /** The new running entries, one per resumed item (`continuesId` = the paused entry). */
+  entries: TimeEntry[];
+  /** Ids of the paused entries that were resumed: the Undo is `undoStart(entry.id)` with `stoppedAll`'s ids. */
+  resumed: string[];
+  /** Running items a switch stopped to make room. */
+  stoppedAll: TimeEntry[];
+  /** Paused items that could not run together and stay paused. */
+  skipped: string[];
+  expired: string[];
+}
+
+/** D6, C8: resume a paused item (`id`) or every one (`all`); 409 `pause_expired` when the pause ran out. */
+export const resumeEntries = async (
+  opts: ({ id: string } | { all: true }) & { mode?: "auto" | "switch" | "parallel" },
+): Promise<ResumeResult> => {
+  const body = await post("resume", opts);
+  return {
+    entry: body.entry ?? null,
+    entries: body.entries ?? [],
+    resumed: body.resumed ?? [],
+    stoppedAll: body.stoppedAll ?? [],
+    skipped: body.skipped ?? [],
+    expired: body.expired ?? [],
+  };
+};
+
 export const createEntry = async (input: EntryInput): Promise<TimeEntry> =>
   (await post("create", input as Record<string, unknown>)).entry as TimeEntry;
 
@@ -339,6 +372,12 @@ export const timeErrorMessage = (
       return t("Pick a project before stopping the timer.", "Pred zastavením časovača vyberte projekt.", "A leállítás előtt válasszon projektet.");
     case "task_required":
       return t("Pick a task before stopping the timer.", "Pred zastavením časovača vyberte úlohu.", "A leállítás előtt válasszon feladatot.");
+    case "pause_expired":
+      return t("This pause has expired. Start a new timer.", "Táto prestávka vypršala. Spustite nový časovač.", "Ez a szünet lejárt. Indítson új időzítőt.");
+    case "not_paused":
+      return t("This entry is not paused.", "Tento záznam nie je pozastavený.", "Ez a bejegyzés nincs szüneteltetve.");
+    case "not_running":
+      return t("This timer is no longer running.", "Tento časovač už nebeží.", "Ez az időzítő már nem fut.");
     case "already_running":
       return t("A timer is already running.", "Časovač už beží.", "Már fut egy időzítő.");
     case "end_before_start":

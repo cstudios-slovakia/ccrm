@@ -39,6 +39,10 @@ export const importedFrom = (source: TimeEntrySource): string | null =>
 
 export type TimeTitleSource = "task" | "ticket" | "entry";
 
+export type TimeEntryState = "ongoing" | "paused" | "stopped";
+export type TimePauseReason = "manual" | "status" | "presence";
+export type TimeEndReason = "user" | "switch" | "status" | "presence" | "auto_stop";
+
 export interface TimeEntry {
   id: string;
   userId: string;
@@ -66,6 +70,19 @@ export interface TimeEntry {
   /** Worked time in ms: the share of the person's real clock time; null while running. Pay and measure this, bill durationSec. */
   workedMs?: number | null;
   running: boolean;
+  /** D6: ongoing (running), paused (closed with a resumable marker) or stopped. Older servers omit it. */
+  state?: TimeEntryState;
+  /** When the item was paused (= its end); null unless paused. */
+  pausedAt?: string | null;
+  pauseReason?: TimePauseReason | null;
+  /** Stored expiry of the pause; null = the pause day's autoStopAt. */
+  resumeUntil?: string | null;
+  /** Effective expiry, only on the `paused` list of `GET ?running=1`. */
+  pauseExpiresAt?: string | null;
+  /** On a resumed entry: the entry it continues. */
+  continuesId?: string | null;
+  /** How the entry ended; null while running, paused or resumed. */
+  endReason?: TimeEndReason | null;
   billable: boolean;
   tags: string[];
   source: TimeEntrySource;

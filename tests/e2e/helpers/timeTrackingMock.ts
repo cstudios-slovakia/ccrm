@@ -118,6 +118,13 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       titleDeleted: e.taskId ? !task : e.ticketId ? !ticket : false,
       projectName: ctx.projects.find((p) => p.id === e.projectId)?.name ?? null,
       running: !!e.startAt && !e.endAt,
+      // D6: the three states; a paused item is a closed entry with a marker.
+      state: e.startAt && !e.endAt ? 'ongoing' : e.pausedAt ? 'paused' : 'stopped',
+      pausedAt: e.pausedAt ?? null,
+      pauseReason: e.pauseReason ?? null,
+      resumeUntil: e.resumeUntil ?? null,
+      continuesId: e.continuesId ?? null,
+      endReason: e.endReason ?? null,
     };
     delete out.titleSnapshot;
     delete out.costRate; delete out.costRateSource; delete out.costRateBasisDays; delete out.cost; delete out.billableRate;
@@ -199,7 +206,8 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       if (url.searchParams.get('action') === 'prefs') return route.fulfill(ok({ startWhileRunning }));
       if (url.searchParams.has('running')) {
         const set = runningSet().map(view);
-        return route.fulfill(ok({ running: set, paused: [], presence: null, serverNow: new Date().toISOString(), entry: set[0] ?? null }));
+        const paused = entries.filter((e) => e.userId === caller && e.pausedAt && !e.deletedAt).map(view);
+        return route.fulfill(ok({ running: set, paused, presence: null, serverNow: new Date().toISOString(), entry: set[0] ?? null }));
       }
       if (url.searchParams.get('action') === 'totals') {
         const byTask: Record<string, number> = {};
@@ -286,6 +294,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
         if (same) return route.fulfill(fail('already_running', 409, { entry: view(same) }));
         for (const row of rows) {
           finish(row, now);
+          row.endReason = 'switch';
           stopped.push(row);
         }
       }
@@ -322,12 +331,58 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
         e = rows[0];
       }
       if (!e) return route.fulfill(fail('not_found', 404));
-      if (e.endAt) return route.fulfill(ok({ entry: view(e) }));
+      if (e.endAt) {
+        // A paused item: the stop clears its marker, no new time (D6).
+        if (e.pausedAt) Object.assign(e, { pausedAt: null, endReason: e.endReason ?? 'user' });
+        return route.fulfill(ok({ entry: view(e) }));
+      }
       if (body.projectId) e.projectId = body.projectId;
       if (needsProject(e)) return route.fulfill(fail('project_required', 422));
       finish(e, new Date().toISOString());
+      e.endReason = 'user';
       settleWorked();
       return route.fulfill(ok({ entry: view(e) }));
+    }
+
+    if (action === 'pause') {
+      // D6: the running item ends now and keeps a resumable marker; "require a project" does not apply.
+      const e = body.id ? entries.find((x) => x.id === body.id && !x.deletedAt) : running();
+      if (body.id && !e) return route.fulfill(fail('not_found', 404));
+      if (!e) return route.fulfill(ok({ entry: null, paused: [] }));
+      if (e.endAt && !e.pausedAt) return route.fulfill(fail('not_running', 409, { entry: view(e) }));
+      if (!e.endAt) {
+        const now = new Date().toISOString();
+        finish(e, now);
+        Object.assign(e, { pausedAt: now, pauseReason: 'manual', resumeUntil: null, endReason: null });
+        settleWorked();
+      }
+      return route.fulfill(ok({ entry: view(e), paused: [view(e)] }));
+    }
+
+    if (action === 'resume') {
+      // D6, C8: a new running entry continues the paused one; the mock is single-timer, so a resume switches.
+      const old = body.id ? entries.find((x) => x.id === body.id && !x.deletedAt) : entries.find((x) => x.userId === caller && x.pausedAt && !x.deletedAt);
+      if (!old) return route.fulfill(body.id ? fail('not_found', 404) : ok({ entry: null, entries: [], resumed: [], stoppedAll: [], skipped: [], expired: [] }));
+      if (!old.pausedAt) return route.fulfill(fail(old.endAt ? 'not_paused' : 'already_running', 409, { entry: view(old) }));
+      if (old.resumeUntil && Date.parse(old.resumeUntil) < Date.now()) {
+        Object.assign(old, { pausedAt: null, endReason: old.endReason ?? 'user' });
+        return route.fulfill(fail('pause_expired', 409, { entry: view(old), expired: [old.id] }));
+      }
+      const now = new Date().toISOString();
+      const prev = running();
+      if (prev) {
+        finish(prev, now);
+        prev.endReason = 'switch';
+      }
+      old.pausedAt = null;
+      const entry: Json = {
+        ...old, id: `te-mock-${++idSeq}`, recordedByUserId: caller, entryDate: ymd(new Date()), startAt: now, endAt: null, durationSec: null, workedMs: null,
+        source: 'timer', continuesId: old.id, pausedAt: null, pauseReason: null, resumeUntil: null, endReason: null, approvalStatus: null,
+        createdAt: now.replace('T', ' ').slice(0, 19), costRate: null, costRateSource: 'none', costRateBasisDays: null, cost: null,
+      };
+      entries.push(entry);
+      settleWorked();
+      return route.fulfill(ok({ entry: view(entry), entries: [view(entry)], resumed: [old.id], stoppedAll: prev ? [view(prev)] : [], skipped: [], alreadyRunning: [], expired: [] }, 201));
     }
 
     if (action === 'undo_start') {
