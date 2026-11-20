@@ -11,7 +11,8 @@
  */
 
 import { computeCostRate, round2, type CostRate } from "./timeCost.ts";
-import { hoursOf } from "./timeTracking.ts";
+import { addDays } from "./holidays.ts";
+import { hoursOf, weekStart } from "./timeTracking.ts";
 import { entryWorkedSeconds, liveWorkedShares, showsWorkedAndDelivered } from "./timeWorked.ts";
 import {
   addMoney,
@@ -42,6 +43,10 @@ export interface ReportEntry {
   billable: boolean;
   cost?: number | null;
   currency?: string;
+  /** Hourly rate the entry bills at; absent when the viewer may not see rates. */
+  billableRate?: number | null;
+  /** The entry's project is flagged internal. */
+  internal?: boolean;
 }
 
 export interface ReportFilters {
@@ -69,6 +74,10 @@ export interface ReportLine {
   workedSeconds: number;
   billable: boolean;
   cost: MoneyByCurrency;
+  /** Rounded billable hours x the entry's billable rate. Null when not billable, no rate, or no cost permission. */
+  billableValue: number | null;
+  currency: string;
+  internal: boolean;
 }
 
 export interface ReportGroup {
@@ -77,12 +86,20 @@ export interface ReportGroup {
   workedSeconds: number;
   billableSeconds: number;
   cost: MoneyByCurrency;
+  billableValue: MoneyByCurrency;
+}
+
+/** Labour cost split by where the time went: client projects, internal projects, no project. */
+export interface CostSplit {
+  client: MoneyByCurrency;
+  internal: MoneyByCurrency;
+  unallocated: MoneyByCurrency;
 }
 
 export interface BuiltReport {
   lines: ReportLine[];
   groups: ReportGroup[];
-  totals: { seconds: number; workedSeconds: number; billableSeconds: number; cost: MoneyByCurrency };
+  totals: { seconds: number; workedSeconds: number; billableSeconds: number; cost: MoneyByCurrency; billableValue: MoneyByCurrency; costSplit: CostSplit };
   /** Project time ÷ worked time over the lines (×1 = nothing parallel). Null when nothing was worked. */
   leverage: number | null;
   /** True when worked and project time differ, so the views show both measures. */
@@ -119,6 +136,77 @@ const groupKey = (line: ReportLine, by: ReportGroupBy): string => {
 /** Leverage of a project-time / worked-time pair. */
 export const leverageOf = (projectSec: number, workedSec: number): number | null => (workedSec > 0 ? projectSec / workedSec : null);
 
+/** Billable value per currency over the lines. */
+const billableValueOf = (lines: readonly ReportLine[]): MoneyByCurrency => {
+  const bag: MoneyByCurrency = {};
+  for (const l of lines) addMoney(bag, l.currency, l.billableValue);
+  return bag;
+};
+
+const costSplitOf = (lines: readonly ReportLine[]): CostSplit => ({
+  client: sumMoney(lines.filter((l) => l.projectId != null && !l.internal).map((l) => l.cost)),
+  internal: sumMoney(lines.filter((l) => l.internal).map((l) => l.cost)),
+  unallocated: sumMoney(lines.filter((l) => l.projectId == null).map((l) => l.cost)),
+});
+
+/**
+ * Billable value minus labour cost, per currency. Null where there is no billable value, so a row
+ * of pure internal time shows "—" rather than a loss.
+ */
+export const marginOf = (value: MoneyByCurrency, cost: MoneyByCurrency): MoneyByCurrency | null => {
+  const codes = Object.keys(value);
+  if (!codes.length) return null;
+  const out: MoneyByCurrency = {};
+  for (const code of codes) addMoney(out, code, value[code] - (cost[code] ?? 0));
+  return out;
+};
+
+export interface DayBar {
+  date: string;
+  billableSeconds: number;
+  otherSeconds: number;
+}
+
+/** One bar per listed day: billable against non-billable seconds. Lines on days not listed are ignored. */
+export const hoursPerDay = (lines: readonly ReportLine[], days: readonly string[]): DayBar[] => {
+  const bars = new Map<string, DayBar>(days.map((date) => [date, { date, billableSeconds: 0, otherSeconds: 0 }]));
+  for (const l of lines) {
+    const bar = bars.get(l.entryDate);
+    if (!bar) continue;
+    if (l.billable) bar.billableSeconds += l.seconds;
+    else bar.otherSeconds += l.seconds;
+  }
+  return [...bars.values()];
+};
+
+export type ReportPeriod = "thisMonth" | "lastMonth" | "thisWeek" | "lastWeek" | "thisYear" | "custom";
+
+const monthEndIso = (iso: string): string => {
+  const [y, m] = iso.split("-").map(Number);
+  return `${iso.slice(0, 7)}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
+};
+
+/** Date range of a preset, relative to `today`. "custom" has no range of its own (null). */
+export const periodRange = (period: ReportPeriod, today: string): { from: string; to: string } | null => {
+  const thisMonth = `${today.slice(0, 7)}-01`;
+  switch (period) {
+    case "thisMonth":
+      return { from: thisMonth, to: monthEndIso(today) };
+    case "lastMonth": {
+      const last = addDays(thisMonth, -1);
+      return { from: `${last.slice(0, 7)}-01`, to: last };
+    }
+    case "thisWeek":
+      return { from: weekStart(today), to: addDays(weekStart(today), 6) };
+    case "lastWeek":
+      return { from: addDays(weekStart(today), -7), to: addDays(weekStart(today), -1) };
+    case "thisYear":
+      return { from: `${today.slice(0, 4)}-01-01`, to: `${today.slice(0, 4)}-12-31` };
+    default:
+      return null;
+  }
+};
+
 export const buildReport = (input: {
   entries: readonly ReportEntry[];
   filters: ReportFilters;
@@ -141,7 +229,9 @@ export const buildReport = (input: {
     if (filters.parallelOnly && !(e.durationSec - workedSeconds >= 1)) continue;
     const seconds = roundDurationSec(e.durationSec, input.rounding);
     const cost: MoneyByCurrency = {};
-    addMoney(cost, e.currency || input.currency, visibleEntryCost(e, input.viewerUserId, input.canCosts));
+    const currency = e.currency || input.currency;
+    addMoney(cost, currency, visibleEntryCost(e, input.viewerUserId, input.canCosts));
+    const billableValue = input.canCosts && e.billable && e.billableRate && e.billableRate > 0 ? round2((seconds / 3600) * e.billableRate) : null;
     lines.push({
       id: e.id,
       userId: e.userId,
@@ -153,16 +243,20 @@ export const buildReport = (input: {
       workedSeconds,
       billable: e.billable,
       cost,
+      billableValue,
+      currency,
+      internal: e.internal === true && e.projectId != null,
     });
   }
   const groups = new Map<string, ReportGroup>();
   for (const line of lines) {
     const key = groupKey(line, filters.groupBy);
-    const g = groups.get(key) ?? { key, seconds: 0, workedSeconds: 0, billableSeconds: 0, cost: {} };
+    const g = groups.get(key) ?? { key, seconds: 0, workedSeconds: 0, billableSeconds: 0, cost: {}, billableValue: {} };
     g.seconds += line.seconds;
     g.workedSeconds += line.workedSeconds;
     if (line.billable) g.billableSeconds += line.seconds;
     g.cost = sumMoney([g.cost, line.cost]);
+    addMoney(g.billableValue, line.currency, line.billableValue);
     groups.set(key, g);
   }
   const ordered = [...groups.values()].sort((a, b) => b.seconds - a.seconds || a.key.localeCompare(b.key));
@@ -171,6 +265,8 @@ export const buildReport = (input: {
     workedSeconds: lines.reduce((s, l) => s + l.workedSeconds, 0),
     billableSeconds: lines.reduce((s, l) => s + (l.billable ? l.seconds : 0), 0),
     cost: sumMoney(lines.map((l) => l.cost)),
+    billableValue: billableValueOf(lines),
+    costSplit: costSplitOf(lines),
   };
   const byProject = new Map<string, number>();
   for (const line of lines) {

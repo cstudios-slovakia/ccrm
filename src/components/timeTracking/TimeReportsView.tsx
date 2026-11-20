@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { Download, FileText } from "lucide-react";
-import { StatGrid, StatTile, Surface, Toolbar } from "../layout";
-import { CustomSelect } from "../ui/CustomSelect";
+import { StatGrid, StatTile, Surface } from "../layout";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
+import { addDays } from "../../utils/holidays.ts";
 import { isClientRecord } from "../../utils/clientRecord.ts";
 import {
   buildReport,
@@ -11,24 +11,23 @@ import {
   clientReportHtml,
   reportCsv,
   type BillableFilter,
+  periodRange,
   type ReportGroupBy,
+  type ReportPeriod,
 } from "../../utils/timeReports.ts";
-import { entrySeconds, formatDuration, hoursOf, projectColor, todayIso, type TimeEntry } from "../../utils/timeTracking.ts";
+import { entrySeconds, formatDuration, hoursOf, todayIso, type TimeEntry } from "../../utils/timeTracking.ts";
 import { entryWorkedSeconds, liveWorkedShares } from "../../utils/timeWorked.ts";
 import { MoneyText } from "./MoneyText";
-import { ProjectLabel } from "./ProjectLabel";
+import { HoursPerDayCard, ShareByProjectCard } from "./ReportCharts";
+import { FilterChip, ModeSwitch, PeriodChip, ReportFilterCard, ToggleChip, type ReportMode } from "./ReportFilters";
+import { ReportSummaryTable } from "./ReportSummaryTable";
+import { TimeToolbarSlot } from "./TimeToolbarSlot";
 import { TimeSalaryReport } from "./TimeSalaryReport";
 import { useTimeLookups, type TimeDeps } from "./shared";
+import { formatMoney } from "../../utils/currency";
 import type { Lead, Project } from "../../types";
 
-type Mode = "summary" | "detailed" | "salary";
-
-const monthStart = (iso: string) => `${iso.slice(0, 7)}-01`;
-const monthEnd = (iso: string) => {
-  const [y, m] = iso.split("-").map(Number);
-  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  return `${iso.slice(0, 7)}-${String(last).padStart(2, "0")}`;
-};
+type Mode = ReportMode;
 
 const clientIdOf = (project: Project, leads: Lead[]): string | null => {
   if (project.clientId) return project.clientId;
@@ -55,18 +54,29 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
   const lookups = useTimeLookups(deps);
   const today = todayIso();
   const [mode, setMode] = useState<Mode>("summary");
-  const [from, setFrom] = useState(() => monthStart(today));
-  const [to, setTo] = useState(() => monthEnd(today));
+  const [period, setPeriodState] = useState<ReportPeriod>("thisMonth");
+  const preset = periodRange(period, today);
+  const [customFrom, setFrom] = useState(today);
+  const [customTo, setTo] = useState(today);
+  const from = preset?.from ?? customFrom;
+  const to = preset?.to ?? customTo;
+  const setPeriod = (p: ReportPeriod) => {
+    if (p === "custom") {
+      setFrom(from);
+      setTo(to);
+    }
+    setPeriodState(p);
+  };
   const [userId, setUserId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [clientId, setClientId] = useState("");
   const [billable, setBillable] = useState<BillableFilter>("all");
-  const [groupBy, setGroupBy] = useState<ReportGroupBy>("title");
+  const [groupBy, setGroupBy] = useState<ReportGroupBy>("project");
   const [parallelOnly, setParallelOnly] = useState(false);
 
   const { entries, loading } = useTimeEntries({ from, to, userId: viewer.canTeam ? "all" : undefined });
   const clock = entries.some((e) => e.running) ? tt.nowMs : 0;
-  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-US";
+  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-GB";
 
   const clients = useMemo(() => {
     const ids = new Set<string>();
@@ -77,7 +87,23 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
     return [...ids].map((id) => ({ id, name: deps.leads.find((l) => l.id === id)?.name || id })).sort((a, b) => a.name.localeCompare(b.name));
   }, [deps.leads, deps.projects]);
 
-  const workingDays = useMemo(() => tt.calendarFor(tt.workCountry).workingDaysInRange(from, to), [from, to, tt.calendarFor, tt.workCountry]);
+  const workingDayList = useMemo(() => {
+    const cal = tt.calendarFor(tt.workCountry);
+    const days: string[] = [];
+    for (let d = from; d <= to && days.length < 400 && from <= to; d = addDays(d, 1)) if (cal.isWorkingDay(d)) days.push(d);
+    return days;
+  }, [from, to, tt.calendarFor, tt.workCountry]);
+  const workingDays = workingDayList.length;
+
+  const internalProjects = useMemo(
+    () =>
+      new Set(
+        deps.projects
+          .filter((p) => p.isInternal === true || deps.projectTypes.some((tp) => tp.id === p.projectTypeId && (tp as { isInternal?: boolean }).isInternal === true))
+          .map((p) => p.id),
+      ),
+    [deps.projectTypes, deps.projects],
+  );
 
   const report = useMemo(() => {
     const clientByProject = new Map(deps.projects.map((p) => [p.id, clientIdOf(p, deps.leads)]));
@@ -96,6 +122,8 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
         billable: e.billable,
         cost: e.cost,
         currency: deps.currency,
+        billableRate: e.billableRate,
+        internal: e.projectId ? internalProjects.has(e.projectId) : false,
       })),
       filters: {
         from,
@@ -113,7 +141,7 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
       currency: deps.currency,
       workingDays,
     });
-  }, [billable, clientId, clock, deps, entries, from, groupBy, parallelOnly, projectId, tt.nowMs, settings.rounding, to, tt.userId, userId, viewer.canCosts, workingDays]);
+  }, [billable, clientId, clock, deps, entries, from, groupBy, internalProjects, parallelOnly, projectId, tt.nowMs, settings.rounding, to, tt.userId, userId, viewer.canCosts, workingDays]);
 
   const personName = (id: string) => deps.users.find((u) => u.id === id)?.name || id;
   const projectName = (id: string | null) => (id ? lookups.projectName(id) : t("Unallocated", "Nepriradené", "Nincs projekt"));
@@ -184,98 +212,106 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
   };
 
   const billablePct = report.totals.seconds > 0 ? Math.round((report.totals.billableSeconds / report.totals.seconds) * 100) : null;
+  const peopleCount = new Set(report.lines.map((l) => l.userId)).size;
+  const hasCost = Object.keys(report.totals.cost).length > 0;
+  const showValue = viewer.canCosts;
+  const both = report.showsWorked;
+  const salaryAllowed = !!deps.canSalaryReport;
+  const modeSwitch = <ModeSwitch mode={mode} setMode={setMode} salary={salaryAllowed} t={t} />;
 
   if (mode === "salary") {
     return (
       <div className="grid gap-4">
-        <ModeSwitch mode={mode} setMode={setMode} salary={!!deps.canSalaryReport} t={t} />
+        <ReportFilterCard chips={null} modeSwitch={modeSwitch} />
         <TimeSalaryReport deps={deps} />
       </div>
     );
   }
 
-  const peopleCount = new Set(report.lines.map((l) => l.userId)).size;
-  const hasCost = Object.keys(report.totals.cost).length > 0;
-  const both = report.showsWorked;
+  const moneyText = (bag: Record<string, number>) =>
+    Object.keys(bag)
+      .sort()
+      .map((code) => formatMoney(bag[code], code, deps.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+      .join(" · ");
+  const split = report.totals.costSplit;
+  const hasInternal = Object.keys(split.internal).length > 0;
+  const splitParts = [
+    hasInternal ? `+ ${moneyText(split.internal)} ${t("internal", "interné", "belső")}` : "",
+    Object.keys(split.unallocated).length ? `${hasInternal ? "" : "+ "}${moneyText(split.unallocated)} ${t("unallocated", "nepriradené", "nincs projekt")}` : "",
+  ].filter(Boolean);
+  const th = "px-4 py-3 type-overline text-slate-500";
+  const thr = `${th} text-right`;
+  const tdn = "px-4 py-2.5 text-right tabular-nums";
+  const emptyText = t("Nothing in this period.", "V tomto období nič.", "Ebben az időszakban semmi.");
+  const userCount = deps.users.filter((u) => u.id).length;
 
   return (
     <div className="grid gap-4" data-testid={mode === "detailed" ? "reports-detailed" : "reports-summary"}>
-      <ModeSwitch mode={mode} setMode={setMode} salary={!!deps.canSalaryReport} t={t} />
-      <Toolbar
-        filters={
+      <TimeToolbarSlot>
+        <span className="ml-auto flex gap-2">
+          <button type="button" onClick={exportCsv} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-700 transition-all hover:bg-slate-50 active:scale-95 cursor-pointer">
+            <Download className="size-4" />
+            CSV
+          </button>
+          <button type="button" onClick={openPdf} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-700 transition-all hover:bg-slate-50 active:scale-95 cursor-pointer">
+            <FileText className="size-4" />
+            {t("PDF for client", "PDF pre klienta", "PDF az ügyfélnek")}
+          </button>
+        </span>
+      </TimeToolbarSlot>
+      <ReportFilterCard
+        modeSwitch={modeSwitch}
+        chips={
           <>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label={t("From", "Od", "Ettől")} className="h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui" />
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label={t("To", "Do", "Eddig")} className="h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui" />
+            <PeriodChip t={t} period={period} setPeriod={setPeriod} from={from} to={to} setFrom={setFrom} setTo={setTo} />
             {viewer.canTeam && (
-              <CustomSelect
-                size="sm"
-                fitLabel
+              <FilterChip
+                label={t("Employees", "Zamestnanci", "Munkatársak")}
                 value={userId}
                 onChange={setUserId}
-                options={[{ value: "", label: t("All people", "Všetci", "Mindenki") }, ...deps.users.filter((u) => u.id).map((u) => ({ value: u.id as string, label: u.name }))]}
+                options={[{ value: "", label: t(`All (${userCount})`, `Všetci (${userCount})`, `Mind (${userCount})`) }, ...deps.users.filter((u) => u.id).map((u) => ({ value: u.id as string, label: u.name }))]}
               />
             )}
-            <CustomSelect
-              size="sm"
-              fitLabel
+            <FilterChip
+              label={t("Projects", "Projekty", "Projektek")}
               value={projectId}
               onChange={setProjectId}
-              options={[{ value: "", label: t("All projects", "Všetky projekty", "Minden projekt") }, ...deps.projects.map((p) => ({ value: p.id, label: lookups.projectName(p.id) }))]}
+              options={[{ value: "", label: t("All", "Všetky", "Mind") }, ...deps.projects.map((p) => ({ value: p.id, label: lookups.projectName(p.id) }))]}
             />
-            <CustomSelect
-              size="sm"
-              fitLabel
+            <FilterChip
+              label={t("Clients", "Klienti", "Ügyfelek")}
               value={clientId}
               onChange={setClientId}
-              options={[{ value: "", label: t("All clients", "Všetci klienti", "Minden ügyfél") }, ...clients.map((c) => ({ value: c.id, label: c.name }))]}
+              options={[{ value: "", label: t("All", "Všetci", "Mind") }, ...clients.map((c) => ({ value: c.id, label: c.name }))]}
             />
-            <CustomSelect
-              size="sm"
-              fitLabel
+            <FilterChip
+              label={t("Billable", "Fakturovateľné", "Számlázható")}
               value={billable}
               onChange={(v) => setBillable(v as BillableFilter)}
               options={[
-                { value: "all", label: t("Billable and not", "Fakturovateľné aj nie", "Számlázható és nem") },
+                { value: "all", label: t("Any", "Všetko", "Bármely") },
                 { value: "yes", label: t("Billable", "Fakturovateľné", "Számlázható") },
                 { value: "no", label: t("Non-billable", "Nefakturovateľné", "Nem számlázható") },
               ]}
             />
-            <button
-              type="button"
-              aria-pressed={parallelOnly}
-              onClick={() => setParallelOnly((v) => !v)}
-              className={`inline-flex h-9 items-center rounded-xl border px-3 text-ui font-semibold transition-all hover:bg-slate-50 active:scale-95 focus-visible:outline-2 focus-visible:outline-teal-600 cursor-pointer ${parallelOnly ? "border-teal-600 bg-teal-50 text-teal-700" : "border-slate-200 bg-white text-slate-700"}`}
-            >
-              {t("Parallel only", "Len paralelné", "Csak párhuzamos")}
-            </button>
             {mode === "summary" && (
-              <CustomSelect
-                size="sm"
-                fitLabel
+              <FilterChip
+                label={t("Group by", "Zoskupiť podľa", "Csoportosítás")}
                 value={groupBy}
                 onChange={(v) => setGroupBy(v as ReportGroupBy)}
                 options={[
-                  { value: "title", label: t("Group by title", "Zoskupiť podľa názvu", "Csoportosítás cím szerint") },
-                  { value: "project", label: t("Group by project", "Zoskupiť podľa projektu", "Csoportosítás projekt szerint") },
-                  { value: "person", label: t("Group by person", "Zoskupiť podľa osoby", "Csoportosítás személy szerint") },
-                  { value: "client", label: t("Group by client", "Zoskupiť podľa klienta", "Csoportosítás ügyfél szerint") },
-                  { value: "day", label: t("Group by day", "Zoskupiť podľa dňa", "Csoportosítás nap szerint") },
+                  { value: "project", label: t("Project", "Projekt", "Projekt") },
+                  { value: "title", label: t("Title", "Názov", "Cím") },
+                  { value: "person", label: t("Person", "Osoba", "Személy") },
+                  { value: "client", label: t("Client", "Klient", "Ügyfél") },
+                  { value: "day", label: t("Day", "Deň", "Nap") },
                 ]}
               />
             )}
+            <ToggleChip pressed={parallelOnly} onClick={() => setParallelOnly((v) => !v)}>
+              {t("Parallel only", "Len paralelné", "Csak párhuzamos")}
+            </ToggleChip>
           </>
-        }
-        primary={
-          <span className="flex gap-2">
-            <button type="button" onClick={exportCsv} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-700 transition-all hover:bg-slate-50 active:scale-95 cursor-pointer">
-              <Download className="size-4" />
-              CSV
-            </button>
-            <button type="button" onClick={openPdf} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-teal-600 px-3 text-ui font-semibold text-white transition-all hover:bg-teal-700 active:scale-95 cursor-pointer">
-              <FileText className="size-4" />
-              {t("Client PDF", "PDF pre klienta", "Ügyfél PDF")}
-            </button>
-          </span>
         }
       />
 
@@ -283,9 +319,9 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
         <p className="text-body text-slate-500">{t("Loading…", "Načítava sa…", "Betöltés…")}</p>
       ) : mode === "summary" ? (
         <>
-          <StatGrid count={hasCost ? 4 : 3}>
-            <StatTile label={report.showsWorked ? t("Delivered", "Dodané", "Leszállított") : t("Hours", "Hodiny", "Órák")} value={<span className="tabular-nums">{formatDuration(report.totals.seconds)}</span>} delta={t(`${peopleCount} people · ${workingDays} working days`, `${peopleCount} ľudí · ${workingDays} pracovných dní`, `${peopleCount} fő · ${workingDays} munkanap`)} />
-            {report.showsWorked && (
+          <StatGrid count={2 + (both ? 1 : 0) + (showValue ? 1 : 0) + (hasCost ? 1 : 0)}>
+            <StatTile label={both ? t("Delivered", "Dodané", "Leszállított") : t("Tracked", "Sledované", "Rögzített")} value={<span className="tabular-nums">{formatDuration(report.totals.seconds)}</span>} delta={t(`${peopleCount} people · ${workingDays} working days`, `${peopleCount} ľudí · ${workingDays} pracovných dní`, `${peopleCount} fő · ${workingDays} munkanap`)} />
+            {both && (
               <StatTile
                 label={t("Worked", "Odpracované", "Ledolgozott")}
                 delta={t("Parallel timers counted once", "Paralelné časovače sa rátajú raz", "A párhuzamos időzítők egyszer számítanak")}
@@ -299,102 +335,58 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
             )}
             <StatTile
               label={t("Billable", "Fakturovateľné", "Számlázható")}
-              value={<span className="tabular-nums">{billablePct == null ? "—" : `${billablePct} %`}</span>}
-              delta={t(`${formatDuration(report.totals.billableSeconds)} of ${formatDuration(report.totals.seconds)}`, `${formatDuration(report.totals.billableSeconds)} z ${formatDuration(report.totals.seconds)}`, `${formatDuration(report.totals.billableSeconds)} / ${formatDuration(report.totals.seconds)}`)}
+              value={<span className="tabular-nums">{formatDuration(report.totals.billableSeconds)}</span>}
+              delta={billablePct == null ? undefined : t(`${billablePct} % of tracked`, `${billablePct} % zo sledovaného`, `${billablePct} % a rögzítettből`)}
             />
-            <StatTile
-              label={t("Hours per working day", "Hodiny na pracovný deň", "Óra munkanaponként")}
-              delta={t(`over ${workingDays} working days`, `za ${workingDays} pracovných dní`, `${workingDays} munkanap alatt`)}
-              value={<span className="tabular-nums">{report.perWorkingDaySeconds == null ? "—" : formatDuration(report.perWorkingDaySeconds)}</span>}
-            />
+            {showValue && (
+              <StatTile
+                label={t("Billable value", "Fakturovateľná hodnota", "Számlázható érték")}
+                value={<MoneyText bag={report.totals.billableValue} language={deps.language} />}
+                delta={t("at project hourly rates", "podľa hodinových sadzieb projektov", "a projektek óradíja szerint")}
+              />
+            )}
             {hasCost && (
               <StatTile
-                label={t("Labour cost", "Náklady na prácu", "Munkaköltség")}
-                value={<MoneyText bag={report.totals.cost} language={deps.language} />}
-                delta={t(`${report.lines.length} entries`, `${report.lines.length} záznamov`, `${report.lines.length} bejegyzés`)}
+                label={t("Labour cost · client work", "Náklady na prácu · klientska práca", "Munkaköltség · ügyfélmunka")}
+                value={<MoneyText bag={split.client} language={deps.language} />}
+                delta={splitParts.length ? splitParts.join(" · ") : t(`${report.lines.length} entries`, `${report.lines.length} záznamov`, `${report.lines.length} bejegyzés`)}
               />
             )}
           </StatGrid>
-          <Surface>
-            <h3 className="type-card-title text-slate-900">{t("Share by project", "Podiel podľa projektu", "Megoszlás projekt szerint")}</h3>
-            <ul className="mt-3 grid gap-2">
-              {report.shareByProject.length === 0 && <li className="text-ui text-slate-400">{t("Nothing in this period.", "V tomto období nič.", "Ebben az időszakban semmi.")}</li>}
-              {report.shareByProject.map((share) => (
-                <li key={share.projectId ?? "none"} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-                  <span className="min-w-0">
-                    <span className="block truncate text-ui text-slate-800">{projectName(share.projectId)}</span>
-                    <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-slate-100">
-                      <span className="block h-full rounded-full transition-[width] duration-500" style={{ width: `${Math.round(share.ratio * 100)}%`, backgroundColor: projectColor(share.projectId) }} />
-                    </span>
-                  </span>
-                  <span className="tabular-nums text-ui font-semibold text-teal-700">
-                    {formatDuration(share.seconds)}
-                    <span className="ml-2 font-normal text-slate-500">{Math.round(share.ratio * 100)} %</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </Surface>
-          <Surface padding="none" className="overflow-x-auto">
-            <table className="w-full border-collapse text-ui">
-              <thead>
-                <tr className="border-b border-slate-100 text-left">
-                  <th className="px-4 py-3 type-overline text-slate-500">{t("Group", "Skupina", "Csoport")}</th>
-                  <th className="px-4 py-3 type-overline text-slate-500">{both ? t("Delivered", "Dodané", "Leszállított") : t("Hours", "Hodiny", "Órák")}</th>
-                  {both && <th className="px-4 py-3 type-overline text-slate-500">{t("Worked", "Odpracované", "Ledolgozott")}</th>}
-                  <th className="px-4 py-3 type-overline text-slate-500">{t("Billable", "Fakturovateľné", "Számlázható")}</th>
-                  {hasCost && <th className="px-4 py-3 type-overline text-slate-500">{t("Cost", "Náklady", "Költség")}</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {report.groups.map((g) => (
-                  <tr key={g.key || "empty"} className="border-b border-slate-100">
-                    <td className="px-4 py-2.5 font-semibold text-slate-900">
-                      {groupBy === "project" && g.key ? (
-                        <>
-                          <ProjectLabel projectId={g.key} name={groupLabel(g.key)} compact />
-                          {clientOfProject(g.key) && <span className="block truncate type-meta font-normal text-slate-500">{clientOfProject(g.key)}</span>}
-                        </>
-                      ) : (
-                        groupLabel(g.key)
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 tabular-nums text-teal-700">{formatDuration(g.seconds)}</td>
-                    {both && <td className="px-4 py-2.5 tabular-nums">{formatDuration(g.workedSeconds)}</td>}
-                    <td className="px-4 py-2.5 tabular-nums">{formatDuration(g.billableSeconds)}</td>
-                    {hasCost && <td className="px-4 py-2.5"><MoneyText bag={g.cost} language={deps.language} /></td>}
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="bg-slate-50 font-semibold">
-                  <td className="px-4 py-3">{t("Totals", "Spolu", "Összesen")}</td>
-                  <td className="px-4 py-3 tabular-nums text-teal-700">{formatDuration(report.totals.seconds)}</td>
-                  {both && <td className="px-4 py-3 tabular-nums">{formatDuration(report.totals.workedSeconds)}</td>}
-                  <td className="px-4 py-3 tabular-nums">{formatDuration(report.totals.billableSeconds)}</td>
-                  {hasCost && <td className="px-4 py-3"><MoneyText bag={report.totals.cost} language={deps.language} /></td>}
-                </tr>
-              </tfoot>
-            </table>
-          </Surface>
+          <div className="grid gap-4 ws-lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            <HoursPerDayCard report={report} days={workingDayList} locale={locale} t={t} />
+            <ShareByProjectCard report={report} projectName={projectName} t={t} />
+          </div>
+          <ReportSummaryTable
+            report={report}
+            groupBy={groupBy}
+            groupLabel={groupLabel}
+            clientOfProject={clientOfProject}
+            showValue={showValue}
+            showCost={hasCost}
+            language={deps.language}
+            t={t}
+          />
+          {salaryAllowed && <TimeSalaryReport deps={deps} />}
         </>
       ) : (
         <Surface padding="none" className="overflow-x-auto">
-          <table className="w-full border-collapse text-ui">
+          <h3 className="type-card-title px-4 pt-4 text-slate-900">{t("Entries", "Záznamy", "Bejegyzések")}</h3>
+          <table className="mt-2 w-full border-collapse text-ui">
             <thead>
               <tr className="border-b border-slate-100 text-left">
-                <th className="px-4 py-3 type-overline text-slate-500">{t("Date", "Dátum", "Dátum")}</th>
-                {viewer.canTeam && <th className="px-4 py-3 type-overline text-slate-500">{t("Person", "Osoba", "Személy")}</th>}
-                <th className="px-4 py-3 type-overline text-slate-500">{t("Project", "Projekt", "Projekt")}</th>
-                <th className="px-4 py-3 type-overline text-slate-500">{t("Title", "Názov", "Cím")}</th>
-                <th className="px-4 py-3 type-overline text-slate-500">{both ? t("Delivered", "Dodané", "Leszállított") : t("Hours", "Hodiny", "Órák")}</th>
-                {both && <th className="px-4 py-3 type-overline text-slate-500">{t("Worked", "Odpracované", "Ledolgozott")}</th>}
-                {hasCost && <th className="px-4 py-3 type-overline text-slate-500">{t("Cost", "Náklady", "Költség")}</th>}
+                <th className={th}>{t("Date", "Dátum", "Dátum")}</th>
+                {viewer.canTeam && <th className={th}>{t("Person", "Osoba", "Személy")}</th>}
+                <th className={th}>{t("Project", "Projekt", "Projekt")}</th>
+                <th className={th}>{t("Title", "Názov", "Cím")}</th>
+                <th className={thr}>{both ? t("Delivered", "Dodané", "Leszállított") : t("Hours", "Hodiny", "Órák")}</th>
+                {both && <th className={thr}>{t("Worked", "Odpracované", "Ledolgozott")}</th>}
+                {hasCost && <th className={thr}>{t("Labour cost", "Náklady na prácu", "Munkaköltség")}</th>}
               </tr>
             </thead>
             <tbody>
               {report.lines.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-6 text-body text-slate-500">{t("Nothing in this period.", "V tomto období nič.", "Ebben az időszakban semmi.")}</td></tr>
+                <tr><td colSpan={7} className="px-4 py-6 text-body text-slate-500">{emptyText}</td></tr>
               )}
               {report.lines.map((line) => (
                 <tr key={line.id} className="border-b border-slate-100">
@@ -402,47 +394,26 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
                   {viewer.canTeam && <td className="px-4 py-2.5">{personName(line.userId)}</td>}
                   <td className="px-4 py-2.5">{projectName(line.projectId)}</td>
                   <td className="px-4 py-2.5 font-semibold text-slate-900">{line.title || t("(no title)", "(bez názvu)", "(nincs cím)")}</td>
-                  <td className="px-4 py-2.5 tabular-nums text-teal-700">{formatDuration(line.seconds)}</td>
-                  {both && <td className="px-4 py-2.5 tabular-nums">{formatDuration(line.workedSeconds)}</td>}
-                  {hasCost && <td className="px-4 py-2.5"><MoneyText bag={line.cost} language={deps.language} /></td>}
+                  <td className={`${tdn} font-semibold text-slate-900`}>{formatDuration(line.seconds)}</td>
+                  {both && <td className={tdn}>{formatDuration(line.workedSeconds)}</td>}
+                  {hasCost && <td className={tdn}><MoneyText bag={line.cost} language={deps.language} /></td>}
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr className="bg-slate-50 font-semibold">
-                <td className="px-4 py-3">{t("Totals", "Spolu", "Összesen")}</td>
+                <td className="px-4 py-3 type-overline text-slate-500">{t("Totals", "Spolu", "Összesen")}</td>
                 {viewer.canTeam && <td />}
                 <td />
                 <td />
-                <td className="px-4 py-3 tabular-nums text-teal-700">{formatDuration(report.totals.seconds)}</td>
-                {both && <td className="px-4 py-3 tabular-nums">{formatDuration(report.totals.workedSeconds)}</td>}
-                {hasCost && <td className="px-4 py-3"><MoneyText bag={report.totals.cost} language={deps.language} /></td>}
+                <td className={`${tdn} py-3 text-slate-900`}>{formatDuration(report.totals.seconds)}</td>
+                {both && <td className={`${tdn} py-3`}>{formatDuration(report.totals.workedSeconds)}</td>}
+                {hasCost && <td className={`${tdn} py-3`}><MoneyText bag={report.totals.cost} language={deps.language} /></td>}
               </tr>
             </tfoot>
           </table>
         </Surface>
       )}
-    </div>
-  );
-}
-
-function ModeSwitch({ mode, setMode, salary, t }: { mode: Mode; setMode: (m: Mode) => void; salary: boolean; t: (en: string, sk: string, hu: string) => string }) {
-  const item = (id: Mode, label: string) => (
-    <button
-      key={id}
-      type="button"
-      onClick={() => setMode(id)}
-      aria-pressed={mode === id}
-      className={`h-8 rounded-lg px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${mode === id ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
-    >
-      {label}
-    </button>
-  );
-  return (
-    <div className="inline-flex w-fit flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
-      {item("summary", t("Summary", "Súhrn", "Összegzés"))}
-      {item("detailed", t("Detailed", "Podrobné", "Részletes"))}
-      {salary && item("salary", t("Salary allocation", "Rozdelenie mzdy", "Bérfelosztás"))}
     </div>
   );
 }

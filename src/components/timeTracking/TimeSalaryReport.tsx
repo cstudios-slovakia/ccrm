@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { Download } from "lucide-react";
 import { Surface } from "../layout";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
@@ -15,6 +15,7 @@ import {
 import { entrySeconds, formatDuration, todayIso } from "../../utils/timeTracking.ts";
 import { shiftMonthAnchor } from "../../utils/timeTeam.ts";
 import { MoneyText } from "./MoneyText";
+import { RangeNav } from "./RangeNav";
 import { WorkedTotal } from "./WorkedLine";
 import type { TimeDeps } from "./shared";
 
@@ -27,7 +28,7 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
   const { entries, loading } = useTimeEntries({ from: range.from, to: range.to, userId: viewer.canTeam ? "all" : undefined });
   const clock = entries.some((e) => e.running) ? tt.nowMs : 0;
   const closed = lastClosedMonth(todayIso());
-  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-US";
+  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-GB";
   const [y, m] = month.split("-").map(Number);
   const monthLabel = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(locale, { month: "long", year: "numeric", timeZone: "UTC" });
   const moneyStr = (n: number) => formatMoney(n, deps.currency, deps.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -106,20 +107,26 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
 
   return (
     <div className="grid gap-4" data-testid="salary-report">
-      <div>
-        <h3 className="type-card-title text-slate-900">{t("Salary allocation", "Rozdelenie mzdy", "Bérfelosztás")} · <span className="capitalize">{monthLabel}</span></h3>
-        <p className="mt-1 type-meta text-slate-500" data-testid="salary-basis">{basisSentence}{own}</p>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" aria-label={t("Previous month", "Predchádzajúci mesiac", "Előző hónap")} onClick={() => setMonth(shiftMonthAnchor(month, -1, 1))} className="inline-flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-all hover:text-slate-900 active:scale-95 cursor-pointer">
-          <ChevronLeft className="size-4" />
-        </button>
-        <span className="min-w-40 text-center text-ui font-semibold capitalize text-slate-800">{monthLabel}</span>
-        <button type="button" aria-label={t("Next month", "Nasledujúci mesiac", "Következő hónap")} disabled={month >= closed} onClick={() => setMonth(shiftMonthAnchor(month, 1, 1))} className="inline-flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-all hover:text-slate-900 active:scale-95 cursor-pointer disabled:opacity-40">
-          <ChevronRight className="size-4" />
-        </button>
-        <button
-          type="button"
+      <Surface padding="none" className="overflow-x-auto">
+        <div className="grid gap-3 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="type-card-title flex flex-wrap items-center gap-2 text-slate-900">
+                <span>{t("Salary allocation", "Rozdelenie mzdy", "Bérfelosztás")} · <span className="capitalize">{monthLabel}</span></span>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 type-overline text-slate-600">{t("Restricted access", "Obmedzený prístup", "Korlátozott hozzáférés")}</span>
+              </h3>
+              <p className="mt-1 type-meta text-slate-500" data-testid="salary-basis">{basisSentence}{own}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <RangeNav
+                label={<span className="capitalize">{monthLabel}</span>}
+                prevLabel={t("Previous month", "Predchádzajúci mesiac", "Előző hónap")}
+                nextLabel={t("Next month", "Nasledujúci mesiac", "Következő hónap")}
+                onPrev={() => setMonth(shiftMonthAnchor(month, -1, 1))}
+                onNext={() => month < closed && setMonth(shiftMonthAnchor(month, 1, 1))}
+              />
+              <button
+                type="button"
           onClick={() =>
             downloadText(
               `salary-${month}.csv`,
@@ -137,25 +144,26 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
               }),
             )
           }
-          className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-700 transition-all hover:bg-slate-50 active:scale-95 cursor-pointer"
-        >
-          <Download className="size-4" />
-          CSV
-        </button>
-      </div>
-      <p className="type-meta text-slate-500">
-        {t(
-          "Salary is the employee's base pay for the month. Bonuses are not included.",
-          "Mzda je základná mesačná mzda zamestnanca. Prémie sa nezapočítavajú.",
-          "A bér a munkatárs havi alapbére. A prémium nincs benne.",
-        )}
-      </p>
-      <div className="flex flex-wrap gap-3 type-meta text-slate-500">
-        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-primary" />{t("Client", "Klient", "Ügyfél")}</span>
-        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-slate-400" />{t("Internal", "Interné", "Belső")}</span>
-        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-300" style={{ backgroundImage: HATCH }} />{t("Unallocated", "Nepriradené", "Nincs projekt")}</span>
-      </div>
-      <Surface padding="none" className="overflow-x-auto">
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-700 transition-all hover:bg-slate-50 active:scale-95 cursor-pointer"
+              >
+                <Download className="size-4" />
+                CSV
+              </button>
+            </div>
+          </div>
+          <p className="type-meta text-slate-500">
+            {t(
+              "Salary is the employee's base pay for the month. Bonuses are not included.",
+              "Mzda je základná mesačná mzda zamestnanca. Prémie sa nezapočítavajú.",
+              "A bér a munkatárs havi alapbére. A prémium nincs benne.",
+            )}
+          </p>
+          <div className="flex flex-wrap gap-3 type-meta text-slate-500">
+            <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-primary" />{t("Client projects", "Klientske projekty", "Ügyfélprojektek")}</span>
+            <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-slate-400" />{t("Internal", "Interné", "Belső")}</span>
+            <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-300" style={{ backgroundImage: HATCH }} />{t("Unallocated", "Nepriradené", "Nincs projekt")}</span>
+          </div>
+        </div>
         {loading && report.rows.length === 0 ? (
           <p className="p-4 text-body text-slate-500">{t("Loading…", "Načítava sa…", "Betöltés…")}</p>
         ) : (
@@ -168,7 +176,7 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
                   t("Rate", "Sadzba", "Díj"),
                   t("Tracked", "Sledované", "Rögzített"),
                   t("Split", "Rozdelenie", "Megoszlás"),
-                  t("Client", "Klient", "Ügyfél"),
+                  t("Client projects", "Klientske projekty", "Ügyfélprojektek"),
                   t("Internal", "Interné", "Belső"),
                   t("Unallocated", "Nepriradené", "Nincs projekt"),
                   t("Utilisation", "Využitie", "Kihasználtság"),
@@ -203,10 +211,10 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
                         </span>
                       )}
                     </td>
-                    <td className="px-3 py-3 tabular-nums text-violet-700" title={costRateTooltip(row.rate, { t, money: moneyStr, monthLabel, country })}>
+                    <td className="px-3 py-3 tabular-nums text-slate-900" title={costRateTooltip(row.rate, { t, money: moneyStr, monthLabel, country })}>
                       {row.rate.rate == null ? "—" : `${moneyStr(row.rate.rate)}/h`}
                     </td>
-                    <td className="px-3 py-3 tabular-nums text-teal-700"><WorkedTotal workedSec={row.trackedSeconds} projectSec={row.deliveredSeconds} compact plain /></td>
+                    <td className="px-3 py-3 tabular-nums text-slate-900"><WorkedTotal workedSec={row.trackedSeconds} projectSec={row.deliveredSeconds} compact plain /></td>
                     <td className="min-w-28 px-3 py-3">{bar(row.clientSeconds, row.internalSeconds, row.unallocatedSeconds)}</td>
                     <td className="px-3 py-3"><MoneyText bag={row.clientCost} language={deps.language} /></td>
                     <td className="px-3 py-3"><MoneyText bag={row.internalCost} language={deps.language} /></td>
@@ -221,7 +229,7 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
                 <td className="px-3 py-3">{t("Totals", "Spolu", "Összesen")}</td>
                 <td className="px-3 py-3"><MoneyText bag={report.totals.loadedSalary} language={deps.language} /></td>
                 <td />
-                <td className="px-3 py-3 tabular-nums text-teal-700"><WorkedTotal workedSec={report.totals.trackedSeconds} projectSec={report.totals.deliveredSeconds} compact plain /></td>
+                <td className="px-3 py-3 tabular-nums text-slate-900"><WorkedTotal workedSec={report.totals.trackedSeconds} projectSec={report.totals.deliveredSeconds} compact plain /></td>
                 <td />
                 <td className="px-3 py-3"><MoneyText bag={report.totals.clientCost} language={deps.language} /></td>
                 <td className="px-3 py-3"><MoneyText bag={report.totals.internalCost} language={deps.language} /></td>
@@ -243,7 +251,7 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
             {report.withoutSalary.map((row) => (
               <li key={row.userId} className="flex flex-wrap items-baseline justify-between gap-2 text-ui">
                 <span className="font-semibold text-slate-900">{row.name}</span>
-                <span className="tabular-nums text-teal-700">{formatDuration(row.seconds)}</span>
+                <span className="tabular-nums text-slate-900">{formatDuration(row.seconds)}</span>
                 <MoneyText bag={row.cost} language={deps.language} />
               </li>
             ))}
