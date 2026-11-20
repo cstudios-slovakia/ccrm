@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { CheckSquare, ChevronDown, Copy, Play, Trash2, X } from "lucide-react";
+import { CheckSquare, Copy, Play, Trash2, X } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { entryDurationSec, formatMinute, instantsForSpan, plusDays, spanFromEntry, type MinuteSpan } from "../../utils/timeCalendar.ts";
-import { formatDuration, projectColor, type TimeEntry } from "../../utils/timeTracking.ts";
+import { formatDuration, type TimeEntry } from "../../utils/timeTracking.ts";
 import { visibleEntryCost } from "../../utils/timeTeam.ts";
 import { TimeApiError, createEntry, timeErrorMessage, type EntryInput } from "../../utils/timeTrackingApi.ts";
 import { duplicateInput } from "./entryDuplicate";
-import { ProjectPicker } from "./ProjectPicker";
+import { AssignProjectChip } from "./AssignProjectChip";
+import { ProjectLabel } from "./ProjectLabel";
+import { projectClientName } from "./projectClient";
 import { continueInput } from "./TimerBar";
 import { useMoney, useTimeLookups, type TimeDeps } from "./shared";
 
@@ -18,10 +20,8 @@ interface Props {
   popover: PopoverState;
   entry: TimeEntry | null;
   deps: TimeDeps;
-  recentProjectIds: string[];
-  secondsByProject?: Record<string, number>;
   nowMs: number;
-  /** Edit actions (billable, project, duplicate, delete, save) are disabled: locked entry, no permission, no person picked. */
+  /** Edit actions (billable, duplicate, delete, save) are disabled: locked entry, no permission, no person picked. */
   readOnly: boolean;
   onClose: () => void;
   onOpen: (entry: TimeEntry) => void;
@@ -33,12 +33,12 @@ interface Props {
 const ICON_BUTTON = "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border cursor-pointer disabled:cursor-not-allowed disabled:opacity-40";
 
 /** The Calendar's entry popover: title, project, task / billable / tag chips, when and how long, and the actions. */
-export function CalendarPopover({ popover, entry, deps, recentProjectIds, secondsByProject, nowMs, readOnly, onClose, onOpen, onDelete, onPatch, onCreate }: Props) {
+export function CalendarPopover({ popover, entry, deps, nowMs, readOnly, onClose, onOpen, onDelete, onPatch, onCreate }: Props) {
   const tt = useTimeTracking();
   const { t, settings } = tt;
   const money = useMoney(deps);
   const lookups = useTimeLookups(deps);
-  const [projectId, setProjectId] = useState<string | null>(entry?.projectId ?? (popover.kind === "draft" ? popover.projectId ?? null : null));
+  const projectId = entry?.projectId ?? (popover.kind === "draft" ? popover.projectId ?? null : null);
   const [billable, setBillable] = useState(entry?.billable ?? settings.billableByDefault);
   const span = entry ? spanFromEntry(entry, nowMs) : popover.kind === "draft" ? popover.span : null;
   const plus = span ? plusDays(span.endMin) : 0;
@@ -53,7 +53,7 @@ export function CalendarPopover({ popover, entry, deps, recentProjectIds, second
   const taskName = entry?.taskId ? deps.tasks.find((task) => task.id === entry.taskId)?.title ?? entry.title : "";
   const canContinue = !!entry && !entry.running && entry.userId === tt.userId
     && !tt.isRunningTarget({ taskId: entry.taskId, ticketId: entry.ticketId, projectId: entry.projectId, title: entry.description });
-  const projectLabel = projectId ? lookups.projectName(projectId) : t("Assign project", "Priradiť projekt", "Projekt hozzárendelése");
+  const clientName = projectClientName(projectId, deps.projects, deps.leads);
   const closeLabel = t("Close", "Zavrieť", "Bezárás");
 
   const duplicate = async (source: TimeEntry) => {
@@ -79,34 +79,11 @@ export function CalendarPopover({ popover, entry, deps, recentProjectIds, second
         </button>
       </div>
       <div className="mt-0.5">
-        <ProjectPicker
-          projects={deps.projects}
-          leads={deps.leads}
-          projectTypes={deps.projectTypes}
-          value={projectId}
-          onChange={(id) => {
-            setProjectId(id);
-            if (entry && !readOnly) void onPatch(entry, { projectId: id });
-          }}
-          t={t}
-          recentIds={recentProjectIds}
-          secondsByProject={secondsByProject}
-          onCreateProject={deps.onCreateProject}
-          disabled={readOnly || !deps.canPickProject}
-          renderTrigger={({ toggle }) => (
-            <button
-              type="button"
-              onClick={toggle}
-              data-testid="project-picker-trigger"
-              disabled={readOnly || !deps.canPickProject}
-              className="inline-flex max-w-full items-center gap-1.5 rounded-lg py-0.5 text-ui font-semibold text-slate-600 hover:text-slate-900 cursor-pointer disabled:cursor-default disabled:hover:text-slate-600"
-            >
-              <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: projectId ? projectColor(projectId) : "#d97706" }} />
-              <span className={`truncate ${projectId ? "" : "text-amber-700"}`}>{projectLabel}</span>
-              {!readOnly && deps.canPickProject && <ChevronDown className="size-3.5 shrink-0 text-slate-400" />}
-            </button>
-          )}
-        />
+        {projectId ? (
+          <ProjectLabel projectId={projectId} name={lookups.projectName(projectId, entry?.projectName)} client={clientName} className="max-w-full text-ui" />
+        ) : (
+          <AssignProjectChip />
+        )}
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">

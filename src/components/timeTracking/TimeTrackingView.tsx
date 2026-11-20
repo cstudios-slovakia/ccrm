@@ -141,7 +141,7 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
       ) : tab === "day" ? (
         <TimeDayView deps={deps} scope={scope} recentProjectIds={recentProjectIds} secondsByProject={secondsByProject} onOpen={setOpen} />
       ) : tab === "calendar" ? (
-        <TimeCalendarView deps={deps} scope={scope} recentProjectIds={recentProjectIds} secondsByProject={secondsByProject} onOpen={setOpen} />
+        <TimeCalendarView deps={deps} scope={scope} onOpen={setOpen} />
       ) : tab === "timesheet" ? (
         <TimeTimesheetView deps={deps} scope={scope} recentProjectIds={recentProjectIds} secondsByProject={secondsByProject} onOpen={setOpen} />
       ) : (

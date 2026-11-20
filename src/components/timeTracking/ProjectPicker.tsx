@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Plus, Search, X } from "lucide-react";
 import type { Lead, Project, ProjectType } from "../../types";
 import { useProjectStatuses } from "../../hooks/useProjectStatuses";
@@ -34,8 +34,6 @@ interface Props {
   /** Creating a project needs the projects create permission. */
   onCreateProject?: (input: NewProjectInput) => Project | null;
   disabled?: boolean;
-  /** Replaces the default chip. */
-  renderTrigger?: (state: { open: boolean; toggle: () => void; project: Project | null; label: string }) => ReactNode;
   /** Open on mount (the "pick a project before stopping" dialog). */
   defaultOpen?: boolean;
   /** Render the panel inline instead of as a popover (inside a modal). */
@@ -61,7 +59,6 @@ export function ProjectPicker({
   secondsByProject = {},
   onCreateProject,
   disabled,
-  renderTrigger,
   defaultOpen = false,
   inline = false,
   align = "left",
@@ -314,7 +311,7 @@ export function ProjectPicker({
   if (inline) return panel;
   return (
     <div ref={root} className="relative inline-block max-w-full">
-      {renderTrigger ? renderTrigger({ open, toggle, project: selected, label }) : defaultTrigger}
+      {defaultTrigger}
       {open && panel}
     </div>
   );

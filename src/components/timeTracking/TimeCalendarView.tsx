@@ -57,8 +57,6 @@ import { typePx } from "../../utils/viewSize";
 interface Props {
   deps: TimeDeps;
   scope: string;
-  recentProjectIds: string[];
-  secondsByProject?: Record<string, number>;
   onOpen: (entry: TimeEntry) => void;
 }
 
@@ -86,7 +84,7 @@ type Drag = {
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
 /** Calendar tab: day, week (the default) and month, with an untimed lane and a task rail. */
-export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProject, onOpen }: Props) {
+export function TimeCalendarView({ deps, scope, onOpen }: Props) {
   const tt = useTimeTracking();
   const { t, nowMs, settings } = tt;
   const lookups = useTimeLookups(deps);
@@ -761,8 +759,6 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
             popover={popover}
             entry={openEntry ?? null}
             deps={deps}
-            recentProjectIds={recentProjectIds}
-            secondsByProject={secondsByProject}
             nowMs={nowMs}
             readOnly={openEntry ? !mayChange(openEntry) : popover.kind === "draft" ? !mayCreate || dayIsLocked(popover.day, createUserId) : !mayCreate}
             onClose={() => setPopover(null)}
