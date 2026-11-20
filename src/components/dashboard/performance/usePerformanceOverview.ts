@@ -57,6 +57,7 @@ import type {
   PerformanceOverviewData,
   ProfitabilityData,
   RecurringIncomeData,
+  UtilizationState,
 } from "./types";
 
 export interface PerformanceOverviewInput {
@@ -238,11 +239,14 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
     [tasks, employees, taskStates, today],
   );
 
-  const utilizationAvailable = timeEntries.status !== "unavailable";
-  // While the entries load the widget shows its empty figures, not the "unavailable" sentence.
+  const utilizationState: UtilizationState =
+    timeEntries.status === "ready" ? "ready"
+    : timeEntries.status === "forbidden" ? "time-tracking"
+    : timeEntries.status === "failed" ? "failed"
+    : "loading";
   const utilization = useMemo(
-    () => (utilizationAvailable ? computeUtilization({ entries: timeEntries.entries, tasks, employees, period }) : null),
-    [utilizationAvailable, timeEntries.entries, tasks, employees, period],
+    () => (utilizationState === "ready" ? computeUtilization({ entries: timeEntries.entries, tasks, employees, period }) : null),
+    [utilizationState, timeEntries.entries, tasks, employees, period],
   );
 
   const ticketsByStatus = useMemo(
@@ -277,7 +281,8 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
       deployments: null,
       throughput,
       utilization,
-      utilizationUnavailable: utilizationAvailable ? undefined : "time-tracking",
+      utilizationState,
+      utilizationTruncated: timeEntries.truncated,
       assignedTasks,
       reworkRatio: null,
       reworkCount: null,
@@ -286,7 +291,7 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
     }),
     [
       period, labels, kpiStrip, invoicing, cashflow, recurringIncome, dso, profitability, deadlines,
-      throughput, utilization, utilizationAvailable, assignedTasks, ticketsByStatus, responseTime,
+      throughput, utilization, utilizationState, timeEntries.truncated, assignedTasks, ticketsByStatus, responseTime,
     ],
   );
 };

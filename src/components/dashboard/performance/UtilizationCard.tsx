@@ -1,18 +1,20 @@
 import { Bug } from "lucide-react";
 import type { Language } from "../../../utils/translations";
-import type { UtilizationData } from "./types";
+import type { UtilizationData, UtilizationState } from "./types";
 import { hours, makeT, percent } from "./format";
 import { Avatar, Card, CardTitle, HeadlineValue, LegendItem, NoRows, PendingCard, SegmentedBar } from "./shared";
 
 export const UtilizationCard = ({
   data,
-  unavailable,
+  state = "ready",
+  truncated = false,
   language,
   className = "",
 }: {
   data: UtilizationData | null;
-  /** Why there is no data: the user's time tracking cannot give the team's entries. */
-  unavailable?: "time-tracking";
+  state?: UtilizationState;
+  /** The entries hit the server's list limit: say that the period is not complete. */
+  truncated?: boolean;
   language: Language;
   className?: string;
 }) => {
@@ -23,6 +25,14 @@ export const UtilizationCard = ({
     "Podiel odpracovaného času na úlohách kategórie Bug",
     "A ledolgozott idő aránya a Bug kategóriájú feladatokon",
   );
+  if (state === "loading") {
+    return (
+      <Card className={className}>
+        <CardTitle title={title} caption={caption} />
+        <p className="type-meta mt-4 text-slate-500">{t("Loading…", "Načítavam…", "Betöltés…")}</p>
+      </Card>
+    );
+  }
   if (data === null) {
     return (
       <PendingCard
@@ -32,16 +42,16 @@ export const UtilizationCard = ({
         caption={caption}
         icon={<Bug aria-hidden="true" />}
         body={
-          unavailable === "time-tracking"
+          state === "time-tracking"
             ? t(
                 "Time tracking is not available to you.",
                 "Evidencia času nie je pre vás dostupná.",
                 "Az időnyilvántartás nem érhető el az Ön számára.",
               )
             : t(
-                "Tasks do not have a Bug category yet.",
-                "Úlohy zatiaľ nemajú kategóriu Bug.",
-                "A feladatoknak még nincs Bug kategóriájuk.",
+                "The data could not be loaded.",
+                "Údaje sa nepodarilo načítať.",
+                "Az adatokat nem sikerült betölteni.",
               )
         }
       />
@@ -59,6 +69,15 @@ export const UtilizationCard = ({
           </>
         }
       />
+      {truncated && (
+        <p className="type-meta mt-2 text-amber-700">
+          {t(
+            "Only the latest entries are shown (limit 5,000); choose a shorter period.",
+            "Zobrazené sú len najnovšie záznamy (limit 5 000); zvoľte kratšie obdobie.",
+            "Csak a legfrissebb bejegyzések láthatók (limit 5 000); válasszon rövidebb időszakot.",
+          )}
+        </p>
+      )}
       <HeadlineValue
         value={percent(data.sharePct, language, 0)}
         unit={`${t("of team time", "času tímu", "a csapat idejéből")} · ${hours(data.bugMs, language)} ${t("of", "z", "/")} ${hours(data.totalMs, language)}`}

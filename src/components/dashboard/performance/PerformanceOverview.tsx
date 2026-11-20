@@ -88,7 +88,7 @@ export const PerformanceOverview = ({
 
       <Section title={t("Team and tasks", "Tím a úlohy", "Csapat és feladatok")}>
         <div className={ROW_3_2}>
-          <UtilizationCard data={data.utilization} unavailable={data.utilizationUnavailable} language={language} />
+          <UtilizationCard data={data.utilization} state={data.utilizationState} truncated={data.utilizationTruncated} language={language} />
           <AssignedTasksCard data={data.assignedTasks} language={language} />
         </div>
         <div className={ROW_3_2}>

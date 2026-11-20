@@ -231,6 +231,8 @@ export interface ThroughputData {
 
 /* ---------------------------------------------------------------- Tím a úlohy */
 
+export type UtilizationState = "loading" | "ready" | "time-tracking" | "failed";
+
 export interface UtilizationData {
   /** Whole team: "18 % času tímu · 142 h z 790 h". */
   bugMs: number;
@@ -313,10 +315,15 @@ export interface PerformanceOverviewData {
   /** Phase 2 (item d): null until GitHub pushes are stored. */
   deployments: DeploymentsData | null;
   throughput: ThroughputData;
-  /** Worked time on Bug tasks; null when the entries cannot be had (see `utilizationUnavailable`). */
+  /** Worked time on Bug tasks; non-null only when `utilizationState` is "ready". */
   utilization: UtilizationData | null;
-  /** Why `utilization` is null: the user has no time tracking, or the server refuses the team's entries. */
-  utilizationUnavailable?: "time-tracking";
+  /**
+   * "loading": the entries are on their way; "time-tracking": the user has no time tracking or the
+   * server does not give them the team's entries; "failed": the request failed. Absent = "ready".
+   */
+  utilizationState?: UtilizationState;
+  /** The entries hit the server's list limit: older ones of the period are missing from the figures. */
+  utilizationTruncated?: boolean;
   assignedTasks: AssignedTasksData;
   /** Phase 2 (item b): null until task reopenings are recorded. */
   reworkRatio: ReworkRatioData | null;
