@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildReport, hoursPerDay, periodRange } from "./timeReports.ts";
+import { buildReport, defaultThenBy, drillGroups, hoursPerDay, linesOfGroup, periodRange } from "./timeReports.ts";
 
 const filters = { from: "2026-05-01", to: "2026-05-31", userId: null, projectId: null, clientId: null, billable: "all" as const, groupBy: "project" as const };
 const common = { rounding: { minutes: 0 as const, mode: "nearest" as const }, viewerUserId: "u1", currency: "EUR", workingDays: 20 };
@@ -66,4 +66,43 @@ test("margin leaves out parallel, cost-less and uses unrounded value", () => {
   assert.deepEqual(run([{ ...base, id: "a", durationSec: 3600, cost: 20 }, { ...base, id: "b", durationSec: 3600 }]), { amount: { EUR: 40 }, partial: true });
   // (c) 8 min rounds to 15; value uses the real 8 min = 8
   assert.deepEqual(run([{ ...base, id: "a", durationSec: 480, cost: 3 }], { minutes: 15, mode: "nearest" }), { amount: { EUR: 5 }, partial: false });
+});
+
+test("drill-down children add up to their parent: rounding, currencies and the margin rule", () => {
+  const base = { clientId: null, entryDate: "2026-05-04", title: "x" };
+  const report = buildReport({
+    entries: [
+      { ...base, id: "a", userId: "u1", projectId: "p1", title: "t1", durationSec: 1000, billable: true, billableRate: 50, cost: 5, currency: "EUR" },
+      { ...base, id: "b", userId: "u2", projectId: "p1", title: "t2", durationSec: 1100, billable: true, billableRate: 60, cost: 7, currency: "CZK" },
+      // parallel entry: worked time differs, so it is left out of the margin ("≈")
+      { ...base, id: "c", userId: "u1", projectId: "p1", title: "t1", durationSec: 1300, workedSec: 600, billable: true, billableRate: 50, cost: 3, currency: "EUR" },
+      { ...base, id: "d", userId: "u2", projectId: "p1", title: "t3", durationSec: 400, billable: false, cost: 2, currency: "EUR" },
+      { ...base, id: "e", userId: "u1", projectId: "p2", durationSec: 900, billable: false, currency: "EUR" },
+    ],
+    filters,
+    canCosts: true,
+    rounding: { minutes: 15 as const, mode: "up" as const },
+    viewerUserId: "u1",
+    currency: "EUR",
+    workingDays: 20,
+  });
+  assert.equal(defaultThenBy("project"), "person");
+  assert.equal(defaultThenBy("person"), "project");
+  for (const g of report.groups) {
+    const kids = drillGroups(linesOfGroup(report.lines, "project", g.key), "person");
+    assert.equal(kids.reduce((s, k) => s + k.seconds, 0), g.seconds);
+    assert.equal(kids.reduce((s, k) => s + k.workedSeconds, 0), g.workedSeconds);
+    assert.equal(kids.reduce((s, k) => s + k.billableSeconds, 0), g.billableSeconds);
+    for (const bag of ["cost", "billableValue"] as const) {
+      const sum: Record<string, number> = {};
+      for (const k of kids) for (const [c, v] of Object.entries(k[bag])) sum[c] = (sum[c] ?? 0) + v;
+      for (const c of new Set([...Object.keys(sum), ...Object.keys(g[bag])])) assert.ok(Math.abs((sum[c] ?? 0) - (g[bag][c] ?? 0)) < 1e-9, `${bag} ${c}`);
+    }
+    // the group's own margin is the margin over its lines (same function the children use)
+    assert.deepEqual(drillGroups(linesOfGroup(report.lines, "project", g.key), "project")[0].margin, g.margin);
+  }
+  const p1 = drillGroups(linesOfGroup(report.lines, "project", "p1"), "person");
+  assert.equal(p1.find((k) => k.key === "u1")!.margin?.partial, true);
+  assert.equal(report.groups.find((g) => g.key === "p1")!.margin?.partial, true);
+  assert.ok(p1.find((k) => k.key === "u2")!.margin);
 });

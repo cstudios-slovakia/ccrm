@@ -231,6 +231,45 @@ export const periodRange = (period: ReportPeriod, today: string): { from: string
   }
 };
 
+
+/**
+ * Group lines by one dimension: summed time, billable value, cost and the comparable-margin rule,
+ * biggest group first. The report's rows and every drill-down child row come from here, so a
+ * group's children always add up to it.
+ */
+const groupLines = (lines: readonly ReportLine[], by: ReportGroupBy): ReportGroup[] => {
+  const groups = new Map<string, ReportGroup>();
+  const byGroup = new Map<string, ReportLine[]>();
+  for (const line of lines) {
+    const key = groupKey(line, by);
+    const g = groups.get(key) ?? { key, seconds: 0, workedSeconds: 0, billableSeconds: 0, cost: {}, billableValue: {}, margin: null };
+    g.seconds += line.seconds;
+    g.workedSeconds += line.workedSeconds;
+    if (line.billable) g.billableSeconds += line.seconds;
+    g.cost = sumMoney([g.cost, line.cost]);
+    addMoney(g.billableValue, line.currency, line.billableValue);
+    groups.set(key, g);
+    byGroup.set(key, [...(byGroup.get(key) ?? []), line]);
+  }
+  for (const g of groups.values()) g.margin = marginOfLines(byGroup.get(g.key) ?? []);
+  return [...groups.values()].sort((a, b) => b.seconds - a.seconds || a.key.localeCompare(b.key));
+};
+
+/** The lines that fall in one group of the first-level grouping. */
+export const linesOfGroup = (lines: readonly ReportLine[], by: ReportGroupBy, key: string): ReportLine[] => lines.filter((l) => groupKey(l, by) === key);
+
+/** Split one group's lines by a second dimension (same maths as the parent rows). */
+export const drillGroups = (lines: readonly ReportLine[], by: ReportGroupBy): ReportGroup[] => groupLines(lines, by);
+
+/** Second grouping level offered by default: Employee under a Project, otherwise Project. */
+export const defaultThenBy = (first: ReportGroupBy): ReportGroupBy => (first === "project" ? "person" : "project");
+
+/**
+ * The server returns at most this many entries per request (`LIMIT 5000` in
+ * public/api/time_entries.php, no truncated flag). At or above it the oldest entries are missing.
+ */
+export const TIME_ENTRIES_SERVER_LIMIT = 5000;
+
 export const buildReport = (input: {
   entries: readonly ReportEntry[];
   filters: ReportFilters;
@@ -274,21 +313,7 @@ export const buildReport = (input: {
       marginOk: Object.keys(cost).length > 0 && Math.abs(workedSeconds - e.durationSec) < 1,
     });
   }
-  const groups = new Map<string, ReportGroup>();
-  const byGroup = new Map<string, ReportLine[]>();
-  for (const line of lines) {
-    const key = groupKey(line, filters.groupBy);
-    const g = groups.get(key) ?? { key, seconds: 0, workedSeconds: 0, billableSeconds: 0, cost: {}, billableValue: {}, margin: null };
-    g.seconds += line.seconds;
-    g.workedSeconds += line.workedSeconds;
-    if (line.billable) g.billableSeconds += line.seconds;
-    g.cost = sumMoney([g.cost, line.cost]);
-    addMoney(g.billableValue, line.currency, line.billableValue);
-    groups.set(key, g);
-    byGroup.set(key, [...(byGroup.get(key) ?? []), line]);
-  }
-  for (const g of groups.values()) g.margin = marginOfLines(byGroup.get(g.key) ?? []);
-  const ordered = [...groups.values()].sort((a, b) => b.seconds - a.seconds || a.key.localeCompare(b.key));
+  const ordered = groupLines(lines, filters.groupBy);
   const totals = {
     seconds: lines.reduce((s, l) => s + l.seconds, 0),
     workedSeconds: lines.reduce((s, l) => s + l.workedSeconds, 0),

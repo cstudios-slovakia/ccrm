@@ -496,7 +496,7 @@ extension popup has no app screenshot and was compared from code. The Unsorted i
 | R6 | Share by project as a donut with legend and % | Horizontal bars | FIX | G5 | P6 |
 | R7 | Table "By project" with title, default grouping by project | No title, default by title | ASK [Q16] | A4 | P6 |
 | R8 | Columns Hours, Billable h, Billable value, Labour cost, Margin | Delivered, Worked, Billable, Cost | FIX | G6; Worked column is KEEP-V2 | P6 |
-| R9 | Click a row to split it by employee or task; "Project → Employee" grouping | None | ASK [Q18] | M7; data is on the client, the behaviour is new | P6 |
+| R9 | Click a row to split it by employee or task; "Project → Employee" grouping | None | FIX (owner: yes) | M7; data is on the client, the behaviour is new | P6 |
 | R10 | Salary allocation as a section under the summary (and a segment) | Separate mode only | ASK [Q20] | A3 | P6 |
 | R11 | Salary title with month in one grouped nav | Loose arrows | FIX | SC4 | P6 |
 | R12 | "Client projects" head; Rate and Tracked in slate | "Client"; violet, teal | FIX | G9 | P6 |
@@ -696,7 +696,7 @@ Order: F → (P1, P2, P3) → (P4, P5, P6) → (P7, P8, P9) → (P10, P11).
 | Q15 Under 75 % only with a weekly target | yes | P5 (Team and salary Utilisation) |
 | Q16 Reports grouped by project | yes | P6 |
 | Q17 Billable tile shows hours | yes | P6 |
-| Q18 Report row drill-down | **open** (same question as Q2) | not built |
+| Q18 Report row drill-down | yes, in the browser | R9 |
 | Q19 Period chip | yes | P6 |
 | Q20 Salary allocation as a section | yes | P6 |
 | Q21 Create form with a Name field | yes | P7 |
@@ -727,7 +727,8 @@ then merged into `css-main`. Not pushed, not ported.
 | T5 Timesheet cost | `a7599dc9` | T5 | Entries without a project carry a cost, so the explainer has no "excludes time without a project" clause. A row or the total shows "—" when another person's cost is hidden from the viewer; the column is hidden when the viewer sees no cost. Entries carry no currency, so the app currency is used |
 | P4 Day, Unsorted | `696e1dff`, `79861b02` | D1–D8 | The extension link opens Settings → Time tracking and does not scroll to the extension block |
 | P5 Team | `19d1fb21`, `aadcfbde` | W1, W2, W4, header card | People without an employee record have no bar; the legend says so |
-| P6 Reports | `e04f5f08`, `d15d7387` | R1–R8, R10–R12 | R9 drill-down not built (Q18 open). Margin counts only entries with a cost whose worked time equals their duration, and is marked "≈" when some are left out. The badge reads "Restricted access": the salary report is a grantable permission, not admin-only. The day chart is capped at 62 working days |
+| P6 Reports | `e04f5f08`, `d15d7387` | R1–R8, R10–R12 | Margin counts only entries with a cost whose worked time equals their duration, and is marked "≈" when some are left out. The badge reads "Restricted access": the salary report is a grantable permission, not admin-only. The day chart is capped at 62 working days |
+| R9 Reports drill-down | `COMMIT` | R9 | The report (before and after) reads at most 5000 entries per period from the server; a notice now says so |
 | P7 Drawer, picker | `ec4aa4e2`, `52a173eb` | E1, E3, E6–E8, E10 | Meta line reads "No time this week" (the picker has no all-time data). No keyboard navigation in the picker, as before |
 | P8 Task drawer, project tab | `50749da2`, `56dad0a8` | K1–K3, K5, P1–P7 | No cost tile (Q23). No rate column in "By employee": there is no per-person rate on the client. Hours budget % is always all-time |
 | P9 Settings, extension settings | `bd0b0a8c`, `6eb74bc8` | S1, S3–S8, S10, X1, X3–X6 | S2 Contractors not built (Q24 open). Canvas claims dropped as untrue: "saved but flagged Assign project", "only for projects with tasks", "notifies the owner", pairing code "never stored" |
@@ -735,7 +736,7 @@ then merged into `css-main`. Not pushed, not ported.
 | P11 Extension popup | `7499a606`, `a09251ce` | X9–X13 | The address field stays: the zip is generic and pairing needs the address (the audit's "the build knows its server" was wrong). No Pause in the popup: it has no pause endpoint. `EXTENSION_VERSION` unchanged |
 | F17 List filter | `99e8e2ec` | F17 | Applies to the List tab only (also its phone Today view). The stat tiles stay unfiltered (a "Filtered: N of M" line says so). Not persisted across reloads. Filter is not applied to Day, Calendar, Timesheet or Reports |
 
-Still open after this pass: Q18, Q24, Q29 (owner), the C2 text about the sidebar
+Still open after this pass: Q24, Q29 (owner), the C2 text about the sidebar
 colour, and the two MISSING rows (E4, E11).
 
 ## Checks and QA (pass 2)

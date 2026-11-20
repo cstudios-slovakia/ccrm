@@ -82,6 +82,49 @@ export function ModeSwitch({ mode, setMode, salary, t }: { mode: ReportMode; set
   );
 }
 
+/** "Group by  Project → Employee": the first level and, after the arrow, the optional second level that rows drill into. */
+export function GroupByChip({
+  label,
+  first,
+  then,
+  onFirst,
+  onThen,
+  firstOptions,
+  thenOptions,
+}: {
+  label: string;
+  first: string;
+  then: string;
+  onFirst: (v: string) => void;
+  onThen: (v: string) => void;
+  firstOptions: Option[];
+  thenOptions: Option[];
+}) {
+  return (
+    <div className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-ui">
+      <span className="text-slate-500">{label}</span>
+      <CustomSelect unstyled fitLabel size="sm" value={first} onChange={onFirst} options={firstOptions} className="gap-1 font-semibold text-slate-900" />
+      <span aria-hidden="true" className="text-slate-400">→</span>
+      <span data-testid="report-then-by" className="inline-flex">
+        <CustomSelect unstyled fitLabel size="sm" value={then} onChange={onThen} options={thenOptions} className="gap-1 font-semibold text-slate-900" />
+      </span>
+    </div>
+  );
+}
+
+/** Shown when the server's per-request entry limit was reached: the report is then missing the oldest entries. */
+export function TruncatedNotice({ t }: { t: T }) {
+  return (
+    <p data-testid="report-truncated" role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-ui text-amber-800">
+      {t(
+        "This period has 5,000 or more entries, so the oldest ones are missing from the report. Narrow the period.",
+        "Toto obdobie má 5 000 alebo viac záznamov, preto v reporte chýbajú tie najstaršie. Zúž obdobie.",
+        "Ebben az időszakban 5 000 vagy több bejegyzés van, ezért a legrégebbiek hiányoznak a jelentésből. Szűkítse az időszakot.",
+      )}
+    </p>
+  );
+}
+
 /** The one card above the report: filter chips on the left, the report type at the right end. */
 export function ReportFilterCard({ chips, modeSwitch }: { chips: ReactNode; modeSwitch: ReactNode }) {
   return (

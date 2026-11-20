@@ -556,4 +556,22 @@ test.describe('Time tracking', () => {
     await expect(row(page, 'Oprava od zákazníka')).toHaveCount(3);
     await expect(row(page, 'Oprava od zákazníka').getByTestId('time-entry-duration')).toHaveText(['1:22:00', '0:37:00', '0:45:00']);
   });
+
+  test('Reports: a group row opens to its split by employee and closes again', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking');
+    await page.evaluate(async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      await fetch('/api/time_entries.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', description: 'Report drill', projectId: 'project-1', entryDate: today, durationSec: 3600, billable: true, source: 'manual' }) });
+    });
+    await gotoView(page, '#time-tracking/reports');
+    const first = page.getByTestId('report-group-row').first();
+    await expect(first).toBeVisible();
+    await expect(page.getByTestId('report-child-row')).toHaveCount(0);
+    await first.click();
+    await expect(first).toHaveAttribute('aria-expanded', 'true');
+    expect(await page.getByTestId('report-child-row').count()).toBeGreaterThan(0);
+    await first.click();
+    await expect(page.getByTestId('report-child-row')).toHaveCount(0);
+  });
 });

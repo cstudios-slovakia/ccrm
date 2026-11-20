@@ -8,19 +8,21 @@ import { isClientRecord } from "../../utils/clientRecord.ts";
 import {
   buildReport,
   clientPdfRows,
+  defaultThenBy,
   clientReportHtml,
   reportCsv,
   type BillableFilter,
   periodRange,
   type ReportGroupBy,
   type ReportPeriod,
+  TIME_ENTRIES_SERVER_LIMIT,
 } from "../../utils/timeReports.ts";
 import { entrySeconds, formatDuration, hoursOf, todayIso, type TimeEntry } from "../../utils/timeTracking.ts";
 import { entryWorkedSeconds, liveWorkedShares } from "../../utils/timeWorked.ts";
 import { MoneyText } from "./MoneyText";
 import { HoursPerDayCard, ShareByProjectCard } from "./ReportCharts";
-import { FilterChip, ModeSwitch, PeriodChip, ReportFilterCard, ToggleChip, type ReportMode } from "./ReportFilters";
-import { ReportSummaryTable } from "./ReportSummaryTable";
+import { FilterChip, GroupByChip, ModeSwitch, PeriodChip, ReportFilterCard, ToggleChip, TruncatedNotice, type ReportMode } from "./ReportFilters";
+import { dimensionLabel, ReportSummaryTable } from "./ReportSummaryTable";
 import { TimeToolbarSlot } from "./TimeToolbarSlot";
 import { TimeSalaryReport } from "./TimeSalaryReport";
 import { useTimeLookups, type TimeDeps } from "./shared";
@@ -76,6 +78,14 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
   const [billable, setBillable] = useState<BillableFilter>("all");
   const [groupBy, setGroupBy] = useState<ReportGroupBy>("project");
   const [parallelOnly, setParallelOnly] = useState(false);
+  // Second grouping level for the drill-down: null = the default for the first level, "none" = off.
+  const [thenChoice, setThenChoice] = useState<ReportGroupBy | "none" | null>(null);
+  const thenBy: ReportGroupBy | "none" = thenChoice && thenChoice !== groupBy ? thenChoice : defaultThenBy(groupBy);
+  // Open rows belong to the filters they were opened under; any change drops them.
+  const openSignature = JSON.stringify([from, to, userId, projectId, clientId, billable, groupBy, thenBy, parallelOnly]);
+  const [openState, setOpenState] = useState<{ sig: string; keys: string[] }>({ sig: "", keys: [] });
+  const openKeys = useMemo(() => new Set(openState.sig === openSignature ? openState.keys : []), [openState, openSignature]);
+  const toggleOpen = (key: string) => setOpenState({ sig: openSignature, keys: openKeys.has(key) ? [...openKeys].filter((k) => k !== key) : [...openKeys, key] });
 
   const { entries, loading } = useTimeEntries({ from, to, userId: viewer.canTeam ? "all" : undefined });
   const clock = entries.some((e) => e.running) ? tt.nowMs : 0;
@@ -154,13 +164,14 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
     const cid = project ? clientIdOf(project, deps.leads) : null;
     return cid ? clientName(cid) : null;
   };
-  const groupLabel = (key: string) => {
-    if (groupBy === "project") return projectName(key || null);
-    if (groupBy === "person") return personName(key);
-    if (groupBy === "client") return clientName(key || null);
-    if (groupBy === "day") return new Date(`${key}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" });
+  const labelFor = (by: ReportGroupBy, key: string) => {
+    if (by === "project") return projectName(key || null);
+    if (by === "person") return personName(key);
+    if (by === "client") return clientName(key || null);
+    if (by === "day") return new Date(`${key}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" });
     return key || t("(no title)", "(bez názvu)", "(nincs cím)");
   };
+  const groupLabel = (key: string) => labelFor(groupBy, key);
 
   const openPdf = () => {
     const rows = clientPdfRows(report, { person: personName, project: projectName });
@@ -219,6 +230,7 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
   const hasCost = Object.keys(report.totals.cost).length > 0;
   const showValue = viewer.canCosts;
   const both = report.showsWorked;
+  const truncated = entries.length >= TIME_ENTRIES_SERVER_LIMIT;
   const salaryAllowed = !!deps.canSalaryReport;
   const modeSwitch = <ModeSwitch mode={mode} setMode={setMode} salary={salaryAllowed} t={t} />;
 
@@ -298,16 +310,25 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
               ]}
             />
             {mode === "summary" && (
-              <FilterChip
+              <GroupByChip
                 label={t("Group by", "Zoskupiť podľa", "Csoportosítás")}
-                value={groupBy}
-                onChange={(v) => setGroupBy(v as ReportGroupBy)}
-                options={[
+                first={groupBy}
+                then={thenBy}
+                onFirst={(v) => {
+                  setGroupBy(v as ReportGroupBy);
+                  if (thenChoice === v) setThenChoice(null);
+                }}
+                onThen={(v) => setThenChoice(v as ReportGroupBy | "none")}
+                firstOptions={[
                   { value: "project", label: t("Project", "Projekt", "Projekt") },
                   { value: "title", label: t("Title", "Názov", "Cím") },
                   { value: "person", label: t("Person", "Osoba", "Személy") },
                   { value: "client", label: t("Client", "Klient", "Ügyfél") },
                   { value: "day", label: t("Day", "Deň", "Nap") },
+                ]}
+                thenOptions={[
+                  ...(["person", "title", "project", "client", "day"] as ReportGroupBy[]).filter((d) => d !== groupBy).map((d) => ({ value: d, label: dimensionLabel(d, t) })),
+                  { value: "none", label: t("None", "Žiadne", "Nincs") },
                 ]}
               />
             )}
@@ -318,6 +339,7 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
         }
       />
 
+      {truncated && <TruncatedNotice t={t} />}
       {loading && report.lines.length === 0 ? (
         <p className="text-body text-slate-500">{t("Loading…", "Načítava sa…", "Betöltés…")}</p>
       ) : mode === "summary" ? (
@@ -369,6 +391,10 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
             showCost={hasCost}
             language={deps.language}
             t={t}
+            thenBy={thenBy === "none" ? null : thenBy}
+            childLabel={(key) => labelFor(thenBy === "none" ? groupBy : thenBy, key)}
+            openKeys={openKeys}
+            onToggle={toggleOpen}
           />
           {salaryAllowed && <TimeSalaryReport deps={deps} />}
         </>
