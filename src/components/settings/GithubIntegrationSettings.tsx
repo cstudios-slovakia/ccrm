@@ -9,6 +9,8 @@ type T = (en: string, sk: string, hu: string) => string;
 interface Status {
   webhookUrl: string;
   hasSecret: boolean;
+  /** A value is stored but cannot be decrypted (the server's encryption key changed): deliveries are refused. */
+  unreadable: boolean;
 }
 
 const ENDPOINT = "/api/github_integration.php";
@@ -63,7 +65,7 @@ export const GithubIntegrationSettings: React.FC<{ userLanguage: Language }> = (
     try {
       const res = await fetch(ENDPOINT, { credentials: "same-origin" });
       const data = await res.json().catch(() => null);
-      if (res.ok && data?.success === true) setStatus({ webhookUrl: String(data.webhookUrl ?? ""), hasSecret: data.hasSecret === true });
+      if (res.ok && data?.success === true) setStatus({ webhookUrl: String(data.webhookUrl ?? ""), hasSecret: data.hasSecret === true, unreadable: data.unreadable === true });
       else setLoadFailed(true);
     } catch {
       setLoadFailed(true);
@@ -75,6 +77,7 @@ export const GithubIntegrationSettings: React.FC<{ userLanguage: Language }> = (
   }, [load]);
 
   const generate = async () => {
+    // An unreadable key already works for nobody, so replacing it needs no warning about the old one.
     if (status?.hasSecret) {
       const ok = await confirm({
         title: t("Generate a new secret key?", "Vygenerovať nový tajný kľúč?", "Új titkos kulcsot generál?"),
@@ -100,7 +103,7 @@ export const GithubIntegrationSettings: React.FC<{ userLanguage: Language }> = (
       const data = await res.json().catch(() => null);
       if (res.ok && data?.success === true && typeof data.secret === "string") {
         setNewSecret(data.secret);
-        setStatus((s) => (s ? { ...s, hasSecret: true } : s));
+        setStatus((s) => (s ? { ...s, hasSecret: true, unreadable: false } : s));
       } else {
         showToast(t("Could not generate the key.", "Kľúč sa nepodarilo vygenerovať.", "A kulcsot nem sikerült generálni."), "error");
       }
@@ -174,9 +177,19 @@ export const GithubIntegrationSettings: React.FC<{ userLanguage: Language }> = (
 
         <SettingsGroup title={t("Secret key", "Tajný kľúč", "Titkos kulcs")}>
           <div className="flex flex-wrap items-center gap-3">
-            <p className="type-body text-slate-700" data-testid="github-secret-state">
-              {status.hasSecret ? t("The secret key is set.", "Tajný kľúč je nastavený.", "A titkos kulcs be van állítva.") : t("The secret key is not set.", "Tajný kľúč nie je nastavený.", "A titkos kulcs nincs beállítva.")}
-            </p>
+            {status.unreadable ? (
+              <p role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 type-body text-amber-800" data-testid="github-secret-state">
+                {t(
+                  "A secret key is stored but cannot be read. Generate a new one.",
+                  "Tajný kľúč je uložený, ale nedá sa prečítať. Vygenerujte nový.",
+                  "A titkos kulcs el van mentve, de nem olvasható. Generáljon újat.",
+                )}
+              </p>
+            ) : (
+              <p className="type-body text-slate-700" data-testid="github-secret-state">
+                {status.hasSecret ? t("The secret key is set.", "Tajný kľúč je nastavený.", "A titkos kulcs be van állítva.") : t("The secret key is not set.", "Tajný kľúč nie je nastavený.", "A titkos kulcs nincs beállítva.")}
+              </p>
+            )}
             <button type="button" className={primaryBtn} onClick={generate} disabled={generating} data-testid="github-generate-secret">
               {generating ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : <KeyRound className="h-4 w-4" aria-hidden="true" />}
               {status.hasSecret ? t("Generate new key", "Vygenerovať nový kľúč", "Új kulcs generálása") : t("Generate secret key", "Vygenerovať tajný kľúč", "Titkos kulcs generálása")}

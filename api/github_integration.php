@@ -2,19 +2,21 @@
 /**
  * Settings -> Integrations -> GitHub. Session-authenticated, administrators only.
  *
- *   GET                        -> { success, webhookUrl, hasSecret }
+ *   GET                        -> { success, webhookUrl, hasSecret, unreadable }
  *   POST { action: generate }  -> { success, secret }   a new random secret (32 bytes, hex)
  *
  * The secret is the key GitHub signs every delivery with (api/github_webhook.php verifies it). It is
  * stored encrypted at rest in system_settings GITHUB_WEBHOOK_SECRET, which no sync.php payload carries
  * (settings are sent by explicit key), and is returned exactly once, in the response that created it.
- * `hasSecret` is all a later GET says. Generating a new one replaces the old: GitHub must be given the
+ * `hasSecret` (a stored value that decrypts) is all a later GET says; `unreadable` is true when a value is
+ * stored but cannot be decrypted, so the page can tell the administrator to generate a new one. Generating a new one replaces the old: GitHub must be given the
  * new one before deliveries verify again.
  */
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/schema.php';
+require_once __DIR__ . '/github_pushes.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -37,9 +39,12 @@ try {
         $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'GITHUB_WEBHOOK_SECRET' LIMIT 1");
         $stmt->execute();
         $stored = $stmt->fetchColumn();
+        $readable = ccrm_github_readable_secret($stored) !== '';
         ccrm_github_int_reply(200, [
             'webhookUrl' => rtrim(ccrm_app_base_url($pdo), '/') . '/api/github_webhook.php',
-            'hasSecret' => is_string($stored) && $stored !== '',
+            'hasSecret' => $readable,
+            // A value is stored but does not decrypt (the encryption key changed): every delivery is refused.
+            'unreadable' => !$readable && is_string($stored) && $stored !== '',
         ]);
     }
 
