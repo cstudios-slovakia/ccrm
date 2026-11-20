@@ -1,1 +1,0 @@
-- Time tracking Day and Team views follow the design canvas: day-strip and add-row hints, Unsorted copy, Team toggle button, ISO week labels, vacation colour, distinct Total and Totals words, popover basis footer and a legend.
