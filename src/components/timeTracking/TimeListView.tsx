@@ -7,8 +7,6 @@ import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
 import { holidayName } from "../../utils/holidays.ts";
 import {
-  billablePercent,
-  billableSeconds,
   collapseIdentical,
   formatDuration,
   groupByDay,
@@ -95,9 +93,12 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
   const todays = byDay.get(today) ?? [];
   const week = entries;
   const target = viewScope === "me" ? targetSeconds(calendar, days, settings.hoursPerDay) : null;
-  const weekCost = totalCost(week);
-  const billable = billablePercent(week, nowMs);
-  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-US";
+  const finishedToday = todays.filter((e) => !e.running).length;
+  const weekCost = totalCost(week.map((m) => withoutHiddenCost(m, tt.userId || "", tt.viewer.canCosts)));
+  const weekWorked = totalWorkedSeconds(week, nowMs);
+  const billableWorked = totalWorkedSeconds(week.filter((e) => e.billable), nowMs);
+  const billable = weekWorked > 0 ? Math.round((billableWorked / weekWorked) * 100) : null;
+  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-GB";
   const longDate = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const dayName = (iso: string) =>
     iso === today
@@ -141,7 +142,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
           value={<ClockDigits value={formatDuration(totalWorkedSeconds(todays, nowMs), true)} data-testid="stat-today" />}
           delta={
             <span data-testid="stat-today-note">
-              {t(`${todays.length} ${todays.length === 1 ? "entry" : "entries"}`, `Záznamy: ${todays.length}`, `${todays.length} bejegyzés`)}
+              {t(`${finishedToday} ${finishedToday === 1 ? "entry" : "entries"}`, `Záznamy: ${finishedToday}`, `${finishedToday} bejegyzés`)}
               {todays.some((e) => e.running) && t(" + running timer", " + beží časovač", " + futó időzítő")}
             </span>
           }
@@ -150,13 +151,13 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
           label={days.length > 7 ? t("This period", "Toto obdobie", "Ez az időszak") : t("This week", "Tento týždeň", "Ez a hét")}
           value={<ClockDigits value={formatDuration(totalWorkedSeconds(week, nowMs), true)} data-testid="stat-week" />}
           suffix={target !== null ? <span className="type-meta font-normal text-slate-400" data-testid="stat-target">/ {formatDuration(target)}</span> : undefined}
-          progress={target ? { value: (totalWorkedSeconds(week, nowMs) / target) * 100 } : undefined}
+          progress={target ? { value: (weekWorked / target) * 100, label: t("Week target", "Týždenný cieľ", "Heti cél") } : undefined}
         />
         <StatTile
           label={days.length > 7 ? t("Billable this period", "Fakturovateľné za obdobie", "Számlázható ebben az időszakban") : t("Billable this week", "Fakturovateľné tento týždeň", "Számlázható ezen a héten")}
-          value={<span className="tabular-nums" data-testid="stat-billable">{billable === null ? "—" : formatDuration(billableSeconds(week, nowMs))}</span>}
+          value={<span className="tabular-nums" data-testid="stat-billable">{billable === null ? "—" : formatDuration(billableWorked, true)}</span>}
           suffix={billable === null ? undefined : <span className="type-meta font-semibold text-emerald-600" data-testid="stat-billable-percent">{billable} %</span>}
-          progress={billable === null ? undefined : { value: billable, tone: "emerald" }}
+          progress={billable === null ? undefined : { value: billable, tone: "emerald", label: t("Billable share", "Podiel fakturovateľného", "Számlázható arány") }}
         />
         {weekCost !== null && (
           <StatTile
@@ -164,7 +165,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
             value={<span className="tabular-nums text-slate-900" data-testid="stat-cost">{money(weekCost)}</span>}
             icon={
               <span title={t("Only you and people with the cost permission see this.", "Toto vidíte iba vy a ľudia s oprávnením na náklady.", "Ezt csak Ön és a költséghez jogosult személyek látják.")} data-testid="stat-cost-lock">
-                <Lock aria-label={t("Restricted", "Obmedzené", "Korlátozott")} />
+                <Lock className="size-5" aria-label={t("Restricted", "Obmedzené", "Korlátozott")} />
               </span>
             }
           />
@@ -208,7 +209,8 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
         const list = byDay.get(date) ?? [];
         const rows = collapseIdentical(list);
         const holiday = holidayLabel(date);
-        const dayCost = totalCost(list.map((m) => withoutHiddenCost(m, tt.userId || "", tt.viewer.canCosts)));
+        const hiddenCost = list.some((m) => !tt.viewer.canCosts && m.userId !== (tt.userId || ""));
+        const dayCost = hiddenCost ? null : totalCost(list.map((m) => withoutHiddenCost(m, tt.userId || "", tt.viewer.canCosts)));
         return (
           <Surface key={date} padding="none" className="overflow-hidden" >
             <div className={`flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 ${calendar.isOffDay(date) ? "bg-slate-50" : ""}`} data-testid="day-card-header" data-date={date}>

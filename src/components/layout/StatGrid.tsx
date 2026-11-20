@@ -35,7 +35,7 @@ export const StatTile = ({
   /** Small text on the value's line ("/ 40:00", "79 %"); only on the plain tile. */
   suffix?: ReactNode;
   /** A thin bar under the tile, 0-100; only on the plain tile. */
-  progress?: { value: number; tone?: "primary" | "emerald" };
+  progress?: { value: number; tone?: "primary" | "emerald"; label?: string };
   className?: string;
 }) =>
   tone ? (
@@ -58,7 +58,7 @@ export const StatTile = ({
         {suffix}
       </div>
       {progress && (
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress.value)}>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label={progress.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress.value)}>
           <div className={`h-full rounded-full ${progress.tone === "emerald" ? "bg-emerald-500" : "bg-primary"}`} style={{ width: `${Math.max(0, Math.min(100, progress.value))}%` }} />
         </div>
       )}
