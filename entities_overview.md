@@ -332,19 +332,20 @@ Junction table mapping project managers to projects.
 * Primary Key: (`project_id`, `user_id`)
 
 ### `project_pushes`
-GitHub pushes delivered to `api/github_webhook.php` (Settings → Integrations → GitHub): one row per (delivery, paired project). Counts pushes to the project's server branch, not pull requests. No foreign key: readers (`api/project_pushes.php`) join to `projects`, so a push of a deleted project is not reported.
-* `delivery_id` VARCHAR(64) (GitHub's `X-GitHub-Delivery`; a redelivery is ignored by `INSERT IGNORE`)
+GitHub pushes delivered to `api/github_webhook.php` (Settings → Integrations → GitHub): one row per (request body, paired project). Counts pushes to the project's server branch, not pull requests. No foreign key: readers (`api/project_pushes.php`) join to `projects`, so a push of a deleted project is not reported.
+* `body_hash` CHAR(64) (SHA-256 hex of the raw request body; part of the primary key, so a redelivery and a replay of a signed body under a new delivery id are both ignored by `INSERT IGNORE`)
+* `delivery_id` VARCHAR(64) [NULLable] (GitHub's `X-GitHub-Delivery`, for reference only: the signature does not cover it)
 * `project_id` VARCHAR(50)
 * `repo` VARCHAR(200) (full name as GitHub sent it)
 * `branch` VARCHAR(200)
-* `pushed_at` DATETIME (UTC; the head commit's timestamp, else the server's time)
+* `pushed_at` DATETIME (UTC; when this server received the push, never the commit's own date)
 * `pusher` VARCHAR(100) [NULLable]
-* `commit_count` INT
+* `commit_count` INT (clamped to 0 to 100000)
 * `head_sha` VARCHAR(40) [NULLable]
 * `head_message` VARCHAR(300) [NULLable] (first line of the head commit message)
-* `compare_url` VARCHAR(500) [NULLable]
+* `compare_url` VARCHAR(500) [NULLable] (stored only when it is an `https://github.com/<owner>/<repo>/compare|commit/...` link, else NULL)
 * `created_at` TIMESTAMP
-* Primary Key: (`delivery_id`, `project_id`); indexes (`project_id`, `pushed_at`) and (`pushed_at`)
+* Primary Key: (`body_hash`, `project_id`); indexes (`project_id`, `pushed_at`) and (`pushed_at`)
 
 ### Dynamic Tables (Per Project Type)
 Each custom project type with ID `{safeId}` generates three tables:

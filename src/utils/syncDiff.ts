@@ -189,3 +189,32 @@ const carriesWork = (value: unknown): boolean => {
   if (value != null && typeof value === "object") return Object.values(value).some(carriesWork);
   return value != null;
 };
+
+/**
+ * The GitHub pairing of a project travels in a save only when this tab changed it. A project record is
+ * sent whole, and a tab that has not pulled a colleague's pairing yet would otherwise overwrite it with
+ * the old value on any unrelated edit. The baseline holds the record as last synced: a pairing key equal
+ * to it was not changed here and is left out (sync.php treats an absent key as "unchanged"). A project
+ * with no baseline entry is new and goes out whole.
+ */
+export const omitUnchangedGithubPairing = (changed: any[], baseline: RecordBaseline | undefined): any[] => {
+  if (!baseline) return changed;
+  return changed.map((project) => {
+    const synced = project && typeof project === "object" && project.id != null ? baseline.get(String(project.id)) : undefined;
+    if (synced === undefined) return project;
+    let stored: any;
+    try {
+      stored = JSON.parse(synced);
+    } catch {
+      return project;
+    }
+    let out = project;
+    for (const key of ["githubRepo", "githubBranch"]) {
+      if (key in project && (project[key] || null) === (stored?.[key] || null)) {
+        if (out === project) out = { ...project };
+        delete out[key];
+      }
+    }
+    return out;
+  });
+};

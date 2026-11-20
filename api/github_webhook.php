@@ -12,8 +12,9 @@
  * error 500. The secret (system_settings GITHUB_WEBHOOK_SECRET, encrypted at rest, set in Settings ->
  * Integrations -> GitHub through api/github_integration.php) and the signature are never logged or
  * echoed. A push counts when it is to a branch (not a tag, not a deletion) of a repository a
- * non-archived project is paired with; it is stored once per (delivery, project), so a redelivery is
- * harmless. Parsing and matching: api/github_pushes.php. No DDL here.
+ * non-archived project is paired with; it is stored once per (SHA-256 of the body, project): a
+ * redelivery has the same body, and a replay of a signed body under a new X-GitHub-Delivery (which the
+ * signature does not cover) is ignored too. `pushed_at` is the time this server received the push. Parsing and matching: api/github_pushes.php. No DDL here.
  */
 
 require_once __DIR__ . '/auth.php';
@@ -62,7 +63,7 @@ try {
     $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'GITHUB_WEBHOOK_SECRET' LIMIT 1");
     $stmt->execute();
     $stored = $stmt->fetchColumn();
-    $secret = is_string($stored) && $stored !== '' ? ccrm_decrypt_secret($stored) : '';
+    $secret = ccrm_github_readable_secret($stored);
 } catch (\Throwable $e) {
     // Before the signature is checked nothing of the (unauthenticated) request is stored.
     error_log('[github_webhook] database unavailable: ' . get_class($e));
@@ -71,11 +72,10 @@ try {
 
 $signature = (string)($_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? '');
 if (!ccrm_github_signature_valid($rawBody, $secret, $signature)) {
-    // Failed attempts only are counted; a valid delivery is never throttled. Skipped while the ledger
-    // table is missing (this endpoint creates nothing).
+    // Failed attempts only are counted; a valid delivery is never throttled. The ledger table is never
+    // created here (no DDL on an unauthenticated path): while it is missing the throttle fails open.
     try {
-        if (ccrm_table_exists($pdo, 'rate_limits')
-            && ccrm_rate_limit_exceeded($pdo, 'github_badsig', (string)($_SERVER['REMOTE_ADDR'] ?? ''), 30, 900)) {
+        if (ccrm_rate_limit_exceeded($pdo, 'github_badsig', (string)($_SERVER['REMOTE_ADDR'] ?? ''), 30, 900, false)) {
             ccrm_github_reply(429, ['ok' => false, 'message' => 'Too Many Requests']);
         }
     } catch (\Throwable $e) {
@@ -92,9 +92,11 @@ if ($event !== 'push') {
     ccrm_github_reply(202, ['ok' => true, 'ignored' => true]);
 }
 
-$deliveryId = (string)($_SERVER['HTTP_X_GITHUB_DELIVERY'] ?? '');
+// Reference only (the signature does not cover it): the row's identity is the hash of the body.
+$deliveryHeader = (string)($_SERVER['HTTP_X_GITHUB_DELIVERY'] ?? '');
+$deliveryId = preg_match('/\A[A-Za-z0-9-]{8,64}\z/', $deliveryHeader) ? $deliveryHeader : null;
 $payload = json_decode($rawBody, true);
-if (!is_array($payload) || !preg_match('/^[A-Za-z0-9-]{8,64}$/', $deliveryId)) {
+if (!is_array($payload)) {
     ccrm_github_reply(400, ['ok' => false, 'message' => 'Bad Request']);
 }
 
@@ -112,10 +114,11 @@ try {
     }
     $projectIds = ccrm_github_match_projects(ccrm_github_projects_for_repo($pdo, $push['repo']), $push);
     if ($projectIds) {
-        ccrm_github_store_push($pdo, $deliveryId, $push, $projectIds);
+        ccrm_github_store_push($pdo, hash('sha256', $rawBody), $deliveryId, $push, $projectIds);
     }
 } catch (\Throwable $e) {
-    ccrm_log_exception($e);
+    // Not ccrm_log_exception(): it would store the request body (commit authors, e-mails) in error_logs.
+    error_log('[github_webhook] ' . get_class($e) . ': ' . $e->getMessage());
     ccrm_github_reply(500, ['ok' => false, 'message' => 'Server error']);
 }
 

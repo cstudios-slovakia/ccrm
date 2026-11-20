@@ -24,8 +24,9 @@ if (!function_exists('ccrm_github_normalize_repo')) {
         $v = trim($raw);
         $v = preg_replace('#^(?:https?://)?(?:www\.)?github\.com/#i', '', $v);
         $v = rtrim($v, '/');
-        $v = preg_replace('/\.git$/i', '', $v);
-        if (!preg_match('#^([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))/([A-Za-z0-9._-]{1,100})$#', $v, $m)) {
+        $v = preg_replace('/\.git\z/i', '', $v);
+        // \A ... \z: a plain ^ ... $ lets $ match before a trailing newline.
+        if (!preg_match('#\A([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))/([A-Za-z0-9._-]{1,100})\z#', $v, $m)) {
             return null;
         }
         if ($m[2] === '.' || $m[2] === '..') {
@@ -40,7 +41,8 @@ if (!function_exists('ccrm_github_normalize_repo')) {
             return null;
         }
         $v = trim($raw);
-        if ($v === '' || mb_strlen($v, 'UTF-8') > 200 || preg_match('/[\s\x00-\x1F\x7F]/u', $v)) {
+        // preg_match() is 1 for a bad character and false for invalid UTF-8: both are refused.
+        if ($v === '' || mb_strlen($v, 'UTF-8') > 200 || preg_match('/[\s\x00-\x1F\x7F]/u', $v) !== 0) {
             return null;
         }
         return $v;
@@ -58,21 +60,19 @@ if (!function_exists('ccrm_github_normalize_repo')) {
         return hash_equals($expected, $headerValue);
     }
 
-    /** A GitHub timestamp (ISO 8601 with an offset) as UTC 'Y-m-d H:i:s'; null when absent or unparseable. */
-    function ccrm_github_utc($value): ?string {
-        if (!is_string($value) || trim($value) === '') {
-            return null;
-        }
-        try {
-            return (new \DateTimeImmutable($value))->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
-        } catch (\Throwable $e) {
-            return null;
-        }
+    /**
+     * A GitHub compare or commit link, the only kind stored as `compare_url` (it is rendered as a link
+     * later, and the payload is attacker-influenced). Same rule as isGithubCompareUrl() in src/utils/githubRepo.ts.
+     */
+    function ccrm_github_valid_compare_url(string $url): bool {
+        return strlen($url) <= 500
+            && preg_match('#\Ahttps://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/(compare|commit)/[^\s]*\z#', $url) === 1;
     }
 
     /**
      * What one push event is, or null when it is not a push to a branch we count: a tag, a deletion, or a
-     * payload without the fields we need. `$nowUtc` stands in for a missing commit timestamp.
+     * payload without the fields we need. `pushedAt` is `$nowUtc`, the time this server received the push:
+     * the head commit's own timestamp is the commit's date (old or oddly dated commits), not the push.
      *
      * @return array{repo:string,defaultBranch:?string,branch:string,pushedAt:string,pusher:?string,commitCount:int,headSha:?string,headMessage:?string,compareUrl:?string}|null
      */
@@ -90,10 +90,11 @@ if (!function_exists('ccrm_github_normalize_repo')) {
         $headCommit = is_array($payload['head_commit'] ?? null) ? $payload['head_commit'] : [];
         $commits = is_array($payload['commits'] ?? null) ? $payload['commits'] : [];
         $count = count($commits);
-        // GitHub caps the array at 2,048; a payload that states a larger exact size is believed.
+        // GitHub caps the array at 2,048; a payload that states a larger exact size is believed, within reason.
         if (isset($payload['size']) && is_int($payload['size']) && $payload['size'] > $count) {
             $count = $payload['size'];
         }
+        $count = max(0, min(100000, $count));
         $message = isset($headCommit['message']) && is_string($headCommit['message']) ? $headCommit['message'] : '';
         $firstLine = trim((string)preg_split('/\R/u', $message, 2)[0]);
         $after = $payload['after'] ?? null;
@@ -103,12 +104,12 @@ if (!function_exists('ccrm_github_normalize_repo')) {
             'repo' => $repo,
             'defaultBranch' => is_string($repository['default_branch'] ?? null) && $repository['default_branch'] !== '' ? $repository['default_branch'] : null,
             'branch' => $branch,
-            'pushedAt' => ccrm_github_utc($headCommit['timestamp'] ?? null) ?? $nowUtc,
+            'pushedAt' => $nowUtc,
             'pusher' => $pusher === '' ? null : mb_substr($pusher, 0, 100, 'UTF-8'),
             'commitCount' => $count,
             'headSha' => is_string($after) && preg_match('/^[0-9a-f]{40}$/i', $after) ? strtolower($after) : null,
             'headMessage' => $firstLine === '' ? null : mb_substr($firstLine, 0, 300, 'UTF-8'),
-            'compareUrl' => is_string($compare) && $compare !== '' && strlen($compare) <= 500 ? $compare : null,
+            'compareUrl' => is_string($compare) && ccrm_github_valid_compare_url($compare) ? $compare : null,
         ];
     }
 
@@ -153,21 +154,23 @@ if (!function_exists('ccrm_github_normalize_repo')) {
     }
 
     /**
-     * Stores one push for each project id. INSERT IGNORE on (delivery_id, project_id), so a redelivery
-     * changes nothing. Returns how many rows were new.
+     * Stores one push for each project id. INSERT IGNORE on (body_hash, project_id), `$bodyHash` being the
+     * SHA-256 hex of the raw request body: a redelivery has the same body, and so does a replay of a signed
+     * body under another X-GitHub-Delivery, so neither adds a row. `$deliveryId` is kept for reference.
+     * Returns how many rows were new.
      *
      * @param string[] $projectIds
      */
-    function ccrm_github_store_push(\PDO $pdo, string $deliveryId, array $push, array $projectIds): int {
+    function ccrm_github_store_push(\PDO $pdo, string $bodyHash, ?string $deliveryId, array $push, array $projectIds): int {
         $stmt = $pdo->prepare(
             "INSERT IGNORE INTO `project_pushes`
-               (`delivery_id`, `project_id`, `repo`, `branch`, `pushed_at`, `pusher`, `commit_count`, `head_sha`, `head_message`, `compare_url`)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+               (`body_hash`, `delivery_id`, `project_id`, `repo`, `branch`, `pushed_at`, `pusher`, `commit_count`, `head_sha`, `head_message`, `compare_url`)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         );
         $new = 0;
         foreach ($projectIds as $projectId) {
             $stmt->execute([
-                $deliveryId, $projectId, $push['repo'], $push['branch'], $push['pushedAt'], $push['pusher'],
+                $bodyHash, $deliveryId, $projectId, $push['repo'], $push['branch'], $push['pushedAt'], $push['pusher'],
                 $push['commitCount'], $push['headSha'], $push['headMessage'], $push['compareUrl'],
             ]);
             $new += $stmt->rowCount();
@@ -198,6 +201,18 @@ if (!function_exists('ccrm_github_normalize_repo')) {
             return null;
         }
         return [$lo, $hi];
+    }
+
+    /**
+     * The webhook secret in the clear from its stored (encrypted) value, or '' when nothing is stored or
+     * the stored value does not decrypt (the encryption key changed): such a secret can verify nothing.
+     */
+    function ccrm_github_readable_secret($stored): string {
+        if (!is_string($stored) || $stored === '') {
+            return '';
+        }
+        $plain = ccrm_decrypt_secret($stored);
+        return strncmp($plain, 'enc:v1:', 7) === 0 ? '' : $plain;
     }
 
     /** ISO 8601 with a Z suffix from a UTC database value. */

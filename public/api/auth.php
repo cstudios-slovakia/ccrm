@@ -2292,11 +2292,12 @@ HTACCESS;
      * on first use). Records a hit and returns false while the caller is under
      * `$max` hits in the last `$windowSeconds`; returns true — without recording —
      * once they are over. Fails OPEN: a broken ledger must never lock out real
-     * traffic.
+     * traffic. `$createLedger = false` never issues the CREATE (an endpoint that takes unauthenticated
+     * requests must not run DDL): while the table is missing the call simply fails open.
      */
-    function ccrm_rate_limit_exceeded(\PDO $pdo, string $bucket, string $subject, int $max, int $windowSeconds): bool {
+    function ccrm_rate_limit_exceeded(\PDO $pdo, string $bucket, string $subject, int $max, int $windowSeconds, bool $createLedger = true): bool {
         try {
-            if (!$pdo->inTransaction()) {
+            if ($createLedger && !$pdo->inTransaction()) {
                 $pdo->exec(
                     "CREATE TABLE IF NOT EXISTS `rate_limits` (
                       `id` BIGINT AUTO_INCREMENT PRIMARY KEY,

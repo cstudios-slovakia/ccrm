@@ -88,7 +88,7 @@ import { FeralGradientBackground } from "./components/FeralGradientBackground";
 import { OrganicNodeDatabaseLoader } from "./components/OrganicNodeDatabaseLoader";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { startViewSizeWatcher } from "./utils/viewSize";
-import { baselineOf, diffRecords, FINANCIAL_BLOB_KEYS, skipHoldsBaseline, skipIsLostWork, withStockRowIds, type FinancialBlobKey, type RecordBaseline } from "./utils/syncDiff";
+import { baselineOf, diffRecords, FINANCIAL_BLOB_KEYS, omitUnchangedGithubPairing, skipHoldsBaseline, skipIsLostWork, withStockRowIds, type FinancialBlobKey, type RecordBaseline } from "./utils/syncDiff";
 import { workableProjectStubs } from "./utils/workableProjects";
 import { EMPTY_READ_SCOPE, parseReadScope, sameReadScope, type ReadScope } from "./utils/readScope";
 import { ReadScopeContext } from "./hooks/useReadScope";
@@ -1571,7 +1571,7 @@ ${log.payload || ''}
       const deleted: Record<string, unknown> = {};
       const narrow = (key: string, records: any[]) => {
         const { changed, deletedIds, next } = diffRecords(records, syncedRecordsRef.current[key], pendingDeletionIds(key));
-        payload[key] = changed;
+        payload[key] = key === "projects" ? omitUnchangedGithubPairing(changed, syncedRecordsRef.current[key]) : changed;
         if (deletedIds.length) deleted[key] = deletedIds;
         pendingBaselines[key] = next;
       };

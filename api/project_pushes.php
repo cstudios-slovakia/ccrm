@@ -8,8 +8,9 @@
  *        latest push of ALL time, `lastPush` the latest push inside the range, `total` the sum of `pushes`.
  *        A project is listed once it has had a push at all. Instants are UTC ISO 8601 with `Z`.
  *   GET ?projectId=...&limit=100          (limit 1..500)
- *     -> { success, pushes: [{ deliveryId, branch, pushedAt, pusher, commitCount, headSha, headMessage, compareUrl }] }
- *        newest first.
+ *     -> { success, pushes: [{ id, deliveryId, branch, pushedAt, pusher, commitCount, headSha, headMessage, compareUrl }] }
+ *        newest first. `id` is the push's own identity (hash of the delivered body); `deliveryId` is GitHub's
+ *        header, for reference, null when it was missing.
  *
  * Who may call it: whoever sync.php sends projects to, i.e. the `projects` module at view level (admin
  * included). Those users see every project, so there is no per-project filter beyond that. No DDL: while
@@ -68,14 +69,15 @@ try {
             ccrm_pp_reply(404, ['message' => 'Project not found.']);
         }
         $stmt = $pdo->prepare(
-            "SELECT `delivery_id`, `branch`, `pushed_at`, `pusher`, `commit_count`, `head_sha`, `head_message`, `compare_url`
-               FROM `project_pushes` WHERE `project_id` = ? ORDER BY `pushed_at` DESC, `delivery_id` DESC LIMIT " . $limit
+            "SELECT `body_hash`, `delivery_id`, `branch`, `pushed_at`, `pusher`, `commit_count`, `head_sha`, `head_message`, `compare_url`
+               FROM `project_pushes` WHERE `project_id` = ? ORDER BY `pushed_at` DESC, `body_hash` DESC LIMIT " . $limit
         );
         $stmt->execute([$projectId]);
         $pushes = [];
         foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
             $pushes[] = [
-                'deliveryId' => (string)$r['delivery_id'],
+                'id' => (string)$r['body_hash'],
+                'deliveryId' => $r['delivery_id'] !== null ? (string)$r['delivery_id'] : null,
                 'branch' => (string)$r['branch'],
                 'pushedAt' => ccrm_github_iso($r['pushed_at']),
                 'pusher' => $r['pusher'] !== null ? (string)$r['pusher'] : null,
@@ -124,7 +126,7 @@ try {
 
     $stmt = $pdo->prepare(
         "SELECT pp.`project_id`, pp.`pushed_at` FROM `project_pushes` pp JOIN `projects` pr ON pr.`id` = pp.`project_id`
-          WHERE {$cond} ORDER BY pp.`pushed_at` DESC, pp.`delivery_id` DESC LIMIT 1"
+          WHERE {$cond} ORDER BY pp.`pushed_at` DESC, pp.`body_hash` DESC LIMIT 1"
     );
     $stmt->execute($bind);
     $last = $stmt->fetch(\PDO::FETCH_ASSOC);

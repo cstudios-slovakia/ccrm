@@ -18,13 +18,17 @@ export interface ProjectPushesOverview {
 }
 
 export interface ProjectPush {
-  deliveryId: string;
+  /** The push's own identity (hash of the delivered body). */
+  id: string;
+  /** GitHub's delivery id, for reference; null when the header was missing. */
+  deliveryId: string | null;
   branch: string;
   pushedAt: string;
   pusher: string | null;
   commitCount: number;
   headSha: string | null;
   headMessage: string | null;
+  /** A GitHub compare or commit link as stored; re-check with isGithubCompareUrl() before rendering it as a link. */
   compareUrl: string | null;
 }
 

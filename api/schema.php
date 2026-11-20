@@ -463,21 +463,22 @@ if (!function_exists('ccrm_schema_statements')) {
               FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
-            // GitHub pushes delivered to api/github_webhook.php, one row per (delivery, paired project).
+            // GitHub pushes delivered to api/github_webhook.php, one row per (request body, paired project).
             // No foreign key on purpose: a row outlives a hiccup in `projects`; readers join to it.
             "CREATE TABLE IF NOT EXISTS `project_pushes` (
-              `delivery_id` VARCHAR(64) NOT NULL COMMENT 'X-GitHub-Delivery; a redelivery is ignored',
+              `body_hash` CHAR(64) NOT NULL COMMENT 'SHA-256 hex of the raw body; a redelivery or a replay of it is ignored',
+              `delivery_id` VARCHAR(64) NULL COMMENT 'X-GitHub-Delivery, for reference only (the signature does not cover it)',
               `project_id` VARCHAR(50) NOT NULL,
               `repo` VARCHAR(200) NOT NULL COMMENT 'Full name as GitHub sent it',
               `branch` VARCHAR(200) NOT NULL,
-              `pushed_at` DATETIME NOT NULL COMMENT 'UTC',
+              `pushed_at` DATETIME NOT NULL COMMENT 'UTC; when this server received the push',
               `pusher` VARCHAR(100) NULL,
               `commit_count` INT NOT NULL DEFAULT 0,
               `head_sha` VARCHAR(40) NULL,
               `head_message` VARCHAR(300) NULL COMMENT 'First line of the head commit message',
               `compare_url` VARCHAR(500) NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-              PRIMARY KEY (`delivery_id`, `project_id`),
+              PRIMARY KEY (`body_hash`, `project_id`),
               INDEX `idx_pp_project_time` (`project_id`, `pushed_at`),
               INDEX `idx_pp_time` (`pushed_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",

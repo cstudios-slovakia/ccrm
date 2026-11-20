@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { baselineOf, diffRecords, skipHoldsBaseline, skipIsLostWork, skippedCollection, stockRowId, withStockRowIds } from "./syncDiff.ts";
+import { baselineOf, diffRecords, omitUnchangedGithubPairing, skipHoldsBaseline, skipIsLostWork, skippedCollection, stockRowId, withStockRowIds } from "./syncDiff.ts";
 
 test("a reason suffix belongs to its collection", () => {
   assert.equal(skippedCollection("users:nameTaken"), "users");
@@ -88,4 +88,27 @@ test("a stock row created in this tab gets a stable id and is sent once", () => 
   const sent = diffRecords(first, new Map());
   assert.equal(sent.changed.length, 1);
   assert.deepEqual(diffRecords(withStockRowIds([local]), sent.next).changed, []);
+});
+
+test("a project save carries the GitHub pairing only when this tab changed it", () => {
+  const project = { id: "p1", name: "Shop", githubRepo: "acme/shop", githubBranch: null };
+  const baseline = baselineOf([project]);
+  // Untouched here (a colleague may have changed it meanwhile): both keys are left out.
+  const renamed = { ...project, name: "Shop 2" };
+  const [untouched] = omitUnchangedGithubPairing([renamed], baseline);
+  assert.equal("githubRepo" in untouched, false);
+  assert.equal("githubBranch" in untouched, false);
+  assert.equal(untouched.name, "Shop 2");
+  assert.equal("githubRepo" in renamed, true, "the state object itself is not mutated");
+  // Changed here, including cleared: the key is sent.
+  const [edited] = omitUnchangedGithubPairing([{ ...project, githubRepo: "acme/other" }], baseline);
+  assert.equal(edited.githubRepo, "acme/other");
+  const [cleared] = omitUnchangedGithubPairing([{ ...project, githubRepo: null }], baseline);
+  assert.equal(cleared.githubRepo, null);
+  // "" and null are the same empty value; a project the baseline does not know goes out whole.
+  const [empty] = omitUnchangedGithubPairing([{ ...project, githubBranch: "" }], baseline);
+  assert.equal("githubBranch" in empty, false);
+  const fresh = { id: "p2", githubRepo: "acme/new" };
+  assert.deepEqual(omitUnchangedGithubPairing([fresh], baseline), [fresh]);
+  assert.deepEqual(omitUnchangedGithubPairing([renamed], undefined), [renamed]);
 });

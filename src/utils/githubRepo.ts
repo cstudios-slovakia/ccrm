@@ -18,6 +18,16 @@ export const normalizeGithubRepo = (raw: unknown): string | null => {
   return value;
 };
 
+/**
+ * A GitHub compare or commit link: the only kind the server stores as `compare_url`, and the only kind
+ * to render as a link (the value comes from a webhook payload). Same rule as
+ * ccrm_github_valid_compare_url() in public/api/github_pushes.php.
+ */
+export const isGithubCompareUrl = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value.length <= 500 &&
+  /^https:\/\/github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+\/(compare|commit)\/[^\s]*$/.test(value);
+
 /** The server branch: trimmed, at most 200 characters, no whitespace or control characters; otherwise null. */
 export const normalizeGithubBranch = (raw: unknown): string | null => {
   if (typeof raw !== "string") return null;
