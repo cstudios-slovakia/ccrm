@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Lock, Trash2 } from "lucide-react";
 import { Surface } from "../layout";
 import { StatGrid, StatTile } from "../layout/StatGrid";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
@@ -8,6 +8,7 @@ import { useTimeEntries } from "../../hooks/useTimeEntries";
 import { holidayName } from "../../utils/holidays.ts";
 import {
   billablePercent,
+  billableSeconds,
   collapseIdentical,
   formatDuration,
   groupByDay,
@@ -98,7 +99,15 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
   const billable = billablePercent(week, nowMs);
   const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-US";
   const longDate = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  const weekLabel = `${new Date(`${days[0]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })} – ${new Date(`${days[days.length - 1]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}`;
+  const dayName = (iso: string) =>
+    iso === today
+      ? t("Today", "Dnes", "Ma")
+      : iso === addDays(today, -1)
+        ? t("Yesterday", "Včera", "Tegnap")
+        : new Date(`${iso}T12:00:00`).toLocaleDateString(locale, { weekday: "long" });
+  const shortDate = (iso: string) =>
+    new Date(`${iso}T12:00:00`).toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short", ...(iso.slice(0, 4) === today.slice(0, 4) ? {} : { year: "numeric" as const }) });
+  const weekLabel =`${new Date(`${days[0]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })} – ${new Date(`${days[days.length - 1]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}`;
   const isCurrentWeek = weekDays(anchor)[0] === weekDays(today)[0];
   const shortRange = `${new Date(`${days[0]}T12:00:00`).toLocaleDateString(locale, { day: "numeric" })} – ${new Date(`${days[days.length - 1]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })}`;
 
@@ -127,14 +136,39 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
   return (
     <div className="grid gap-4" data-testid="time-list">
       <StatGrid count={weekCost !== null ? 4 : 3}>
-        <StatTile label={t("Today", "Dnes", "Ma")} value={<ClockDigits value={formatDuration(totalWorkedSeconds(todays, nowMs), true)} data-testid="stat-today" />} />
+        <StatTile
+          label={t("Today", "Dnes", "Ma")}
+          value={<ClockDigits value={formatDuration(totalWorkedSeconds(todays, nowMs), true)} data-testid="stat-today" />}
+          delta={
+            <span data-testid="stat-today-note">
+              {t(`${todays.length} ${todays.length === 1 ? "entry" : "entries"}`, `Záznamy: ${todays.length}`, `${todays.length} bejegyzés`)}
+              {todays.some((e) => e.running) && t(" + running timer", " + beží časovač", " + futó időzítő")}
+            </span>
+          }
+        />
         <StatTile
           label={days.length > 7 ? t("This period", "Toto obdobie", "Ez az időszak") : t("This week", "Tento týždeň", "Ez a hét")}
           value={<ClockDigits value={formatDuration(totalWorkedSeconds(week, nowMs), true)} data-testid="stat-week" />}
-          delta={target !== null ? <span data-testid="stat-target">{t("of", "z", "ennyiből:")} {formatDuration(target)} {t("target", "cieľ", "cél")}</span> : undefined}
+          suffix={target !== null ? <span className="type-meta font-normal text-slate-400" data-testid="stat-target">/ {formatDuration(target)}</span> : undefined}
+          progress={target ? { value: (totalWorkedSeconds(week, nowMs) / target) * 100 } : undefined}
         />
-        <StatTile label={t("Billable", "Fakturovateľné", "Számlázható")} value={<span className="tabular-nums">{billable === null ? "—" : `${billable} %`}</span>} />
-        {weekCost !== null && <StatTile label={t("Labour cost this week", "Náklady na prácu za týždeň", "Heti munkaköltség")} value={<span className="tabular-nums text-slate-900" data-testid="stat-cost">{money(weekCost)}</span>} />}
+        <StatTile
+          label={days.length > 7 ? t("Billable this period", "Fakturovateľné za obdobie", "Számlázható ebben az időszakban") : t("Billable this week", "Fakturovateľné tento týždeň", "Számlázható ezen a héten")}
+          value={<span className="tabular-nums" data-testid="stat-billable">{billable === null ? "—" : formatDuration(billableSeconds(week, nowMs))}</span>}
+          suffix={billable === null ? undefined : <span className="type-meta font-semibold text-emerald-600" data-testid="stat-billable-percent">{billable} %</span>}
+          progress={billable === null ? undefined : { value: billable, tone: "emerald" }}
+        />
+        {weekCost !== null && (
+          <StatTile
+            label={t("Labour cost this week", "Náklady na prácu za týždeň", "Heti munkaköltség")}
+            value={<span className="tabular-nums text-slate-900" data-testid="stat-cost">{money(weekCost)}</span>}
+            icon={
+              <span title={t("Only you and people with the cost permission see this.", "Toto vidíte iba vy a ľudia s oprávnením na náklady.", "Ezt csak Ön és a költséghez jogosult személyek látják.")} data-testid="stat-cost-lock">
+                <Lock aria-label={t("Restricted", "Obmedzené", "Korlátozott")} />
+              </span>
+            }
+          />
+        )}
       </StatGrid>
 
       <TimeToolbarSlot>
@@ -174,18 +208,39 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
         const list = byDay.get(date) ?? [];
         const rows = collapseIdentical(list);
         const holiday = holidayLabel(date);
+        const dayCost = totalCost(list.map((m) => withoutHiddenCost(m, tt.userId || "", tt.viewer.canCosts)));
         return (
           <Surface key={date} padding="none" className="overflow-hidden" >
             <div className={`flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 ${calendar.isOffDay(date) ? "bg-slate-50" : ""}`} data-testid="day-card-header" data-date={date}>
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`type-card-title capitalize ${date === today ? "text-teal-700" : "text-slate-900"}`}>{longDate(date)}</span>
+                <input
+                  type="checkbox"
+                  ref={(el) => { if (el) el.indeterminate = list.some((m) => selected.has(m.id)) && !list.every((m) => selected.has(m.id)); }}
+                  checked={list.length > 0 && list.every((m) => selected.has(m.id))}
+                  disabled={list.length === 0}
+                  onChange={(e) =>
+                    setSelected((prev) => {
+                      const next = new Set(prev);
+                      for (const m of list) (e.target.checked ? next.add(m.id) : next.delete(m.id));
+                      return next;
+                    })
+                  }
+                  aria-label={t("Select all entries of this day", "Vybrať všetky záznamy dňa", "A nap összes bejegyzésének kijelölése")}
+                  data-testid="day-select-all"
+                  className="size-4 shrink-0 accent-teal-600"
+                />
+                <span className="type-card-title capitalize text-slate-900" title={longDate(date)}>{dayName(date)}</span>
+                <span className="type-meta text-slate-500">{shortDate(date)}</span>
                 {holiday && (
                   <span className="rounded-full bg-slate-200 px-2 py-0.5 text-micro font-semibold text-slate-600" data-testid="holiday-chip" title={holiday}>
                     {t("State holiday", "Štátny sviatok", "Állami ünnep")} · {holiday}
                   </span>
                 )}
               </div>
-              <WorkedTotal projectSec={totalSeconds(list, nowMs)} workedSec={totalWorkedSeconds(list, nowMs)} className="font-semibold text-slate-900" />
+              <div className="flex items-center gap-3">
+                {dayCost !== null && <span className="type-meta tabular-nums text-slate-500" data-testid="day-cost">{money(dayCost)}</span>}
+                <WorkedTotal projectSec={totalSeconds(list, nowMs)} workedSec={totalWorkedSeconds(list, nowMs)} className="font-semibold text-slate-900" />
+              </div>
             </div>
             <div role="table" className="divide-y divide-slate-100">
               {segmentByCluster(rows, clusterEntries(list, nowMs), (r) => r.members.map((m) => m.id)).map((seg, si) => {

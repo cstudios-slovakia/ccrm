@@ -21,6 +21,8 @@ export const StatTile = ({
   delta,
   icon,
   tone,
+  suffix,
+  progress,
   className = "",
 }: {
   label: ReactNode;
@@ -30,6 +32,10 @@ export const StatTile = ({
   icon?: ReactNode;
   /** With a tone (e.g. "bg-blue-50 text-blue-600") the icon sits in a tinted box on the left. */
   tone?: string;
+  /** Small text on the value's line ("/ 40:00", "79 %"); only on the plain tile. */
+  suffix?: ReactNode;
+  /** A thin bar under the tile, 0-100; only on the plain tile. */
+  progress?: { value: number; tone?: "primary" | "emerald" };
   className?: string;
 }) =>
   tone ? (
@@ -47,7 +53,15 @@ export const StatTile = ({
         <span className="type-overline text-slate-500">{label}</span>
         {icon && <span className="text-slate-400 [&>svg]:size-5">{icon}</span>}
       </div>
-      <div className="type-metric mt-2 text-slate-900">{value}</div>
+      <div className={`type-metric mt-2 text-slate-900 ${suffix ? "flex items-baseline gap-1.5" : ""}`}>
+        {value}
+        {suffix}
+      </div>
+      {progress && (
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress.value)}>
+          <div className={`h-full rounded-full ${progress.tone === "emerald" ? "bg-emerald-500" : "bg-primary"}`} style={{ width: `${Math.max(0, Math.min(100, progress.value))}%` }} />
+        </div>
+      )}
       {delta && <div className="type-meta mt-1 text-slate-500">{delta}</div>}
     </div>
   );

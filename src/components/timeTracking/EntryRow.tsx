@@ -1,4 +1,5 @@
-import { ChevronRight, Euro, Link2, MoreHorizontal, Play } from "lucide-react";
+import { useState } from "react";
+import { CheckSquare, ChevronRight, Euro, Link2, MoreHorizontal, Play } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import {
   clockTime,
@@ -11,7 +12,9 @@ import {
 import { AssignProjectChip } from "./AssignProjectChip";
 import { ClockDigits } from "./ClockDigits";
 import { ProjectLabel } from "./ProjectLabel";
+import { RoundTimerButton } from "./RoundTimerButton";
 import { RunningBadge } from "./RunningBadge";
+import { projectClientName } from "./projectClient";
 import { OfYourTime } from "./WorkedLine";
 import { initials, useMoney, useTimeLookups, type TimeDeps } from "./shared";
 
@@ -37,7 +40,7 @@ interface Props {
 
 /** One entry as a row, shared by the List and the Day view. */
 export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps, showPerson, selected, onSelect, onOpen, onContinue }: Props) {
-  const { t, nowMs, isRunningTarget } = useTimeTracking();
+  const { t, nowMs, isRunningTarget, stop, userId: myUserId } = useTimeTracking();
   const lookups = useTimeLookups(deps);
   const money = useMoney(deps);
   const person = lookups.userById.get(entry.userId);
@@ -53,6 +56,10 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
   const range = first?.startAt
     ? `${clockTime(first.startAt)}–${last?.endAt ? clockTime(last.endAt) : "…"}${last && endsNextDay(last) ? " +1" : ""}`
     : t("hours only", "iba hodiny", "csak órák");
+  const task = entry.taskId ? lookups.taskById.get(entry.taskId) : undefined;
+  const showTask = !!task && task.title.trim() !== "" && task.title !== entry.title;
+  const clientName = projectClientName(entry.projectId, deps.projects, deps.leads);
+  const [stopping, setStopping] = useState(false);
   const rate = "costRate" in entry;
   const costs = group.map((m) => m.cost);
   const cost = costs.every((c) => c !== null && c !== undefined) ? costs.reduce<number>((a, c) => a + (c ?? 0), 0) : null;
@@ -88,8 +95,14 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
       )}
       <button type="button" onClick={() => onOpen(entry)} className="min-w-0 flex-1 basis-40 text-left cursor-pointer" data-testid="time-entry-title">
         <span className={`flex items-center gap-1.5 font-semibold ${entry.titleDeleted ? "italic text-slate-400" : "text-slate-900"}`}>
-          {entry.titleSource !== "entry" && <Link2 className="size-3.5 shrink-0 text-teal-600" aria-label={t("Linked", "Prepojené", "Kapcsolt")} />}
+          {entry.titleSource !== "entry" && !showTask && <Link2 className="size-3.5 shrink-0 text-teal-600" aria-label={t("Linked", "Prepojené", "Kapcsolt")} />}
           <span className="truncate">{entry.title || t("(no title)", "(bez názvu)", "(nincs cím)")}</span>
+          {showTask && (
+            <span className="inline-flex min-w-0 shrink items-center gap-1 font-normal text-slate-500" title={task.title} data-testid="time-entry-task">
+              <CheckSquare className="size-3.5 shrink-0" aria-hidden />
+              <span className="truncate">{task.title}</span>
+            </span>
+          )}
           {entry.running && <RunningBadge />}
         </span>
         {entry.note && <span className="block truncate type-meta text-slate-500" data-testid="time-entry-note">{entry.note}</span>}
@@ -104,7 +117,7 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
         )}
       </button>
       {entry.projectId ? (
-        <ProjectLabel projectId={entry.projectId} name={projectName} className="max-w-44" />
+        <ProjectLabel projectId={entry.projectId} name={projectName} client={clientName} className="max-w-56" />
       ) : (
         <AssignProjectChip onClick={() => onOpen(entry)} />
       )}
@@ -126,14 +139,24 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
       )}
       <span className="flex shrink-0 justify-end gap-1 opacity-100 ws-sm:w-16 ws-sm:opacity-0 ws-sm:transition-opacity ws-sm:group-hover:opacity-100 ws-sm:focus-within:opacity-100">
         {onContinue && !entry.running && !isRunningTarget({ taskId: entry.taskId, ticketId: entry.ticketId, projectId: entry.projectId, title: entry.description }) && (
-          <button type="button" onClick={(ev) => onContinue(entry, ev.currentTarget)} title={t("Continue", "Pokračovať", "Folytatás")} aria-label={t("Continue", "Pokračovať", "Folytatás")} data-testid="time-entry-continue" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-primary hover:text-white cursor-pointer ws-sm:size-7 ws-sm:min-h-0 ws-sm:min-w-0">
+          <button type="button" onClick={(ev) => onContinue(entry, ev.currentTarget)} title={t("Continue", "Pokračovať", "Folytatás")} aria-label={t("Continue", "Pokračovať", "Folytatás")} data-testid="time-entry-continue" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-primary/10 hover:text-primary cursor-pointer ws-sm:size-7 ws-sm:min-h-0 ws-sm:min-w-0">
             <Play className="size-3.5 fill-current" />
           </button>
         )}
-        <button type="button" onClick={() => onOpen(entry)} title={t("Open", "Otvoriť", "Megnyitás")} aria-label={t("Open", "Otvoriť", "Megnyitás")} className="inline-flex size-7 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-200 cursor-pointer">
+        <button type="button" onClick={() => onOpen(entry)} title={t("Open", "Otvoriť", "Megnyitás")} aria-label={t("Open", "Otvoriť", "Megnyitás")} className="inline-flex size-7 items-center justify-center rounded-lg text-slate-500 hover:bg-primary/10 hover:text-primary cursor-pointer">
           <MoreHorizontal className="size-4" />
         </button>
       </span>
+      {entry.running && !nested && entry.userId === myUserId && (
+        <RoundTimerButton
+          kind="stop"
+          size="md"
+          label={t("Stop timer", "Zastaviť časovač", "Időzítő leállítása")}
+          disabled={stopping}
+          onClick={() => { if (!stopping) { setStopping(true); void stop(entry.id).finally(() => setStopping(false)); } }}
+          data-testid="time-entry-stop"
+        />
+      )}
     </div>
   );
 }
