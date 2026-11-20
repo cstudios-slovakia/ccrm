@@ -208,7 +208,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
         </Surface>
       )}
 
-      {phoneTodayOnly && !byDay.has(today) && !loading && cards.length > 0 && (
+      {phoneTodayOnly && !byDay.has(today) && !loading && cards.length > 0 && !entries.some((e) => e.running) && (
         <Surface className="ws-sm:hidden">
           <p className="text-body text-slate-500" data-testid="time-today-empty">{t("Nothing tracked today yet. Start the timer above.", "Dnes ešte nie je zaznamenaný žiadny čas. Spustite časovač vyššie.", "Ma még nincs rögzített idő. Indítsa el az időzítőt fent.")}</p>
         </Surface>
@@ -221,7 +221,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
         const hiddenCost = list.some((m) => !tt.viewer.canCosts && m.userId !== (tt.userId || ""));
         const dayCost = hiddenCost ? null : totalCost(list.map((m) => withoutHiddenCost(m, tt.userId || "", tt.viewer.canCosts)));
         return (
-          <Surface key={date} padding="none" className={`overflow-hidden ${phoneTodayOnly && date !== today ? "hidden ws-sm:block" : ""}`}>
+          <Surface key={date} padding="none" className={`overflow-hidden ${phoneTodayOnly && date !== today && !list.some((m) => m.running) ? "hidden ws-sm:block" : ""}`}>
             <div className={`flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 ${calendar.isOffDay(date) ? "bg-slate-50" : ""}`} data-testid="day-card-header" data-date={date}>
               <div className="flex flex-wrap items-center gap-2">
                 <input
@@ -313,7 +313,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
       {isCurrentWeek && !entriesFocus && cards.some((d) => d !== today) && (
         <button
           type="button"
-          onClick={() => setWholeWeek((v) => !v)}
+          onClick={() => { setSelected(new Set()); setWholeWeek((v) => !v); }}
           aria-expanded={wholeWeek}
           data-testid="time-whole-week"
           className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-ui font-semibold text-primary hover:bg-slate-50 cursor-pointer ws-sm:hidden"

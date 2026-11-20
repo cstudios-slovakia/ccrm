@@ -90,8 +90,8 @@ export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
         />
       </button>
       {!several && (
-        <CycleRing swap radius={18} buttonClass={roundButtonClass("md")} className="shrink-0">
-          <RoundTimerButton
+        <CycleRing swap radius={20} buttonClass={roundButtonClass("pill")} className="shrink-0">
+          <RoundTimerButton size="pill"
             kind="stop"
             label={t("Stop timer", "Zastaviť časovač", "Időzítő leállítása")}
             onClick={(e) => {
@@ -115,7 +115,7 @@ export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
             onClick={() => void (paused.length > 1 ? resumeAll() : resume(paused[0].id))}
             data-testid="header-timer-resume"
             title={t("Resume", "Pokračovať", "Folytatás")}
-            className="inline-flex h-8.5 shrink-0 items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-2.5 text-ui font-semibold text-amber-800 shadow-sm transition-colors hover:border-amber-300 hover:bg-amber-100 cursor-pointer xs:h-9"
+            className="inline-flex h-10 min-w-10 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-2.5 text-ui font-semibold text-amber-800 shadow-sm transition-colors hover:border-amber-300 hover:bg-amber-100 cursor-pointer md:h-9"
           >
             <Play className="size-3.5 fill-current text-amber-600" />
             <span className="hidden md:inline">{t("Paused", "Pozastavené", "Szüneteltetve")} · {t("Resume", "Pokračovať", "Folytatás")}</span>

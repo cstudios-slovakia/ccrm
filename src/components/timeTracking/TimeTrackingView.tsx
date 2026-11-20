@@ -59,9 +59,13 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
   const { recentProjectIds, secondsByProject } = useRecentProjects();
   // Phone, one timer running: the big card replaces the slim bar; its chips bring the bar's fields back.
   const [barOpen, setBarOpen] = useState(false);
-  const singleRunning = tt.running.length === 1;
+  const singleRunning = tt.running.length === 1 && tt.paused.length === 0;
+  const [addOpen, setAddOpen] = useState(false);
   useEffect(() => {
-    if (!singleRunning) setBarOpen(false);
+    if (!singleRunning) {
+      setBarOpen(false);
+      setAddOpen(false);
+    }
   }, [singleRunning]);
 
   useEffect(() => {
@@ -98,7 +102,12 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
         actions={<TimeHeaderActions onNavigate={onNavigate} />}
       />
 
-      <MobileRunningCard deps={deps} editing={barOpen} onToggleEdit={() => setBarOpen((v) => !v)} />
+      <MobileRunningCard deps={deps} editing={barOpen} onToggleEdit={() => setBarOpen((v) => !v)} onAdd={() => setAddOpen((v) => !v)} />
+      {addOpen && singleRunning && (
+        <div className="ws-sm:hidden">
+          <TimerBar deps={deps} recentProjectIds={recentProjectIds} secondsByProject={secondsByProject} adding onStarted={() => setAddOpen(false)} />
+        </div>
+      )}
       <div className={singleRunning && !barOpen ? "hidden ws-sm:contents" : "contents"}>
         <TimerBar deps={deps} recentProjectIds={recentProjectIds} secondsByProject={secondsByProject} />
       </div>

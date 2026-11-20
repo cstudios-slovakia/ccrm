@@ -12,16 +12,18 @@ interface Props {
   /** Shows the timer bar's own fields (project, task, billable) under the card. */
   editing: boolean;
   onToggleEdit: () => void;
+  /** "Add timer" (parallel tracking on): shows the start inputs under the card. */
+  onAdd: () => void;
 }
 
 /**
  * Phone only: the single running timer as one big card at the top of the page, in place of the slim
  * timer bar. The chips open the bar's fields so project, task and billable can be changed while it runs.
  */
-export function MobileRunningCard({ deps, editing, onToggleEdit }: Props) {
-  const { t, primaryRunning: running, running: all, nowMs, stop } = useTimeTracking();
+export function MobileRunningCard({ deps, editing, onToggleEdit, onAdd }: Props) {
+  const { t, primaryRunning: running, running: all, paused, nowMs, stop, settings } = useTimeTracking();
   const lookups = useTimeLookups(deps);
-  if (!running || all.length !== 1) return null;
+  if (!running || all.length !== 1 || paused.length > 0) return null;
   const task = running.taskId ? lookups.taskById.get(running.taskId) : undefined;
   const project = running.projectId ? lookups.projectName(running.projectId, running.projectName) : "";
   const client = running.projectId ? projectClientName(running.projectId, deps.projects, deps.leads) : null;
@@ -57,10 +59,15 @@ export function MobileRunningCard({ deps, editing, onToggleEdit }: Props) {
           <RoundTimerButton kind="stop" size="xl" label={t("Stop", "Zastaviť", "Leállítás")} onClick={() => void stop(running.id)} data-testid="mobile-running-stop" />
         </CycleRing>
       </div>
+      {settings.parallel?.enabled && (
+        <button type="button" onClick={onAdd} data-testid="mobile-running-add" className="mt-3 inline-flex min-h-11 items-center justify-center rounded-2xl px-4 text-ui font-semibold text-primary hover:bg-slate-100 cursor-pointer">
+          {t("+ Add timer", "+ Pridať časovač", "+ Időzítő hozzáadása")}
+        </button>
+      )}
       <p className="mt-2 type-meta text-slate-500">
         {editing
           ? t("Tap a chip again to hide the fields.", "Ďalším ťuknutím na čip polia skryjete.", "Újabb koppintásra a mezők elrejtődnek.")
-          : t("Tap the project or task to change them while running.", "Ťuknutím na projekt alebo úlohu ich môžete zmeniť počas behu.", "Koppintson a projektre vagy feladatra, hogy futás közben módosítsa.")}
+          : t("Tap a chip to edit the project, task, billable and description while running.", "Ťuknutím na čip upravíte projekt, úlohu, fakturovateľnosť a popis počas behu.", "Koppintson egy címkére a projekt, a feladat, a számlázhatóság és a leírás futás közbeni módosításához.")}
       </p>
     </div>
   );

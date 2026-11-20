@@ -74,7 +74,7 @@ export function TimeTrackingMobileBar({ onNavigate, deps, recentProjectIds, seco
 
   return (
     <div className="ws-sm:hidden">
-      <div className="h-16" aria-hidden />
+      <div className={(running && several) || pausedOnly ? "h-44" : "h-16"} aria-hidden />
       {running && several && (
         <CycleRing radius={24} className="fixed inset-x-3 bottom-20 z-40">
         <button
@@ -171,7 +171,10 @@ export function TimeTrackingMobileBar({ onNavigate, deps, recentProjectIds, seco
         data-testid="time-mobile-bar"
         className="fixed inset-x-0 bottom-0 z-40 flex border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]"
       >
-        {item(t("Timer", "Časovač", "Időzítő"), <Timer className="size-4" />, () => onNavigate("time-tracking"), "mobile-tab-timer")}
+        {item(t("Timer", "Časovač", "Időzítő"), <Timer className="size-4" />, () => {
+          onNavigate("time-tracking");
+          window.setTimeout(() => document.querySelector('[data-testid="mobile-running-card"], [data-testid="timer-title"]')?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+        }, "mobile-tab-timer")}
         {item(t("Calendar", "Kalendár", "Naptár"), <CalendarDays className="size-4" />, () => onNavigate("time-tracking/calendar"), "mobile-tab-calendar")}
         {item(t("Tasks", "Úlohy", "Feladatok"), <ListTodo className="size-4" />, () => onNavigate("tasks"), "mobile-tab-tasks")}
         {item(
