@@ -220,6 +220,37 @@ test.describe('Time tracking', () => {
     await expect(row(page, 'Ručný riadok').getByText(/iba hodiny|hours only|csak órák/)).toBeVisible();
   });
 
+  test('"Require a task" also refuses a manual entry: the Day row explains it and opens the drawer with the typed text, a task saves it', async ({ page }) => {
+    await startSession(page);
+    // The rule is off by default; switch it on as the admin does in Settings (the mock saves it like the server).
+    await page.evaluate(async () => {
+      await fetch('/api/time_entries.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'settings', settings: { requireTask: true } }) });
+    });
+    await gotoView(page, '#time-tracking/day');
+    await page.getByRole('tab', { name: /Deň|Day|Nap/ }).click();
+    await page.getByTestId('day-add-row').click();
+    await page.getByTestId('day-add-form').getByTestId('project-picker-trigger').click();
+    await page.getByTestId('project-option').first().click();
+    await page.getByTestId('day-row-notes').fill('Riadok bez úlohy');
+    await page.getByTestId('day-row-hours').fill('1:30');
+    await page.getByTestId('day-row-save').click();
+    // The message names the rule, and the new-entry drawer opens with what was typed so nothing is lost.
+    await expect(page.getByText(/vyžaduje úlohu|requires a task|feladatot vagy jegyet kér/).first()).toBeVisible();
+    await expect(page.getByTestId('entry-drawer')).toBeVisible();
+    await expect(page.getByTestId('entry-title')).toHaveValue('Riadok bez úlohy');
+    await expect(page.getByTestId('entry-duration')).toHaveValue('1:30');
+    // Saving it still without a task is refused again and keeps the drawer open.
+    await page.getByTestId('entry-save').click();
+    await expect(page.getByTestId('entry-drawer')).toBeVisible();
+    // With a task it saves.
+    await page.getByTestId('entry-task-search').fill('Pripraviť');
+    await page.getByTestId('entry-task-option').first().click();
+    await page.getByTestId('entry-link-confirm-ok').click();
+    await expect(page.getByTestId('entry-linked-task')).toContainText('Pripraviť cenovú ponuku');
+    await page.getByTestId('entry-save').click();
+    await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+  });
+
   test('team view: a freelancer is costed at a flat rate, a user with no employee record shows "no rate"', async ({ page }) => {
     await startSession(page, { extraUsers: [FREELANCER] });
     await gotoView(page, '#time-tracking');

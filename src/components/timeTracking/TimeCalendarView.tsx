@@ -52,6 +52,7 @@ import { CalendarPopover, type PopoverState } from "./CalendarPopover";
 import { CalendarTaskRail } from "./CalendarTaskRail";
 import { TimeToolbarSlot } from "./TimeToolbarSlot";
 import { describeTimeLock, useEntryDeletion, useTimeLookups, type TimeDeps } from "./shared";
+import { recoverTaskRequired } from "./timeCreateBridge";
 import { typePx } from "../../utils/viewSize";
 
 interface Props {
@@ -229,7 +230,8 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
       const pos = { top: 48, left: 48 };
       setPopover({ kind: "entry", id: created.id, ...pos });
     } catch (e) {
-      fail(e);
+      // "Require a task": a dragged span has no task; the new-entry drawer opens with its times.
+      if (!recoverTaskRequired(e, { ...timing, projectId, billable: settings.billableByDefault }, tt.notify, t)) fail(e);
     }
   };
 
@@ -796,7 +798,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
                 tt.bump();
                 setPopover({ kind: "entry", id: created.id, top: popover.top, left: popover.left });
               } catch (e) {
-                fail(e);
+                if (!recoverTaskRequired(e, { ...instantsForSpan(day, span), projectId, billable }, tt.notify, t)) fail(e);
               }
             }}
           />

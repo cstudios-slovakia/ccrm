@@ -30,6 +30,7 @@ import { UnsortedInbox } from "./UnsortedInbox";
 import { scopeParam } from "./TimeListView";
 import { useEntriesFocus, useViewingAsOptional, viewingFromScope } from "./ViewingAsContext";
 import { initials, useMoney, useTimeLookups, type TimeDeps } from "./shared";
+import { recoverTaskRequired } from "./timeCreateBridge";
 
 interface Props {
   deps: TimeDeps;
@@ -135,7 +136,11 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
       setRowHours("");
       return true;
     } catch (e) {
-      tt.notify(timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t), "error");
+      // "Require a task": the add row has no ticket picker; the drawer opens with the row's project, notes and hours.
+      const handled = recoverTaskRequired(e, {
+        projectId: rowProject, description: rowNotes.trim() || null, entryDate: selected, durationSec: sec, billable: rowBillable,
+      }, tt.notify, t);
+      if (!handled) tt.notify(timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t), "error");
       return false;
     } finally {
       setBusy(false);

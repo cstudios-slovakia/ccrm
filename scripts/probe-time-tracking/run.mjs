@@ -1410,6 +1410,41 @@ async function main() {
       await te(S.erik, { action: 'stop', all: true });
       check('T24: cleanup: Erik has no running entry, the test clock is off', runningRows().length === 0);
     }
+
+    section('T25: "Require a task on every entry" also covers manual entries');
+    {
+      const setRule = (on) => sql(`UPDATE system_settings SET value = JSON_SET(value, '$.requireTask', ${on ? 'true' : 'false'}, '$.requireProjectToStop', false) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      const countBy = (desc) => Number(rows(`SELECT COUNT(*) AS n FROM time_entries WHERE description = ${q(desc)}`)[0]?.n ?? 0);
+      // An entry that predates the rule: made while it is off.
+      setRule(false);
+      const legacy = await te(S.erik, { action: 'create', description: 'T25 legacy no task', entryDate: '2026-10-21', durationSec: 1800 });
+      check('T25: with the rule off, a manual entry without a task is created', legacy.status === 201, legacy.raw);
+      setRule(true);
+
+      const bare = await te(S.erik, { action: 'create', description: 'T25 bare', entryDate: '2026-10-21', durationSec: 3600 });
+      check('T25: rule on: a manual entry without a task or ticket is refused 422 task_required (the Stop code) and nothing is stored', bare.status === 422 && bare.data?.code === 'task_required' && countBy('T25 bare') === 0, bare.raw);
+      const forOther = await te(S.admin, { action: 'create', userId: 'tt-erik', description: 'T25 for Erik', entryDate: '2026-10-21', durationSec: 3600 });
+      check('T25: ...the same when a manager creates it for someone else', forOther.status === 422 && forOther.data?.code === 'task_required' && countBy('T25 for Erik') === 0, forOther.raw);
+      const linked = await te(S.erik, { action: 'create', taskId: 'task-tt-1', entryDate: '2026-10-21', durationSec: 3600, source: 'manual' });
+      check('T25: ...a manual entry with a task is created', linked.status === 201 && dbEntry(linked.data?.entry?.id)?.task_id === 'task-tt-1', linked.raw);
+
+      const unlink = await te(S.erik, { action: 'update', id: linked.data?.entry?.id, taskId: null });
+      check('T25: an update that removes the task of a finished entry is refused 422 task_required and the link stays', unlink.status === 422 && unlink.data?.code === 'task_required' && dbEntry(linked.data?.entry?.id)?.task_id === 'task-tt-1', unlink.raw);
+      const keep = await te(S.erik, { action: 'update', id: linked.data?.entry?.id, note: 'T25 edited' });
+      check('T25: an update of other fields of a linked entry is accepted', keep.status === 200 && dbEntry(linked.data?.entry?.id)?.note === 'T25 edited', keep.raw);
+      const legacyEdit = await te(S.erik, { action: 'update', id: legacy.data?.entry?.id, note: 'T25 legacy edited', durationSec: 2400 });
+      check('T25: a legacy entry without a task stays editable in its other fields', legacyEdit.status === 200 && dbEntry(legacy.data?.entry?.id)?.note === 'T25 legacy edited' && dbEntry(legacy.data?.entry?.id)?.duration_sec === '2400', legacyEdit.raw);
+
+      const started = await te(S.erik, { action: 'start', description: 'T25 running no task' });
+      check('T25: starting a running timer without a task is still allowed', started.status === 201 || started.status === 200, started.raw);
+      const stopped = await te(S.erik, { action: 'stop', all: true });
+      check('T25: ...and the rule bites at Stop, with the same code', stopped.status === 422 && stopped.data?.code === 'task_required', stopped.raw);
+      setRule(false);
+      await te(S.erik, { action: 'stop', all: true });
+      check('T25: cleanup: the rule is off again and Erik has no running entry', runningRows().length === 0);
+      sql(`UPDATE system_settings SET value = JSON_SET(value, '$.requireProjectToStop', true) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      // Not probed: the Toggl import (needs the Toggl API) writes through its own INSERT and never reads requireTask.
+    }
   } finally {
     teardown();
   }

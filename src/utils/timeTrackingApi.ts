@@ -427,7 +427,7 @@ export const timeErrorMessage = (
     case "project_required":
       return t("Pick a project before stopping the timer.", "Pred zastavením časovača vyberte projekt.", "A leállítás előtt válasszon projektet.");
     case "task_required":
-      return t("Pick a task before stopping the timer.", "Pred zastavením časovača vyberte úlohu.", "A leállítás előtt válasszon feladatot.");
+      return t("This workspace requires a task or ticket on every entry. Link one first.", "Tento pracovný priestor vyžaduje úlohu alebo tiket pri každom zázname. Najprv ich prepojte.", "Ez a munkaterület minden bejegyzéshez feladatot vagy jegyet kér. Előbb kapcsoljon egyet.");
     case "pause_expired":
       return t("This pause has expired. Start a new timer.", "Táto prestávka vypršala. Spustite nový časovač.", "Ez a szünet lejárt. Indítson új időzítőt.");
     case "not_paused":

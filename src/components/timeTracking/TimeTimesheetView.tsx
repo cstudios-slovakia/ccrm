@@ -22,6 +22,7 @@ import { timesheetCost, timesheetCostTotal } from "../../utils/timesheetCost.ts"
 import { countryForScope } from "../../utils/timeCalendar.ts";
 import { formatDuration, parseDurationInput, todayIso, weekDays, weekStart, type TimeEntry } from "../../utils/timeTracking.ts";
 import { TimeApiError, createEntry, timeErrorMessage, updateEntry } from "../../utils/timeTrackingApi.ts";
+import { recoverTaskRequired } from "./timeCreateBridge";
 import { AssignProjectChip } from "./AssignProjectChip";
 import { MoneyText } from "./MoneyText";
 import { ProjectLabel } from "./ProjectLabel";
@@ -194,7 +195,8 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
       });
       tt.bump();
     } catch (e) {
-      fail(e);
+      // "Require a task": a project-only row opens the new-entry drawer with the cell's project, day and hours.
+      if (!recoverTaskRequired(e, { projectId: edit.projectId, entryDate: edit.entryDate, durationSec: edit.durationSec, billable: settings.billableByDefault }, tt.notify, t)) fail(e);
     }
   };
 

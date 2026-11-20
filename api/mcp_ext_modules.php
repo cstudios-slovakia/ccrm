@@ -787,6 +787,9 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
                 throw new \InvalidArgumentException("Invalid time entry link: {$links['code']}");
             }
             mcp_mod_check_te_link_access($pdo, $user, $links);
+            if (!empty($settings['requireTask']) && $links['task_id'] === null && $links['ticket_id'] === null) {
+                throw new \InvalidArgumentException('Workspace settings require a task_id or ticket_id on every time entry (task_required).');
+            }
 
             $billable = array_key_exists('billable', $args) ? ($args['billable'] ? 1 : 0) : (!empty($settings['defaultBillable']) ? 1 : 0);
             $pricing = ccrm_tt_price($pdo, $uid, $timing['entry_date'], $timing['duration_sec'], $settings, true);
@@ -844,6 +847,11 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             }
             if ((string)$cur['user_id'] === $uid) {
                 mcp_mod_check_te_link_access($pdo, $user, $links);
+            }
+            // "Require a task on every entry": only a request that removes the task/ticket of a finished, linked entry is refused.
+            $curLinked = $cur['task_id'] !== null || $cur['ticket_id'] !== null;
+            if (!empty($settings['requireTask']) && $curLinked && $links['task_id'] === null && $links['ticket_id'] === null && $cur['end_at'] !== null) {
+                throw new \InvalidArgumentException('Workspace settings require a task_id or ticket_id on every time entry (task_required).');
             }
 
             $entryDate = mcp_optional_date($args, 'entry_date') ?? (string)$cur['entry_date'];

@@ -58,7 +58,7 @@ export function TimerRulesCard({
         <Row title={titles.project} note={t("For people who can pick a project, a timer cannot be stopped until one is chosen.", "Pre ľudí, ktorí môžu vybrať projekt, sa časovač nedá zastaviť, kým sa nevyberie projekt.", "Azoknál, akik projektet választhatnak, az időzítő nem állítható le, amíg nincs projekt kiválasztva.")}>
           {sw("requireProjectToStop", titles.project)}
         </Row>
-        <Row title={titles.task} note={t("A timer cannot be stopped without a task or ticket. Entries added manually are not checked.", "Časovač sa nedá zastaviť bez úlohy alebo tiketu. Ručne pridané záznamy sa nekontrolujú.", "Feladat vagy jegy nélkül az időzítő nem állítható le. A kézzel felvett bejegyzéseket nem ellenőrzi.")}>
+        <Row title={titles.task} note={t("A timer cannot be stopped, and a manual entry cannot be saved, without a task or ticket.", "Časovač sa nedá zastaviť a ručný záznam sa nedá uložiť bez úlohy alebo tiketu.", "Feladat vagy jegy nélkül az időzítő nem állítható le, és kézi bejegyzés sem menthető.")}>
           {sw("requireTask", titles.task)}
         </Row>
         <Row title={titles.billable} note={t("The Billable switch starts on; you can still change it on each entry.", "Prepínač Fakturovateľné je predvolene zapnutý; na každom zázname ho môžete zmeniť.", "A Számlázható kapcsoló alapból be van kapcsolva; bejegyzésenként továbbra is módosítható.")}>

@@ -431,6 +431,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       }
       if (body.projectId) e.projectId = body.projectId;
       if (needsProject(e)) return route.fulfill(fail('project_required', 422));
+      if (settings.requireTask && !e.taskId && !e.ticketId) return route.fulfill(fail('task_required', 422));
       finish(e, new Date().toISOString());
       e.endReason = 'user';
       settleWorked();
@@ -532,6 +533,11 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       }
       if (!startAt && durationSec == null) return route.fulfill(fail('duration_required', 422));
       if (durationSec != null && (durationSec < 0 || durationSec > 86_400)) return route.fulfill(fail('duration_out_of_range', 422));
+      // "Require a task on every entry": same rule as the server. A finished entry is created with a task or ticket; an update is refused
+      // only when it removes the link of a linked entry or finishes a running one without any. A legacy task-less entry stays editable.
+      if (settings.requireTask && endAt && !links.taskId && !links.ticketId && (!existing || existing.taskId || existing.ticketId || !existing.endAt)) {
+        return route.fulfill(fail('task_required', 422));
+      }
       if ('entryDate' in body && body.entryDate) entryDate = body.entryDate;
       else if (startAt && !existing) entryDate = ymd(new Date(startAt));
       const next: Json = {

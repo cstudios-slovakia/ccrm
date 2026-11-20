@@ -1863,6 +1863,11 @@ if ($action === 'create') {
         ccrm_te_fail($time, 422);
     }
     [$startUtc, $endUtc, $duration, $entryDate] = $time;
+    // "Require a task on every entry": a finished entry is created with a task or ticket (the same `task_required` Stop answers).
+    // A running one is not asked yet; the rule bites at Stop.
+    if (!empty($settings['requireTask']) && $endUtc !== null && $links['task_id'] === null && $links['ticket_id'] === null) {
+        ccrm_te_fail('task_required', 422);
+    }
     /* PHASE6-LOCK-START */
     // An entry that overlaps a locked one changes its worked time and cost: refused like editing it (D3.3).
     ccrm_te_refuse_locked($pdo, $sessionUser, [[
@@ -1965,6 +1970,11 @@ if ($action === 'update') {
         ccrm_te_fail($time, 422);
     }
     [$startUtc, $endUtc, $duration, $entryDate] = $time;
+    // "Require a task on every entry": reject only a request that removes the task/ticket of a linked entry, or that finishes a
+    // running one without any. An entry that predates the rule (never had a task) stays editable in its other fields.
+    if (!empty($settings['requireTask']) && $endUtc !== null && !$isLinkedNow && ($wasLinked || $wasRunning)) {
+        ccrm_te_fail('task_required', 422);
+    }
     /* PHASE6-LOCK-START */
     $lockedRows = [$row];
     if ($entryDate !== (string)$row['entry_date']) {

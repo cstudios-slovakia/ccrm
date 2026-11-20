@@ -13,6 +13,7 @@ import {
 import { TimeApiError, createEntry, timeErrorMessage, updateEntry } from "../../utils/timeTrackingApi.ts";
 import type { Task, Ticket } from "../../types";
 import { isClosedTicketStatus } from "../../utils/tickets";
+import { recoverTaskRequired } from "./timeCreateBridge";
 import { ClockDigits } from "./ClockDigits";
 import { CycleRing } from "./CycleRing";
 import { ProjectPicker } from "./ProjectPicker";
@@ -258,7 +259,12 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
       setDur("");
       tt.bump();
     } catch (e) {
-      fail(e);
+      // "Require a task": the bar has no way to link one for a manual entry, so the drawer opens with what was typed.
+      const handled = recoverTaskRequired(e, {
+        projectId, description: text.trim() || null, note: note.trim() || null, entryDate: date,
+        startAt: startIso, endAt: endIso, durationSec: endIso ? null : seconds, billable,
+      }, tt.notify, t);
+      if (!handled) fail(e);
     } finally {
       setBusy(false);
     }
