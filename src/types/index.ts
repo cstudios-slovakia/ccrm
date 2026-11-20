@@ -845,9 +845,13 @@ export interface Project {
    * Rules: utils/acceptanceCriteria.ts.
    */
   acceptanceCriteria?: AcceptanceCriterion[];
-  /** When the scope was approved (UTC ISO 8601 with `Z`); null = not approved. Criteria created after it are scope creep. */
+  /**
+   * When the scope was approved (UTC ISO 8601 with `Z`); null = not approved. Criteria created after it are
+   * scope creep. Read-only: the server stamps it through its own action (api/project_scope_action.php); a
+   * project save never carries it.
+   */
   scopeApprovedAt?: string | null;
-  /** Name of the user who approved the scope. */
+  /** Name of the user who approved the scope. Read-only, like `scopeApprovedAt`. */
   scopeApprovedBy?: string | null;
   /** Hours the project is expected to take. Null while unset. */
   hoursBudget?: number | null;

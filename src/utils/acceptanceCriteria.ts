@@ -3,14 +3,15 @@
  *
  * A project has a list of criteria and one scope approval. A criterion created after the approval is
  * scope creep (the dashboard's "Scope creep" widget). Removal is soft: the criterion stays in the list
- * with `removedAt` set, so history is not lost. Every function returns a new array or a project patch;
- * the user name and the instant are parameters, nothing here reads the clock.
+ * with `removedAt` set, so history is not lost. Every function returns a new array; the user name and
+ * the instant are parameters, nothing here reads the clock. The approval itself is not edited here: the
+ * server stamps it through its own action (api/project_scope_action.php, src/utils/projectScopeApi.ts).
+ * Withdrawing it is a reset: when the scope is approved again, the criteria added so far count as
+ * original scope, not as creep.
  */
 
-import type { AcceptanceCriterion, Project } from "../types/index.ts";
+import type { AcceptanceCriterion } from "../types/index.ts";
 import { parseAppDate } from "./performance/period.ts";
-
-type ScopeFields = Pick<Project, "scopeApprovedAt" | "scopeApprovedBy">;
 
 /** The title as stored: surrounding space removed, at most 300 characters (the server's limit). */
 export const cleanCriterionTitle = (title: string): string => title.trim().slice(0, 300);
@@ -59,20 +60,6 @@ export const removeCriterion = (
   now: Date,
 ): AcceptanceCriterion[] =>
   (list ?? []).map((c) => (c.id === id && !c.removedAt ? { ...c, removedAt: now.toISOString(), removedBy: userName || null } : c));
-
-/**
- * The patch that approves the scope now. Empty when the scope is already approved: a project has one
- * approval at a time. After `withdrawScopeApproval` a new approval stamps a new instant, so every
- * criterion added in between becomes part of the original scope.
- */
-export const approveScope = (project: ScopeFields, userName: string | null, now: Date): Partial<ScopeFields> =>
-  project.scopeApprovedAt ? {} : { scopeApprovedAt: now.toISOString(), scopeApprovedBy: userName || null };
-
-/**
- * The patch that withdraws the approval, to undo a mistaken one; the criteria are kept. It is a reset:
- * when the scope is approved again, the criteria added so far count as original scope, not as creep.
- */
-export const withdrawScopeApproval = (): Partial<ScopeFields> => ({ scopeApprovedAt: null, scopeApprovedBy: null });
 
 /**
  * Was the criterion created strictly after the approval instant, compared in whole seconds (the server

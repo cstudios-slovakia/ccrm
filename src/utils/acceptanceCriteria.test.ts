@@ -3,14 +3,12 @@ import assert from "node:assert/strict";
 import type { AcceptanceCriterion } from "../types/index.ts";
 import {
   addCriterion,
-  approveScope,
   countCriteria,
   isAddedAfterApproval,
   liveCriteria,
   removeCriterion,
   renameCriterion,
   toggleCriterionDone,
-  withdrawScopeApproval,
 } from "./acceptanceCriteria.ts";
 
 const T0 = new Date("2026-11-10T09:00:00.000Z");
@@ -56,15 +54,6 @@ test("removeCriterion is soft: the criterion stays with removedAt and removedBy"
   assert.deepEqual(liveCriteria(next).map((c) => c.id), ["b"]);
   // removing it again keeps the first removal
   assert.equal(removeCriterion(next, "a", "Carl", new Date("2026-12-01T00:00:00Z"))[0].removedBy, "Boris");
-});
-
-test("approveScope gives a patch with the user and instant; a second approval changes nothing", () => {
-  assert.deepEqual(approveScope({}, "Anna", T0), { scopeApprovedAt: "2026-11-10T09:00:00.000Z", scopeApprovedBy: "Anna" });
-  assert.deepEqual(approveScope({ scopeApprovedAt: T0.toISOString(), scopeApprovedBy: "Anna" }, "Boris", T1), {});
-});
-
-test("withdrawScopeApproval clears both fields", () => {
-  assert.deepEqual(withdrawScopeApproval(), { scopeApprovedAt: null, scopeApprovedBy: null });
 });
 
 test("isAddedAfterApproval: strictly after the approval, compared in whole seconds", () => {

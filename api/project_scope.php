@@ -7,8 +7,9 @@
  *
  * The audit trail belongs to the server: who added or removed a criterion and when, and who approved the
  * scope and when, come from the server's clock and the session user, never from the client's word. The
- * client's own stamps are provisional until its next pull. sync.php writes through
- * ccrm_scope_resolve_write(); the merge rules are the pure functions below. No DDL here.
+ * client's own stamps are provisional until its next pull. sync.php writes the criteria through
+ * ccrm_scope_resolve_write() (pure merge rules below); the approval is written only by
+ * ccrm_scope_apply_action(), never by a project save. No DDL here.
  */
 
 if (!function_exists('ccrm_scope_iso_utc')) {
@@ -135,50 +136,68 @@ if (!function_exists('ccrm_scope_merge_criteria')) {
     }
 }
 
-if (!function_exists('ccrm_scope_merge_approval')) {
+if (!function_exists('ccrm_scope_resolve_write')) {
     /**
-     * The approval to store, as [UTC ISO instant|null, name|null]. Pure. `$clientAt` is the value the
-     * client sent for `scopeApprovedAt` (the key is present).
-     *  - Client null or "": the approval is withdrawn, both are cleared.
-     *  - Stored not set, client set: approved now by `$user` (`$nowIso`); the client's instant and name
-     *    are ignored.
-     *  - Both set: the stored approval stays.
+     * What the projects upsert writes for one project payload `$p`: the criteria merge above applied to the
+     * stored list (read inside the caller's transaction). Returns `criteria` (JSON text or null) and
+     * `criteriaSent`, the 0/1 flag for `IF(? = 1, VALUES(col), col)`: a payload without the list changes
+     * nothing. The scope approval is not here on purpose: it never rides on a project save (a stale tab
+     * would clear or restore it); see ccrm_scope_apply_action(). Needs the column (healed above the transaction).
      */
-    function ccrm_scope_merge_approval(?string $storedAt, ?string $storedBy, $clientAt, string $nowIso, ?string $user): array {
-        if ($clientAt === null || (is_string($clientAt) && trim($clientAt) === '')) return [null, null];
-        if ($storedAt !== null) return [$storedAt, $storedBy];
-        return [$nowIso, ccrm_scope_name($user)];
+    function ccrm_scope_resolve_write(\PDO $pdo, string $projectId, array $p, ?string $user): array {
+        if (!array_key_exists('acceptanceCriteria', $p) || !is_array($p['acceptanceCriteria'])) {
+            return ['criteria' => null, 'criteriaSent' => 0];
+        }
+        $stmt = $pdo->prepare("SELECT `acceptance_criteria_json` FROM `projects` WHERE `id` = ? LIMIT 1");
+        $stmt->execute([$projectId]);
+        $stored = ccrm_scope_criteria_decode($stmt->fetchColumn() ?: null);
+        $merged = ccrm_scope_merge_criteria($stored, $p['acceptanceCriteria'], gmdate('Y-m-d\TH:i:s\Z'), $user);
+        return ['criteria' => $merged ? json_encode($merged, JSON_UNESCAPED_UNICODE) : null, 'criteriaSent' => 1];
     }
 }
 
-if (!function_exists('ccrm_scope_resolve_write')) {
+if (!function_exists('ccrm_scope_apply_action')) {
     /**
-     * What the projects upsert writes for one project payload `$p`: the merge rules above applied to the
-     * stored row (read inside the caller's transaction). A key the payload omits changes nothing:
-     * `criteriaSent` / `scopeSent` are the 0/1 flags for `IF(? = 1, VALUES(col), col)`. `scopeApprovedBy`
-     * is never taken from the client. Returns criteria (JSON text or null), at (DATETIME UTC or null),
-     * by, criteriaSent, scopeSent. Needs the three columns to exist (healed above the transaction).
+     * The one-shot approval action (api/project_scope_action.php). The approval is stamped here, by the
+     * server's clock and the session user, and only through this function: a project save never carries it.
+     *  - "approve": only when the project is not approved; sets `scope_approved_at` (now, UTC) and
+     *    `scope_approved_by` (`$user`). Already approved: the stored values are returned unchanged.
+     *  - "withdraw": clears both. Not approved: nothing changes.
+     * The row is read with FOR UPDATE inside a transaction, so two clicks cannot both stamp. Returns
+     * ['scopeApprovedAt' => UTC ISO with Z|null, 'scopeApprovedBy' => name|null], or null when the project
+     * does not exist. Throws \InvalidArgumentException for another action. No DDL: the columns must exist.
      */
-    function ccrm_scope_resolve_write(\PDO $pdo, string $projectId, array $p, ?string $user): array {
-        $criteriaSent = array_key_exists('acceptanceCriteria', $p) && is_array($p['acceptanceCriteria']);
-        $scopeSent = array_key_exists('scopeApprovedAt', $p);
-        $out = ['criteria' => null, 'at' => null, 'by' => null, 'criteriaSent' => $criteriaSent ? 1 : 0, 'scopeSent' => $scopeSent ? 1 : 0];
-        if (!$criteriaSent && !$scopeSent) return $out;
-
-        $stmt = $pdo->prepare("SELECT `acceptance_criteria_json`, `scope_approved_at`, `scope_approved_by` FROM `projects` WHERE `id` = ? LIMIT 1");
-        $stmt->execute([$projectId]);
-        $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
-        $nowIso = gmdate('Y-m-d\TH:i:s\Z');
-
-        if ($criteriaSent) {
-            $merged = ccrm_scope_merge_criteria(ccrm_scope_criteria_decode($row['acceptance_criteria_json'] ?? null), $p['acceptanceCriteria'], $nowIso, $user);
-            $out['criteria'] = $merged ? json_encode($merged, JSON_UNESCAPED_UNICODE) : null;
+    function ccrm_scope_apply_action(\PDO $pdo, string $projectId, string $action, ?string $user): ?array {
+        if ($action !== 'approve' && $action !== 'withdraw') {
+            throw new \InvalidArgumentException('Unknown action.');
         }
-        if ($scopeSent) {
-            [$at, $by] = ccrm_scope_merge_approval(ccrm_scope_ts_from_db($row['scope_approved_at'] ?? null), ccrm_scope_name($row['scope_approved_by'] ?? null), $p['scopeApprovedAt'], $nowIso, $user);
-            $out['at'] = ccrm_scope_ts_to_db($at);
-            $out['by'] = $by;
+        $lock = $pdo->getAttribute(\PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
+        $pdo->beginTransaction();
+        try {
+            $sel = $pdo->prepare("SELECT `scope_approved_at`, `scope_approved_by` FROM `projects` WHERE `id` = ? LIMIT 1" . $lock);
+            $sel->execute([$projectId]);
+            $row = $sel->fetch(\PDO::FETCH_ASSOC);
+            if (!$row) {
+                $pdo->rollBack();
+                return null;
+            }
+            $at = ccrm_scope_ts_from_db($row['scope_approved_at'] ?? null);
+            $by = ccrm_scope_name($row['scope_approved_by'] ?? null);
+            if ($action === 'approve' && $at === null) {
+                $at = gmdate('Y-m-d\TH:i:s\Z');
+                $by = ccrm_scope_name($user);
+                $pdo->prepare("UPDATE `projects` SET `scope_approved_at` = ?, `scope_approved_by` = ? WHERE `id` = ?")
+                    ->execute([ccrm_scope_ts_to_db($at), $by, $projectId]);
+            } elseif ($action === 'withdraw' && ($row['scope_approved_at'] !== null || $row['scope_approved_by'] !== null)) {
+                $at = null;
+                $by = null;
+                $pdo->prepare("UPDATE `projects` SET `scope_approved_at` = NULL, `scope_approved_by` = NULL WHERE `id` = ?")->execute([$projectId]);
+            }
+            $pdo->commit();
+            return ['scopeApprovedAt' => $at, 'scopeApprovedBy' => $by];
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $e;
         }
-        return $out;
     }
 }

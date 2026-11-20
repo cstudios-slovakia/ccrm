@@ -5,15 +5,14 @@ import type { Language } from "../../utils/translations";
 import { formatDateLocalized } from "../../utils/localTime";
 import {
   addCriterion,
-  approveScope,
   countCriteria,
   isAddedAfterApproval,
   liveCriteria,
   removeCriterion,
   renameCriterion,
   toggleCriterionDone,
-  withdrawScopeApproval,
 } from "../../utils/acceptanceCriteria";
+import { requestScopeAction, type ScopeApproval } from "../../utils/projectScopeApi";
 import { parseAppDate, toIsoDay } from "../../utils/performance/period";
 import { addedAfterApprovalCount, countNoun, makeT } from "../dashboard/performance/format";
 import { EmptyState, Surface } from "../layout";
@@ -64,7 +63,8 @@ const CriterionTitle = ({
 /**
  * The acceptance criteria of a project and its scope approval. Criteria added after the approval
  * are scope creep (dashboard widget "Scope creep"). The criteria are part of the project: every
- * change goes out through `onPatch`, which saves the project the way the view always does.
+ * change goes out through `onPatch`, which saves the project the way the view always does. The
+ * approval is not: "Approve scope" and "Withdraw approval" are one-shot server requests.
  */
 export const ProjectAcceptanceCriteria = ({
   project,
@@ -86,11 +86,30 @@ export const ProjectAcceptanceCriteria = ({
   const canEdit = canEditProject && !isNew;
   const [draft, setDraft] = useState("");
   const [confirmingWithdraw, setConfirmingWithdraw] = useState(false);
+  // The approval is stamped by the server through its own request, never through a project save. What
+  // the server answered is shown at once; the next pull brings the same values into `project`.
+  const [answer, setAnswer] = useState<ScopeApproval | null>(null);
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setAnswer(null), [project.id, project.scopeApprovedAt, project.scopeApprovedBy]);
+  const approvedAt = (answer ? answer.scopeApprovedAt : project.scopeApprovedAt) ?? null;
+  const approvedBy = (answer ? answer.scopeApprovedBy : project.scopeApprovedBy) ?? null;
   const list = project.acceptanceCriteria ?? [];
   const live = liveCriteria(list);
-  const approvedAt = project.scopeApprovedAt ?? null;
   const approved = !!parseAppDate(approvedAt);
   const { added } = countCriteria(list, approvedAt);
+
+  const runScopeAction = async (action: "approve" | "withdraw") => {
+    setPending(true);
+    setFailed(false);
+    try {
+      setAnswer(await requestScopeAction(project.id, action));
+    } catch {
+      setFailed(true);
+    } finally {
+      setPending(false);
+    }
+  };
 
   const save = (next: AcceptanceCriterion[]) => onPatch({ acceptanceCriteria: next });
   const add = () => {
@@ -125,7 +144,7 @@ export const ProjectAcceptanceCriteria = ({
           <>
             <p className="type-meta text-slate-600">
               {t("Scope approved", "Rozsah schválený", "Terjedelem jóváhagyva")} {localDay(approvedAt, language)}
-              {project.scopeApprovedBy ? ` · ${project.scopeApprovedBy}` : ""}
+              {approvedBy ? ` · ${approvedBy}` : ""}
             </p>
             {canEdit &&
               (confirmingWithdraw ? (
@@ -139,11 +158,12 @@ export const ProjectAcceptanceCriteria = ({
                   </span>
                   <button
                     type="button"
+                    disabled={pending}
                     onClick={() => {
                       setConfirmingWithdraw(false);
-                      onPatch(withdrawScopeApproval());
+                      void runScopeAction("withdraw");
                     }}
-                    className="h-8 cursor-pointer rounded-xl border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-700 hover:bg-slate-50"
+                    className="h-8 cursor-pointer rounded-xl border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-default disabled:opacity-50"
                   >
                     {t("Withdraw approval", "Zrušiť schválenie", "Jóváhagyás visszavonása")}
                   </button>
@@ -158,8 +178,9 @@ export const ProjectAcceptanceCriteria = ({
               ) : (
                 <button
                   type="button"
+                  disabled={pending}
                   onClick={() => setConfirmingWithdraw(true)}
-                  className="h-8 cursor-pointer rounded-xl px-3 text-ui font-semibold text-slate-600 hover:bg-slate-100"
+                  className="h-8 cursor-pointer rounded-xl px-3 text-ui font-semibold text-slate-600 hover:bg-slate-100 disabled:cursor-default disabled:opacity-50"
                 >
                   {t("Withdraw approval", "Zrušiť schválenie", "Jóváhagyás visszavonása")}
                 </button>
@@ -177,8 +198,9 @@ export const ProjectAcceptanceCriteria = ({
             {canEdit && (
               <button
                 type="button"
-                onClick={() => onPatch(approveScope(project, userName, new Date()))}
-                className="h-9 shrink-0 cursor-pointer rounded-xl bg-indigo-600 px-4 text-ui font-semibold text-white hover:bg-indigo-500"
+                disabled={pending}
+                onClick={() => void runScopeAction("approve")}
+                className="h-9 shrink-0 cursor-pointer rounded-xl bg-indigo-600 px-4 text-ui font-semibold text-white hover:bg-indigo-500 disabled:cursor-default disabled:opacity-50"
               >
                 {t("Approve scope", "Schváliť rozsah", "Terjedelem jóváhagyása")}
               </button>
@@ -186,6 +208,15 @@ export const ProjectAcceptanceCriteria = ({
           </>
         )}
       </Surface>
+      {failed && (
+        <p role="alert" className="type-meta text-rose-700">
+          {t(
+            "The approval could not be saved. Try again.",
+            "Schválenie sa nepodarilo uložiť. Skúste to znova.",
+            "A jóváhagyást nem sikerült elmenteni. Próbálja újra.",
+          )}
+        </p>
+      )}
 
       {live.length === 0 ? (
         <EmptyState
