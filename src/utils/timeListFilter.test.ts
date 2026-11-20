@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EMPTY_LIST_FILTER, NO_PROJECT, activeFilterCount, applyListFilter, filterOptions, toggleIn } from "./timeListFilter.ts";
+import { EMPTY_LIST_FILTER, NO_PROJECT, activeFilterCount, applyListFilter, filterOptions, staleSelections, toggleIn } from "./timeListFilter.ts";
 import type { TimeEntry } from "./timeTracking.ts";
 
 const e = (id: string, over: Partial<TimeEntry>): TimeEntry => ({ id, projectId: null, billable: true, tags: [], ...over }) as TimeEntry;
@@ -34,4 +34,11 @@ test("options list the projects present (sorted), no-project and tags", () => {
   assert.deepEqual(o.tags, ["a", "b"]);
   assert.deepEqual(toggleIn(["x"], "y"), ["x", "y"]);
   assert.deepEqual(toggleIn(["x", "y"], "x"), ["y"]);
+});
+
+test("staleSelections lists selected values the shown week does not offer", () => {
+  const o = filterOptions(list);
+  const s = staleSelections({ projects: ["p1", "gone", NO_PROJECT], billable: "any", tags: ["a", "old"] }, o);
+  assert.deepEqual(s, { projects: ["gone"], tags: ["old"] });
+  assert.deepEqual(staleSelections(EMPTY_LIST_FILTER, o), { projects: [], tags: [] });
 });

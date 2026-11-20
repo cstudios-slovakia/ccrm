@@ -50,5 +50,11 @@ export const filterOptions = (entries: readonly TimeEntry[]): { projects: { id: 
   };
 };
 
+/** Selected projects and tags that the shown week does not offer (picked on another week); they still need a chip to switch off. */
+export const staleSelections = (f: ListFilter, options: ReturnType<typeof filterOptions>): { projects: string[]; tags: string[] } => ({
+  projects: f.projects.filter((id) => id !== NO_PROJECT && !options.projects.some((p) => p.id === id)),
+  tags: f.tags.filter((tag) => !options.tags.includes(tag)),
+});
+
 /** Toggle a value in a list (returns a new list). */
 export const toggleIn = (list: readonly string[], value: string): string[] => (list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);

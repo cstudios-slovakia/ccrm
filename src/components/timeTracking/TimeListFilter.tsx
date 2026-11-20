@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Filter } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
-import { EMPTY_LIST_FILTER, NO_PROJECT, activeFilterCount, filterOptions, toggleIn, type BillableFilter, type ListFilter } from "../../utils/timeListFilter.ts";
+import { EMPTY_LIST_FILTER, NO_PROJECT, activeFilterCount, filterOptions, staleSelections, toggleIn, type BillableFilter, type ListFilter } from "../../utils/timeListFilter.ts";
 import type { TimeEntry } from "../../utils/timeTracking.ts";
 
 interface Ctx {
@@ -25,10 +25,10 @@ export function useTimeListFilter(): Ctx {
 }
 
 const chip = (on: boolean) =>
-  `inline-flex min-h-9 items-center rounded-full border px-3 text-ui font-semibold cursor-pointer ${on ? "border-primary bg-primary text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`;
+  `inline-flex min-h-9 items-center rounded-full border px-3 text-ui font-semibold cursor-pointer ${on ? "border-primary bg-primary text-primary-foreground" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`;
 
 /** The funnel button and its popover. `entries` are the shown week's loaded entries (the options come from them). */
-export function TimeListFilterButton({ entries }: { entries: readonly TimeEntry[] }) {
+export function TimeListFilterButton({ entries, projectLabel }: { entries: readonly TimeEntry[]; projectLabel: (id: string) => string | null }) {
   const { t } = useTimeTracking();
   const { filter, setFilter } = useTimeListFilter();
   const [open, setOpen] = useState(false);
@@ -37,6 +37,7 @@ export function TimeListFilterButton({ entries }: { entries: readonly TimeEntry[
   const popRef = useRef<HTMLDivElement | null>(null);
   const options = useMemo(() => filterOptions(entries), [entries]);
   const count = activeFilterCount(filter);
+  const stale = staleSelections(filter, options);
 
   useEffect(() => {
     if (!open) return;
@@ -83,7 +84,7 @@ export function TimeListFilterButton({ entries }: { entries: readonly TimeEntry[
       >
         <Filter className="size-4" />
         {count > 0 && (
-          <span className="absolute -right-1.5 -top-1.5 inline-flex size-4 items-center justify-center rounded-full bg-primary text-micro font-bold text-white" data-testid="time-filter-count">{count}</span>
+          <span className="absolute -right-1.5 -top-1.5 inline-flex size-4 items-center justify-center rounded-full bg-primary text-micro font-bold text-primary-foreground" data-testid="time-filter-count">{count}</span>
         )}
       </button>
       {open && (
@@ -93,7 +94,7 @@ export function TimeListFilterButton({ entries }: { entries: readonly TimeEntry[
           role="dialog"
           aria-label={label}
           data-testid="time-filter-popover"
-          className="fixed inset-x-4 bottom-4 z-50 grid max-h-[70vh] gap-4 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl outline-none ws-sm:absolute ws-sm:inset-x-auto ws-sm:bottom-auto ws-sm:right-0 ws-sm:top-full ws-sm:mt-2 ws-sm:w-80 ws-sm:max-h-96"
+          className="fixed inset-x-4 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-[100000] grid max-h-[60vh] gap-4 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl outline-none ws-sm:absolute ws-sm:inset-x-auto ws-sm:bottom-auto ws-sm:right-0 ws-sm:top-full ws-sm:mt-2 ws-sm:w-80 ws-sm:max-h-96"
         >
           <fieldset className="grid gap-2">
             <legend className="mb-1 type-meta font-semibold text-slate-500">{t("Project", "Projekt", "Projekt")}</legend>
@@ -101,6 +102,11 @@ export function TimeListFilterButton({ entries }: { entries: readonly TimeEntry[
               {options.projects.map((p) => (
                 <button key={p.id} type="button" aria-pressed={filter.projects.includes(p.id)} onClick={() => setFilter({ ...filter, projects: toggleIn(filter.projects, p.id) })} className={chip(filter.projects.includes(p.id))} data-testid="time-filter-project">
                   {p.name}
+                </button>
+              ))}
+              {stale.projects.map((id) => (
+                <button key={id} type="button" aria-pressed onClick={() => setFilter({ ...filter, projects: toggleIn(filter.projects, id) })} className={chip(true)} data-testid="time-filter-project">
+                  {projectLabel(id) ?? t("Unknown project", "Neznámy projekt", "Ismeretlen projekt")}
                 </button>
               ))}
               {options.hasNoProject && (
@@ -120,11 +126,11 @@ export function TimeListFilterButton({ entries }: { entries: readonly TimeEntry[
               ))}
             </div>
           </fieldset>
-          {options.tags.length > 0 && (
+          {(options.tags.length > 0 || stale.tags.length > 0) && (
             <fieldset className="grid gap-2">
               <legend className="mb-1 type-meta font-semibold text-slate-500">{t("Tags", "Štítky", "Címkék")}</legend>
               <div className="flex flex-wrap gap-2">
-                {options.tags.map((tag) => (
+                {[...options.tags, ...stale.tags].map((tag) => (
                   <button key={tag} type="button" aria-pressed={filter.tags.includes(tag)} onClick={() => setFilter({ ...filter, tags: toggleIn(filter.tags, tag) })} className={chip(filter.tags.includes(tag))} data-testid="time-filter-tag">
                     {tag}
                   </button>

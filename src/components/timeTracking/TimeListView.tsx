@@ -32,7 +32,7 @@ import { TimeToolbarEndSlot, TimeToolbarSlot } from "./TimeToolbarSlot";
 import { TimeListFilterButton, useTimeListFilter } from "./TimeListFilter";
 import { EMPTY_LIST_FILTER, applyListFilter, isFilterActive } from "../../utils/timeListFilter.ts";
 import { EntriesFocusBanner, clearEntriesFocus, useEntriesFocus, useViewingAsOptional, viewingFromScope } from "./ViewingAsContext";
-import { useMoney, type TimeDeps } from "./shared";
+import { useMoney, useTimeLookups, type TimeDeps } from "./shared";
 
 interface Props {
   deps: TimeDeps;
@@ -48,6 +48,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
   const tt = useTimeTracking();
   const { t, nowMs, settings } = tt;
   const money = useMoney(deps);
+  const lookups = useTimeLookups(deps);
   const [anchor, setAnchor] = useState(todayIso());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const { filter, setFilter } = useTimeListFilter();
@@ -93,6 +94,11 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
   }, [anchor, tt.workCountry, tt.enabled]);
   // The bulk bar only ever acts on rows that are shown: a changed filter drops the selection.
   useEffect(() => setSelected(new Set()), [anchor, viewScope, entriesFocus?.nonce, filter]);
+  // A Team-cell "entries focus" opens exactly those entries: an old filter must never hide them.
+  useEffect(() => {
+    if (entriesFocus) setFilter(EMPTY_LIST_FILTER);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entriesFocus?.nonce]);
 
   // The stat tiles keep showing the whole week; only the day cards follow the filter.
   const allByDay = useMemo(() => groupByDay(entries), [entries]);
@@ -197,13 +203,15 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
       </TimeToolbarSlot>
 
       <TimeToolbarEndSlot>
-        <TimeListFilterButton entries={entries} />
+        <TimeListFilterButton entries={entries} projectLabel={(id) => (lookups.projectById.has(id) ? lookups.projectName(id) : null)} />
       </TimeToolbarEndSlot>
 
       <div className="flex flex-wrap items-center gap-2 empty:hidden">
         {filterActive && (
           <p className="type-meta text-slate-500" data-testid="time-filter-summary" role="status">
             {t(`Filtered: ${shown.length} of ${entries.length} entries`, `Filtrované: ${shown.length} z ${entries.length} záznamov`, `Szűrve: ${shown.length} / ${entries.length} bejegyzés`)}
+            {" · "}
+            {t("the totals above are for the whole week", "súčty vyššie platia za celý týždeň", "a fenti összesítések az egész hétre vonatkoznak")}
             {" · "}
             <button type="button" onClick={() => setFilter(EMPTY_LIST_FILTER)} className="font-semibold text-primary hover:underline cursor-pointer" data-testid="time-filter-summary-clear">{t("Clear", "Zrušiť", "Törlés")}</button>
           </p>
@@ -230,6 +238,15 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
       {cards.length === 0 && !loading && !(filterActive && entries.length > 0) && (
         <Surface>
           <p className="text-body text-slate-500" data-testid="time-empty">{t("No time tracked this week. Start the timer above, or add time manually.", "Tento týždeň nie je zaznamenaný žiadny čas. Spustite časovač vyššie alebo pridajte čas ručne.", "Ezen a héten nincs rögzített idő. Indítsa el az időzítőt, vagy adjon hozzá kézzel.")}</p>
+        </Surface>
+      )}
+
+      {phoneTodayOnly && filterActive && !byDay.has(today) && !loading && entries.length > 0 && !shown.some((e) => e.running) && (
+        <Surface className="ws-sm:hidden">
+          <p className="text-body text-slate-500" data-testid="time-filter-today-empty">
+            {t("No matching entries today.", "Dnes nie sú žiadne zodpovedajúce záznamy.", "Ma nincs egyező bejegyzés.")}{" "}
+            <button type="button" onClick={() => setFilter(EMPTY_LIST_FILTER)} className="font-semibold text-primary hover:underline cursor-pointer">{t("Clear", "Zrušiť", "Törlés")}</button>
+          </p>
         </Surface>
       )}
 
