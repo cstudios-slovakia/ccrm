@@ -81,7 +81,7 @@ export const PerformanceOverview = ({
         )}
         <div className={ROW_EQUAL_3}>
           <ScopeCreepCard data={data.scopeCreep} language={language} />
-          <DeploymentsCard data={data.deployments} language={language} now={now} />
+          <DeploymentsCard data={data.deployments} state={data.deploymentsState} language={language} now={now} />
           <ThroughputCard data={data.throughput} labels={labels} language={language} />
         </div>
       </Section>

@@ -31,6 +31,7 @@ import { openProjectStatuses, projectDisplayName, type ProjectStatusDef } from "
 import { resolveTicketSlaTargetMinutes } from "../../../utils/tickets";
 import { useTimeTracking } from "../../../hooks/useTimeTracking";
 import { computeCashflow } from "../../../utils/performance/cashflow";
+import { computeDeployments } from "../../../utils/performance/deployments";
 import { computeDeadlines } from "../../../utils/performance/deadlines";
 import { computeDso } from "../../../utils/performance/dso";
 import { buildInvoicingData } from "../../../utils/performance/invoicing";
@@ -52,9 +53,11 @@ import { computeScopeCreep } from "../../../utils/performance/scopeCreep";
 import { computeAssignedTasks, computeThroughput } from "../../../utils/performance/tasks";
 import { computeUtilization } from "../../../utils/performance/utilization";
 import { computeResponseTime, computeTicketsByStatus, firstResponseWithinSla } from "../../../utils/performance/tickets";
+import { useOverviewPushes } from "./useOverviewPushes";
 import { useOverviewTimeEntries } from "./useOverviewTimeEntries";
 import type {
   CashflowData,
+  DeploymentsState,
   DsoData,
   PerformanceOverviewData,
   ProfitabilityData,
@@ -234,6 +237,18 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
     [projects, isActive, clientNameOf, nameOf, today],
   );
 
+  // GitHub pushes: fetched only while the tab is shown and at least one project is paired.
+  const pairedProjects = useMemo(() => projects.filter((project) => !project.archived && Boolean(project.githubRepo)), [projects]);
+  const pushes = useOverviewPushes(active && pairedProjects.length > 0, period);
+  const deploymentsState: DeploymentsState =
+    pushes.status === "ready" ? "ready" : pushes.status === "failed" ? "failed" : pushes.status === "forbidden" ? "forbidden" : "loading";
+  const deployments = useMemo(
+    () => (pushes.summary && deploymentsState === "ready" && pairedProjects.length > 0
+      ? computeDeployments({ summary: pushes.summary, projects: projects.filter((project) => !project.archived), now: today, nameOf })
+      : null),
+    [pushes.summary, deploymentsState, pairedProjects, projects, today, nameOf],
+  );
+
   const scopeCreep = useMemo(() => computeScopeCreep({ projects, period, nameOf }), [projects, period, nameOf]);
 
   const throughput = useMemo(
@@ -289,8 +304,9 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
       profitability,
       deadlines,
       scopeCreep,
-      // Phase 2: not stored yet.
-      deployments: null,
+      deployments,
+      // No paired project: nothing to load, the card shows its "not connected" state.
+      deploymentsState: pairedProjects.length > 0 ? deploymentsState : undefined,
       throughput,
       utilization,
       utilizationState,
@@ -303,7 +319,7 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
     }),
     [
       period, labels, kpiStrip, invoicing, cashflow, recurringIncome, dso, profitability, deadlines, scopeCreep,
-      throughput, utilization, utilizationState, timeEntries.truncated, assignedTasks, reworkRatio, reworkCount, ticketsByStatus, responseTime,
+      deployments, deploymentsState, pairedProjects.length, throughput, utilization, utilizationState, timeEntries.truncated, assignedTasks, reworkRatio, reworkCount, ticketsByStatus, responseTime,
     ],
   );
 };

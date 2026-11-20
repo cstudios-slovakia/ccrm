@@ -208,6 +208,9 @@ export interface ScopeCreepData {
   scaleMax: number;
 }
 
+/** "loading": the pushes are on their way; "failed": the request failed; "forbidden": the server refused (no access to projects). Absent = "ready". */
+export type DeploymentsState = "loading" | "ready" | "failed" | "forbidden";
+
 export interface DeploymentsData {
   /** Pushes in the period: "86 pushov". */
   total: number;
@@ -312,8 +315,12 @@ export interface PerformanceOverviewData {
   deadlines: DeadlinesData;
   /** From the projects' acceptance criteria; null is still allowed by the contract but the overview always fills it. */
   scopeCreep: ScopeCreepData | null;
-  /** Phase 2 (item d): null until GitHub pushes are stored. */
+  /**
+   * From the stored GitHub pushes. Null while no non-archived project is paired with a repository
+   * ("not connected" empty state) and while `deploymentsState` is not "ready".
+   */
   deployments: DeploymentsData | null;
+  deploymentsState?: DeploymentsState;
   throughput: ThroughputData;
   /** Worked time on Bug tasks; non-null only when `utilizationState` is "ready". */
   utilization: UtilizationData | null;

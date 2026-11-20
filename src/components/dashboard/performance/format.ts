@@ -124,13 +124,14 @@ export const initials = (name: string): string => {
 
 /* -------------------------------------------------------------- plurals */
 
-export type Noun = "task" | "ticket" | "push" | "criterion" | "deal" | "lead" | "project" | "item" | "offer" | "status";
+export type Noun = "task" | "ticket" | "push" | "commit" | "criterion" | "deal" | "lead" | "project" | "item" | "offer" | "status";
 
 /** sk: [1, 2-4, 5+ and 0, genitive singular]; en: [one, other]; hu: one form after a numeral. */
 const NOUNS: Record<Noun, { sk: [string, string, string, string]; en: [string, string]; hu: string }> = {
   task: { sk: ["úloha", "úlohy", "úloh", "úlohy"], en: ["task", "tasks"], hu: "feladat" },
   ticket: { sk: ["ticket", "tickety", "ticketov", "ticketu"], en: ["ticket", "tickets"], hu: "ticket" },
   push: { sk: ["push", "pushe", "pushov", "pushu"], en: ["push", "pushes"], hu: "push" },
+  commit: { sk: ["commit", "commity", "commitov", "commitu"], en: ["commit", "commits"], hu: "commit" },
   criterion: { sk: ["kritérium", "kritériá", "kritérií", "kritéria"], en: ["criterion", "criteria"], hu: "kritérium" },
   deal: { sk: ["zákazka", "zákazky", "zákaziek", "zákazky"], en: ["deal", "deals"], hu: "megrendelés" },
   lead: { sk: ["lead", "leady", "leadov", "leadu"], en: ["lead", "leads"], hu: "lead" },

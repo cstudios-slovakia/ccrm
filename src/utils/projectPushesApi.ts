@@ -34,11 +34,21 @@ export interface ProjectPush {
 
 const ENDPOINT = "/api/project_pushes.php";
 
+/** A failed read; `status` is the HTTP status (403 = the user may not view projects). */
+export class ProjectPushesError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ProjectPushesError";
+    this.status = status;
+  }
+}
+
 const get = async <T>(query: URLSearchParams): Promise<T> => {
   const suffix = query.toString();
   const response = await fetch(suffix ? `${ENDPOINT}?${suffix}` : ENDPOINT, { credentials: "same-origin" });
   const result = await response.json().catch(() => ({}));
-  if (!response.ok || result.success !== true) throw new Error(result.message || "The pushes could not be loaded.");
+  if (!response.ok || result.success !== true) throw new ProjectPushesError(result.message || "The pushes could not be loaded.", response.status);
   return result as T;
 };
 

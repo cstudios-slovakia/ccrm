@@ -100,6 +100,7 @@ test("sk plurals of every counted noun", () => {
   assert.deepEqual(forms("task"), ["úloha", "úlohy", "úloh"]);
   assert.deepEqual(forms("ticket"), ["ticket", "tickety", "ticketov"]);
   assert.deepEqual(forms("push"), ["push", "pushe", "pushov"]);
+  assert.deepEqual(forms("commit"), ["commit", "commity", "commitov"]);
   assert.deepEqual(forms("criterion"), ["kritérium", "kritériá", "kritérií"]);
   assert.deepEqual(forms("deal"), ["zákazka", "zákazky", "zákaziek"]);
   assert.deepEqual(forms("lead"), ["lead", "leady", "leadov"]);

@@ -1,6 +1,6 @@
 import { GitBranch } from "lucide-react";
 import type { Language } from "../../../utils/translations";
-import type { DeploymentsData } from "./types";
+import type { DeploymentsData, DeploymentsState } from "./types";
 import { countNoun, makeT, relativeTime } from "./format";
 import { Card, CardTitle, DotJoin, HeadlineValue, NoRows, PendingCard, SubLine, Track, ratioPct } from "./shared";
 
@@ -8,11 +8,13 @@ const COLS = "grid grid-cols-[--spacing(28)_minmax(0,1fr)_--spacing(6)_--spacing
 
 export const DeploymentsCard = ({
   data,
+  state = "ready",
   language,
   now,
   className = "",
 }: {
   data: DeploymentsData | null;
+  state?: DeploymentsState;
   language: Language;
   now: Date;
   className?: string;
@@ -24,7 +26,25 @@ export const DeploymentsCard = ({
     "Pushe z GitHubu podľa projektu a čas posledného",
     "GitHub push-ok projektenként és az utolsó időpontja",
   );
+  if (state === "loading") {
+    return (
+      <Card className={className}>
+        <CardTitle title={title} caption={caption} />
+        <p className="type-meta mt-4 text-slate-500">{t("Loading…", "Načítavam…", "Betöltés…")}</p>
+      </Card>
+    );
+  }
   if (data === null) {
+    const body =
+      state === "forbidden"
+        ? t("Projects are not available to you.", "Projekty nie sú pre vás dostupné.", "A projektek nem érhetők el az Ön számára.")
+        : state === "failed"
+          ? t("The data could not be loaded.", "Údaje sa nepodarilo načítať.", "Az adatokat nem sikerült betölteni.")
+          : t(
+              "Projects are not connected to GitHub yet.",
+              "Projekty zatiaľ nie sú prepojené s GitHubom.",
+              "A projektek még nincsenek összekötve a GitHubbal.",
+            );
     return (
       <PendingCard
         className={className}
@@ -32,11 +52,7 @@ export const DeploymentsCard = ({
         title={title}
         caption={caption}
         icon={<GitBranch aria-hidden="true" />}
-        body={t(
-          "Projects are not connected to GitHub yet.",
-          "Projekty zatiaľ nie sú prepojené s GitHubom.",
-          "A projektek még nincsenek összekötve a GitHubbal.",
-        )}
+        body={body}
       />
     );
   }
@@ -44,8 +60,8 @@ export const DeploymentsCard = ({
     <Card className={className}>
       <CardTitle title={title} caption={caption} />
       <HeadlineValue value={countNoun("push", data.total, language)} />
-      <SubLine>
-        {data.lastPushAt && (
+      {data.lastPushAt && (
+        <SubLine>
           <DotJoin
             parts={[
               <>
@@ -55,8 +71,8 @@ export const DeploymentsCard = ({
               data.lastPushProject,
             ]}
           />
-        )}
-      </SubLine>
+        </SubLine>
+      )}
       {data.rows.length === 0 ? (
         <NoRows language={language} />
       ) : (
