@@ -143,6 +143,13 @@ function ccrm_marketing_roi_newsletter(\PDO $pdo): array {
     return array_values(array_filter($byId, static fn ($c) => $c['sentAt'] !== null));
 }
 
+// get_db_connection() lives in config.php; without it the call below throws and every request
+// answered `database_unavailable` although the database was fine.
+$configFile = dirname(__DIR__) . '/config.php';
+if (!file_exists($configFile)) {
+    ccrm_mroi_respond(['code' => 'not_installed'], 503);
+}
+require_once $configFile;
 try {
     $pdo = get_db_connection();
     ccrm_apply_schema($pdo);
