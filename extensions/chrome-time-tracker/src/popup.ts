@@ -85,7 +85,7 @@ function renderPair(error = ""): void {
       <label>${esc(t("Pairing code", "Párovací kód", "Párosítási kód"))}<input id="code" class="mono" placeholder="K7Q4-9MZT" autocapitalize="characters" /></label>
       ${error ? `<p class="error">${esc(error)}</p>` : ""}
       <button id="connect" class="primary wide" type="button">${esc(t("Connect", "Pripojiť", "Csatlakozás"))}</button>
-      <p class="muted">${esc(t(`Use the address you open ${PRODUCT_NAME} at. Get a one-time code in ${PRODUCT_NAME} under Settings → Time tracking → Chrome extension.`, `Použite adresu, na ktorej otvárate ${PRODUCT_NAME}. Jednorazový kód získate v ${PRODUCT_NAME} v Nastavenia → Sledovanie času → Rozšírenie pre Chrome.`, `Használja azt a címet, amelyen a ${PRODUCT_NAME} megnyílik. Az egyszeri kódot a ${PRODUCT_NAME} Beállítások → Időkövetés → Chrome-bővítmény részében kapja meg.`))}</p>
+      <p class="muted">${esc(t(`Use the address you open ${PRODUCT_NAME} at. Get a one-time code in ${PRODUCT_NAME} under Settings → Projects & tasks → Time tracking → Chrome extension.`, `Použite adresu, na ktorej otvárate ${PRODUCT_NAME}. Jednorazový kód získate v ${PRODUCT_NAME} v Nastavenia → Projekty a úlohy → Evidencia času → Rozšírenie Chrome.`, `Használja azt a címet, amelyen a ${PRODUCT_NAME} megnyílik. Az egyszeri kódot a ${PRODUCT_NAME} Beállítások → Projektek és feladatok → Időkövetés → Chrome-bővítmény részében kapja meg.`))}</p>
     </div>`;
   void loadLocal().then((state) => {
     const url = app.querySelector("#url") as HTMLInputElement;
@@ -158,6 +158,7 @@ async function showTracker(): Promise<void> {
   } catch (error) {
     if (error instanceof TrackerError && error.code === "not_paired") {
       const lost = (await loadLocal()).lost;
+      signedInName = "";
       await saveLocal({ deviceKey: "", userName: "", optimistic: null });
       renderPair(t("This browser was revoked. Pair it again.", "Tomuto prehliadaču bol prístup odobratý. Spárujte ho znova.", "Ennek a böngészőnek a hozzáférését visszavonták. Párosítsa újra."));
       if (lost.length) renderLost(lost);
@@ -204,6 +205,7 @@ function renderRunning(entry: any, recent: any, unsorted: number, rules: { enabl
       </div>
       <button id="stop" class="round stop" type="button" aria-label="${esc(t("Stop", "Zastaviť", "Leállítás"))}" title="${esc(t("Stop", "Zastaviť", "Leállítás"))}">${SQUARE}</button>
     </div>
+    <div id="notice" class="notice"></div>
     <div class="body stack">
       ${pausedRows(extras)}
       ${recentRows(recent.entries || [])}
@@ -241,6 +243,7 @@ function renderMany(running: { count?: number; workedTodaySeconds?: number; runn
     </div>`).join("");
   app.innerHTML = `
     ${header(base)}
+    <div id="notice" class="notice"></div>
     <div class="body stack">
       ${extrasTop(extras)}
       <div class="spread">
@@ -334,7 +337,8 @@ function wireExtras(extras: Extras): void {
 }
 
 function showNotice(message: string): void {
-  app.querySelector(".stack")?.insertAdjacentHTML("afterbegin", `<p class="error">${esc(message)}</p>`);
+  const box = app.querySelector("#notice") ?? app.querySelector(".stack");
+  if (box) box.innerHTML = `<p class="error">${esc(message)}</p>`;
 }
 
 /** "Still working" (D7.4): only before the deadline; after it the server answers 409 paused. */
@@ -376,6 +380,7 @@ function renderIdle(recent: any, unsorted: number, rules: { enabled?: boolean },
   window.clearInterval(clock);
   app.innerHTML = `
     ${header(recent.todaySeconds || 0)}
+    <div id="notice" class="notice"></div>
     <div class="body stack">
       ${offline ? `<p class="amber note">${esc(t("Offline. A start is queued and sent later.", "Offline. Spustenie sa odošle neskôr.", "Offline. Az indítás később kerül elküldésre."))}</p>` : ""}
       ${extrasTop(extras)}
@@ -563,6 +568,7 @@ async function start(input: { description: string; projectId: string; projectNam
       return;
     }
     if (error instanceof TrackerError && error.code === "not_paired") {
+      signedInName = "";
       await saveLocal({ deviceKey: "", optimistic: null });
       renderPair(t("Pair this browser again.", "Spárujte tento prehliadač znova.", "Párosítsa újra ezt a böngészőt."));
       return;
@@ -610,8 +616,8 @@ async function stop(entry: any): Promise<void> {
       return;
     }
     if (error instanceof TrackerError && error.code === "project_required") {
-      const node = app.querySelector(".stack");
-      node?.insertAdjacentHTML("beforeend", `<p class="error">${esc(errorMessage("project_required"))}</p><label>${esc(t("Project id", "ID projektu", "Projekt azonosító"))}<input id="stop-project" /></label><button id="stop-retry" class="stop" type="button">${esc(t("Stop", "Zastaviť", "Leállítás"))}</button>`);
+      const node = app.querySelector("#notice") ?? app.querySelector(".stack");
+      if (node) node.innerHTML = (`<p class="error">${esc(errorMessage("project_required"))}</p><label>${esc(t("Project id", "ID projektu", "Projekt azonosító"))}<input id="stop-project" /></label><button id="stop-retry" class="stop" type="button">${esc(t("Stop", "Zastaviť", "Leállítás"))}</button>`);
       app.querySelector("#stop-retry")?.addEventListener("click", () => {
         body.projectId = (app.querySelector("#stop-project") as HTMLInputElement).value.trim();
         void trackerCall(state.ccrmUrl, state.deviceKey, "POST", "stop", { ...body, stoppedAt: at })
@@ -621,11 +627,18 @@ async function stop(entry: any): Promise<void> {
       return;
     }
     if (error instanceof TrackerError && error.code === "not_paired") {
+      signedInName = "";
       await saveLocal({ deviceKey: "", optimistic: null, lost: [...state.lost, { id: crypto.randomUUID(), kind: "stop", at, body }] });
       renderPair(t("Pair this browser again. The stop was kept on this device.", "Spárujte tento prehliadač znova. Zastavenie zostalo uložené v tomto zariadení.", "Párosítsa újra ezt a böngészőt. A leállítás ezen az eszközön maradt."));
       return;
     }
-    showNotice(errorMessage(error instanceof TrackerError ? error.code : "offline"));
+    const failure = error instanceof TrackerError ? error.code : "offline";
+    if (failure === "not_found" || failure === "not_running") {
+      await saveLocal({ optimistic: null });
+      await refreshBadge();
+      await showTracker();
+    }
+    showNotice(errorMessage(failure));
   }
 }
 

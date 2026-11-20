@@ -34,6 +34,13 @@ export function errorMessage(code: string): string {
     paused: ["The timers are paused. Resume them first.", "Časovače sú pozastavené. Najprv ich obnovte.", "Az időzítők szüneteltetve vannak. Előbb folytassa őket."],
     project_required: [`Pick a project in ${PRODUCT_NAME} before stopping, or add one and stop again.`, `Pred zastavením vyberte projekt v ${PRODUCT_NAME} alebo ho pridajte a zastavte znova.`, `Leállítás előtt válasszon projektet a ${PRODUCT_NAME} rendszerben, vagy adjon hozzá egyet, és állítsa le újra.`],
     task_required: ["This project needs a task. Pick one.", "Tento projekt vyžaduje úlohu. Vyberte ju.", "Ehhez a projekthez feladat szükséges. Válasszon egyet."],
+    task_not_found: ["That task no longer exists.", "Táto úloha už neexistuje.", "Ez a feladat már nem létezik."],
+    task_is_recurring_template: ["A recurring task template cannot be tracked. Pick one of its tasks.", "Šablónu opakovanej úlohy nemožno sledovať. Vyberte jednu z jej úloh.", "Ismétlődő feladat sablonjára nem lehet időt mérni. Válasszon egyet a feladatai közül."],
+    task_project_mismatch: ["That task belongs to a different project.", "Táto úloha patrí do iného projektu.", "Ez a feladat egy másik projekthez tartozik."],
+    ticket_not_found: ["That ticket no longer exists.", "Tento tiket už neexistuje.", "Ez a jegy már nem létezik."],
+    forbidden_ticket: ["You do not have access to that ticket.", "K tomuto tiketu nemáte prístup.", "Ehhez a jegyhez nincs hozzáférése."],
+    forbidden_project: ["You do not have access to that project.", "K tomuto projektu nemáte prístup.", "Ehhez a projekthez nincs hozzáférése."],
+    project_not_found: ["That project no longer exists.", "Tento projekt už neexistuje.", "Ez a projekt már nem létezik."],
     rate_limited: ["Too many attempts. Wait and try again.", "Príliš veľa pokusov. Počkajte a skúste znova.", "Túl sok kísérlet. Várjon, majd próbálja újra."],
     save_failed: ["Could not save. Try again.", "Nepodarilo sa uložiť. Skúste znova.", "A mentés nem sikerült. Próbálja újra."],
   };

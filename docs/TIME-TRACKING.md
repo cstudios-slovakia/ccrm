@@ -202,12 +202,12 @@ Spec: C15, C4.2, C4.4 (`time_tracker_ext.php`).
 
 - [x] 5a. Tables `time_tracker_pairing_codes`, `time_tracker_devices`; `public/api/time_tracker_ext.php` (Bearer device key, CORS for `chrome-extension://<id>`, pair rate-limited per IP)
 - [x] 5a. Extension source in `extensions/chrome-time-tracker/` (Manifest V3, TypeScript, Vite), popup (running, idle, not paired), badge, offline queue, "Paired browsers" with Revoke
-- [x] 5a. `npm run build:extension` zips to `public/downloads/ccrm-time-tracker.zip` (committed)
+- [x] 5a. `npm run build:extension` zips to `public/downloads/koperniq-time-tracker.zip` (committed; the name is built from `PRODUCT_SLUG`, and the old `ccrm-time-tracker.zip` is still written for existing links)
 - [x] 5b. Activity capture (opt-in, off by default), table `time_activity`, `activity` endpoint, Unsorted inbox (Day panel, List chip, extension footer), purge in cron
 - [ ] QA: pairing flow with the mock, one running timer shared with the extension, revoked device returns 401
 - [x] Unit tests. The e2e spec was not extended.
 
-**Left over:** QA was skipped at the owner's request (2026-10-27). The zip is on disk at `public/downloads/ccrm-time-tracker.zip` and is not committed. The extension download, pairing code, and paired browsers live in Settings → Time tracking. There is no module overflow-menu entry. The new PHP files exist only under `public/api/` (the sync script does not create a root copy for a file that has none).
+**Left over:** QA was skipped at the owner's request (2026-10-27). The zip is `public/downloads/koperniq-time-tracker.zip` (the old `ccrm-time-tracker.zip` is still written for existing links). The extension download, pairing code, and paired browsers live in Settings → Time tracking. There is no module overflow-menu entry. The new PHP files exist only under `public/api/` (the sync script does not create a root copy for a file that has none).
 
 ### Phase 6. Locking and approval, Toggl import, mobile polish, idle reminder
 
@@ -761,7 +761,7 @@ not built unless the user asks.
 
 Source in `extensions/chrome-time-tracker/` (Manifest V3, TypeScript, Vite →
 `extensions/chrome-time-tracker/dist`). `npm run build:extension` zips it to
-`public/downloads/ccrm-time-tracker.zip`, copied into `dist/` by the normal build. The
+`public/downloads/koperniq-time-tracker.zip` (plus the old `ccrm-time-tracker.zip` for existing links), copied into `dist/` by the normal build. The
 production server has no build step, so the zip is committed like `dist/`. The extension version
 is shown in CCRM next to the download button; a device on an older version shows "Update
 available". Until a Web Store listing exists, the setup guide explains "Load unpacked".

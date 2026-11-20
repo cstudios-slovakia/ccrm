@@ -146,3 +146,6 @@ button:disabled { opacity: 0.55; cursor: default; transform: none; }
 .pick:hover { background: #eef2ff; transform: none; }
 .unsorted { color: #b45309; font-weight: 700; }
 .footer { border-top: 1px solid #f1f5f9; padding-top: 10px; }
+
+.notice:empty { display: none; }
+.notice { padding: 8px 14px 0; display: grid; gap: 6px; }

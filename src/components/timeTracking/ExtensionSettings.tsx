@@ -3,6 +3,7 @@ import { Download, Lock } from "lucide-react";
 import { Switch } from "../ui/Switch";
 import { SettingsCard } from "./SettingsCard";
 import type { Language } from "../../utils/translations";
+import { PRODUCT_SLUG } from "../../utils/brand.ts";
 import { EXTENSION_VERSION } from "../../utils/timeTrackerRules.ts";
 import type { TFn, TimeTrackingSettings } from "../../utils/timeTracking.ts";
 import { TimeApiError, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
@@ -96,7 +97,7 @@ export function ExtensionSettings({ language, t, canEdit, isAdmin, extension, on
         description={t("Start and stop timers from the Chrome toolbar. With activity capture on, it also suggests entries from the sites you work on.", "Spúšťajte a zastavujte časovače z lišty Chrome. So zapnutým zaznamenávaním aktivity navrhuje záznamy aj podľa stránok, na ktorých pracujete.", "Indítsa és állítsa le az időzítőket a Chrome eszköztárából. Bekapcsolt tevékenység-rögzítés mellett bejegyzéseket is javasol azokból az oldalakból, amelyeken dolgozik.")}
         action={
           <a
-            href={`${import.meta.env.BASE_URL}downloads/ccrm-time-tracker.zip`}
+            href={`${import.meta.env.BASE_URL}downloads/${PRODUCT_SLUG}-time-tracker.zip`}
             download
             data-testid="tt-extension-download"
             className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-3 text-ui font-semibold text-primary-foreground transition-all hover:opacity-90 active:scale-95 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
