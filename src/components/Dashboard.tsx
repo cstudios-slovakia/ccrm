@@ -264,7 +264,6 @@ const getPresetTranslationKey = (name: string) => {
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  systemName,
   leads,
   leadStageGroups = {},
   leadStates = [],
@@ -896,7 +895,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       <PageHeader
         icon={<SectionIcon id="overview" />}
         title={getTranslation(systemLanguage, "header.title.dashboard")}
-        subtitle={<>{systemName} &bull; {t("Finance, sales, projects, team and support for the selected period", "Financie, obchod, projekty, tím a podpora za zvolené obdobie", "Pénzügyek, értékesítés, projektek, csapat és támogatás a kiválasztott időszakra")}</>}
+        subtitle={t("Finance, sales, projects, team and support for the selected period", "Financie, obchod, projekty, tím a podpora za zvolené obdobie", "Pénzügyek, értékesítés, projektek, csapat és támogatás a kiválasztott időszakra")}
         actions={<>
           {/* Period switch and date picker */}
           <div className="relative">
