@@ -68,7 +68,7 @@ test.describe('Time tracking', () => {
     await expect(row(page, 'Návrh cenovej ponuky')).toBeVisible();
     // The seeded "Porada s klientom" is dated yesterday: on a Monday it falls in the previous week, so count instead of assuming three.
     const before = await rows(page).count();
-    const weekTotal = await page.getByTestId('stat-week').innerText();
+    const weekTotal = ((await page.getByTestId('stat-week').textContent()) ?? '').trim(); // the digits are separate spans: innerText would put each on its own line
 
     await page.getByTestId('time-filter-button').click();
     await expect(page.getByTestId('time-filter-popover')).toBeVisible();
