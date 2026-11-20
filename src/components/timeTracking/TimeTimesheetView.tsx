@@ -18,10 +18,12 @@ import {
   type TimesheetRowKey,
 } from "../../utils/timeTimesheet.ts";
 import { isoWeekNumber } from "../../utils/isoWeek.ts";
+import { timesheetCost, timesheetCostTotal } from "../../utils/timesheetCost.ts";
 import { countryForScope } from "../../utils/timeCalendar.ts";
 import { formatDuration, parseDurationInput, todayIso, weekDays, weekStart, type TimeEntry } from "../../utils/timeTracking.ts";
 import { TimeApiError, createEntry, timeErrorMessage, updateEntry } from "../../utils/timeTrackingApi.ts";
 import { AssignProjectChip } from "./AssignProjectChip";
+import { MoneyText } from "./MoneyText";
 import { ProjectLabel } from "./ProjectLabel";
 import { ProjectPicker } from "./ProjectPicker";
 import { RangeNav } from "./RangeNav";
@@ -80,6 +82,18 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
     [entries, anchor, nowMs, extra, byPerson],
   );
   const byId = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
+  const viewerId = tt.userId || "";
+  const rowCosts = useMemo(
+    () =>
+      model.rows.map((row) => {
+        const ids = row.cells.flatMap((c) => c.entryIds);
+        return timesheetCost(ids.map((id) => byId.get(id)).filter((e): e is TimeEntry => !!e), viewerId, tt.viewer.canCosts, deps.currency);
+      }),
+    [model.rows, byId, viewerId, tt.viewer.canCosts, deps.currency],
+  );
+  const totalCost = useMemo(() => timesheetCostTotal(rowCosts), [rowCosts]);
+  const showCost = tt.viewer.canCosts || rowCosts.some((c) => c.bag) || !!totalCost.bag;
+  const cols = 9 + (showCost ? 1 : 0);
   const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-GB";
   const today = todayIso(new Date(nowMs));
   const isAdmin = isAdminRoleName(deps.currentUser.role);
@@ -315,10 +329,11 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
                 );
               })}
               <th className="px-2 py-2 text-right type-overline text-slate-500">{t("Total", "Spolu", "Összesen")}</th>
+              {showCost && <th className="px-2 py-2 text-right type-overline text-slate-500">{t("Cost", "Náklady", "Költség")}</th>}
             </tr>
           </thead>
           <tbody>
-            {model.rows.map((row) => {
+            {model.rows.map((row, rowIndex) => {
               const label = rowLabel(row);
               return (
                 <tr key={`${row.userId ?? ""}-${row.projectId ?? ""}-${row.taskId ?? ""}`} className="border-t border-slate-100">
@@ -365,16 +380,21 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
                     );
                   })}
                   <td className="px-2 py-1 text-right text-ui font-semibold tabular-nums text-slate-800">{row.totalSec > 0 ? formatDuration(row.totalSec) : "–"}</td>
+                  {showCost && (
+                    <td className="px-2 py-1 text-right text-ui" data-testid="timesheet-cost">
+                      <MoneyText bag={rowCosts[rowIndex]?.bag ?? {}} language={deps.language} />
+                    </td>
+                  )}
                 </tr>
               );
             })}
             {!loading && model.rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-6 text-ui text-slate-500">{t("No rows this week. Add one, or copy last week's rows.", "Tento týždeň nemá riadky. Pridajte riadok alebo skopírujte minulý týždeň.", "Ezen a héten nincs sor. Adjon hozzá egyet, vagy másolja a múlt hetet.")}</td>
+                <td colSpan={cols} className="px-3 py-6 text-ui text-slate-500">{t("No rows this week. Add one, or copy last week's rows.", "Tento týždeň nemá riadky. Pridajte riadok alebo skopírujte minulý týždeň.", "Ezen a héten nincs sor. Adjon hozzá egyet, vagy másolja a múlt hetet.")}</td>
               </tr>
             )}
             <tr className="border-t border-slate-100">
-              <td colSpan={9} className="p-0">
+              <td colSpan={cols} className="p-0">
                 <div className="p-2">
                   <button type="button" onClick={() => setAdding(true)} disabled={!mayEdit} data-testid="timesheet-add-row" className="inline-flex h-10 w-full items-center gap-1.5 rounded-xl border border-dashed border-slate-300 px-3 text-ui font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-40 cursor-pointer">
                     <Plus className="size-4" />
@@ -391,6 +411,11 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
                 <td key={model.days[i]} className="px-1 py-2 text-center text-ui font-semibold tabular-nums text-slate-800">{sec > 0 ? formatDuration(sec) : "–"}</td>
               ))}
               <td className="px-2 py-2 text-right text-ui font-bold tabular-nums text-teal-700">{model.grandTotal > 0 ? formatDuration(model.grandTotal) : "–"}</td>
+              {showCost && (
+                <td className="px-2 py-2 text-right text-ui font-semibold" data-testid="timesheet-cost-total">
+                  <MoneyText bag={totalCost.bag ?? {}} language={deps.language} />
+                </td>
+              )}
             </tr>
             {model.showsWorked && (
               <tr className="bg-slate-50" data-testid="timesheet-worked">
@@ -399,6 +424,7 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
                   <td key={model.days[i]} className="px-1 py-1 text-center text-ui tabular-nums text-slate-600">{sec > 0 ? formatDuration(sec) : "–"}</td>
                 ))}
                 <td className="px-2 py-1 text-right text-ui font-semibold tabular-nums text-teal-700">{model.workedGrandTotal > 0 ? formatDuration(model.workedGrandTotal) : "–"}</td>
+                {showCost && <td className="px-2 py-1" />}
               </tr>
             )}
           </tfoot>
