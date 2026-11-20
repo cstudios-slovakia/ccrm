@@ -1,5 +1,7 @@
 /**
- * Build the Chrome time tracker and zip it to public/downloads/ccrm-time-tracker.zip.
+ * Build the Chrome time tracker and zip it to public/downloads/<product-slug>-time-tracker.zip
+ * (the slug comes from PRODUCT_NAME in src/utils/brand.ts). The old ccrm-time-tracker.zip is
+ * written too, so links and installs that still use that name keep working.
  * Does not run the app build (that rewrites dist/).
  */
 import { deflateRawSync, deflateSync } from "node:zlib";
@@ -11,7 +13,12 @@ import { build } from "vite";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const extensionRoot = join(root, "extensions", "chrome-time-tracker");
 const built = join(extensionRoot, "dist");
-const zipPath = join(root, "public", "downloads", "ccrm-time-tracker.zip");
+const productName = /export const PRODUCT_NAME\s*=\s*"([^"]+)"/.exec(await readFile(join(root, "src", "utils", "brand.ts"), "utf8"))?.[1];
+if (!productName) throw new Error("PRODUCT_NAME not found in src/utils/brand.ts");
+const productSlug = productName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+const downloads = join(root, "public", "downloads");
+const zipPath = join(downloads, `${productSlug}-time-tracker.zip`);
+const legacyZipPath = join(downloads, "ccrm-time-tracker.zip");
 
 function crc32(buffer) {
   let crc = ~0;
@@ -130,6 +137,7 @@ for (const full of await walk(built)) {
 await mkdir(dirname(zipPath), { recursive: true });
 const zip = zipStore(files);
 await writeFile(zipPath, zip);
+await writeFile(legacyZipPath, zip);
 if (!files.some((file) => file.name === "manifest.json")) {
   throw new Error("extension zip is missing manifest.json");
 }
