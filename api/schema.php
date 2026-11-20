@@ -178,6 +178,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `recurring_occurrence_date` DATE NULL COMMENT 'Occurrence only: the unshifted scheduled date',
               `original_deadline` DATE NULL COMMENT 'Deadline the task was first given; set when it is created or first postponed',
               `deadline_moves` INT NOT NULL DEFAULT 0 COMMENT 'How many times the deadline was pushed to a later date',
+              `category` VARCHAR(32) NULL COMMENT 'Task category; NULL = none, bug = Bug (a string so more categories need no migration)',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
@@ -2358,6 +2359,9 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_tickets($pdo);
         ccrm_backfill_ticket_resolve_due($pdo);
         ccrm_migrate_time_tracking($pdo);
+        if (ccrm_table_exists($pdo, 'tasks') && !ccrm_column_exists($pdo, 'tasks', 'category')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `category` VARCHAR(32) NULL COMMENT 'Task category; NULL = none, bug = Bug (a string so more categories need no migration)'");
+        }
         ccrm_migrate_integration_tasks($pdo);
         ccrm_migrate_integration_directory($pdo);
         ccrm_migrate_integration_timeline($pdo);

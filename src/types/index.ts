@@ -356,6 +356,8 @@ export interface Task {
   conclusion?: string;
   /** Expected effort, in minutes. Compared with tracked time; null when unset. */
   estimateMinutes?: number | null;
+  /** Task category: null / absent = none, "bug" = Bug. A string so more categories need no migration. */
+  category?: string | null;
   /**
    * The deadline the task was first given. Kept by the server on every save (set when the task is
    * created, or pinned to the previous date at its first postponement); never sent by a client.
@@ -436,6 +438,8 @@ export interface RecurringTaskTemplate {
   isLocking?: boolean;
   requiresConclusion?: boolean;
   estimateMinutes?: number | null;
+  /** Copied onto every occurrence; see `Task.category`. */
+  category?: string | null;
   emailReminders?: Record<string, TaskEmailReminder>;
   tags?: string[];
   recurrence: TaskRecurrence;

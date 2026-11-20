@@ -994,6 +994,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'requiresConclusion' => intval($row['requires_conclusion'] ?? 0) === 1,
                 'conclusion' => $row['conclusion'] ?? null,
                 'estimateMinutes' => isset($row['estimate_minutes']) ? (int)$row['estimate_minutes'] : null,
+                'category' => $row['category'] ?? null,
                 // Deadline history: kept by the server on every save (see the tasks upsert), read-only for clients.
                 'originalDeadline' => $row['original_deadline'] ?? null,
                 'deadlineMoves' => (int)($row['deadline_moves'] ?? 0),
@@ -1040,6 +1041,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'emailReminders' => ccrm_decode_task_reminders($row['email_reminders_json'] ?? null),
                 'requiresConclusion' => intval($row['requires_conclusion'] ?? 0) === 1,
                 'estimateMinutes' => isset($row['estimate_minutes']) ? (int)$row['estimate_minutes'] : null,
+                'category' => $row['category'] ?? null,
                 'recurrence' => ccrm_recurring_validate_json(json_decode($row['recurrence_json'] ?? '[]', true) ?: []),
                 'assignedUsers' => $assignedUsers,
                 'tags' => $tagsByTask[$rId] ?? []
@@ -3222,6 +3224,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!ccrm_index_exists($pdo, 'tasks', 'idx_task_agency_worker')) {
                 try { $pdo->exec("ALTER TABLE `tasks` ADD INDEX `idx_task_agency_worker` (`related_agency_worker_id`)"); } catch (\Throwable $e) {}
             }
+            if (!ccrm_column_exists($pdo, 'tasks', 'category')) {
+                $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `category` VARCHAR(32) NULL");
+            }
         }
 
         if (isset($payload['tickets']) && is_array($payload['tickets']) && !$ccrm_skip_writes('tickets', 'tickets')) {
@@ -4930,7 +4935,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Deadline history is kept here, not trusted from the client: the two assignments before
             // `deadline = VALUES(deadline)` run first (MySQL evaluates SET left to right), so they still
             // see the stored date. A later date counts as one postponement and pins the original.
-                        $insTask = $pdo->prepare("/* recurring-template: sync creates or updates normal tasks */ INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `related_agency_worker_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`, `requires_conclusion`, `conclusion`, `estimate_minutes`, `original_deadline`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `original_deadline` = IF(VALUES(`deadline`) > `deadline` AND `original_deadline` IS NULL, `deadline`, `original_deadline`), `deadline_moves` = `deadline_moves` + IF(VALUES(`deadline`) > `deadline`, 1, 0), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `related_agency_worker_id` = VALUES(`related_agency_worker_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `conclusion` = VALUES(`conclusion`), `estimate_minutes` = IF(? = 1, VALUES(`estimate_minutes`), `estimate_minutes`)"); /* recurring-template: sync creates or updates normal tasks */
+                        $insTask = $pdo->prepare("/* recurring-template: sync creates or updates normal tasks */ INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `related_agency_worker_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`, `requires_conclusion`, `conclusion`, `estimate_minutes`, `original_deadline`, `category`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `original_deadline` = IF(VALUES(`deadline`) > `deadline` AND `original_deadline` IS NULL, `deadline`, `original_deadline`), `deadline_moves` = `deadline_moves` + IF(VALUES(`deadline`) > `deadline`, 1, 0), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `related_agency_worker_id` = VALUES(`related_agency_worker_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `conclusion` = VALUES(`conclusion`), `estimate_minutes` = IF(? = 1, VALUES(`estimate_minutes`), `estimate_minutes`), `category` = IF(? = 1, VALUES(`category`), `category`)"); /* recurring-template: sync creates or updates normal tasks */
 
             // Which states finish a task: the "requires conclusion" guard, the
             // recurring trigger, completion notifications and ticket auto-resolve
@@ -5024,6 +5029,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $relAgencyWorkerIdVal = $oldRelatedAgencyWorkerId;
                 }
 
+                // Category: a short slug ('bug'); a client that omits the key leaves the stored value alone.
+                $catRaw = isset($t['category']) && is_string($t['category']) ? strtolower(trim($t['category'])) : '';
+                $catVal = preg_match('/^[a-z0-9_-]{1,32}$/', $catRaw) ? $catRaw : null;
                 $insTask->execute([
                     $taskId,
                     $t['title'],
@@ -5048,7 +5056,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $incomingConclusion !== '' ? mb_substr($incomingConclusion, 0, 5000) : null,
                     (array_key_exists('estimateMinutes', $t) && is_numeric($t['estimateMinutes'])) ? max(0, (int)$t['estimateMinutes']) : null,
                     $t['deadline'],
+                    $catVal,
                     array_key_exists('estimateMinutes', $t) ? 1 : 0,
+                    array_key_exists('category', $t) ? 1 : 0,
                 ]);
                 if ($relTicketIdVal !== null && $ticketLinkAllowed) {
                     try {
@@ -5272,7 +5282,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingTemplateIds = array_keys($dbTemplates);
             $processedTemplateIds = [];
 
-            $insRecTemplate = $pdo->prepare("/* recurring-template: sync recurring task template */ INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `related_agency_worker_id`, `is_locking`, `archived`, `email_reminders_json`, `requires_conclusion`, `estimate_minutes`, `task_kind`, `recurrence_json`) VALUES (?, ?, ?, ?, ?, ?, ?, 'New', ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'recurring', ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `related_agency_worker_id` = VALUES(`related_agency_worker_id`), `is_locking` = VALUES(`is_locking`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `estimate_minutes` = VALUES(`estimate_minutes`), `recurrence_json` = VALUES(`recurrence_json`)");
+            $insRecTemplate = $pdo->prepare("/* recurring-template: sync recurring task template */ INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `related_ticket_id`, `related_agency_worker_id`, `is_locking`, `archived`, `email_reminders_json`, `requires_conclusion`, `estimate_minutes`, `task_kind`, `recurrence_json`, `category`) VALUES (?, ?, ?, ?, ?, ?, ?, 'New', ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 'recurring', ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `related_ticket_id` = VALUES(`related_ticket_id`), `related_agency_worker_id` = VALUES(`related_agency_worker_id`), `is_locking` = VALUES(`is_locking`), `email_reminders_json` = VALUES(`email_reminders_json`), `requires_conclusion` = VALUES(`requires_conclusion`), `estimate_minutes` = VALUES(`estimate_minutes`), `recurrence_json` = VALUES(`recurrence_json`), `category` = IF(? = 1, VALUES(`category`), `category`)");
 
             foreach ($payload['recurringTasks'] as $rt) {
                 if (!is_array($rt) || empty($rt['id']) || !isset($rt['title']) || $rt['title'] === '') {
@@ -5316,6 +5326,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ? (!empty($rt['relatedAgencyWorkerId']) ? (string)$rt['relatedAgencyWorkerId'] : null)
                     : (!empty($storedRow['related_agency_worker_id']) ? (string)$storedRow['related_agency_worker_id'] : null);
 
+                $catRaw = isset($rt['category']) && is_string($rt['category']) ? strtolower(trim($rt['category'])) : '';
+                $catVal = preg_match('/^[a-z0-9_-]{1,32}$/', $catRaw) ? $catRaw : null;
                 $insRecTemplate->execute([
                     $templateId,
                     $rt['title'],
@@ -5335,6 +5347,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     !empty($rt['requiresConclusion']) ? 1 : 0,
                     isset($rt['estimateMinutes']) ? (int)$rt['estimateMinutes'] : null,
                     $recJson,
+                    $catVal,
+                    array_key_exists('category', $rt) ? 1 : 0,
                 ]);
 
                 $delAss = $pdo->prepare("DELETE FROM `task_assignees` WHERE `task_id` = ?");

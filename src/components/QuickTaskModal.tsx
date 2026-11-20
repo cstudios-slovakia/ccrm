@@ -30,6 +30,7 @@ import { projectDisplayName } from "../utils/projects";
 import { staleLeadIdsForTasks } from "../utils/taskLeadPicker";
 import { isClientRecord } from "../utils/clientRecord";
 import { taskPriorityLabel } from "../utils/taskLabels";
+import { taskCategoryOptions } from "../utils/taskCategory";
 import { clampDeadline, todayStr } from "../utils/taskDeadline";
 import { TASK_EMAIL_REMINDERS, withTaskReminder } from "../utils/taskReminders";
 import { TaskRecurrenceFields, createDefaultRecurrence } from "./TaskRecurrenceFields";
@@ -391,6 +392,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     const [relatedLeadId, setRelatedLeadId] = useState("");
     const [relatedProjectId, setRelatedProjectId] = useState("");
     const [relatedAgencyWorkerId, setRelatedAgencyWorkerId] = useState("");
+    const [category, setCategory] = useState("");
     const [isLocking, setIsLocking] = useState(false);
     const { offerConclusion, defaultRequiresConclusion } = useTaskSettings();
     const [requiresConclusion, setRequiresConclusion] = useState(() => Boolean(defaultRequiresConclusion));
@@ -934,6 +936,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                     relatedLeadId: relatedLeadId || null,
                     relatedProjectId: relatedProjectId || null,
                     relatedAgencyWorkerId: relatedAgencyWorkerId || null,
+                    category: category || null,
                     isLocking: relatedLeadId ? isLocking : false,
                     emailReminders,
                     requiresConclusion: offerConclusion && requiresConclusion ? true : undefined,
@@ -965,6 +968,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
             relatedLeadId: relatedLeadId || undefined,
             relatedProjectId: relatedProjectId || undefined,
             relatedAgencyWorkerId: relatedAgencyWorkerId || undefined,
+            category: category || undefined,
             isLocking: relatedLeadId ? isLocking : false,
             emailReminders,
             // Only while the setting offers it: a stale tick must not outlive the setting.
@@ -985,6 +989,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
             setDictated(new Set());
             usedDictationRef.current = false;
             setRequiresConclusion(Boolean(defaultRequiresConclusion));
+            setCategory("");
             focusRow(0, 0);
         }
     };
@@ -1453,6 +1458,16 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                     />
                 </div>
             )}
+            <div className="flex flex-col gap-1.5">
+                <FieldLabel>{t("Category", "Kategória", "Kategória")}</FieldLabel>
+                <CustomSelect
+                    unstyled
+                    value={category}
+                    onChange={setCategory}
+                    options={taskCategoryOptions(t)}
+                    className={selectSkin(false, category ? "" : "text-slate-500")}
+                />
+            </div>
             {anyDictatedContext && (
                 <div role="note" className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-blue-50 text-blue-900 text-micro leading-[1.4]">
                     <span className="h-5.5 px-2 rounded-full bg-blue-100 text-blue-700 text-micro font-semibold flex items-center gap-1 shrink-0">

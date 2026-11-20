@@ -440,6 +440,14 @@ function ccrm_process_recurring_tasks(PDO $pdo, ?string $onlyTemplateId = null):
     $stmt->execute($params);
     $templates = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    // `tasks.category` is inserted below. SELECT * shows whether this database already has it, so a
+    // stale-schema window heals itself here, before any transaction (DDL would commit it).
+    if ($templates && !array_key_exists('category', $templates[0]) && !$pdo->inTransaction()) {
+        $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `category` VARCHAR(32) NULL");
+        foreach ($templates as &$tmplRow) { $tmplRow['category'] = null; }
+        unset($tmplRow);
+    }
+
     foreach ($templates as $tmpl) {
         $summary['checked']++;
         $tmplId = $tmpl['id'];
@@ -571,13 +579,13 @@ function ccrm_process_recurring_tasks(PDO $pdo, ?string $onlyTemplateId = null):
                     `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`,
                     `related_project_id`, `related_agency_worker_id`, `is_locking`, `archived`, `email_reminders_json`,
                     `requires_conclusion`, `estimate_minutes`, `recurring_source_id`,
-                    `recurring_occurrence_date`, `task_kind`
+                    `recurring_occurrence_date`, `task_kind`, `category`
                 ) VALUES (
                     ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?,
                     ?, ?, ?, 0, ?,
                     ?, ?, ?,
-                    ?, NULL
+                    ?, NULL, ?
                 )" /* recurring-template: generator inserts occurrence */
             );
 
@@ -601,6 +609,7 @@ function ccrm_process_recurring_tasks(PDO $pdo, ?string $onlyTemplateId = null):
                 isset($tmpl['estimate_minutes']) ? (int)$tmpl['estimate_minutes'] : null,
                 $tmplId,
                 $scheduledDate,
+                $tmpl['category'] ?? null,
             ]);
 
             if ($insStmt->rowCount() === 1) {
@@ -661,6 +670,7 @@ function ccrm_process_recurring_tasks(PDO $pdo, ?string $onlyTemplateId = null):
                         'relatedAgencyWorkerId' => $tmpl['related_agency_worker_id'] ?? null,
                         'isLocking' => intval($tmpl['is_locking'] ?? 0) === 1,
                         'requiresConclusion' => intval($tmpl['requires_conclusion'] ?? 0) === 1,
+                        'category' => $tmpl['category'] ?? null,
                         'recurringSourceId' => $tmplId,
                         'recurringOccurrenceDate' => $scheduledDate,
                     ];

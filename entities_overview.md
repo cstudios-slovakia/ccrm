@@ -157,6 +157,7 @@ General system and operational tasks.
 * `deadline_time` VARCHAR(5) (HH:MM)
 * `original_deadline` DATE [NULLable] (the deadline the task was first given; set on creation, or pinned to the previous date at the first postponement of an older row; written only by the sync upsert, never by a client)
 * `deadline_moves` INT NOT NULL DEFAULT 0 (how many times the deadline was pushed to a later date; incremented by the sync upsert)
+* `category` VARCHAR(32) [NULLable] (task category slug: `NULL` = none, `'bug'` = Bug; a string so more categories need no migration. Written by the sync upsert for tasks and recurring templates (a client that omits the key leaves the stored value alone) and copied from a template to each occurrence; read by the dashboard's "Utilizácia · čas na bugoch" widget)
 * `owner` VARCHAR(100) (primary assignee; empty when unassigned)
 * `created_by` VARCHAR(100) (immutable creator name; nullable for legacy rows)
 * `related_lead_id` VARCHAR(50)
