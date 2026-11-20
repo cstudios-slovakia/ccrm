@@ -733,7 +733,7 @@ then merged into `css-main`. Not pushed, not ported.
 | P9 Settings, extension settings | `bd0b0a8c`, `6eb74bc8` | S1, S3–S8, S10, X1, X3–X6 | S2 Contractors not built (Q24 open). Canvas claims dropped as untrue: "saved but flagged Assign project", "only for projects with tasks", "notifies the owner", pairing code "never stored" |
 | P10 Phone | `ccaf15fa`, `6ca83752` | M1, M3 | The running card is in the page flow, not fixed; Stop stays reachable from the sticky header pill (40 px on the phone). The sheet and the paused card were not restyled |
 | P11 Extension popup | `7499a606`, `a09251ce` | X9–X13 | The address field stays: the zip is generic and pairing needs the address (the audit's "the build knows its server" was wrong). No Pause in the popup: it has no pause endpoint. `EXTENSION_VERSION` unchanged |
-| F17 List filter | `COMMIT` | F17 | Applies to the List tab only (also its phone Today view). The stat tiles stay unfiltered (a "Filtered: N of M" line says so). Not persisted across reloads. Filter is not applied to Day, Calendar, Timesheet or Reports |
+| F17 List filter | `99e8e2ec` | F17 | Applies to the List tab only (also its phone Today view). The stat tiles stay unfiltered (a "Filtered: N of M" line says so). Not persisted across reloads. Filter is not applied to Day, Calendar, Timesheet or Reports |
 
 Still open after this pass: Q18, Q24, Q29 (owner), the C2 text about the sidebar
 colour, and the two MISSING rows (E4, E11).
