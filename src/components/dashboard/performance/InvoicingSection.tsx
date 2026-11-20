@@ -1,0 +1,173 @@
+import type { ReactNode } from "react";
+import { Briefcase, Calculator, Layers } from "lucide-react";
+import { liftAccent } from "../../../utils/accentColor";
+import type { Language } from "../../../utils/translations";
+import type { InvoicingData, InvoicingGroup } from "./types";
+import { countNoun, makeT, money, percent, statusesOf } from "./format";
+import { Card, ROW_EQUAL_3, Section, SegmentedBar } from "./shared";
+
+const TILE = "grid size-10 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600 [&>svg]:size-5";
+const ROW_GROUP =
+  "grid h-11 grid-cols-[--spacing(4)_--spacing(2.5)_minmax(0,1fr)_auto_--spacing(25)] items-center gap-x-2.5 border-t border-slate-100 text-ui";
+const ROW_SUM =
+  "grid h-11 grid-cols-[--spacing(4)_minmax(0,1fr)_auto_--spacing(25)] items-center gap-x-2.5 border-t border-slate-100 text-ui";
+const PILL = "type-label rounded-full bg-slate-100 px-2 py-px tabular-nums";
+const FOOT = "mt-auto flex items-baseline justify-between gap-3 border-t border-slate-200 pt-4";
+
+const CardHead = ({ icon, title, caption }: { icon: ReactNode; title: string; caption: string }) => (
+  <div className="flex items-center gap-3">
+    <div className={TILE}>{icon}</div>
+    <div className="min-w-0">
+      <h3 className="type-card-title text-slate-900">{title}</h3>
+      <p className="type-meta mt-0.5 text-slate-500">{caption}</p>
+    </div>
+  </div>
+);
+
+const GroupCard = ({
+  group,
+  icon,
+  title,
+  noun,
+  language,
+  currencyCode,
+  onToggleStatus,
+}: {
+  group: InvoicingGroup;
+  icon: ReactNode;
+  title: string;
+  noun: "lead" | "project";
+  language: Language;
+  currencyCode?: string | null;
+  onToggleStatus: (id: string) => void;
+}) => {
+  const t = makeT(language);
+  return (
+    <Card className="gap-4">
+      <CardHead
+        icon={icon}
+        title={title}
+        caption={`${countNoun(noun, group.itemCount, language)} · ${statusesOf(group.includedStatuses, group.totalStatuses, language)}`}
+      />
+      <div className="flex flex-col">
+        {group.rows.map((row) => (
+          <label key={row.id} className={`${ROW_GROUP} cursor-pointer`}>
+            <input
+              type="checkbox"
+              checked={row.included}
+              onChange={() => onToggleStatus(row.id)}
+              className="m-0 size-4 accent-indigo-600"
+            />
+            <span className="size-2.5 rounded-full" style={{ background: liftAccent(row.color) }} />
+            <span className={`truncate font-semibold ${row.included ? "text-slate-800" : "text-slate-500"}`}>{row.label}</span>
+            <span className={`${PILL} ${row.included ? "text-slate-600" : "text-slate-500"}`}>{row.count}</span>
+            <span className={`text-right font-bold tabular-nums ${row.included ? "text-slate-900" : "text-slate-500"}`}>
+              {money(row.value, currencyCode, language, 2)}
+            </span>
+          </label>
+        ))}
+      </div>
+      <div className={FOOT}>
+        <span className="text-ui font-semibold text-slate-600">{t("Total", "Spolu", "Összesen")}</span>
+        <span className="type-metric text-slate-900">{money(group.total, currencyCode, language, 2)}</span>
+      </div>
+    </Card>
+  );
+};
+
+export const InvoicingSection = ({
+  data,
+  language,
+  currencyCode,
+  onToggleStatus,
+  onClearSelection,
+}: {
+  data: InvoicingData;
+  language: Language;
+  currencyCode?: string | null;
+  onToggleStatus: (id: string) => void;
+  onClearSelection: () => void;
+}) => {
+  const t = makeT(language);
+  const segments = [...data.pipeline.rows, ...data.projects.rows]
+    .filter((r) => r.included && r.value > 0)
+    .map((r) => ({ key: r.id, value: r.value, color: liftAccent(r.color) }));
+
+  return (
+    <Section
+      title={t("To invoice", "Na fakturovanie", "Számlázandó")}
+      action={
+        <button
+          type="button"
+          onClick={onClearSelection}
+          className="text-ui h-8 rounded-xl px-2.5 font-semibold text-slate-600 transition-colors hover:bg-slate-100"
+        >
+          {t("Clear status selection", "Zrušiť výber stavov", "Státuszválasztás törlése")}
+        </button>
+      }
+    >
+      <div className={ROW_EQUAL_3}>
+        <GroupCard
+          group={data.pipeline}
+          icon={<Layers aria-hidden="true" />}
+          title={t("Deals and Pipeline", "Obchody a Pipeline", "Üzletek és Pipeline")}
+          noun="lead"
+          language={language}
+          currencyCode={currencyCode}
+          onToggleStatus={onToggleStatus}
+        />
+        <GroupCard
+          group={data.projects}
+          icon={<Briefcase aria-hidden="true" />}
+          title={t("Projects and Deliveries", "Projekty a Realizácie", "Projektek és Megvalósítások")}
+          noun="project"
+          language={language}
+          currencyCode={currencyCode}
+          onToggleStatus={onToggleStatus}
+        />
+        <Card className="gap-4">
+          <CardHead
+            icon={<Calculator aria-hidden="true" />}
+            title={t("Total to invoice", "Spolu na fakturovanie", "Összes számlázandó")}
+            caption={`${countNoun("item", data.itemCount, language)} · ${t("leads and projects", "leady a projekty", "leadek és projektek")}`}
+          />
+          <SegmentedBar
+            segments={segments}
+            heightClass="h-3"
+            label={t(
+              "Share of each status in the total amount",
+              "Podiel jednotlivých stavov na celkovej sume",
+              "Az egyes státuszok részesedése az összegből",
+            )}
+          />
+          <div className="flex flex-col">
+            <div className={ROW_SUM}>
+              <span />
+              <span className="truncate font-semibold text-slate-800">
+                {t("Deals and Pipeline", "Obchody a Pipeline", "Üzletek és Pipeline")}
+              </span>
+              <span className={`${PILL} text-slate-600`}>{percent(data.pipelineSharePct, language, 0)}</span>
+              <span className="text-right font-bold tabular-nums text-slate-900">
+                {money(data.pipeline.total, currencyCode, language, 2)}
+              </span>
+            </div>
+            <div className={ROW_SUM}>
+              <span className="type-card-title text-center text-slate-500">+</span>
+              <span className="truncate font-semibold text-slate-800">
+                {t("Projects and Deliveries", "Projekty a Realizácie", "Projektek és Megvalósítások")}
+              </span>
+              <span className={`${PILL} text-slate-600`}>{percent(data.projectsSharePct, language, 0)}</span>
+              <span className="text-right font-bold tabular-nums text-slate-900">
+                {money(data.projects.total, currencyCode, language, 2)}
+              </span>
+            </div>
+          </div>
+          <div className={FOOT}>
+            <span className="text-ui font-semibold text-slate-600">= {t("Total", "Spolu", "Összesen")}</span>
+            <span className="type-metric text-slate-900">{money(data.total, currencyCode, language, 2)}</span>
+          </div>
+        </Card>
+      </div>
+    </Section>
+  );
+};
