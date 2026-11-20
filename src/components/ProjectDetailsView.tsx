@@ -3625,7 +3625,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           )}
 
           {(isSidebar || activeRightTab === "criteria") && wrapSection("criteria", <Icons.ClipboardCheck className="h-4 w-4 text-indigo-600" />, t("Acceptance criteria", "Akceptačné kritériá", "Elfogadási kritériumok"), undefined,
-            <ProjectAcceptanceCriteria project={project} canEdit={canEdit} userName={currentUser?.name ?? ""} language={userLanguage} onPatch={patchProject} />
+            <ProjectAcceptanceCriteria project={project} canEdit={canEdit} isNew={isNew} userName={currentUser?.name ?? ""} language={userLanguage} onPatch={patchProject} />
           )}
 
           {/* TAB CONTENT: Gantt Chart */}

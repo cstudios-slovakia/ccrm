@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { AcceptanceCriterion, Project } from "../../types/index.ts";
 import { buildPeriod } from "./period.ts";
+import { projectDisplayName } from "../projects.ts";
 import { computeScopeCreep } from "./scopeCreep.ts";
 
 const day = (y: number, m: number, d: number) => new Date(y, m - 1, d);
@@ -44,11 +45,18 @@ test("zero original scope: additions are counted but the share is null", () => {
 
 test("a criterion created exactly at the approval instant is original", () => {
   const data = computeScopeCreep({
-    projects: [project("a", [crit("1", APPROVED), crit("2", utc(2026, 10, 5, 12, 0, 0, 1)), crit("3", inside)])],
+    projects: [project("a", [crit("1", APPROVED), crit("2", utc(2026, 10, 5, 12, 0, 1)), crit("3", inside)])],
     period: ALL,
   });
   assert.equal(data.originalTotal, 1);
   assert.equal(data.addedInPeriod, 2);
+});
+
+test("a criterion without createdAt is original scope, never an addition", () => {
+  const noStamp = { ...crit("x", before), createdAt: null };
+  const data = computeScopeCreep({ projects: [project("a", [noStamp, crit("y", inside)])], period: ALL });
+  assert.equal(data.originalTotal, 1);
+  assert.equal(data.addedInPeriod, 1);
 });
 
 test("period boundary: the UTC instant is compared with the local day bounds", () => {
@@ -115,6 +123,7 @@ test("rows with equal additions are ordered by name; a project without a name ta
     project("p2", [crit("a", inside)], { name: "Zeta" }),
     project("p1", [crit("b", inside)], { name: "", leadId: "l1" }),
   ];
-  const data = computeScopeCreep({ projects, period, leads: [{ id: "l1", name: "Alfa client" }] });
+  const leads = [{ id: "l1", name: "Alfa client" }];
+  const data = computeScopeCreep({ projects, period, nameOf: (p) => projectDisplayName(p, leads, p.id) });
   assert.deepEqual(data.rows.map((r) => r.name), ["Alfa client", "Zeta"]);
 });

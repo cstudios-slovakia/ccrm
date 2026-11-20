@@ -60,21 +60,32 @@ export const removeCriterion = (
 ): AcceptanceCriterion[] =>
   (list ?? []).map((c) => (c.id === id && !c.removedAt ? { ...c, removedAt: now.toISOString(), removedBy: userName || null } : c));
 
-/** The patch that approves the scope now. Empty when the scope is already approved (one approval per project). */
+/**
+ * The patch that approves the scope now. Empty when the scope is already approved: a project has one
+ * approval at a time. After `withdrawScopeApproval` a new approval stamps a new instant, so every
+ * criterion added in between becomes part of the original scope.
+ */
 export const approveScope = (project: ScopeFields, userName: string | null, now: Date): Partial<ScopeFields> =>
   project.scopeApprovedAt ? {} : { scopeApprovedAt: now.toISOString(), scopeApprovedBy: userName || null };
 
-/** The patch that withdraws the approval; the criteria are kept. */
+/**
+ * The patch that withdraws the approval, to undo a mistaken one; the criteria are kept. It is a reset:
+ * when the scope is approved again, the criteria added so far count as original scope, not as creep.
+ */
 export const withdrawScopeApproval = (): Partial<ScopeFields> => ({ scopeApprovedAt: null, scopeApprovedBy: null });
 
-/** Was the criterion created strictly after the approval instant? False without a (readable) approval or creation time. */
+/**
+ * Was the criterion created strictly after the approval instant, compared in whole seconds (the server
+ * stamps both to the second, so the browser's milliseconds must not decide)? False without a readable
+ * approval or creation time: a criterion without `createdAt` is original scope.
+ */
 export const isAddedAfterApproval = (
   criterion: Pick<AcceptanceCriterion, "createdAt">,
   scopeApprovedAt: string | null | undefined,
 ): boolean => {
   const approved = parseAppDate(scopeApprovedAt);
   const created = parseAppDate(criterion.createdAt);
-  return approved !== null && created !== null && created.getTime() > approved.getTime();
+  return approved !== null && created !== null && Math.floor(created.getTime() / 1000) > Math.floor(approved.getTime() / 1000);
 };
 
 /** Live criteria that were part of the approved scope and live criteria added after it. Without an approval everything is "original". */

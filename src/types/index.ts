@@ -734,12 +734,16 @@ export interface ProjectGanttRow {
  */
 export type ProjectStatus = string;
 
-/** One acceptance criterion of a project. `createdAt` / `removedAt` are UTC ISO 8601 with `Z`; `removedAt` is null while it is live. */
+/**
+ * One acceptance criterion of a project. `createdAt` / `removedAt` are UTC ISO 8601 with `Z`; `removedAt` is
+ * null while it is live. The server owns the stamps (`createdAt`, `createdBy`, `removedAt`, `removedBy`);
+ * the browser's are provisional until the next pull. `createdAt` is null only for a stored entry without one.
+ */
 export interface AcceptanceCriterion {
   id: string;
   title: string;
   done: boolean;
-  createdAt: string;
+  createdAt: string | null;
   createdBy: string | null;
   removedAt: string | null;
   removedBy: string | null;

@@ -67,10 +67,12 @@ test("withdrawScopeApproval clears both fields", () => {
   assert.deepEqual(withdrawScopeApproval(), { scopeApprovedAt: null, scopeApprovedBy: null });
 });
 
-test("isAddedAfterApproval: strictly after the approval instant", () => {
+test("isAddedAfterApproval: strictly after the approval, compared in whole seconds", () => {
   const approved = "2026-11-10T09:00:00.000Z";
-  assert.equal(isAddedAfterApproval({ createdAt: "2026-11-10T09:00:00.001Z" }, approved), true);
-  assert.equal(isAddedAfterApproval({ createdAt: "2026-11-10T09:00:00.000Z" }, approved), false);
+  assert.equal(isAddedAfterApproval({ createdAt: "2026-11-10T09:00:01.000Z" }, approved), true);
+  assert.equal(isAddedAfterApproval({ createdAt: "2026-11-10T09:00:00.999Z" }, approved), false); // same second
+  assert.equal(isAddedAfterApproval({ createdAt: "2026-11-10T09:00:00.000Z" }, "2026-11-10T09:00:00.700Z"), false);
+  assert.equal(isAddedAfterApproval({ createdAt: null }, approved), false); // no createdAt: original scope
   assert.equal(isAddedAfterApproval({ createdAt: "2026-11-09T09:00:00.000Z" }, approved), false);
   assert.equal(isAddedAfterApproval({ createdAt: "2026-11-12T09:00:00Z" }, null), false);
   assert.equal(isAddedAfterApproval({ createdAt: "garbage" }, approved), false);

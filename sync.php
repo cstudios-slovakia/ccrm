@@ -4173,14 +4173,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projContactPhone = $projContactPhone === '' ? null : mb_substr($projContactPhone, 0, 50);
                 }
 
-                // Acceptance criteria and the scope approval (api/project_scope.php). Each key a client
-                // omits leaves the stored value alone; an empty list, null or "" clears it.
-                $criteriaSent = array_key_exists('acceptanceCriteria', $p) && is_array($p['acceptanceCriteria']) ? 1 : 0;
-                $projCriteria = $criteriaSent ? ccrm_scope_criteria_encode($p['acceptanceCriteria']) : null;
-                $scopeAtSent = array_key_exists('scopeApprovedAt', $p) ? 1 : 0;
-                $projScopeAt = $scopeAtSent ? ccrm_scope_ts_to_db($p['scopeApprovedAt']) : null;
-                $scopeBySent = array_key_exists('scopeApprovedBy', $p) ? 1 : 0;
-                $projScopeBy = $scopeBySent ? ccrm_scope_name($p['scopeApprovedBy']) : null;
+                // Acceptance criteria and the scope approval: merged into the stored row, stamped by the
+                // server (api/project_scope.php). A key the client omits leaves the stored value alone.
+                $scope = ccrm_scope_resolve_write($pdo, (string)$projId, $p, $sessionUserName !== '' ? $sessionUserName : null);
 
                 $insProj->execute([
                     $projId,
@@ -4209,16 +4204,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projBillableRate,
                     $projInternal,
                     $projContactPhone,
-                    $projCriteria,
-                    $projScopeAt,
-                    $projScopeBy,
+                    $scope['criteria'],
+                    $scope['at'],
+                    $scope['by'],
                     $hoursSent,
                     $rateSent,
                     $internalSent,
                     $contactPhoneSent,
-                    $criteriaSent,
-                    $scopeAtSent,
-                    $scopeBySent,
+                    $scope['criteriaSent'],
+                    $scope['scopeSent'],
+                    $scope['scopeSent'],
                 ]);
 
                 // Only rewrite this project's managers when the payload actually carries

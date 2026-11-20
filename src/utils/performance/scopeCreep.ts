@@ -7,22 +7,21 @@
  * period "all" counts every addition. A removed criterion counts nowhere.
  */
 
-import type { Lead, Project } from "../../types/index.ts";
+import type { Project } from "../../types/index.ts";
 import type { PerformancePeriod, ScopeCreepData } from "../../components/dashboard/performance/types.ts";
 import { isAddedAfterApproval, liveCriteria } from "../acceptanceCriteria.ts";
-import { projectDisplayName } from "../projects.ts";
 import { isInRange, parseAppDate } from "./period.ts";
 
 export interface ScopeCreepInput {
   projects: readonly Project[];
   period: PerformancePeriod;
-  /** For the name of a project without a name of its own. */
-  leads?: readonly Pick<Lead, "id" | "name">[];
+  /** The project's display name; defaults to `name`, then the id. */
+  nameOf?: (project: Project) => string;
 }
 
 const MAX_ROWS = 5;
 
-export const computeScopeCreep = ({ projects, period, leads = [] }: ScopeCreepInput): ScopeCreepData => {
+export const computeScopeCreep = ({ projects, period, nameOf = (p) => p.name?.trim() || p.id }: ScopeCreepInput): ScopeCreepData => {
   let addedInPeriod = 0;
   let originalTotal = 0;
   const rows: ScopeCreepData["rows"] = [];
@@ -38,7 +37,7 @@ export const computeScopeCreep = ({ projects, period, leads = [] }: ScopeCreepIn
     originalTotal += original;
     addedInPeriod += added;
     if (added > 0) {
-      rows.push({ projectId: project.id, name: projectDisplayName(project, [...leads], project.id), original, added });
+      rows.push({ projectId: project.id, name: nameOf(project), original, added });
     }
   }
 
