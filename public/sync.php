@@ -5029,9 +5029,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $relAgencyWorkerIdVal = $oldRelatedAgencyWorkerId;
                 }
 
-                // Category: a short slug ('bug'); a client that omits the key leaves the stored value alone.
-                $catRaw = isset($t['category']) && is_string($t['category']) ? strtolower(trim($t['category'])) : '';
-                $catVal = preg_match('/^[a-z0-9_-]{1,32}$/', $catRaw) ? $catRaw : null;
+                [$catVal, $catFlag] = ccrm_task_category_write($t); // api/recurring_tasks.php
                 $insTask->execute([
                     $taskId,
                     $t['title'],
@@ -5058,7 +5056,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $t['deadline'],
                     $catVal,
                     array_key_exists('estimateMinutes', $t) ? 1 : 0,
-                    array_key_exists('category', $t) ? 1 : 0,
+                    $catFlag,
                 ]);
                 if ($relTicketIdVal !== null && $ticketLinkAllowed) {
                     try {
@@ -5326,8 +5324,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ? (!empty($rt['relatedAgencyWorkerId']) ? (string)$rt['relatedAgencyWorkerId'] : null)
                     : (!empty($storedRow['related_agency_worker_id']) ? (string)$storedRow['related_agency_worker_id'] : null);
 
-                $catRaw = isset($rt['category']) && is_string($rt['category']) ? strtolower(trim($rt['category'])) : '';
-                $catVal = preg_match('/^[a-z0-9_-]{1,32}$/', $catRaw) ? $catRaw : null;
+                [$catVal, $catFlag] = ccrm_task_category_write($rt);
                 $insRecTemplate->execute([
                     $templateId,
                     $rt['title'],
@@ -5348,7 +5345,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     isset($rt['estimateMinutes']) ? (int)$rt['estimateMinutes'] : null,
                     $recJson,
                     $catVal,
-                    array_key_exists('category', $rt) ? 1 : 0,
+                    $catFlag,
                 ]);
 
                 $delAss = $pdo->prepare("DELETE FROM `task_assignees` WHERE `task_id` = ?");
