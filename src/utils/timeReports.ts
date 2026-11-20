@@ -249,7 +249,9 @@ const groupLines = (lines: readonly ReportLine[], by: ReportGroupBy): ReportGrou
     g.cost = sumMoney([g.cost, line.cost]);
     addMoney(g.billableValue, line.currency, line.billableValue);
     groups.set(key, g);
-    byGroup.set(key, [...(byGroup.get(key) ?? []), line]);
+    const bucket = byGroup.get(key);
+    if (bucket) bucket.push(line);
+    else byGroup.set(key, [line]);
   }
   for (const g of groups.values()) g.margin = marginOfLines(byGroup.get(g.key) ?? []);
   return [...groups.values()].sort((a, b) => b.seconds - a.seconds || a.key.localeCompare(b.key));

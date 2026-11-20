@@ -319,13 +319,7 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
                   if (thenChoice === v) setThenChoice(null);
                 }}
                 onThen={(v) => setThenChoice(v as ReportGroupBy | "none")}
-                firstOptions={[
-                  { value: "project", label: t("Project", "Projekt", "Projekt") },
-                  { value: "title", label: t("Title", "Názov", "Cím") },
-                  { value: "person", label: t("Person", "Osoba", "Személy") },
-                  { value: "client", label: t("Client", "Klient", "Ügyfél") },
-                  { value: "day", label: t("Day", "Deň", "Nap") },
-                ]}
+                firstOptions={(["project", "title", "person", "client", "day"] as ReportGroupBy[]).map((d) => ({ value: d, label: dimensionLabel(d, t) }))}
                 thenOptions={[
                   ...(["person", "title", "project", "client", "day"] as ReportGroupBy[]).filter((d) => d !== groupBy).map((d) => ({ value: d, label: dimensionLabel(d, t) })),
                   { value: "none", label: t("None", "Žiadne", "Nincs") },

@@ -106,3 +106,23 @@ test("drill-down children add up to their parent: rounding, currencies and the m
   assert.equal(report.groups.find((g) => g.key === "p1")!.margin?.partial, true);
   assert.ok(p1.find((k) => k.key === "u2")!.margin);
 });
+
+test("linesOfGroup finds the empty group: no project, no client, no title", () => {
+  const base = { userId: "u1", entryDate: "2026-05-04", billable: false, currency: "EUR", durationSec: 600 };
+  const report = buildReport({
+    entries: [
+      { ...base, id: "a", projectId: null, clientId: null, title: "" },
+      { ...base, id: "b", projectId: "p1", clientId: "c1", title: "work" },
+    ],
+    filters,
+    canCosts: true,
+    rounding: { minutes: 0 as const, mode: "nearest" as const },
+    viewerUserId: "u1",
+    currency: "EUR",
+    workingDays: 20,
+  });
+  assert.deepEqual(linesOfGroup(report.lines, "project", "").map((l) => l.id), ["a"]);
+  assert.deepEqual(linesOfGroup(report.lines, "client", "").map((l) => l.id), ["a"]);
+  assert.deepEqual(linesOfGroup(report.lines, "title", "").map((l) => l.id), ["a"]);
+  assert.deepEqual(linesOfGroup(report.lines, "project", "p1").map((l) => l.id), ["b"]);
+});

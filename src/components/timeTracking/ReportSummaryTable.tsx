@@ -1,4 +1,4 @@
-import { Fragment, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useMemo, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 import { Surface } from "../layout";
 import { formatMoney } from "../../utils/currency";
@@ -48,7 +48,7 @@ export function groupTitle(by: ReportGroupBy, t: T): string {
 /** Name of a dimension as the "Group by" chip and the drill-down hint show it. */
 export function dimensionLabel(by: ReportGroupBy, t: T): string {
   if (by === "person") return t("Employee", "Zamestnanec", "Munkatárs");
-  if (by === "title") return t("Task", "Úloha", "Feladat");
+  if (by === "title") return t("Title", "Názov", "Cím");
   if (by === "project") return t("Project", "Projekt", "Projekt");
   if (by === "client") return t("Client", "Klient", "Ügyfél");
   return t("Day", "Deň", "Nap");
@@ -58,7 +58,7 @@ export function dimensionLabel(by: ReportGroupBy, t: T): string {
 function drillHint(by: ReportGroupBy, t: T): string {
   const noun = {
     person: ["employee", "zamestnanca", "munkatárs"],
-    title: ["task", "úlohy", "feladat"],
+    title: ["title", "názvu", "cím"],
     project: ["project", "projektu", "projekt"],
     client: ["client", "klienta", "ügyfél"],
     day: ["day", "dňa", "nap"],
@@ -104,7 +104,14 @@ export function ReportSummaryTable({
   openKeys?: ReadonlySet<string>;
   onToggle?: (key: string) => void;
 }) {
-  const drill = thenBy != null && !!childLabel && !!onToggle;
+  const drill = thenBy != null && !!childLabel && !!onToggle && report.groups.length > 0;
+  // Children of the open rows only; recomputed when the report, the second level or the open set changes.
+  const kidsOf = useMemo(() => {
+    const out = new Map<string, ReturnType<typeof drillGroups>>();
+    if (thenBy == null) return out;
+    for (const g of report.groups) if (openKeys?.has(g.key)) out.set(g.key, drillGroups(linesOfGroup(report.lines, groupBy, g.key), thenBy));
+    return out;
+  }, [report, groupBy, thenBy, openKeys]);
   const both = report.showsWorked;
   const cell = (node: ReactNode) => <td className={td}>{node}</td>;
   const figures = (g: BuiltReport["groups"][number]) => (
@@ -147,7 +154,7 @@ export function ReportSummaryTable({
           )}
           {report.groups.map((g) => {
             const isOpen = drill && !!openKeys?.has(g.key);
-            const kids = isOpen ? drillGroups(linesOfGroup(report.lines, groupBy, g.key), thenBy) : [];
+            const kids = isOpen ? kidsOf.get(g.key) ?? [] : [];
             return (
               <Fragment key={g.key || "empty"}>
                 <tr
