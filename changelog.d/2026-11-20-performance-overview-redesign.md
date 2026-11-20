@@ -1,0 +1,1 @@
+- **Výkonnostný prehľad: new design** (`src/components/dashboard/performance/`, `src/utils/performance/`, `Dashboard.tsx`): the overview tab of the dashboard is rebuilt from the approved design: a KPI strip, the "Na fakturovanie" block, and the sections Financie, Projekty, Tím a úlohy and Podpora, driven by a Týždeň / Mesiac / Kvartál / Rok period switch in the page header.
