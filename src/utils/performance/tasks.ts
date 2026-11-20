@@ -83,6 +83,8 @@ export interface ThroughputInput {
   projects: readonly Project[];
   taskStates: string[];
   period: PerformancePeriod;
+  /** The project's display name; defaults to `name`, then the id. */
+  nameOf?: (project: Project) => string;
 }
 
 /** Days from creation to completion of the done tasks completed in the range, with the project each belongs to. */
@@ -105,7 +107,13 @@ const mean = (values: readonly number[]): number | null =>
  * Average time from creating a task to finishing it, for tasks completed in the period (days as a
  * fraction), the change against the previous period, and the fastest projects.
  */
-export const computeThroughput = ({ tasks, projects, taskStates, period }: ThroughputInput): ThroughputData => {
+export const computeThroughput = ({
+  tasks,
+  projects,
+  taskStates,
+  period,
+  nameOf = (p) => p.name?.trim() || p.id,
+}: ThroughputInput): ThroughputData => {
   const current = finishedIn(tasks, taskStates, period.start, period.end);
   const averageDays = mean(current.map((t) => t.days));
 
@@ -115,7 +123,7 @@ export const computeThroughput = ({ tasks, projects, taskStates, period }: Throu
     if (previous !== null) deltaDays = averageDays - previous;
   }
 
-  const projectName = new Map(projects.map((p) => [p.id, p.name?.trim() || p.id]));
+  const projectName = new Map(projects.map((p) => [p.id, nameOf(p)]));
   const perProject = new Map<string, number[]>();
   for (const { days, projectId } of current) {
     if (!projectId) continue;

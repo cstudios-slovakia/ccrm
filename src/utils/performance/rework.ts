@@ -75,6 +75,8 @@ export interface ReworkCountInput {
   tasks: readonly Task[];
   projects: readonly Project[];
   period: PerformancePeriod;
+  /** The project's display name; defaults to `name`, then the id. */
+  nameOf?: (project: Project) => string;
 }
 
 /**
@@ -82,7 +84,12 @@ export interface ReworkCountInput {
  * the distinct tasks they belong to), and the same average for the five projects with the highest
  * one. Only tasks with a project count towards a project.
  */
-export const computeReworkCount = ({ tasks, projects, period }: ReworkCountInput): ReworkCountData => {
+export const computeReworkCount = ({
+  tasks,
+  projects,
+  period,
+  nameOf = (p) => p.name?.trim() || p.id,
+}: ReworkCountInput): ReworkCountData => {
   let reopenings = 0;
   let reopenedTasks = 0;
   const perProject = new Map<string, { reopenings: number; tasks: number }>();
@@ -100,7 +107,7 @@ export const computeReworkCount = ({ tasks, projects, period }: ReworkCountInput
     perProject.set(projectId, entry);
   }
 
-  const projectName = new Map(projects.map((p) => [p.id, p.name?.trim() || p.id]));
+  const projectName = new Map(projects.map((p) => [p.id, nameOf(p)]));
   const byProject = [...perProject.entries()]
     .map(([projectId, e]) => ({ projectId, name: projectName.get(projectId) ?? projectId, average: e.reopenings / e.tasks }))
     .sort((a, b) => b.average - a.average || a.name.localeCompare(b.name))

@@ -73,6 +73,13 @@ test("average days as a fraction, change against the previous period, fastest pr
   assert.equal(t.scaleMax, 3);
 });
 
+test("nameOf names the projects of byProject; the default stays name, then id", () => {
+  const tasks = [done("a1", "2026-11-01 08:00", "2026-11-03 08:00", { relatedProjectId: "pa" })];
+  const byName = computeThroughput({ tasks, projects, taskStates: STATES, period, nameOf: (p) => `<${p.id}>` });
+  assert.equal(byName.byProject[0].name, "<pa>");
+  assert.equal(computeThroughput({ tasks, projects, taskStates: STATES, period }).byProject[0].name, "Alfa");
+});
+
 test("byProject keeps the five fastest and scales to the slowest listed", () => {
   const tasks = Array.from({ length: 7 }, (_, i) =>
     done(`t${i}`, "2026-11-01 00:00", `2026-11-${String(2 + i).padStart(2, "0")} 00:00`, { relatedProjectId: `p${i}` }),

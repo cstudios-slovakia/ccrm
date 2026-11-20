@@ -122,6 +122,12 @@ test("count: empty input", () => {
   assert.deepEqual(computeReworkCount({ tasks: [], projects: [], period }), { average: null, byProject: [], scaleMax: 1 });
 });
 
+test("count: nameOf names the projects; the default stays name, then id", () => {
+  const tasks = [task("t1", { relatedProjectId: "pa", reopens: [reopen(utc(2026, 11, 2, 8))] })];
+  assert.equal(computeReworkCount({ tasks, projects, period, nameOf: (p) => `<${p.id}>` }).byProject[0].name, "<pa>");
+  assert.equal(computeReworkCount({ tasks, projects, period }).byProject[0].name, "Alfa");
+});
+
 test("count: reopenings in the period over distinct reopened tasks, by project, highest first", () => {
   const tasks = [
     task("t1", { relatedProjectId: "pa", reopens: [reopen(utc(2026, 11, 2, 8)), reopen(utc(2026, 11, 4, 8)), reopen(utc(2026, 11, 6, 8))] }), // 3

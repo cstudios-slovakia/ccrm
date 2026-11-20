@@ -27,7 +27,7 @@ import type { StatusStatGroup } from "../../GroupedStatusValueEquationStats";
 import type { FinanceInput } from "../../../utils/marketingRoi";
 import { DEFAULT_INVOICE_STATUS_DEFS, DEFAULT_OFFER_STATUS_DEFS, type OfferStatusDef } from "../../../utils/offerStatuses";
 import { resolveLinkedClient } from "../../../utils/leadClient";
-import { openProjectStatuses, type ProjectStatusDef } from "../../../utils/projects";
+import { openProjectStatuses, projectDisplayName, type ProjectStatusDef } from "../../../utils/projects";
 import { resolveTicketSlaTargetMinutes } from "../../../utils/tickets";
 import { useTimeTracking } from "../../../hooks/useTimeTracking";
 import { computeCashflow } from "../../../utils/performance/cashflow";
@@ -174,6 +174,8 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
     const open = openProjectStatuses(projectStatuses);
     return (project: Project) => open.includes(project.status);
   }, [projectStatuses]);
+  /** What the widgets call a project: its own name, else the paired lead's, else its id. */
+  const nameOf = useMemo(() => (project: Project): string => projectDisplayName(project, leads as Lead[], project.id), [leads]);
   /** The project's client: its own `clientId`, else the client its lead is linked to, else the lead. */
   const clientNameOf = useMemo(
     () => (project: Project): string => {
@@ -220,23 +222,23 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
       );
       costsByProject.set(project.id, projectExpenseCosts(own, project.id, "real") + (labourByProject?.[project.id]?.cost ?? 0));
     }
-    const data = computeProfitability({ projects, isActive, invoicedByProject, costsByProject, recentCostProjectIds, clientNameOf });
+    const data = computeProfitability({ projects, isActive, invoicedByProject, costsByProject, recentCostProjectIds, clientNameOf, nameOf });
     return { ...data, labourCostHidden: isLabourCostHidden(data.rows.map((row) => row.projectId), labourByProject) };
   }, [
     canSeeFinancials, projects, projectTypes, isActive, financialRecords, invoicesOffers, invoiceStatuses,
-    defaultCurrency, leadById, clientNameOf, labourByProject, recentLabourProjectIds, today,
+    defaultCurrency, leadById, clientNameOf, nameOf, labourByProject, recentLabourProjectIds, today,
   ]);
 
   const deadlines = useMemo(
-    () => computeDeadlines({ projects, isActive, clientNameOf, today, soonDays: 14, limit: 7 }),
-    [projects, isActive, clientNameOf, today],
+    () => computeDeadlines({ projects, isActive, clientNameOf, nameOf, today, soonDays: 14, limit: 7 }),
+    [projects, isActive, clientNameOf, nameOf, today],
   );
 
-  const scopeCreep = useMemo(() => computeScopeCreep({ projects, period, leads }), [projects, period, leads]);
+  const scopeCreep = useMemo(() => computeScopeCreep({ projects, period, nameOf }), [projects, period, nameOf]);
 
   const throughput = useMemo(
-    () => computeThroughput({ tasks, projects, taskStates, period }),
-    [tasks, projects, taskStates, period],
+    () => computeThroughput({ tasks, projects, taskStates, period, nameOf }),
+    [tasks, projects, taskStates, period, nameOf],
   );
   const assignedTasks = useMemo(
     () => computeAssignedTasks({ tasks, employees, taskStates, today }),
@@ -247,7 +249,7 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
     () => computeReworkRatio({ tasks, employees, taskStates, period }),
     [tasks, employees, taskStates, period],
   );
-  const reworkCount = useMemo(() => computeReworkCount({ tasks, projects, period }), [tasks, projects, period]);
+  const reworkCount = useMemo(() => computeReworkCount({ tasks, projects, period, nameOf }), [tasks, projects, period, nameOf]);
 
   const utilizationState: UtilizationState =
     timeEntries.status === "ready" ? "ready"
