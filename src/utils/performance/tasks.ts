@@ -20,18 +20,40 @@ export interface AssignedTasksInput {
   today: Date;
 }
 
-/**
- * Open tasks (not done, not archived) per person. A task counts once for every distinct name among
- * `owner` and `assignedUsers`; a name is matched to an employee by `Employee.name` (case-insensitive),
- * an unmatched name keeps itself as the id. Overdue honours `deadlineTime` through `isTaskOverdue`.
- * A task nobody is assigned to is in no row. The period does not apply.
- */
-export const computeAssignedTasks = ({ tasks, employees, taskStates, today }: AssignedTasksInput): AssignedTasksData => {
-  const employeeByName = new Map<string, Employee>();
+/** Employees by lower-cased name; the first one wins when two share a name. */
+export const indexEmployeesByName = (employees: readonly Employee[]): Map<string, Employee> => {
+  const byName = new Map<string, Employee>();
   for (const e of employees) {
     const key = nameKey(e.name || "");
-    if (key && !employeeByName.has(key)) employeeByName.set(key, e);
+    if (key && !byName.has(key)) byName.set(key, e);
   }
+  return byName;
+};
+
+/**
+ * The people a task belongs to: one entry for every distinct name among `owner` and `assignedUsers`.
+ * A name is matched to an employee by `Employee.name` (case-insensitive); an unmatched name keeps
+ * itself as the id. A task nobody is assigned to has none.
+ */
+export const taskPeople = (task: Task, employeeByName: ReadonlyMap<string, Employee>): { employeeId: string; name: string }[] => {
+  const people: { employeeId: string; name: string }[] = [];
+  const seen = new Set<string>();
+  for (const raw of [task.owner, ...(task.assignedUsers ?? [])]) {
+    const name = (raw ?? "").trim();
+    if (!name || seen.has(nameKey(name))) continue;
+    seen.add(nameKey(name));
+    const employee = employeeByName.get(nameKey(name));
+    people.push({ employeeId: employee?.id ?? name, name: employee?.name || name });
+  }
+  return people;
+};
+
+/**
+ * Open tasks (not done, not archived) per person. A task counts once for every person of
+ * `taskPeople`. Overdue honours `deadlineTime` through `isTaskOverdue`. The period does not apply.
+ */
+export const computeAssignedTasks = ({ tasks, employees, taskStates, today }: AssignedTasksInput): AssignedTasksData => {
+  const employeeByName = indexEmployeesByName(employees);
   const nowStamp = localStampStr(today);
   const rows = new Map<string, { employeeId: string; name: string; open: number; overdue: number }>();
 
@@ -39,15 +61,8 @@ export const computeAssignedTasks = ({ tasks, employees, taskStates, today }: As
     if (task.archived || isDoneTaskState(task.status, taskStates)) continue;
     const overdue = isTaskOverdue(task, taskStates, nowStamp);
 
-    const seen = new Set<string>();
-    for (const raw of [task.owner, ...(task.assignedUsers ?? [])]) {
-      const name = (raw ?? "").trim();
-      if (!name || seen.has(nameKey(name))) continue;
-      seen.add(nameKey(name));
-
-      const employee = employeeByName.get(nameKey(name));
-      const employeeId = employee?.id ?? name;
-      const row = rows.get(employeeId) ?? { employeeId, name: employee?.name || name, open: 0, overdue: 0 };
+    for (const { employeeId, name } of taskPeople(task, employeeByName)) {
+      const row = rows.get(employeeId) ?? { employeeId, name, open: 0, overdue: 0 };
       row.open += 1;
       if (overdue) row.overdue += 1;
       rows.set(employeeId, row);

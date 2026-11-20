@@ -325,7 +325,7 @@ export interface PerformanceOverviewData {
   /** The entries hit the server's list limit: older ones of the period are missing from the figures. */
   utilizationTruncated?: boolean;
   assignedTasks: AssignedTasksData;
-  /** Phase 2 (item b): null until task reopenings are recorded. */
+  /** From `Task.reopens`; null is still allowed by the contract but the overview always fills it. */
   reworkRatio: ReworkRatioData | null;
   reworkCount: ReworkCountData | null;
   ticketsByStatus: TicketsByStatusData;

@@ -47,6 +47,7 @@ import {
   isLabourCostHidden,
 } from "../../../utils/performance/profitability";
 import { computeRecurringIncome } from "../../../utils/performance/recurringIncome";
+import { computeReworkCount, computeReworkRatio } from "../../../utils/performance/rework";
 import { computeAssignedTasks, computeThroughput } from "../../../utils/performance/tasks";
 import { computeUtilization } from "../../../utils/performance/utilization";
 import { computeResponseTime, computeTicketsByStatus, firstResponseWithinSla } from "../../../utils/performance/tickets";
@@ -239,6 +240,12 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
     [tasks, employees, taskStates, today],
   );
 
+  const reworkRatio = useMemo(
+    () => computeReworkRatio({ tasks, employees, taskStates, period }),
+    [tasks, employees, taskStates, period],
+  );
+  const reworkCount = useMemo(() => computeReworkCount({ tasks, projects, period }), [tasks, projects, period]);
+
   const utilizationState: UtilizationState =
     timeEntries.status === "ready" ? "ready"
     : timeEntries.status === "forbidden" ? "time-tracking"
@@ -284,14 +291,14 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
       utilizationState,
       utilizationTruncated: timeEntries.truncated,
       assignedTasks,
-      reworkRatio: null,
-      reworkCount: null,
+      reworkRatio,
+      reworkCount,
       ticketsByStatus,
       responseTime,
     }),
     [
       period, labels, kpiStrip, invoicing, cashflow, recurringIncome, dso, profitability, deadlines,
-      throughput, utilization, utilizationState, timeEntries.truncated, assignedTasks, ticketsByStatus, responseTime,
+      throughput, utilization, utilizationState, timeEntries.truncated, assignedTasks, reworkRatio, reworkCount, ticketsByStatus, responseTime,
     ],
   );
 };
