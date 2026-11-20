@@ -200,7 +200,7 @@ test.describe('Time tracking', () => {
     await page.getByRole('tab', { name: /Deň|Day|Nap/ }).click();
     await expect(page.getByTestId('day-user-header').filter({ hasText: 'Mária' })).toContainText(/bez sadzby|no rate|nincs díj/);
     // Erik is an employee on €3,200 a month: a rate is shown on his header.
-    await expect(page.getByTestId('day-user-header').filter({ hasText: 'Erik' })).toContainText('/h');
+    await expect(page.getByTestId('day-user-header').filter({ hasText: 'Erik' })).toContainText(/\/\s?h/);
   });
 
   test('cost of other people\'s entries is hidden without time_tracking_costs, while a person still sees their own', async ({ page }) => {

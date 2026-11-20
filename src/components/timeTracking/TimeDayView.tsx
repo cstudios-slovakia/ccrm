@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Surface } from "../layout";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
@@ -22,6 +22,7 @@ import type { Task } from "../../types";
 import { clusterEntries, segmentByCluster } from "../../utils/timeClusters.ts";
 import { ClusterGroup } from "./ClusterChip";
 import { ClockDigits } from "./ClockDigits";
+import { DayEntryActions } from "./DayEntryActions";
 import { EntryRow } from "./EntryRow";
 import { ProjectPicker } from "./ProjectPicker";
 import { RoleBadge } from "./RoleBadge";
@@ -195,7 +196,11 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
 
       {/* Day header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-700" aria-hidden data-testid="day-heading-tile">
+            <CalendarDays className="size-5" />
+          </span>
+          <div>
           <h3 className="type-panel-title capitalize text-slate-900" data-testid="day-heading">
             {new Date(`${selected}T12:00:00`).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
           </h3>
@@ -204,6 +209,7 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
             {t("you", "vy", "Ön")} <ClockDigits value={formatDuration(myTotal, true)} className="font-bold" data-testid="day-mine" /> {t("of", "z", "ennyiből:")} {formatDuration(perDayTarget(selected) / (wholeTeam ? people : 1))}
             {holiday && <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-micro font-semibold text-slate-600" data-testid="holiday-chip">{t("State holiday", "Štátny sviatok", "Állami ünnep")} · {holidayName(holiday, tt.workCountry, deps.language)}</span>}
           </p>
+          </div>
         </div>
         <button type="button" onClick={() => setAdding(true)} data-testid="day-add-row" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-ui font-semibold text-primary-foreground transition-all active:scale-95 cursor-pointer">
           <Plus className="size-4" />
@@ -238,7 +244,8 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
                     value={rowNotes}
                     onChange={(e) => { setRowNotes(e.target.value); setRowTaskQuery(e.target.value); }}
                     onKeyDown={(e) => { if (e.key === "Enter") void saveRow(); }}
-                    placeholder={t("Notes, or type to find a task", "Poznámky alebo hľadajte úlohu", "Jegyzet, vagy írjon a feladat kereséséhez")}
+                    placeholder={t("What did you do?", "Čo ste robili?", "Mit csinált?")}
+                    title={t("Type to find an open task, or write a note", "Píšte pre vyhľadanie otvorenej úlohy alebo napíšte poznámku", "Írjon egy nyitott feladat kereséséhez, vagy hagyjon jegyzetet")}
                     data-testid="day-row-notes"
                     className="h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-ui outline-none focus:border-primary"
                   />
@@ -268,7 +275,7 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
             <button type="button" onClick={() => setAdding(false)} className="h-9 rounded-xl px-3 text-ui font-semibold text-slate-500 hover:bg-slate-100 cursor-pointer">{t("Close", "Zavrieť", "Bezárás")}</button>
           </div>
           <p className="type-meta text-slate-500" data-testid="day-add-hint">
-            {t("Hours only — no start or end time needed. Type 1:30 or 90m. Add a time range from the drawer if you want it on the calendar grid.", "Len hodiny — začiatok ani koniec netreba. Napíšte 1:30 alebo 90m. Časový rozsah doplníte v paneli, ak ho chcete v kalendári.", "Csak órák — kezdés és befejezés nem kell. Írja be: 1:30 vagy 90m. Időtartományt a panelben adhat hozzá, ha a naptárban is látni szeretné.")}
+            {t("Hours only — no start or end time needed. Type 1.5, 1:30 or 90m. Add a time range from the drawer if you want it on the calendar grid.", "Len hodiny — začiatok ani koniec netreba. Napíšte 1.5, 1:30 alebo 90m. Časový rozsah doplníte v paneli, ak ho chcete v kalendári.", "Csak órák — kezdés és befejezés nem kell. Írja be: 1.5, 1:30 vagy 90m. Időtartományt a panelben adhat hozzá, ha a naptárban is látni szeretné.")}
           </p>
         </Surface>
       )}
@@ -294,20 +301,25 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
                 {/* END-PHASE4-VIEWING-AS */}
                 {seeCost && rateEntry && (
                   rateEntry.costRate ? (
-                    <span className="type-meta tabular-nums text-violet-700">{money(rateEntry.costRate)}/h</span>
+                    <span className="type-meta tabular-nums text-slate-500">{money(rateEntry.costRate)} / h</span>
                   ) : (
                     <span className="type-meta text-amber-700" data-testid="no-rate">{t("no rate — no employee linked", "bez sadzby — nie je pripojený zamestnanec", "nincs díj — nincs munkatárs hozzárendelve")}</span>
                   )
                 )}
                 <span className="ml-auto flex items-center gap-4">
-                  {cost !== null && <span className="tabular-nums text-violet-700">{money(cost)}</span>}
+                  {cost !== null && <span className="tabular-nums text-slate-600">{money(cost)}</span>}
                   <WorkedTotal projectSec={totalSeconds(list, nowMs)} workedSec={totalWorkedSeconds(list, nowMs)} className="font-semibold text-slate-900" />
                 </span>
               </div>
               <div role="table" className="divide-y divide-slate-100">
                 {segmentByCluster(list, clusterEntries(list, nowMs), (e) => [e.id]).map((seg, si) => {
                   const rows = seg.items.map((e) => (
-                    <EntryRow key={e.id} entry={withoutHiddenCost(e, tt.userId || "", tt.viewer.canCosts)} deps={deps} onOpen={onOpen} />
+                    <div key={e.id} className="flex items-center">
+                      <div className="min-w-0 flex-1">
+                        <EntryRow entry={withoutHiddenCost(e, tt.userId || "", tt.viewer.canCosts)} deps={deps} onOpen={onOpen} />
+                      </div>
+                      <DayEntryActions entry={e} deps={deps} onOpen={onOpen} />
+                    </div>
                   ));
                   return seg.cluster ? <ClusterGroup key={`c${si}`} cluster={seg.cluster}>{rows}</ClusterGroup> : <Fragment key={`s${si}`}>{rows}</Fragment>;
                 })}
