@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { Inbox, X } from "lucide-react";
 import { Surface } from "../layout";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { clockTime, formatDuration } from "../../utils/timeTracking.ts";
@@ -42,8 +42,9 @@ export function UnsortedListChip() {
         sessionStorage.setItem("ccrm-focus-unsorted", "1");
         window.location.hash = "#time-tracking/day";
       }}
-      className="inline-flex h-9 items-center gap-1.5 rounded-full bg-amber-50 px-3 text-ui font-semibold text-amber-900 ring-1 ring-amber-200 transition-all hover:bg-amber-100 active:scale-95 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600"
+      className="inline-flex h-10 items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 text-ui font-bold text-amber-800 transition-all hover:bg-amber-100 active:scale-95 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600"
     >
+      <Inbox className="size-4" aria-hidden />
       {t("Unsorted", "Nezaradené", "Rendezetlen")} · {count}
     </button>
   );

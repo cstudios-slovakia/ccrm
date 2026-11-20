@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { SectionIcon } from "../icons/SectionIcon";
-import { Calendar, CalendarDays, LayoutGrid, List, Settings as SettingsIcon } from "lucide-react";
+import { Calendar, CalendarDays, LayoutGrid, List } from "lucide-react";
 import { Page, PageHeader, Tabs } from "../layout";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { useRecentProjects } from "../../hooks/useRecentProjects";
@@ -15,6 +15,9 @@ import { TimerBar } from "./TimerBar";
 import { TimeTrackingMobileBar } from "./TimeTrackingMobileBar";
 import { ViewingAsProvider, useViewingAs } from "./ViewingAsContext";
 import { ViewingAsSelect } from "./ViewingAsSelect";
+import { TimeHeaderActions } from "./TimeHeaderActions";
+import { TimeToolbarProvider, TimeToolbarTarget } from "./TimeToolbarSlot";
+import { UnsortedListChip } from "./UnsortedInbox";
 import { useEntryDeletion, type TimeDeps } from "./shared";
 
 interface Props {
@@ -35,7 +38,9 @@ const tabFromRoute = (route: string): string => {
 export function TimeTrackingView(props: Props) {
   return (
     <ViewingAsProvider>
-      <TimeTrackingScreen {...props} />
+      <TimeToolbarProvider>
+        <TimeTrackingScreen {...props} />
+      </TimeToolbarProvider>
     </ViewingAsProvider>
   );
 }
@@ -81,19 +86,14 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
       <PageHeader
         icon={<SectionIcon id="time-tracking" />}
         title={t("Time tracking", "Evidencia času", "Időkövetés")}
-        subtitle={t("Track what you work on — every hour is priced at its real cost.", "Zaznamenávajte, na čom pracujete — každá hodina má svoju skutočnú cenu.", "Rögzítse, min dolgozik — minden óra a valós költségén szerepel.")}
-        actions={
-          <button type="button" onClick={() => onNavigate("settings/projects/time")} title={t("Time tracking settings", "Nastavenia evidencie času", "Időkövetés beállításai")} className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-ui font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-800 cursor-pointer">
-            <SettingsIcon className="size-4" />
-            <span className="hidden ws-sm:inline">{t("Settings", "Nastavenia", "Beállítások")}</span>
-          </button>
-        }
+        subtitle={t("Track work against projects and tasks. Labour cost is calculated from each employee's salary.", "Sledujte prácu na projektoch a úlohách. Náklady na prácu sa počítajú z platu každého zamestnanca.", "Kövesse nyomon a projektekre és feladatokra fordított munkát. A munkaköltséget az egyes munkatársak fizetéséből számoljuk.")}
+        actions={<TimeHeaderActions onNavigate={onNavigate} />}
       />
 
       <TimerBar deps={deps} recentProjectIds={recentProjectIds} secondsByProject={secondsByProject} />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-60 flex-1">
+      <div className="flex flex-wrap items-center justify-between gap-3" data-testid="time-toolbar">
+        <div className="min-w-0 max-w-full shrink">
           <Tabs<string>
             testId="time-tabs"
             value={tab}
@@ -103,11 +103,15 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
               { key: "day", label: t("Day", "Deň", "Nap"), icon: <CalendarDays /> },
               { key: "calendar", label: t("Calendar", "Kalendár", "Naptár"), icon: <Calendar /> },
               { key: "timesheet", label: t("Timesheet", "Výkaz", "Munkaidő-nyilvántartás"), icon: <LayoutGrid /> },
-              ...extraTimeTrackingTabs.map((item: ExtraTimeTrackingTab) => ({ key: item.id, label: item.label(t) })),
+              ...extraTimeTrackingTabs.map((item: ExtraTimeTrackingTab) => ({ key: item.id, label: item.label(t), icon: item.icon })),
             ]}
           />
         </div>
-        <ViewingAsSelect users={people} />
+        <div className="flex flex-wrap items-center gap-2">
+          <TimeToolbarTarget />
+          {scope === "me" && <UnsortedListChip />}
+          <ViewingAsSelect users={people} />
+        </div>
       </div>
 
       {!ready ? (

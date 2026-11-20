@@ -29,7 +29,7 @@ import { ClockDigits } from "./ClockDigits";
 import { EntryRow } from "./EntryRow";
 import { RangeNav } from "./RangeNav";
 import { continueInput } from "./TimerBar";
-import { UnsortedListChip } from "./UnsortedInbox";
+import { TimeToolbarSlot } from "./TimeToolbarSlot";
 import { EntriesFocusBanner, clearEntriesFocus, useEntriesFocus, useViewingAsOptional, viewingFromScope } from "./ViewingAsContext";
 import { useMoney, type TimeDeps } from "./shared";
 
@@ -137,7 +137,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
         {weekCost !== null && <StatTile label={t("Labour cost this week", "Náklady na prácu za týždeň", "Heti munkaköltség")} value={<span className="tabular-nums text-slate-900" data-testid="stat-cost">{money(weekCost)}</span>} />}
       </StatGrid>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <TimeToolbarSlot>
         <RangeNav
           label={isCurrentWeek ? `${t("This week", "Tento týždeň", "Ez a hét")} · ${shortRange}` : weekLabel}
           labelTestId="week-label"
@@ -148,9 +148,9 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
           resetLabel={t("This week", "Tento týždeň", "Ez a hét")}
           onReset={isCurrentWeek ? undefined : () => { clearEntriesFocus(); setAnchor(today); }}
         />
-        {/* PHASE5-UNSORTED */}
-        {viewScope === "me" && <UnsortedListChip />}
-        {/* END-PHASE5-UNSORTED */}
+      </TimeToolbarSlot>
+
+      <div className="flex flex-wrap items-center gap-2 empty:hidden">
         {selected.size > 0 && (
           <div className="ml-auto flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-1.5 text-ui font-semibold text-white" data-testid="bulk-bar">
             {selected.size} {t("selected", "vybraných", "kijelölve")}
