@@ -74,6 +74,27 @@ test.describe('Time tracking: parallel timers', () => {
     await expect(page.getByTestId('header-timer-running')).toHaveCount(1);
   });
 
+  test('"+ Add timer" next to a single running timer starts a new one in parallel, no popover', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking');
+    await setParallel(page, true);
+    await gotoView(page, '#time-tracking');
+
+    await page.getByTestId('timer-title').fill('Prvá práca');
+    await page.getByTestId('timer-start').click();
+    await expect(page.getByTestId('header-timer-running')).toContainText('Prvá práca');
+
+    await page.getByTestId('timer-add').click();
+    const panel = page.getByTestId('timer-add-panel');
+    await panel.getByTestId('timer-title').fill('Druhá práca');
+    await panel.getByTestId('timer-start').click();
+
+    await expect(page.getByTestId('start-mode-popover')).toHaveCount(0);
+    await expect(page.getByTestId('timer-container-row')).toHaveCount(2);
+    await expect(page.getByTestId('header-timer-extra')).toHaveText('+1');
+    await expect(page.getByTestId('timer-add-panel')).toHaveCount(0);
+  });
+
   test('Switch in the popover keeps one timer', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#time-tracking');
@@ -114,5 +135,6 @@ test.describe('Time tracking: parallel timers', () => {
     await expect(page.getByTestId('start-mode-popover')).toHaveCount(0);
     await expect(page.locator('[data-testid="header-timer-running"]')).toHaveCount(1);
     await expect(page.getByTestId('header-timer-extra')).toHaveCount(0);
+    await expect(page.getByTestId('timer-add')).toHaveCount(0); // no "+ Add timer" without parallel timers
   });
 });

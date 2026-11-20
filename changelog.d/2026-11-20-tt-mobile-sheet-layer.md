@@ -1,0 +1,2 @@
+- **Time tracking: phone timer sheet above the bottom nav** (`TimeTrackingMobileBar.tsx`): the sheet now renders into `<body>` in the modal layer; inside the bar's stacking context the app's bottom navigation covered its last row (Pause all / Stop all). The oversized presence ring had been hiding this by padding the sheet's scroll area.
+- **Tests**: `timeTrackingParallel.spec.ts` ("+ Add timer" next to a single running timer starts a parallel one without the popover; no button with parallel off).

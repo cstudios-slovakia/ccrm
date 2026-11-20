@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { CalendarDays, ListTodo, Play, Plus, Square, Timer, X } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { extraItemsLabel, workedClockSeconds } from "../../utils/timeContainer.ts";
@@ -135,8 +136,10 @@ export function TimeTrackingMobileBar({ onNavigate, deps, recentProjectIds, seco
           </CycleRing>
         </div>
       )}
-      {sheet && (
-        <div className="fixed inset-0 z-[960]" data-testid="mobile-timer-sheet-root">
+      {sheet && typeof document !== "undefined" && createPortal(
+        // Portalled to <body> in the modal layer: inside the bar's own stacking context the app's bottom
+        // nav (z-[20000]) covered the last row (Pause all / Stop all). The Switch / Parallel popover (z-[100001]) stays above.
+        <div className="fixed inset-0 z-[100000]" data-testid="mobile-timer-sheet-root">
           <div className="absolute inset-0 bg-slate-900/40 animate-in fade-in duration-200 motion-reduce:animate-none" onClick={() => setSheet(false)} aria-hidden />
           <div
             role="dialog"
@@ -180,7 +183,7 @@ export function TimeTrackingMobileBar({ onNavigate, deps, recentProjectIds, seco
             />
           </div>
         </div>
-      )}
+        , document.body)}
       <nav
         aria-label={t("Time tracking", "Evidencia času", "Időkövetés")}
         data-testid="time-mobile-bar"
