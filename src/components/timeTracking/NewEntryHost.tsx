@@ -16,11 +16,21 @@ export function NewEntryHost({ deps }: { deps: TimeDeps }) {
   useEffect(() => {
     const onNew = (e: Event) => {
       const req = ((e as CustomEvent<NewTimeEntryRequest>).detail ?? {}) as NewTimeEntryRequest;
+      // A consistent shape: a full range (start + end + duration) or hours-only, never a start without an end (that reads as running).
+      let startAt = req.startAt ?? null;
+      let endAt = req.endAt ?? null;
+      let durationSec = req.durationSec ?? null;
+      if (startAt && !endAt) {
+        if (durationSec) endAt = new Date(new Date(startAt).getTime() + durationSec * 1000).toISOString();
+        else startAt = null;
+      }
+      if (startAt && endAt) durationSec = Math.max(0, Math.round((new Date(endAt).getTime() - new Date(startAt).getTime()) / 1000));
+      if (!startAt) { endAt = null; }
       const task = req.taskId ? deps.tasks.find((x) => x.id === req.taskId) ?? null : null;
       setDraft({
         id: "",
         nonce: Date.now(),
-        userId: tt.userId ?? "",
+        userId: req.userId || tt.userId || "",
         recordedByUserId: tt.userId ?? "",
         employeeId: null,
         projectId: req.projectId ?? null,
@@ -33,9 +43,9 @@ export function NewEntryHost({ deps }: { deps: TimeDeps }) {
         legacyNote: null,
         note: req.note ?? null,
         entryDate: req.entryDate || todayIso(),
-        startAt: req.startAt ?? null,
-        endAt: req.endAt ?? null,
-        durationSec: req.durationSec ?? null,
+        startAt,
+        endAt,
+        durationSec,
         running: false,
         billable: req.billable ?? tt.settings.billableByDefault,
         tags: [],

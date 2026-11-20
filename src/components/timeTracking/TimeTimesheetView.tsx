@@ -196,7 +196,7 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
       tt.bump();
     } catch (e) {
       // "Require a task": a project-only row opens the new-entry drawer with the cell's project, day and hours.
-      if (!recoverTaskRequired(e, { projectId: edit.projectId, entryDate: edit.entryDate, durationSec: edit.durationSec, billable: settings.billableByDefault }, tt.notify, t)) fail(e);
+      if (!recoverTaskRequired(e, { userId: row.userId ?? scopeUserId, taskId: edit.taskId, projectId: edit.projectId, entryDate: edit.entryDate, durationSec: edit.durationSec, billable: settings.billableByDefault }, tt.notify, t)) fail(e);
     }
   };
 

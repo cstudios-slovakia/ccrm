@@ -1415,6 +1415,8 @@ async function main() {
     {
       const setRule = (on) => sql(`UPDATE system_settings SET value = JSON_SET(value, '$.requireTask', ${on ? 'true' : 'false'}, '$.requireProjectToStop', false) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
       const countBy = (desc) => Number(rows(`SELECT COUNT(*) AS n FROM time_entries WHERE description = ${q(desc)}`)[0]?.n ?? 0);
+      // Its own task: T6 deletes task-tt-1 on purpose.
+      sql(`INSERT INTO tasks (id, title, priority, deadline, status, owner, created_by, related_project_id) VALUES ('task-tt-25', 'T25 linked task', 'medium', '2026-12-31', 'todo', 'TT Erik', 'TT Erik', 'proj-tt-1');`);
       // An entry that predates the rule: made while it is off.
       setRule(false);
       const legacy = await te(S.erik, { action: 'create', description: 'T25 legacy no task', entryDate: '2026-10-21', durationSec: 1800 });
@@ -1425,11 +1427,11 @@ async function main() {
       check('T25: rule on: a manual entry without a task or ticket is refused 422 task_required (the Stop code) and nothing is stored', bare.status === 422 && bare.data?.code === 'task_required' && countBy('T25 bare') === 0, bare.raw);
       const forOther = await te(S.admin, { action: 'create', userId: 'tt-erik', description: 'T25 for Erik', entryDate: '2026-10-21', durationSec: 3600 });
       check('T25: ...the same when a manager creates it for someone else', forOther.status === 422 && forOther.data?.code === 'task_required' && countBy('T25 for Erik') === 0, forOther.raw);
-      const linked = await te(S.erik, { action: 'create', taskId: 'task-tt-1', entryDate: '2026-10-21', durationSec: 3600, source: 'manual' });
-      check('T25: ...a manual entry with a task is created', linked.status === 201 && dbEntry(linked.data?.entry?.id)?.task_id === 'task-tt-1', linked.raw);
+      const linked = await te(S.erik, { action: 'create', taskId: 'task-tt-25', entryDate: '2026-10-21', durationSec: 3600, source: 'manual' });
+      check('T25: ...a manual entry with a task is created', linked.status === 201 && dbEntry(linked.data?.entry?.id)?.task_id === 'task-tt-25', linked.raw);
 
       const unlink = await te(S.erik, { action: 'update', id: linked.data?.entry?.id, taskId: null });
-      check('T25: an update that removes the task of a finished entry is refused 422 task_required and the link stays', unlink.status === 422 && unlink.data?.code === 'task_required' && dbEntry(linked.data?.entry?.id)?.task_id === 'task-tt-1', unlink.raw);
+      check('T25: an update that removes the task of a finished entry is refused 422 task_required and the link stays', unlink.status === 422 && unlink.data?.code === 'task_required' && dbEntry(linked.data?.entry?.id)?.task_id === 'task-tt-25', unlink.raw);
       const keep = await te(S.erik, { action: 'update', id: linked.data?.entry?.id, note: 'T25 edited' });
       check('T25: an update of other fields of a linked entry is accepted', keep.status === 200 && dbEntry(linked.data?.entry?.id)?.note === 'T25 edited', keep.raw);
       const legacyEdit = await te(S.erik, { action: 'update', id: legacy.data?.entry?.id, note: 'T25 legacy edited', durationSec: 2400 });

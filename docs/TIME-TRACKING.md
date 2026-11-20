@@ -588,6 +588,8 @@ ticket-time migration, the demo seed and the Chrome extension's unsorted-to-entr
 There is no condition on the project type: Stop never had one.
 On the client every manual-create surface answers the message and opens the new-entry drawer (which has the task and ticket
 pickers) prefilled with what was typed (`recoverTaskRequired` in `timeCreateBridge.ts`).
+A Timesheet cell reverts to its old value and the drawer opens with that day, row and hours. "Duplicate" of a task-less entry
+(drawer, Calendar popover) shows the same message and creates nothing; the ticket "Log time" form always carries its ticket.
 
 ## C9. Entry points (prefill rules)
 

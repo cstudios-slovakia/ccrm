@@ -222,11 +222,13 @@ test.describe('Time tracking', () => {
 
   test('"Require a task" also refuses a manual entry: the Day row explains it and opens the drawer with the typed text, a task saves it', async ({ page }) => {
     await startSession(page);
-    // The rule is off by default; switch it on as the admin does in Settings (the mock saves it like the server).
-    await page.evaluate(async () => {
-      await fetch('/api/time_entries.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'settings', settings: { requireTask: true } }) });
-    });
     await gotoView(page, '#time-tracking/day');
+    // The rule is off by default; switch it on as the admin does in Settings (the mock saves it like the server).
+    const saved = await page.evaluate(async () => {
+      const res = await fetch('/api/time_entries.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'settings', settings: { requireTask: true } }) });
+      return res.status;
+    });
+    expect(saved).toBe(200);
     await page.getByRole('tab', { name: /Deň|Day|Nap/ }).click();
     await page.getByTestId('day-add-row').click();
     await page.getByTestId('day-add-form').getByTestId('project-picker-trigger').click();

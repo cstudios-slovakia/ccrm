@@ -41,6 +41,8 @@ export interface NewTimeEntryRequest {
   endAt?: string | null;
   durationSec?: number | null;
   billable?: boolean;
+  /** The person the entry is for (a manager's Timesheet cell); defaults to the viewer. */
+  userId?: string | null;
 }
 
 export const requestNewTimeEntry = (detail: NewTimeEntryRequest): void => {
