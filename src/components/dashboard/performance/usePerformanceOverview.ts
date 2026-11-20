@@ -43,11 +43,14 @@ import {
   projectExpenseCosts,
   projectHasRecentExpense,
   projectInvoicedAmount,
+  projectsWithRecentLabour,
   isLabourCostHidden,
 } from "../../../utils/performance/profitability";
 import { computeRecurringIncome } from "../../../utils/performance/recurringIncome";
 import { computeAssignedTasks, computeThroughput } from "../../../utils/performance/tasks";
+import { computeUtilization } from "../../../utils/performance/utilization";
 import { computeResponseTime, computeTicketsByStatus, firstResponseWithinSla } from "../../../utils/performance/tickets";
+import { useOverviewTimeEntries } from "./useOverviewTimeEntries";
 import type {
   CashflowData,
   DsoData,
@@ -59,6 +62,8 @@ import type {
 export interface PerformanceOverviewInput {
   /** The one clock of this render pass. */
   today: Date;
+  /** The tab is shown: only then are the time entries of the team fetched. */
+  active: boolean;
   language: Language;
   /** The dashboard's preset name ("This month", "Custom Range", "All Time") and its bounds. */
   presetName: string;
@@ -108,7 +113,7 @@ const EMPTY_PROFITABILITY: ProfitabilityData = {
 
 export const usePerformanceOverview = (input: PerformanceOverviewInput): PerformanceOverviewData => {
   const {
-    today, language, presetName, startDate, endDate, canSeeFinancials,
+    today, active, language, presetName, startDate, endDate, canSeeFinancials,
     leads, leadStageGroups, leadStateParents,
     invoicesOffers,
     financeInput, financialRecords, uncategorizedLabel,
@@ -128,6 +133,10 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
     [presetName, startDate, endDate, today],
   );
   const labels = useMemo(() => periodLabels(period, language, today), [period, language, today]);
+
+  // Worked time of the whole team: Utilizácia and the recent labour of inactive projects.
+  const timeEntries = useOverviewTimeEntries(active, period, today);
+  const recentLabourProjectIds = useMemo(() => projectsWithRecentLabour(timeEntries.entries, today), [timeEntries.entries, today]);
 
   const kpiStrip = useMemo(() => {
     const current = computeLeadKpis(leads, { start: period.start, end: period.end }, leadStageGroups, leadStateParents);
@@ -191,7 +200,7 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
       const own = recordsByProject.get(project.id) ?? [];
       const active = isActive(project);
       if (!active) {
-        if (!projectHasRecentExpense(own, project.id, today)) continue;
+        if (!projectHasRecentExpense(own, project.id, today) && !recentLabourProjectIds.has(project.id)) continue;
         recentCostProjectIds.add(project.id);
       }
       invoicedByProject.set(
@@ -212,7 +221,7 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
     return { ...data, labourCostHidden: isLabourCostHidden(data.rows.map((row) => row.projectId), labourByProject) };
   }, [
     canSeeFinancials, projects, projectTypes, isActive, financialRecords, invoicesOffers, invoiceStatuses,
-    defaultCurrency, leadById, clientNameOf, labourByProject, today,
+    defaultCurrency, leadById, clientNameOf, labourByProject, recentLabourProjectIds, today,
   ]);
 
   const deadlines = useMemo(
@@ -227,6 +236,13 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
   const assignedTasks = useMemo(
     () => computeAssignedTasks({ tasks, employees, taskStates, today }),
     [tasks, employees, taskStates, today],
+  );
+
+  const utilizationAvailable = timeEntries.status !== "unavailable";
+  // While the entries load the widget shows its empty figures, not the "unavailable" sentence.
+  const utilization = useMemo(
+    () => (utilizationAvailable ? computeUtilization({ entries: timeEntries.entries, tasks, employees, period }) : null),
+    [utilizationAvailable, timeEntries.entries, tasks, employees, period],
   );
 
   const ticketsByStatus = useMemo(
@@ -260,7 +276,8 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
       scopeCreep: null,
       deployments: null,
       throughput,
-      utilization: null,
+      utilization,
+      utilizationUnavailable: utilizationAvailable ? undefined : "time-tracking",
       assignedTasks,
       reworkRatio: null,
       reworkCount: null,
@@ -269,7 +286,7 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
     }),
     [
       period, labels, kpiStrip, invoicing, cashflow, recurringIncome, dso, profitability, deadlines,
-      throughput, assignedTasks, ticketsByStatus, responseTime,
+      throughput, utilization, utilizationAvailable, assignedTasks, ticketsByStatus, responseTime,
     ],
   );
 };

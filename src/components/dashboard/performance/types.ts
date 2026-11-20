@@ -313,8 +313,10 @@ export interface PerformanceOverviewData {
   /** Phase 2 (item d): null until GitHub pushes are stored. */
   deployments: DeploymentsData | null;
   throughput: ThroughputData;
-  /** Phase 2 (item a): null until tasks carry a Bug category. */
+  /** Worked time on Bug tasks; null when the entries cannot be had (see `utilizationUnavailable`). */
   utilization: UtilizationData | null;
+  /** Why `utilization` is null: the user has no time tracking, or the server refuses the team's entries. */
+  utilizationUnavailable?: "time-tracking";
   assignedTasks: AssignedTasksData;
   /** Phase 2 (item b): null until task reopenings are recorded. */
   reworkRatio: ReworkRatioData | null;

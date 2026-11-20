@@ -558,7 +558,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Performance overview tab and the period control of the header
   const overview = usePerformanceOverview({
-    today: now, language: systemLanguage, presetName: filterPresetName, startDate: filterStartDate, endDate: filterEndDate,
+    today: now, active: activeTab === "overview", language: systemLanguage, presetName: filterPresetName, startDate: filterStartDate, endDate: filterEndDate,
     canSeeFinancials, leads, leadStageGroups, leadStateParents,
     invoicesOffers, invoiceStatuses, offerStatuses,
     financeInput, financialRecords, uncategorizedLabel: t("Uncategorized", "Bez kategórie", "Kategória nélkül"),

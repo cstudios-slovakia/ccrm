@@ -6,10 +6,13 @@ import { Avatar, Card, CardTitle, HeadlineValue, LegendItem, NoRows, PendingCard
 
 export const UtilizationCard = ({
   data,
+  unavailable,
   language,
   className = "",
 }: {
   data: UtilizationData | null;
+  /** Why there is no data: the user's time tracking cannot give the team's entries. */
+  unavailable?: "time-tracking";
   language: Language;
   className?: string;
 }) => {
@@ -28,11 +31,19 @@ export const UtilizationCard = ({
         title={title}
         caption={caption}
         icon={<Bug aria-hidden="true" />}
-        body={t(
-          "Tasks do not have a Bug category yet.",
-          "Úlohy zatiaľ nemajú kategóriu Bug.",
-          "A feladatoknak még nincs Bug kategóriájuk.",
-        )}
+        body={
+          unavailable === "time-tracking"
+            ? t(
+                "Time tracking is not available to you.",
+                "Evidencia času nie je pre vás dostupná.",
+                "Az időnyilvántartás nem érhető el az Ön számára.",
+              )
+            : t(
+                "Tasks do not have a Bug category yet.",
+                "Úlohy zatiaľ nemajú kategóriu Bug.",
+                "A feladatoknak még nincs Bug kategóriájuk.",
+              )
+        }
       />
     );
   }

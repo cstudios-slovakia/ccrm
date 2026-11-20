@@ -2,7 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { FinancialRecord, InvoiceOffer, Project } from "../../types/index.ts";
 import { DEFAULT_INVOICE_STATUS_DEFS } from "../offerStatuses.ts";
-import { computeProfitability, isLabourCostHidden, projectExpenseCosts, projectHasRecentExpense, projectInvoicedAmount } from "./profitability.ts";
+import type { TimeEntry } from "../timeTracking.ts";
+import {
+  computeProfitability,
+  isLabourCostHidden,
+  projectExpenseCosts,
+  projectHasRecentExpense,
+  projectInvoicedAmount,
+  projectsWithRecentLabour,
+} from "./profitability.ts";
 
 const project = (id: string, over: Partial<Project> = {}): Project =>
   ({ id, name: `P ${id}`, status: "active", archived: false, ...over }) as unknown as Project;
@@ -111,6 +119,32 @@ test("projectHasRecentExpense: paid date, else issue date, within the last 30 da
   assert.equal(at({ issueDate: "2026-11-10", status: "cancelled" }), false);
   assert.equal(at({ issueDate: "2026-11-10", isRecurring: true }), false);
   assert.equal(projectHasRecentExpense([], "p1", today), false);
+});
+
+test("projectsWithRecentLabour: worked time in the last 30 days, today included; running and empty entries do not count", () => {
+  const today = new Date(2026, 10, 20);
+  const labour = (projectId: string | null, entryDate: string, over: Partial<TimeEntry> = {}): TimeEntry =>
+    ({ id: `${projectId}-${entryDate}`, userId: "u1", projectId, entryDate, durationSec: 3600, workedMs: 3_600_000, running: false, ...over }) as unknown as TimeEntry;
+  const ids = (entries: TimeEntry[]) => [...projectsWithRecentLabour(entries, today)].sort();
+  assert.deepEqual(ids([labour("today", "2026-11-20"), labour("edge", "2026-10-21")]), ["edge", "today"]);
+  assert.deepEqual(ids([labour("old", "2026-10-20"), labour("future", "2026-11-21")]), []); // 31 days ago; tomorrow
+  assert.deepEqual(ids([labour("running", "2026-11-20", { running: true, workedMs: null })]), []);
+  assert.deepEqual(ids([labour("zero", "2026-11-20", { workedMs: 0 })]), []);
+  assert.deepEqual(ids([labour(null, "2026-11-20")]), []); // no project
+  assert.deepEqual(ids([]), []);
+});
+
+test("an inactive project with only recent labour is listed", () => {
+  const today = new Date(2026, 10, 20);
+  const entries = [{ id: "t1", userId: "u", projectId: "old", entryDate: "2026-11-15", durationSec: 60, workedMs: 60_000, running: false }] as unknown as TimeEntry[];
+  const data = computeProfitability({
+    ...base,
+    projects: [project("old", { status: "done" }), project("quiet", { status: "done" })],
+    invoicedByProject: {},
+    costsByProject: { old: 120 },
+    recentCostProjectIds: projectsWithRecentLabour(entries, today),
+  });
+  assert.deepEqual(data.rows.map((r) => [r.projectId, r.inactive, r.costs]), [["old", true, 120]]);
 });
 
 test("projectInvoicedAmount: the ledger when it has records, else the lead's live invoices", () => {

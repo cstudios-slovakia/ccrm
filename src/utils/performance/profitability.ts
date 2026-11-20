@@ -4,7 +4,8 @@
  * `computeProfitability` only arranges numbers it is given. The numbers come from the three
  * small builders below, so the wiring holds no formulas: `projectInvoicedAmount` (what the
  * "Na fakturovanie" card computes), `projectExpenseCosts` and `projectHasRecentExpense`. Labour
- * cost is not a ledger record: the caller adds `timeTracking.totals.byProject[id].cost`.
+ * cost is not a ledger record: the caller adds `timeTracking.totals.byProject[id].cost`; an inactive
+ * project with worked time in the last days stays listed too (`projectsWithRecentLabour`).
  */
 
 import type { FinancialRecord, InvoiceOffer, Lead, Project, ProjectType } from "../../types/index.ts";
@@ -13,6 +14,8 @@ import { movementAmounts } from "../financialOverviewTable.ts";
 import { isLiveInvoiceStatus, type OfferStatusDef } from "../offerStatuses.ts";
 import { projectBilling, resolveProjectValue } from "../projectBilling.ts";
 import { dayDiff, parseAppDate } from "./period.ts";
+import type { TimeEntry } from "../timeTracking.ts";
+import { RECENT_DAYS, entryWorkedMs } from "./labour.ts";
 
 type Amounts = Readonly<Record<string, number>> | ReadonlyMap<string, number>;
 
@@ -150,7 +153,7 @@ export const projectExpenseCosts = (records: readonly FinancialRecord[], project
 };
 
 /** Did the project get an expense (a real movement, not cancelled) in the last `days` days, today included? */
-export const projectHasRecentExpense = (records: readonly FinancialRecord[], projectId: string, today: Date, days = 30): boolean =>
+export const projectHasRecentExpense = (records: readonly FinancialRecord[], projectId: string, today: Date, days = RECENT_DAYS): boolean =>
   records.some((rec) => {
     if (rec.projectId !== projectId || rec.type !== "expense" || rec.isRecurring || rec.status === "cancelled") return false;
     const date = parseAppDate(rec.paidDate || rec.issueDate);
@@ -158,3 +161,20 @@ export const projectHasRecentExpense = (records: readonly FinancialRecord[], pro
     const age = dayDiff(date, today);
     return age >= 0 && age <= days;
   });
+
+/**
+ * The projects that got worked time in the last `days` days, today included (by the entry's
+ * company-timezone day). Labour is a cost too, so such a project stays listed while inactive.
+ * One pass over the entries; a running entry has no worked time yet and does not count.
+ */
+export const projectsWithRecentLabour = (entries: readonly TimeEntry[], today: Date, days = RECENT_DAYS): Set<string> => {
+  const ids = new Set<string>();
+  for (const entry of entries) {
+    if (!entry.projectId || entryWorkedMs(entry) <= 0) continue;
+    const date = parseAppDate((entry.entryDate ?? "").slice(0, 10));
+    if (!date) continue;
+    const age = dayDiff(date, today);
+    if (age >= 0 && age <= days) ids.add(entry.projectId);
+  }
+  return ids;
+};
