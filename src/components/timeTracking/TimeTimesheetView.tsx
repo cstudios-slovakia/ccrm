@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus } from "lucide-react";
-import { Surface, Toolbar } from "../layout";
+import { Copy, Info, Lock, Plus } from "lucide-react";
+import { Surface } from "../layout";
 import { CustomSelect } from "../ui/CustomSelect";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
@@ -17,6 +17,7 @@ import {
   type TimesheetRow,
   type TimesheetRowKey,
 } from "../../utils/timeTimesheet.ts";
+import { isoWeekNumber } from "../../utils/isoWeek.ts";
 import { countryForScope } from "../../utils/timeCalendar.ts";
 import { formatDuration, parseDurationInput, todayIso, weekDays, weekStart, type TimeEntry } from "../../utils/timeTracking.ts";
 import { TimeApiError, createEntry, timeErrorMessage, updateEntry } from "../../utils/timeTrackingApi.ts";
@@ -26,6 +27,7 @@ import { ProjectPicker } from "./ProjectPicker";
 import { RangeNav } from "./RangeNav";
 import { SubmitWeekButton } from "./SubmitWeekButton";
 import { scopeParam } from "./TimeListView";
+import { TimeToolbarSlot } from "./TimeToolbarSlot";
 import { describeTimeLock, useTimeLookups, type TimeDeps } from "./shared";
 
 interface Props {
@@ -210,7 +212,11 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
     setAdding(false);
   };
 
-  const range = `${new Date(`${from}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })} – ${new Date(`${to}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}`;
+  const fmtDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" });
+  const sameMonth = from.slice(0, 7) === to.slice(0, 7);
+  const rangeText = sameMonth ? `${new Date(`${from}T12:00:00`).getDate()} – ${fmtDay(to)}` : `${fmtDay(from)} – ${fmtDay(to)}`;
+  const weekNo = isoWeekNumber(from);
+  const rangeLabel = `${t(`Week ${weekNo}`, `Týždeň ${weekNo}`, `${weekNo}. hét`)} · ${rangeText}`;
   const rowLabel = (row: TimesheetRow): { project: string; task: string; person: string } => ({
     project: row.projectId ? lookups.projectName(row.projectId) : t("Assign project", "Priradiť projekt", "Projekt hozzárendelése"),
     task: row.taskId ? lookups.taskById.get(row.taskId)?.title || t("Task", "Úloha", "Feladat") : "",
@@ -219,33 +225,26 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
 
   return (
     <div className="grid gap-3" data-testid="time-timesheet">
-      <Toolbar
-        filters={
-          <RangeNav
-            label={<span className="capitalize">{range}</span>}
-            prevLabel={t("Previous week", "Predošlý týždeň", "Előző hét")}
-            nextLabel={t("Next week", "Ďalší týždeň", "Következő hét")}
-            onPrev={() => setAnchor(addDays(weekStart(anchor), -7))}
-            onNext={() => setAnchor(addDays(weekStart(anchor), 7))}
-            resetLabel={t("This week", "Tento týždeň", "Ez a hét")}
-            onReset={from === weekStart(today) ? undefined : () => setAnchor(todayIso())}
-          />
-        }
-        trailing={
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={copyLastWeek} disabled={!mayEdit} data-testid="timesheet-copy" className="inline-flex h-9 items-center rounded-xl px-3 text-ui font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40 cursor-pointer">
-              {t("Copy rows from last week", "Kopírovať riadky z minulého týždňa", "Sorok másolása a múlt hétről")}
-            </button>
-          </div>
-        }
-        primary={
-          <SubmitWeekButton
-            weekStart={from}
-            userId={scopeUserId ?? (scope === "me" ? tt.userId ?? undefined : undefined)}
-            entries={entries.map((e) => ({ entryDate: e.entryDate, userId: e.userId, approvalStatus: e.approvalStatus, running: e.running }))}
-          />
-        }
-      />
+      <TimeToolbarSlot>
+        <RangeNav
+          label={<span>{rangeLabel}</span>}
+          prevLabel={t("Previous week", "Predošlý týždeň", "Előző hét")}
+          nextLabel={t("Next week", "Ďalší týždeň", "Következő hét")}
+          onPrev={() => setAnchor(addDays(weekStart(anchor), -7))}
+          onNext={() => setAnchor(addDays(weekStart(anchor), 7))}
+          resetLabel={t("This week", "Tento týždeň", "Ez a hét")}
+          onReset={from === weekStart(today) ? undefined : () => setAnchor(todayIso())}
+        />
+        <button type="button" onClick={copyLastWeek} disabled={!mayEdit} data-testid="timesheet-copy" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 cursor-pointer">
+          <Copy className="size-4" />
+          {t("Copy rows from last week", "Kopírovať riadky z minulého týždňa", "Sorok másolása a múlt hétről")}
+        </button>
+        <SubmitWeekButton
+          weekStart={from}
+          userId={scopeUserId ?? (scope === "me" ? tt.userId ?? undefined : undefined)}
+          entries={entries.map((e) => ({ entryDate: e.entryDate, userId: e.userId, approvalStatus: e.approvalStatus, running: e.running }))}
+        />
+      </TimeToolbarSlot>
 
       {byPerson && (
         <p className="type-meta text-slate-500">{t("Pick one person to edit the timesheet.", "Vyberte jednu osobu, ak chcete upravovať výkaz.", "Válasszon egy személyt a munkaidő-nyilvántartás szerkesztéséhez.")}</p>
@@ -291,7 +290,7 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
         <table className="w-full border-collapse" data-testid="timesheet-grid">
           <thead>
             <tr>
-              <th className="sticky left-0 bg-white px-3 py-2 text-left type-overline text-slate-500">{t("Project", "Projekt", "Projekt")}</th>
+              <th className="sticky left-0 bg-white px-3 py-2 text-left type-overline text-slate-500">{t("Project · task", "Projekt · úloha", "Projekt · feladat")}</th>
               {model.days.map((day) => {
                 const holiday = calendar.holiday(day);
                 const offName = holiday ? holidayName(holiday, country, deps.language) : calendar.override(day)?.kind === "extraDayOff" ? calendar.override(day)?.name : null;
@@ -302,10 +301,10 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
                     data-testid="timesheet-day"
                     data-date={day}
                     data-holiday={offName ? "1" : "0"}
-                    className={`min-w-16 px-1 py-2 text-center ${offName ? "bg-slate-100" : ""} ${calendar.isOffDay(day) && !offName ? "text-slate-400" : "text-slate-600"}`}
+                    className={`min-w-20 px-1 py-2 text-center ${offName ? "bg-slate-100" : ""} ${calendar.isOffDay(day) && !offName ? "text-slate-400" : "text-slate-600"}`}
                   >
                     <div className="type-overline">{dt.toLocaleDateString(locale, { weekday: "short" })}</div>
-                    <div className={`text-ui font-semibold tabular-nums ${day === today ? "text-teal-700" : ""}`}>{dt.getDate()}</div>
+                    <div className={`text-ui font-semibold tabular-nums ${day === today ? "text-teal-700" : ""}`}>{dt.toLocaleDateString(locale, { day: "numeric", month: "short" })}</div>
                     {offName && <div className="truncate text-micro font-semibold text-slate-500" data-testid="timesheet-holiday">{offName}</div>}
                   </th>
                 );
@@ -369,12 +368,14 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
                 <td colSpan={9} className="px-3 py-6 text-ui text-slate-500">{t("No rows this week. Add one, or copy last week's rows.", "Tento týždeň nemá riadky. Pridajte riadok alebo skopírujte minulý týždeň.", "Ezen a héten nincs sor. Adjon hozzá egyet, vagy másolja a múlt hetet.")}</td>
               </tr>
             )}
-            <tr className="border-t border-dashed border-slate-300">
+            <tr className="border-t border-slate-100">
               <td colSpan={9} className="p-0">
-                <button type="button" onClick={() => setAdding(true)} disabled={!mayEdit} data-testid="timesheet-add-row" className="inline-flex h-10 w-full items-center gap-1.5 px-3 text-ui font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-40 cursor-pointer">
+                <div className="p-2">
+                <button type="button" onClick={() => setAdding(true)} disabled={!mayEdit} data-testid="timesheet-add-row" className="inline-flex h-10 w-full items-center gap-1.5 rounded-xl border border-dashed border-slate-300 px-3 text-ui font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-40 cursor-pointer">
                   <Plus className="size-4" />
                   {t("Add row — pick project and task", "Pridať riadok — vyberte projekt a úlohu", "Sor hozzáadása — válasszon projektet és feladatot")}
                 </button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -398,6 +399,44 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
           </tfoot>
         </table>
       </Surface>
+
+      <div className="grid gap-3 ws-sm:grid-cols-2" data-testid="timesheet-notes">
+        <div className="flex gap-2 rounded-xl border border-slate-200 bg-white p-3 text-ui text-slate-600">
+          <Info className="mt-0.5 size-4 shrink-0 text-slate-400" />
+          <p>
+            {t(
+              "Typing hours into an empty cell creates one hours-only entry for that day, with no start time. Editing a cell that holds several entries changes the last one so the cell adds up to what you typed. Clearing a cell changes nothing.",
+              "Zadanie hodín do prázdnej bunky vytvorí jeden záznam len s hodinami pre daný deň, bez času začiatku. Úprava bunky s viacerými záznamami zmení posledný z nich, aby bunka dávala zadaný súčet. Vymazanie bunky nič nezmení.",
+              "Ha órákat írsz egy üres cellába, egy csak órákat tartalmazó bejegyzés jön létre arra a napra, kezdési idő nélkül. Ha több bejegyzést tartalmazó cellát szerkesztesz, az utolsó bejegyzés változik, hogy a cella a beírt összeget adja. A cella törlése nem változtat semmit.",
+            )}
+          </p>
+        </div>
+        <div className="flex gap-2 rounded-xl border border-slate-200 bg-white p-3 text-ui text-slate-600">
+          <Lock className="mt-0.5 size-4 shrink-0 text-slate-400" />
+          <p>
+            {settings.weeklyApproval && (
+              <>
+                {t(
+                  "Submitting the week marks its entries as approved, which locks them.",
+                  "Odoslanie týždňa označí jeho záznamy ako schválené, čím sa uzamknú.",
+                  "A hét beküldése jóváhagyottnak jelöli a bejegyzéseit, így azok zárolttá válnak.",
+                )}{" "}
+              </>
+            )}
+            {settings.lockAfterDays != null
+              ? t(
+                  `Approved entries, entries in a paid payroll month and entries older than ${settings.lockAfterDays} days (Settings → Time tracking) are read-only; admins can still edit them.`,
+                  `Schválené záznamy, záznamy v zaplatenom mzdovom mesiaci a záznamy staršie ako ${settings.lockAfterDays} dní (Nastavenia → Evidencia času) sú len na čítanie; administrátori ich môžu stále upraviť.`,
+                  `A jóváhagyott, a kifizetett bérszámfejtési hónapba eső és a ${settings.lockAfterDays} napnál régebbi bejegyzések (Beállítások → Időkövetés) csak olvashatók; az adminisztrátorok továbbra is szerkeszthetik őket.`,
+                )
+              : t(
+                  "Approved entries and entries in a paid payroll month are read-only; admins can still edit them.",
+                  "Schválené záznamy a záznamy v zaplatenom mzdovom mesiaci sú len na čítanie; administrátori ich môžu stále upraviť.",
+                  "A jóváhagyott és a kifizetett bérszámfejtési hónapba eső bejegyzések csak olvashatók; az adminisztrátorok továbbra is szerkeszthetik őket.",
+                )}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -408,6 +447,7 @@ function Cell({ seconds, disabled, title, onCommit, onInvalid, onOpen }: { secon
   return (
     <input
       value={shown}
+      placeholder="0:00"
       disabled={disabled}
       title={title}
       onFocus={() => setText(seconds > 0 ? formatDuration(seconds) : "")}
@@ -425,7 +465,7 @@ function Cell({ seconds, disabled, title, onCommit, onInvalid, onOpen }: { secon
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
       }}
-      className="h-9 w-full rounded-lg bg-transparent px-1 text-right text-ui tabular-nums text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-teal-600/40 disabled:text-slate-400"
+      className="h-9 w-full rounded-lg border border-slate-200 bg-white px-1 text-center text-ui tabular-nums text-slate-800 outline-none placeholder:text-slate-300 focus:ring-2 focus:ring-teal-600/40 disabled:bg-slate-50 disabled:text-slate-400"
     />
   );
 }

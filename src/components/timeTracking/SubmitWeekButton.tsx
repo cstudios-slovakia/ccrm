@@ -1,3 +1,4 @@
+import { Check } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { submitWeek, weekApprovalState, type WeekApprovalEntry } from "../../utils/timeApproval.ts";
@@ -45,8 +46,9 @@ export function SubmitWeekButton({ weekStart, entries, userId }: Props) {
       onClick={() => void submit()}
       disabled={busy || approved || !state.canSubmit}
       data-testid="submit-week"
-      className="inline-flex h-10 items-center rounded-xl bg-teal-600 px-4 text-ui font-semibold text-white transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+      className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-ui font-semibold text-primary-foreground transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
     >
+      <Check className="size-4" />
       {approved
         ? tt.t("Week submitted", "Týždeň odoslaný", "Hét beküldve")
         : tt.t("Submit week", "Odoslať týždeň", "Hét beküldése")}
