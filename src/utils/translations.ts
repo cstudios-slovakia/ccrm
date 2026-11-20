@@ -695,7 +695,7 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Dashboard
     "dashboard.tab_overview": "Executive Overview",
-    "dashboard.tab_campaigns": "Campaign Performance",
+    "dashboard.tab_campaigns": "Marketing ROI",
     "dashboard.tab_crm": `${PRODUCT_NAME} Company Performance`,
     "dashboard.tab_clients": "Client Statistics",
     "dashboard.analyze_interval": "Interval to Analyze:",
@@ -717,8 +717,9 @@ export const translations: Record<Language, Record<string, string>> = {
     "dashboard.picker.apply": "Apply",
 
     "dashboard.title": "Command Center Dashboard",
-    "dashboard.subtitle": "Trace marketing campaigns ROI, company revenue logs, and manager top leaderboards",
+    "dashboard.subtitle": "Track marketing ROI (newsletter, social media, paid ads), company revenue and the manager leaderboard",
     "dashboard.kpi.revenue": "Total Revenue",
+    "dashboard.kpi.won_value": "Won Deals Value",
     "dashboard.kpi.leads": "Active Leads",
     "dashboard.kpi.conversion": "Conversion Rate",
     "dashboard.kpi.value": "Average Deal Value",
@@ -1563,7 +1564,7 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Dashboard
     "dashboard.tab_overview": "Výkonnostný prehľad",
-    "dashboard.tab_campaigns": "Výkonnosť kampaní",
+    "dashboard.tab_campaigns": "Marketingové ROI",
     "dashboard.tab_crm": "Výkonnosť spoločnosti",
     "dashboard.tab_clients": "Klientske štatistiky",
     "dashboard.analyze_interval": "Interval na analýzu:",
@@ -1585,8 +1586,9 @@ export const translations: Record<Language, Record<string, string>> = {
     "dashboard.picker.apply": "Použiť",
 
     "dashboard.title": "Riadiace centrum",
-    "dashboard.subtitle": "Sledujte marketingové kampane ROI, výnosy spoločnosti a rebríčky najlepších manažérov",
+    "dashboard.subtitle": "Sledujte ROI marketingu (newsletter, sociálne siete, platená reklama), obrat firmy a rebríček manažérov",
     "dashboard.kpi.revenue": "Celkový obrat",
+    "dashboard.kpi.won_value": "Hodnota vyhratých obchodov",
     "dashboard.kpi.leads": "Aktívne leady",
     "dashboard.kpi.conversion": "Miera konverzie",
     "dashboard.kpi.value": "Priemerná hodnota zákazky",
@@ -2431,7 +2433,7 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Dashboard
     "dashboard.tab_overview": "Vezetői áttekintés",
-    "dashboard.tab_campaigns": "Kampány teljesítménye",
+    "dashboard.tab_campaigns": "Marketing ROI",
     "dashboard.tab_crm": `${PRODUCT_NAME} vállalati teljesítmény`,
     "dashboard.tab_clients": "Ügyfél statisztikák",
     "dashboard.analyze_interval": "Intervallum az elemzéshez:",
@@ -2453,8 +2455,9 @@ export const translations: Record<Language, Record<string, string>> = {
     "dashboard.picker.apply": "Alkalmaz",
 
     "dashboard.title": "Vezérlőközpont Vezérlőpult",
-    "dashboard.subtitle": "Kövesse nyomon a marketingkampányok megtérülését (ROI), a cég bevételeit és a menedzserek toplistáját",
+    "dashboard.subtitle": "Kövesse nyomon a marketing megtérülését (hírlevél, közösségi média, fizetett hirdetések), a cég bevételeit és a menedzserek toplistáját",
     "dashboard.kpi.revenue": "Összes bevétel",
+    "dashboard.kpi.won_value": "Megnyert üzletek értéke",
     "dashboard.kpi.leads": "Aktív lead-ek",
     "dashboard.kpi.conversion": "Konverziós ráta",
     "dashboard.kpi.value": "Átlagos üzletérték",

@@ -1,11 +1,14 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { SectionIcon } from "./icons/SectionIcon";
-import { 
-  Award, Compass, TrendingUp, Users, Target, PieChart, 
-  BarChart3, MapPin, Coins, Globe, Crown, Medal, Flame, Trophy, Briefcase, X, Maximize2,
-  Layers
+import {
+  Award, Compass, TrendingUp, Users, Target, PieChart,
+  MapPin, Coins, Crown, Medal, Flame, Trophy, Briefcase, X, Maximize2,
+  Layers, Landmark
 } from "lucide-react";
-import type { Lead, Project, ProjectType, FinancialRecord, InvoiceOffer, ProjectStatus } from "../types";
+import type { Lead, Project, ProjectType, FinancialRecord, FinancialCategory, InvoiceOffer, ProjectStatus } from "../types";
+import { isPipelineLead, isWonLeadState, leadKpis } from "../utils/dashboardMetrics";
+import { financeForPeriod, financeRevenue, type FinanceInput, type Period } from "../utils/marketingRoi";
+import { MarketingRoiSummary, MarketingRoiTab, type AdCampaign } from "./dashboard/MarketingRoiTab";
 import { getTranslation } from "../utils/translations";
 import { isLiveInvoiceStatus, type OfferStatusDef } from "../utils/offerStatuses";
 import type { Language } from "../utils/translations";
@@ -31,26 +34,18 @@ interface DashboardProps {
   leadStateColors?: Record<string, string>;
   systemLanguage: Language;
   leadStateParents?: Record<string, string>;
-  campaigns?: Campaign[];
+  campaigns?: AdCampaign[];
   currencyCode?: string | null;
   projects?: Project[];
   projectTypes?: ProjectType[];
   financialRecords?: FinancialRecord[];
+  financialCategories?: FinancialCategory[];
+  /** Finance runs on the ledger ("connected") or on the hand-filled monthly table. */
+  financialMode?: "connected" | "simplified";
+  financialSimplifiedTable?: Record<string, string>;
   invoicesOffers?: InvoiceOffer[];
   /** Settings → Invoice statuses: which invoices still count as billed. */
   invoiceStatuses?: OfferStatusDef[];
-}
-
-interface Campaign {
-  id: string;
-  name: string;
-  platform: "meta" | "google";
-  budget: number;
-  status: string;
-  impressions: number;
-  clicks: number;
-  spent: number;
-  leads: number;
 }
 
 const Sparkline: React.FC<{ points: number[]; color: string }> = ({ points, color }) => {
@@ -269,6 +264,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   projects = [],
   projectTypes = [],
   financialRecords = [],
+  financialCategories = [],
+  financialMode = "connected",
+  financialSimplifiedTable = {},
   invoicesOffers = [],
   invoiceStatuses
 }) => {
@@ -521,112 +519,91 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return sortedProjects.reduce((acc, l) => acc + l.value, 0);
   }, [sortedProjects]);
 
-  // Retrieve saved Meta/Google ad campaigns from propCampaigns or return empty array
-  const campaigns = useMemo<Campaign[]>(() => {
-    if (propCampaigns && propCampaigns.length > 0) return propCampaigns;
-    return [];
-  }, [propCampaigns]);
-
-  // --- Campaign Performance Aggregators ---
-  const metaCampaigns = useMemo(() => campaigns.filter((c: Campaign) => c.platform === "meta"), [campaigns]);
-  const googleCampaigns = useMemo(() => campaigns.filter((c: Campaign) => c.platform === "google"), [campaigns]);
-
-  const metaSpent = useMemo(() => metaCampaigns.reduce((acc: number, c: Campaign) => acc + c.spent, 0), [metaCampaigns]);
-  const googleSpent = useMemo(() => googleCampaigns.reduce((acc: number, c: Campaign) => acc + c.spent, 0), [googleCampaigns]);
-  const totalSpent = metaSpent + googleSpent;
-
-  // Real ROI calculation: Sum values of won leads coming from the campaign source
-  const metaWonValue = useMemo(() => filteredLeads
-    .filter(l => {
-      const isWon = isClosedLeadState(l.status, leadStageGroups, leadStateParents);
-      return (l.source === "facebook" || l.source === "instagram") && isWon;
-    })
-    .reduce((acc: number, l: Lead) => acc + l.value, 0), [filteredLeads, leadStageGroups, leadStateParents]);
-
-  const googleWonValue = useMemo(() => filteredLeads
-    .filter(l => {
-      const isWon = isClosedLeadState(l.status, leadStageGroups, leadStateParents);
-      return l.source === "website" && isWon;
-    })
-    .reduce((acc: number, l: Lead) => acc + l.value, 0), [filteredLeads, leadStageGroups, leadStateParents]);
-
-  const totalWonValue = metaWonValue + googleWonValue;
-
-  const metaRoi = metaSpent > 0 ? ((metaWonValue - metaSpent) / metaSpent) * 100 : 0;
-  const googleRoi = googleSpent > 0 ? ((googleWonValue - googleSpent) / googleSpent) * 100 : 0;
-  const totalRoi = totalSpent > 0 ? ((totalWonValue - totalSpent) / totalSpent) * 150 : 0; // colorful multiplier
+  // Paid Meta/Google campaigns from Settings → Integrations → Ads.
+  const campaigns = useMemo<AdCampaign[]>(() => propCampaigns || [], [propCampaigns]);
 
   // --- Company CRM Performance Aggregators ---
-  const wonLeads = useMemo(() => filteredLeads.filter(l =>
-    isClosedLeadState(l.status, leadStageGroups, leadStateParents)
-  ), [filteredLeads, leadStageGroups, leadStateParents]);
-  
-  const activePipelineLeads = useMemo(() => filteredLeads.filter(l => {
-    const statusLower = l.status.toLowerCase();
-    const parentStatus = leadStateParents[statusLower];
-    const targetStatus = parentStatus ? parentStatus.toLowerCase() : statusLower;
-    const grp = leadStageGroups[targetStatus] || "in_progress";
-    return grp !== "closed";
-  }), [filteredLeads, leadStageGroups, leadStateParents]);
+  // One definition of a lead for every card and chart below: pipeline leads only (client
+  // records are not leads), and "won" means a winning closed stage, never lost or rejected.
+  // See utils/dashboardMetrics.ts.
+  const pipelineLeads = useMemo(() => filteredLeads.filter(isPipelineLead), [filteredLeads]);
+  const isWon = useCallback(
+    (status: string) => isWonLeadState(status, leadStageGroups, leadStateParents),
+    [leadStageGroups, leadStateParents],
+  );
+  const isOpen = useCallback(
+    (status: string) => !isClosedLeadState(status, leadStageGroups, leadStateParents),
+    [leadStageGroups, leadStateParents],
+  );
+  const kpis = useMemo(() => leadKpis(pipelineLeads, leadStageGroups, leadStateParents), [pipelineLeads, leadStageGroups, leadStateParents]);
+  const wonLeads = useMemo(() => pipelineLeads.filter(l => isWon(l.status)), [pipelineLeads, isWon]);
+  const activePipelineLeads = useMemo(() => pipelineLeads.filter(l => isOpen(l.status)), [pipelineLeads, isOpen]);
+  const wonValue = kpis.won.value;
+  const activePipelineValue = kpis.active.value;
+  const averageDealValue = wonLeads.length > 0 ? wonValue / wonLeads.length : 0;
 
-  const totalLeadsCount = activePipelineLeads.length; // statistics uses only open ones!
-
-  const totalRevenue = useMemo(() => wonLeads.reduce((acc: number, l: Lead) => acc + l.value, 0), [wonLeads]);
-  const activePipelineValue = useMemo(() => activePipelineLeads.reduce((acc: number, l: Lead) => acc + l.value, 0), [activePipelineLeads]);
-  
-  const leadToClientConversion = totalLeadsCount > 0 ? (wonLeads.length / totalLeadsCount) * 100 : 0;
-  const averageDealValue = wonLeads.length > 0 ? totalRevenue / wonLeads.length : 0;
+  // Real revenue: paid income from Finance (ledger or simplified table, whichever Finance runs
+  // on), over the same date filter as the rest of the dashboard.
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  const isoOf = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const period = useMemo<Period>(
+    () => ({ startIso: filterStartDate ? isoOf(filterStartDate) : null, endIso: filterEndDate ? isoOf(filterEndDate) : null }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filterStartDate, filterEndDate],
+  );
+  const financeInput = useMemo<FinanceInput>(
+    () => ({ mode: financialMode, records: financialRecords, categories: financialCategories, simplifiedTable: financialSimplifiedTable, todayIso: isoOf(new Date()) }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [financialMode, financialRecords, financialCategories, financialSimplifiedTable],
+  );
+  const financeIncome = useMemo(() => financeRevenue(financeForPeriod(financeInput, period)), [financeInput, period]);
+  const roiProps = {
+    t, money, period, allLeads: leads, pipelineLeads, isWon, finance: financeInput,
+    invoices: invoicesOffers, invoiceStatuses, adCampaigns: campaigns,
+  };
 
   // --- SPARKLINE COORDINATES GENERATORS ---
   const sortedLeads = useMemo(() => {
-    return [...filteredLeads]
+    return [...pipelineLeads]
       .filter(l => l.createdAt)
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-  }, [filteredLeads]);
+  }, [pipelineLeads]);
 
   const revenuePoints = useMemo(() => {
     let sum = 0;
     const points: number[] = [];
     sortedLeads.forEach(l => {
-      if (isClosedLeadState(l.status, leadStageGroups, leadStateParents)) {
+      if (isWon(l.status)) {
         sum += l.value;
       }
       points.push(sum);
     });
     return points.length > 1 ? points : [0, 0];
-  }, [sortedLeads, leadStageGroups, leadStateParents]);
+  }, [sortedLeads, isWon]);
 
   const pipelinePoints = useMemo(() => {
     let sum = 0;
     const points: number[] = [];
     sortedLeads.forEach(l => {
-      const statusLower = l.status.toLowerCase();
-      const parentStatus = leadStateParents[statusLower];
-      const targetStatus = parentStatus ? parentStatus.toLowerCase() : statusLower;
-      const grp = leadStageGroups[targetStatus] || "in_progress";
-      if (grp !== "closed") {
+      if (isOpen(l.status)) {
         sum += l.value;
       }
       points.push(sum);
     });
     return points.length > 1 ? points : [0, 0];
-  }, [sortedLeads, leadStageGroups, leadStateParents]);
+  }, [sortedLeads, isOpen]);
 
   const leadCountPoints = useMemo(() => {
     let count = 0;
     const points: number[] = [];
     sortedLeads.forEach(l => {
-      const statusLower = l.status.toLowerCase();
-      const parentStatus = leadStateParents[statusLower];
-      const targetStatus = parentStatus ? parentStatus.toLowerCase() : statusLower;
-      const grp = leadStageGroups[targetStatus] || "in_progress";
-      if (grp !== "closed") {
+      if (isOpen(l.status)) {
         count += 1;
       }
       points.push(count);
     });
     return points.length > 1 ? points : [0, 0];
-  }, [sortedLeads, leadStageGroups, leadStateParents]);
+  }, [sortedLeads, isOpen]);
 
   const conversionPoints = useMemo(() => {
     let wonCount = 0;
@@ -634,20 +611,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const points: number[] = [];
     sortedLeads.forEach(l => {
       totalCount += 1;
-      if (isClosedLeadState(l.status, leadStageGroups, leadStateParents)) {
+      if (isWon(l.status)) {
         wonCount += 1;
       }
       points.push((wonCount / totalCount) * 100);
     });
     return points.length > 1 ? points : [0, 0];
-  }, [sortedLeads, leadStageGroups, leadStateParents]);
+  }, [sortedLeads, isWon]);
 
   // Project Managers leaderboard
   const pmLeaderboard = useMemo(() => {
-    const owners = Array.from(new Set(filteredLeads.map(l => l.owner).filter(Boolean)));
+    const owners = Array.from(new Set(pipelineLeads.map(l => l.owner).filter(Boolean)));
     return owners.map(name => {
-      const pmLeads = filteredLeads.filter(l => l.owner === name);
-      const won = pmLeads.filter(l => isClosedLeadState(l.status, leadStageGroups, leadStateParents));
+      const pmLeads = pipelineLeads.filter(l => l.owner === name);
+      const won = pmLeads.filter(l => isWon(l.status));
       const rev = won.reduce((acc: number, l: Lead) => acc + l.value, 0);
       const conv = pmLeads.length > 0 ? (won.length / pmLeads.length) * 100 : 0;
       
@@ -671,17 +648,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
         trendPoints: trendPoints.length > 1 ? trendPoints : [0, rev]
       };
     }).sort((a, b) => b.revenue - a.revenue);
-  }, [filteredLeads, leadStageGroups, leadStateParents]);
+  }, [pipelineLeads, isWon]);
 
   // PM chronological progression lines racing over the interval
   const pmRacingChartData = useMemo(() => {
-    const dates = filteredLeads.map(l => l.createdAt ? new Date(l.createdAt).getTime() : 0).filter(Boolean);
+    const dates = pipelineLeads.map(l => l.createdAt ? new Date(l.createdAt).getTime() : 0).filter(Boolean);
     const startMs = filterStartDate ? filterStartDate.getTime() : (dates.length > 0 ? Math.min(...dates) : new Date().setDate(new Date().getDate() - 30));
     const endMs = filterEndDate ? filterEndDate.getTime() : (dates.length > 0 ? Math.max(...dates) : new Date().getTime());
     const rangeMs = endMs - startMs || 1;
 
     const series = pmLeaderboard.map((pm, pmIdx) => {
-      const pmLeads = filteredLeads.filter(l => l.owner === pm.name);
+      const pmLeads = pipelineLeads.filter(l => l.owner === pm.name);
       const sortedPmLeads = [...pmLeads]
         .filter(l => l.createdAt)
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
@@ -699,7 +676,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         const xRatio = Math.max(0, Math.min(1, (leadTime - startMs) / rangeMs));
         
         totalProcessed += 1;
-        if (isClosedLeadState(l.status, leadStageGroups, leadStateParents)) {
+        if (isWon(l.status)) {
           cumulativeRevenue += l.value;
           cumulativeWon += 1;
         }
@@ -739,20 +716,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
     });
 
     return { startMs, endMs, series };
-  }, [filteredLeads, pmLeaderboard, filterStartDate, filterEndDate, leadStageGroups, leadStateParents]);
+  }, [pipelineLeads, pmLeaderboard, filterStartDate, filterEndDate, isWon]);
 
   // Monthly revenue, lead counts, and client averages trends
   const monthlyTrends = useMemo(() => {
     const monthsMap: Record<string, { revenue: number; clientCount: number; leadCount: number }> = {};
     
-    filteredLeads.forEach(l => {
+    pipelineLeads.forEach(l => {
       if (!l.createdAt) return;
       const monthKey = l.createdAt.substring(0, 7); // "2026-05"
       if (!monthsMap[monthKey]) {
         monthsMap[monthKey] = { revenue: 0, clientCount: 0, leadCount: 0 };
       }
       monthsMap[monthKey].leadCount += 1;
-      if (isClosedLeadState(l.status, leadStageGroups, leadStateParents)) {
+      if (isWon(l.status)) {
         monthsMap[monthKey].revenue += l.value;
         monthsMap[monthKey].clientCount += 1;
       }
@@ -771,7 +748,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         leadCount: data.leadCount
       };
     });
-  }, [filteredLeads, leadStageGroups, leadStateParents]);
+  }, [pipelineLeads, isWon]);
 
   // --- Client Demographics & Funnel Aggregators ---
   const clientTypes = useMemo(() => {
@@ -837,13 +814,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
     let details: InspectableDataPoint[] = [];
 
     if (type === "revenue") {
-      title = t("Total Revenue Chronological Trend", "Chronologický vývoj celkových tržieb", "Teljes bevétel kronologikus trendje");
+      title = t("Won Deals Value Trend", "Vývoj hodnoty vyhratých obchodov", "Megnyert üzletek értékének alakulása");
       color = "#10b981";
       valuePrefix = currencyValuePrefix;
       valueSuffix = currencyValueSuffix;
       let sum = 0;
       details = sortedLeads
-        .filter(l => isClosedLeadState(l.status, leadStageGroups, leadStateParents))
+        .filter(l => isWon(l.status))
         .map(l => {
           sum += l.value;
           return {
@@ -860,7 +837,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       valueSuffix = currencyValueSuffix;
       let sum = 0;
       details = sortedLeads
-        .filter(l => !isClosedLeadState(l.status, leadStageGroups, leadStateParents))
+        .filter(l => isOpen(l.status))
         .map(l => {
           sum += l.value;
           return {
@@ -875,7 +852,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       color = "#3b82f6";
       valueSuffix = t(" leads", " záujemcov", " érdeklődő");
       let count = 0;
-      details = sortedLeads.map(l => {
+      details = sortedLeads.filter(l => isOpen(l.status)).map(l => {
         count += 1;
         return {
           label: l.name,
@@ -892,13 +869,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
       let totalCount = 0;
       details = sortedLeads.map(l => {
         totalCount += 1;
-        const isWon = isClosedLeadState(l.status, leadStageGroups, leadStateParents);
-        if (isWon) {
+        const won = isWon(l.status);
+        if (won) {
           wonCount += 1;
         }
         return {
-          label: `${l.name} (${isWon ? t("Won", "Vyhraný", "Megnyert") : t("Registered", "Registrovaný", "Regisztrált")})`,
-          value: isWon ? 100 : 0,
+          label: `${l.name} (${won ? t("Won", "Vyhraný", "Megnyert") : t("Registered", "Registrovaný", "Regisztrált")})`,
+          value: won ? 100 : 0,
           cumulative: Number(((wonCount / totalCount) * 100).toFixed(1)),
           date: l.createdAt ? l.createdAt.substring(0, 16).replace("T", " ") : "N/A"
         };
@@ -910,7 +887,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       valueSuffix = currencyValueSuffix;
       let sum = 0;
       details = sortedLeads
-        .filter(l => l.owner === pmName && isClosedLeadState(l.status, leadStageGroups, leadStateParents))
+        .filter(l => l.owner === pmName && isWon(l.status))
         .map(l => {
           sum += l.value;
           return {
@@ -1192,7 +1169,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {activeTab === "overview" && (
         <div className="space-y-6">
           {/* Key Metric cards */}
-          <StatGrid count={4} className="animate-in slide-in-from-bottom duration-300">
+          <StatGrid count={5} className="animate-in slide-in-from-bottom duration-300">
             <div 
               onClick={() => handleInspectChart("revenue")}
               className="glass-panel p-5 rounded-3xl border-2 border-emerald-400 bg-gradient-to-br from-emerald-500/10 to-teal-500/5 shadow-md shadow-emerald-500/5 flex items-center gap-4 hover:scale-[1.03] active:scale-[0.98] cursor-pointer transition-all duration-200 relative overflow-hidden group"
@@ -1201,13 +1178,34 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <Coins className="h-6 w-6" />
               </div>
               <div className="flex flex-col relative z-20">
-                <span className="type-overline text-emerald-700">{getTranslation(systemLanguage, "dashboard.kpi.revenue")}</span>
-                <span className="type-metric text-slate-900">{money(totalRevenue)}</span>
+                <span className="type-overline text-emerald-700">{getTranslation(systemLanguage, "dashboard.kpi.won_value")}</span>
+                <span className="type-metric text-slate-900">{money(wonValue)}</span>
                 <span className="text-micro text-emerald-600 font-bold flex items-center gap-0.5 mt-0.5">
-                  {t("Won Deals Only", "Iba uzavreté obchody", "Csak megnyert üzletek")}
+                  {kpis.won.count} {t("won deals", "vyhratých obchodov", "megnyert üzlet")}
                 </span>
               </div>
               <Sparkline points={revenuePoints} color="#10b981" />
+            </div>
+
+            {/* Real revenue: paid income from Finance, not lead values. */}
+            <div className="glass-panel p-5 rounded-3xl border-2 border-teal-400 bg-gradient-to-br from-teal-500/10 to-cyan-500/5 shadow-md shadow-teal-500/5 flex items-center gap-4 relative overflow-hidden">
+              <div className="h-12 w-12 rounded-2xl bg-teal-500 text-white flex items-center justify-center text-title shadow-lg shadow-teal-500/20 relative z-20">
+                <Landmark className="h-6 w-6" />
+              </div>
+              <div className="flex flex-col relative z-20 min-w-0">
+                <span className="type-overline text-teal-700">{getTranslation(systemLanguage, "dashboard.kpi.revenue")}</span>
+                <span className="type-metric text-slate-900">{money(financeIncome.paid)}</span>
+                <span className="text-micro text-teal-600 font-bold mt-0.5">
+                  {financialMode === "simplified"
+                    ? t("Income from the Finance table", "Príjmy z tabuľky Financií", "Bevételek a Pénzügyek táblából")
+                    : t("Paid income in Finance", "Zaplatené príjmy vo Financiách", "Befolyt bevételek a Pénzügyekben")}
+                  {financeIncome.expected > 0 && (
+                    <span className="block text-teal-500 font-semibold">
+                      + {money(financeIncome.expected)} {t("still expected", "ešte očakávané", "még várható")}
+                    </span>
+                  )}
+                </span>
+              </div>
             </div>
 
             <div 
@@ -1236,9 +1234,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <div className="flex flex-col relative z-20">
                 <span className="type-overline text-blue-700">{getTranslation(systemLanguage, "dashboard.kpi.leads")}</span>
-                <span className="type-metric text-slate-900">{totalLeadsCount}</span>
+                <span className="type-metric text-slate-900">{kpis.active.count}</span>
                 <span className="text-micro text-blue-600 font-bold flex items-center gap-0.5 mt-0.5">
-                  {t(`${PRODUCT_NAME} Registered Slabs`, `Záznamy v ${PRODUCT_NAME}`, `${PRODUCT_NAME}-ben regisztrált tételek`)}
+                  {t("Open in the pipeline, clients excluded", "Otvorené v pipeline, bez klientov", "Nyitott a pipeline-ban, ügyfelek nélkül")}
                 </span>
               </div>
               <Sparkline points={leadCountPoints} color="#3b82f6" />
@@ -1253,9 +1251,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <div className="flex flex-col relative z-20">
                 <span className="type-overline text-rose-700">{getTranslation(systemLanguage, "dashboard.kpi.conversion")}</span>
-                <span className="type-metric text-slate-900">{leadToClientConversion.toFixed(1)}%</span>
+                <span className="type-metric text-slate-900">{kpis.conversionPct.toFixed(1)} %</span>
                 <span className="text-micro text-rose-600 font-bold flex items-center gap-0.5 mt-0.5">
-                  {t("Leads", "Záujemcovia", "Érdeklődők")} &rarr; {t("Won Clients", "Získaní klienti", "Megnyert ügyfelek")}
+                  {t(`${kpis.won.count} of ${kpis.total} leads won`, `${kpis.won.count} z ${kpis.total} leadov vyhraných`, `${kpis.total} leadből ${kpis.won.count} megnyerve`)}
                 </span>
               </div>
               <Sparkline points={conversionPoints} color="#f43f5e" />
@@ -1320,8 +1318,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   }
 
                   const stageData = openStates.map(s => {
-                    const count = filteredLeads.filter(l => l.status.toLowerCase() === s.toLowerCase() || leadStateParents[l.status.toLowerCase()] === s.toLowerCase()).length;
-                    const value = filteredLeads.filter(l => l.status.toLowerCase() === s.toLowerCase() || leadStateParents[l.status.toLowerCase()] === s.toLowerCase()).reduce((sum, l) => sum + l.value, 0);
+                    const count = pipelineLeads.filter(l => l.status.toLowerCase() === s.toLowerCase() || leadStateParents[l.status.toLowerCase()] === s.toLowerCase()).length;
+                    const value = pipelineLeads.filter(l => l.status.toLowerCase() === s.toLowerCase() || leadStateParents[l.status.toLowerCase()] === s.toLowerCase()).reduce((sum, l) => sum + l.value, 0);
                     const metricVal = funnelMetric === "count" ? count : value;
                     const color = leadStateColors[s.toLowerCase()] || "#6366f1";
                     return { name: s, count, value, metricVal, color };
@@ -1470,28 +1468,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {/* Top performing channels */}
             <div className="ws-lg:col-span-5 glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-4">
               <h3 className="text-ui font-heading font-bold text-slate-900 flex items-center gap-1.5">
-                <Compass className="h-4 w-4 text-emerald-600" /> {t("Top Sales Channels ROI", "ROI najlepších predajných kanálov", "Legjobb értékesítési csatornák ROI")}
+                <Compass className="h-4 w-4 text-emerald-600" /> {t("Marketing ROI by Channel", "Marketingové ROI podľa kanálov", "Marketing ROI csatornánként")}
               </h3>
 
-              <div className="space-y-4 pt-2">
-                {[
-                  { name: t("Meta Campaigns (FB/IG)", "Kampane Meta (FB/IG)", "Meta kampányok (FB/IG)"), spent: metaSpent, won: metaWonValue, roi: metaRoi, badge: "bg-blue-50 text-blue-700 border-blue-200" },
-                  { name: t("Google Campaigns (Search/Web)", "Kampane Google (Vyhľadávanie/Web)", "Google kampányok (Keresés/Web)"), spent: googleSpent, won: googleWonValue, roi: googleRoi, badge: "bg-amber-50 text-amber-700 border-amber-200" }
-                ].map(channel => (
-                  <div key={channel.name} className="p-3.5 rounded-2xl border border-slate-100 space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-ui font-bold text-slate-800">{channel.name}</span>
-                      <span className={`px-2.5 py-0.5 rounded-full type-overline border ${channel.badge}`}>
-                        ROI: {channel.roi.toFixed(0)}%
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-caption font-semibold text-slate-500">
-                      <div>{t("Spent", "Minuté", "Elköltött")}: <strong className="text-slate-800">{money(channel.spent)}</strong></div>
-                      <div>{t("Sales Value", "Hodnota predaja", "Értékesítési érték")}: <strong className="text-slate-800">{money(channel.won)}</strong></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <MarketingRoiSummary {...roiProps} onOpen={() => setActiveTab("campaigns")} />
             </div>
           </div>
 
@@ -1620,173 +1600,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       )}
 
-      {/* --- TAB 2: CAMPAIGN PERFORMANCES --- */}
-      {activeTab === "campaigns" && (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          {/* Platform-Wide Totals */}
-          <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-4">
-            <h3 className="text-ui font-heading font-bold text-slate-900 flex items-center gap-1.5">
-              <Compass className="h-4 w-4 text-indigo-600" /> {t("Platform-Wide Campaign Summaries", "Súhrn kampaní naprieč platformami", "Platformokon átívelő kampányösszesítés")}
-            </h3>
-            <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-4 text-center">
-              <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-                <span className="type-overline text-slate-400 block">{t("Total Campaign Spent", "Celkové výdavky na kampane", "Teljes kampányköltés")}</span>
-                <span className="text-title font-bold text-slate-800 block mt-1">{money(totalSpent, { maximumFractionDigits: 1 })}</span>
-              </div>
-              <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-                <span className="type-overline text-slate-400 block">{t("Won Leads Value", "Hodnota získaných záujemcov", "Megnyert érdeklődők értéke")}</span>
-                <span className="text-title font-bold text-slate-800 block mt-1">{money(totalWonValue)}</span>
-              </div>
-              <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-                <span className="type-overline text-slate-400 block">{t("Total Platform ROI", "Celkové ROI platformy", "Teljes platform ROI")}</span>
-                <span className={`text-title font-bold block mt-1 ${totalRoi >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                  {totalRoi.toFixed(0)}%
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Top Platform Totals Overview */}
-          <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6">
-            {/* Meta Total */}
-            <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-blue-50/15 shadow-sm space-y-4">
-              <div className="flex justify-between items-center border-b border-slate-200 pb-3">
-                <div className="flex items-center gap-2">
-                  <Globe className="h-5 w-5 text-blue-600" />
-                  <div className="flex flex-col">
-                    <h3 className="text-ui font-heading font-bold text-slate-800">{t("Meta Ads Platform", "Reklamná platforma Meta", "Meta hirdetési platform")}</h3>
-                    <span className="type-overline text-slate-400">{t("Facebook & Instagram Feeds", "Feedy Facebook & Instagram", "Facebook és Instagram hírfolyamok")}</span>
-                  </div>
-                </div>
-                <span className="text-ui font-bold text-blue-700 bg-blue-100/60 px-3 py-1 rounded-full border border-blue-200">
-                  ROI: {metaRoi.toFixed(0)}%
-                </span>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="p-3 bg-white rounded-2xl border border-slate-100">
-                  <span className="type-overline text-slate-400 block">{t("Total Spent", "Celkové výdavky", "Összes költés")}</span>
-                  <span className="text-title-sm font-bold text-slate-800 block mt-1">{money(metaSpent, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
-                <div className="p-3 bg-white rounded-2xl border border-slate-100">
-                  <span className="type-overline text-slate-400 block">{t(`${PRODUCT_NAME} Won Value`, `Získaná hodnota v ${PRODUCT_NAME}`, `${PRODUCT_NAME} megnyert érték`)}</span>
-                  <span className="text-title-sm font-bold text-slate-800 block mt-1">{money(metaWonValue)}</span>
-                </div>
-                <div className="p-3 bg-white rounded-2xl border border-slate-100">
-                  <span className="type-overline text-slate-400 block">{t("Cost per Lead", "Cena za záujemcu", "Költség érdeklődőnként")}</span>
-                  <span className="text-title-sm font-bold text-emerald-600 block mt-1">
-                    {money(metaSpent / (leads.filter(l => (l.source === "facebook" || l.source === "instagram")).length || 1), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Google Total */}
-            <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-amber-50/15 shadow-sm space-y-4">
-              <div className="flex justify-between items-center border-b border-slate-200 pb-3">
-                <div className="flex items-center gap-2">
-                  <Globe className="h-5 w-5 text-amber-500 animate-pulse" />
-                  <div className="flex flex-col">
-                    <h3 className="text-ui font-heading font-bold text-slate-800">{t("Google Ads Platform", "Reklamná platforma Google", "Google hirdetési platform")}</h3>
-                    <span className="type-overline text-slate-400">{t("Search & Display Campaigns", "Kampane vo vyhľadávaní a obsahovej sieti", "Keresési és display kampányok")}</span>
-                  </div>
-                </div>
-                <span className="text-ui font-bold text-amber-700 bg-amber-100/60 px-3 py-1 rounded-full border border-amber-200">
-                  ROI: {googleRoi.toFixed(0)}%
-                </span>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="p-3 bg-white rounded-2xl border border-slate-100">
-                  <span className="type-overline text-slate-400 block">{t("Total Spent", "Celkové výdavky", "Összes költés")}</span>
-                  <span className="text-title-sm font-bold text-slate-800 block mt-1">{money(googleSpent, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                </div>
-                <div className="p-3 bg-white rounded-2xl border border-slate-100">
-                  <span className="type-overline text-slate-400 block">{t(`${PRODUCT_NAME} Won Value`, `Získaná hodnota v ${PRODUCT_NAME}`, `${PRODUCT_NAME} megnyert érték`)}</span>
-                  <span className="text-title-sm font-bold text-slate-800 block mt-1">{money(googleWonValue)}</span>
-                </div>
-                <div className="p-3 bg-white rounded-2xl border border-slate-100">
-                  <span className="type-overline text-slate-400 block">{t("Cost per Lead", "Cena za záujemcu", "Költség érdeklődőnként")}</span>
-                  <span className="text-title-sm font-bold text-emerald-600 block mt-1">
-                    {money(googleSpent / (leads.filter(l => l.source === "website").length || 1), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Breakdown to each Meta and Google campaign (Always Separate) */}
-          <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-6">
-            <h3 className="text-ui font-heading font-bold text-slate-900 flex items-center gap-1.5">
-              <BarChart3 className="h-4 w-4 text-indigo-600" /> {t("Separate Campaign performance Breakdown", "Samostatný rozpis výkonnosti kampaní", "Külön kampányteljesítmény-bontás")}
-            </h3>
-
-            <div className="grid grid-cols-1 ws-lg:grid-cols-2 gap-6">
-              {/* Meta Columns */}
-              <div className="space-y-4">
-                <h4 className="type-overline text-blue-700 flex items-center gap-1.5">
-                  <Globe className="h-3.5 w-3.5 text-blue-600" /> {t("Meta Ads Campaign Breakdown", "Rozpis kampaní Meta Ads", "Meta Ads kampánybontás")}
-                </h4>
-                
-                <div className="space-y-3">
-                  {metaCampaigns.map((c: Campaign) => {
-                    const ctr = c.impressions > 0 ? ((c.clicks / c.impressions) * 100).toFixed(2) : "0.00";
-                    return (
-                      <div key={c.id} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 space-y-2 relative group hover:shadow-md transition-all duration-200">
-                        <div className="flex justify-between items-start">
-                          <span className="text-ui font-bold text-slate-800 leading-tight pr-4">{c.name}</span>
-                          <span className={`px-2 py-0.5 rounded type-overline border shrink-0 ${
-                            c.status === "active" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200"
-                          }`}>
-                            {c.status}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-4 gap-2 text-micro font-semibold text-slate-500 pt-2 border-t border-slate-100">
-                          <div>{t("Spent", "Minuté", "Elköltött")}: <strong className="text-slate-800 block mt-0.5">{money(c.spent)}</strong></div>
-                          <div>{t("Clicks", "Kliknutia", "Kattintások")}: <strong className="text-slate-800 block mt-0.5">{c.clicks}</strong></div>
-                          <div>CTR: <strong className="text-indigo-600 block mt-0.5">{ctr}%</strong></div>
-                          <div>{t("Leads", "Záujemcovia", "Érdeklődők")}: <strong className="text-emerald-600 block mt-0.5">{c.leads}</strong></div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Google Columns */}
-              <div className="space-y-4">
-                <h4 className="type-overline text-amber-700 flex items-center gap-1.5">
-                  <Globe className="h-3.5 w-3.5 text-amber-500" /> {t("Google Ads Campaign Breakdown", "Rozpis kampaní Google Ads", "Google Ads kampánybontás")}
-                </h4>
-                
-                <div className="space-y-3">
-                  {googleCampaigns.map((c: Campaign) => {
-                    const ctr = c.impressions > 0 ? ((c.clicks / c.impressions) * 100).toFixed(2) : "0.00";
-                    return (
-                      <div key={c.id} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 space-y-2 relative group hover:shadow-md transition-all duration-200">
-                        <div className="flex justify-between items-start">
-                          <span className="text-ui font-bold text-slate-800 leading-tight pr-4">{c.name}</span>
-                          <span className={`px-2 py-0.5 rounded type-overline border shrink-0 ${
-                            c.status === "active" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200"
-                          }`}>
-                            {c.status}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-4 gap-2 text-micro font-semibold text-slate-500 pt-2 border-t border-slate-100">
-                          <div>{t("Spent", "Minuté", "Elköltött")}: <strong className="text-slate-800 block mt-0.5">{money(c.spent)}</strong></div>
-                          <div>{t("Clicks", "Kliknutia", "Kattintások")}: <strong className="text-slate-800 block mt-0.5">{c.clicks}</strong></div>
-                          <div>CTR: <strong className="text-indigo-600 block mt-0.5">{ctr}%</strong></div>
-                          <div>{t("Leads", "Záujemcovia", "Érdeklődők")}: <strong className="text-emerald-600 block mt-0.5">{c.leads}</strong></div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* --- TAB 2: MARKETING ROI (newsletter, social media, paid ads) --- */}
+      {activeTab === "campaigns" && <MarketingRoiTab {...roiProps} />}
 
       {/* --- TAB 3: CRM COMPANY PERFORMANCE & PM LEADERBOARD --- */}
       {activeTab === "crm" && (
@@ -2180,7 +1995,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
               <div className="space-y-3 pt-2">
                 {cityDistribution.map(([city, count]) => {
-                  const percent = totalLeadsCount > 0 ? (count / totalLeadsCount) * 100 : 0;
+                  const percent = filteredLeads.length > 0 ? (count / filteredLeads.length) * 100 : 0;
                   return (
                     <div key={city} className="flex flex-col gap-1">
                       <div className="flex justify-between items-center text-ui font-bold text-slate-700">

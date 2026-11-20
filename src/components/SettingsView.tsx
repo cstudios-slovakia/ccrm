@@ -28,6 +28,7 @@ import { OrderStatusSettings } from "./OrderStatusSettings";
 import { ShippingMethodSettings } from "./ShippingMethodSettings";
 import { PaymentMethodSettings } from "./PaymentMethodSettings";
 import { FinanceSettings } from "./FinanceSettings";
+import { MarketingRoiSettings } from "./settings/MarketingRoiSettings";
 import type { ProjectStatusDef } from "../utils/projects";
 import type { OrderStatusDef } from "../utils/orders";
 import type { Order, Ticket, TicketStatusDef, TicketSettingsConfig, OfferCategory, InvoiceOffer } from "../types";
@@ -4464,6 +4465,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             trainingStats={trainingStats}
             updateIntegrationsConfig={updateIntegrationsConfig}
             userLanguage={userLanguage}
+          />
+        );
+      case "integrations/marketing_roi":
+        return (
+          <MarketingRoiSettings
+            userLanguage={userLanguage}
+            financialCategories={financialCategories || []}
+            leadSources={leadSources}
+            canEdit={getPermission("general_config") === "edit"}
           />
         );
       case "integrations/social":
