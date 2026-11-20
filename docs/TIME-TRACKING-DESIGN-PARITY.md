@@ -707,7 +707,7 @@ Order: F → (P1, P2, P3) → (P4, P5, P6) → (P7, P8, P9) → (P10, P11).
 | Q26 Clockify | no mention of Clockify anywhere | P9 |
 | Q27 "Setup guide" | declined | — |
 | Q28 Zip name | rename | P11 (`<product slug>-time-tracker.zip`; the old file is still written) |
-| Q29 "Require a task" on manual entries | **open**: the owner asked what it is (answered: the switch in Settings → Time tracking; enforced only on Stop today) | not changed |
+| Q29 "Require a task" on manual entries | yes | carried out "Q29" (see the Done log) |
 | Q30 Sidebar colour | keep rust | — (C2 text to be corrected) |
 | Q31 Porting to `1.13-nectarine` | stop | not ported |
 
@@ -733,10 +733,11 @@ then merged into `css-main`. Not pushed, not ported.
 | P8 Task drawer, project tab | `50749da2`, `56dad0a8` | K1–K3, K5, P1–P7 | No cost tile (Q23). No rate column in "By employee": there is no per-person rate on the client. Hours budget % is always all-time |
 | P9 Settings, extension settings | `bd0b0a8c`, `6eb74bc8` | S1, S3–S8, S10, X1, X3–X6 | S2 Contractors not built (Q24 open). Canvas claims dropped as untrue: "saved but flagged Assign project", "only for projects with tasks", "notifies the owner", pairing code "never stored" |
 | P10 Phone | `ccaf15fa`, `6ca83752` | M1, M3 | The running card is in the page flow, not fixed; Stop stays reachable from the sticky header pill (40 px on the phone). The sheet and the paused card were not restyled |
+| Q29 Require a task | `7ee27003` | manual create and task removal are rejected when the rule is on (`task_required`, the Stop code; see `TIME-TRACKING.md` C8.4) | Exempt: starting a running timer, updates that leave the link alone (legacy task-less entries stay editable), Toggl import, auto-stop, presence, ticket-time migration, demo seed, the extension's unsorted assignment. MCP `log_time_entry` is held to the rule. Server probe T25 written but not run (no PHP/Docker here); the e2e case was not run |
 | P11 Extension popup | `7499a606`, `a09251ce` | X9–X13 | The address field stays: the zip is generic and pairing needs the address (the audit's "the build knows its server" was wrong). No Pause in the popup: it has no pause endpoint. `EXTENSION_VERSION` unchanged |
 | F17 List filter | `99e8e2ec` | F17 | Applies to the List tab only (also its phone Today view). The stat tiles stay unfiltered (a "Filtered: N of M" line says so). Not persisted across reloads. Filter is not applied to Day, Calendar, Timesheet or Reports |
 
-Still open after this pass: Q24, Q29 (owner), the C2 text about the sidebar
+Still open after this pass: Q24, the C2 text about the sidebar
 colour, and the two MISSING rows (E4, E11).
 
 ## Checks and QA (pass 2)

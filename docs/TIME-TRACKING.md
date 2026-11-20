@@ -572,6 +572,23 @@ You can start without a project. The entry then shows an amber **"Assign project
 left out of project cost and counts as unallocated. The setting "Require a project before Stop"
 (**default on**, B9) makes Stop open the picker.
 
+### C8.4 Require a task on every entry (`requireTask`, default off)
+
+With the setting on, no **finished** entry exists without a task or ticket. The server answers `task_required` (422, the same
+code Stop returns) when:
+
+- a timer is **stopped** without a task or ticket (as before);
+- `create` makes a finished entry (the timer bar's Manual mode, "+ Add entry manually", the Day add row, a Timesheet cell,
+  the Calendar's new entry, the MCP `log_time_entry`) with neither; a manager creating for someone else is held to it too;
+- `update` removes the task or ticket of a finished entry, or finishes a running one with neither.
+
+Not refused: starting a running timer without a task (the rule bites at Stop); an update that does not touch the link of an
+entry that predates the rule (it stays editable in its other fields); the Toggl import, the auto-stop, presence, the
+ticket-time migration, the demo seed and the Chrome extension's unsorted-to-entry assignment (it never reads the rule).
+There is no condition on the project type: Stop never had one.
+On the client every manual-create surface answers the message and opens the new-entry drawer (which has the task and ticket
+pickers) prefilled with what was typed (`recoverTaskRequired` in `timeCreateBridge.ts`).
+
 ## C9. Entry points (prefill rules)
 
 | Started from | Title | Project | Task | `source` / origin |
@@ -726,7 +743,7 @@ interface TimeTrackingSettings {
   employerMultiplier: number;        // 1.352
   holidayOverrides: Record<'SK' | 'HU', Record<string, Array<{ date: string; kind: 'extraDayOff' | 'extraWorkingDay'; name: string }>>>;
   requireProjectToStop: boolean;     // true (B9)
-  requireTask: boolean;              // false
+  requireTask: boolean;              // false (C8.4: Stop and manual create/update)
   billableByDefault: boolean;        // true
   autoStopAt: string | null;         // "23:59"
   longEntryWarnHours: number | null; // 10
