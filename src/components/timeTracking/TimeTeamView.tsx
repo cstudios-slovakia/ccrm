@@ -190,7 +190,7 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
 
   return (
     <div className="grid gap-4" data-testid="team-matrix">
-      <Surface className="flex flex-wrap items-center gap-x-4 gap-y-3" data-testid="team-header">
+      <div data-testid="team-header"><Surface className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-700">
           <Users className="size-5" />
         </span>
@@ -198,8 +198,8 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
           <h2 className="type-card-title text-slate-900">{t("Team work & expenses", "Práca a náklady tímu", "Csapat munkája és költségei")}</h2>
           <p className="type-meta text-slate-500">
             {kind === "week"
-              ? t("Hours and labour cost per person and week. Managers and admins.", "Hodiny a náklady práce na osobu a týždeň. Manažéri a administrátori.", "Órák és munkaerőköltség személyenként és hetente. Menedzserek és adminisztrátorok.")
-              : t("Hours and labour cost per person and month. Managers and admins.", "Hodiny a náklady práce na osobu a mesiac. Manažéri a administrátori.", "Órák és munkaerőköltség személyenként és havonta. Menedzserek és adminisztrátorok.")}
+              ? t("Hours and labour cost per person and week.", "Hodiny a náklady práce na osobu a týždeň.", "Órák és munkaerőköltség személyenként és hetente.")
+              : t("Hours and labour cost per person and month.", "Hodiny a náklady práce na osobu a mesiac.", "Órák és munkaerőköltség személyenként és havonta.")}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -276,7 +276,7 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
             CSV
           </button>
         </div>
-      </Surface>
+      </Surface></div>
 
       <Surface padding="none" className="overflow-x-auto">
         {loading && matrix.rows.length === 0 ? (
@@ -405,7 +405,7 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="h-1 w-6 rounded-full bg-amber-500" />
-            {t("under 75 % of the working hours — employees only", "pod 75 % pracovných hodín — iba zamestnanci", "a munkaórák 75 %-a alatt — csak alkalmazottak")}
+            {t("under 75 % of the working hours — people with an employee record, except contractors; people without one have no bar", "pod 75 % pracovných hodín — osoby so záznamom zamestnanca okrem dodávateľov; osoby bez neho nemajú pruh", "a munkaórák 75 %-a alatt — munkatársi nyilvántartással rendelkező személyek, a vállalkozók kivételével; akinek nincs, annak nincs sávja")}
           </span>
         </p>
         <p>{t("“no rate” = the user has no linked employee or no salary, so cost cannot be calculated.", "„bez sadzby“ = používateľ nemá pripojeného zamestnanca alebo mzdu, takže náklady sa nedajú vypočítať.", "„nincs díj” = a felhasználóhoz nincs munkatárs vagy bér rendelve, ezért a költség nem számolható.")}</p>
