@@ -585,7 +585,7 @@ export function TimeTrackingProvider({
         message = notice(entry);
       } else if (stopped.length === 1) {
         const was = formatDuration(stopped[0].durationSec, true);
-        const old = stopped[0].title || "…";
+        const old = stopped[0].title || stopped[0].note || "…";
         message = t(
           `Timer started on “${name}”. “${old}” was stopped at ${was}.`,
           `Časovač spustený na „${name}“. „${old}“ bol zastavený na ${was}.`,

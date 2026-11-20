@@ -1,18 +1,21 @@
 import { useEffect, useState } from "react";
-import { Play, Plus, Square } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useProjectStatuses } from "../../hooks/useProjectStatuses";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { isClosedProjectStatus, projectStatusColor, projectStatusLabel } from "../../utils/projects";
 import { clientForTask, resolveTaskProject } from "../../utils/timeLinks.ts";
-import { elapsedSeconds, formatDuration } from "../../utils/timeTracking.ts";
+import { clockTime, elapsedSeconds, formatDuration } from "../../utils/timeTracking.ts";
 import { ClockDigits } from "./ClockDigits";
 import { TimeApiError, timeErrorMessage, updateEntry } from "../../utils/timeTrackingApi.ts";
 import type { Lead, Project, Task } from "../../types";
 import { readTimeCreate, requestNewTimeEntry } from "./timeCreateBridge";
 import { CustomSelect } from "../ui/CustomSelect";
+import { StatTile } from "../layout/StatGrid";
+import { RoundTimerButton } from "./RoundTimerButton";
 
 /**
- * ▶, the tracked-time chip and an optional Description, in the task drawer's Time tracking section.
+ * The round Start (or, while the viewer tracks this task, a rose banner with Stop), an optional Description
+ * and the Tracked / Estimate tiles, in the task drawer's Time tracking section.
  * (Task cards in the lists carry no timer: tracking starts and stops from the task's edit view.)
  * A task with several projects asks which one before the timer starts. The Description is typed
  * before ▶ and travels with the new entry; while the timer runs here the field edits that entry.
@@ -38,7 +41,8 @@ export function TaskTimeControls({
   const [newType, setNewType] = useState("");
   const [note, setNote] = useState("");
   // "Running" means this task is in the running set (D5.4).
-  const runningEntry = tt.running.find((e) => e.taskId === task.id) ?? null;
+  const runningHereList = tt.running.filter((e) => e.taskId === task.id);
+  const runningEntry = runningHereList[0] ?? null;
   const runningHere = runningEntry !== null;
   const runningNote = runningEntry ? runningEntry.note ?? "" : null;
   // While the timer runs here the field mirrors the running entry.
@@ -47,7 +51,8 @@ export function TaskTimeControls({
   }, [runningHere, runningNote]);
   if (!tt.enabled || !tt.viewer.canEdit) return null;
 
-  const tracked = (tt.totals.byTask[task.id] ?? 0) + (runningHere ? elapsedSeconds(runningEntry?.startAt ?? null, tt.nowMs) : 0);
+  const tracked = (tt.totals.byTask[task.id] ?? 0) + runningHereList.reduce((sum, e) => sum + elapsedSeconds(e.startAt, tt.nowMs), 0);
+  const estimateSec = task.estimateMinutes && task.estimateMinutes > 0 ? task.estimateMinutes * 60 : null;
   const t = tt.t;
 
   const begin = async (projectId: string | null, remember: boolean, anchor?: Element | null) => {
@@ -101,50 +106,83 @@ export function TaskTimeControls({
     if (made) void begin(made.id, saveOnTask);
   };
 
-  const button = (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        onPlay(e.currentTarget);
-      }}
-      data-testid="task-time-start"
-      title={runningHere ? t("Stop timer", "Zastaviť časovač", "Időzítő leállítása") : t("Start timer", "Spustiť časovač", "Időzítő indítása")}
-      className={`inline-flex size-7 shrink-0 items-center justify-center rounded-lg transition-all cursor-pointer active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 ${
-        runningHere ? "bg-rose-600 text-white hover:bg-rose-700" : "bg-primary text-primary-foreground hover:opacity-90"
-      }`}
+  const banner = runningHereList.map((e, i) => (
+    <span
+      key={e.id}
+      role="status"
+      data-testid="task-time-banner"
+      className="flex items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2"
     >
-      {runningHere ? <Square className="size-3.5 fill-current" /> : <Play className="size-3.5 fill-current" />}
-    </button>
-  );
+      <RoundTimerButton
+        kind="stop"
+        size="md"
+        label={t("Stop timer", "Zastaviť časovač", "Időzítő leállítása")}
+        data-testid={i === 0 ? "task-time-start" : "task-time-stop"}
+        onClick={() => void tt.stop(e.id)}
+      />
+      <span className="grid min-w-0">
+        <span className="type-label text-rose-800">
+          {t("You are tracking this task", "Sledujete čas na tejto úlohe", "Ezen a feladaton követi az időt")} · {t("Started", "Začiatok", "Kezdés")} <span className="tabular-nums">{clockTime(e.startAt)}</span>
+        </span>
+        {e.title && e.title !== task.title && <span className="type-meta truncate text-rose-700">{e.title}</span>}
+      </span>
+    </span>
+  ));
 
-  const chip = (
-    <span data-testid="task-time-chip" className="inline-flex items-center rounded-md bg-teal-50 px-1.5 py-0.5 type-overline tabular-nums text-teal-800">
-      <ClockDigits value={formatDuration(tracked)} />
-      {task.estimateMinutes ? <span className="text-teal-600"> / {formatDuration(task.estimateMinutes * 60)}</span> : null}
+  const over = estimateSec !== null && tracked > estimateSec;
+  const tiles = (
+    <span className="grid grid-cols-2 gap-3">
+      <StatTile
+        label={t("Tracked", "Sledované", "Rögzített")}
+        value={<span data-testid="task-time-chip" className="tabular-nums"><ClockDigits value={formatDuration(tracked)} /></span>}
+        progress={estimateSec ? { value: (tracked / estimateSec) * 100, label: t("Tracked of estimate", "Sledované z odhadu", "Rögzített a becslésből") } : undefined}
+        delta={
+          estimateSec
+            ? over
+              ? t(`+${formatDuration(tracked - estimateSec)} over`, `+${formatDuration(tracked - estimateSec)} navyše`, `+${formatDuration(tracked - estimateSec)} túllépés`)
+              : t(`${formatDuration(estimateSec - tracked)} left`, `zostáva ${formatDuration(estimateSec - tracked)}`, `${formatDuration(estimateSec - tracked)} maradt`)
+            : undefined
+        }
+      />
+      <StatTile
+        label={t("Estimate", "Odhad", "Becslés")}
+        value={estimateSec ? <span className="tabular-nums">{formatDuration(estimateSec)}</span> : <span className="text-slate-400">—</span>}
+      />
     </span>
   );
 
   return (
-    <span className="relative flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
-      {button}
-      {chip}
-      <input
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        onBlur={() => void commitNote()}
-        onKeyDown={(e) => {
-          if (e.key !== "Enter") return;
-          e.preventDefault();
-          if (runningHere) (e.currentTarget as HTMLInputElement).blur();
-          else onPlay(e.currentTarget);
-        }}
-        maxLength={1000}
-        placeholder={t("Description (optional)", "Popis (voliteľné)", "Leírás (nem kötelező)")}
-        aria-label={t("Description", "Popis", "Leírás")}
-        data-testid="task-time-note"
-        className="h-9 min-w-40 flex-1 basis-full rounded-xl border border-slate-200 bg-white px-3 text-ui outline-none placeholder:text-slate-400 focus:border-primary"
-      />
+    <span className="grid gap-3" onClick={(e) => e.stopPropagation()}>
+      {banner}
+      <span className="relative flex items-center gap-2">
+        {!runningHere && (
+          <RoundTimerButton
+            kind="start"
+            size="md"
+            label={t("Start timer", "Spustiť časovač", "Időzítő indítása")}
+            data-testid="task-time-start"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPlay(e.currentTarget);
+            }}
+          />
+        )}
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onBlur={() => void commitNote()}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            if (runningHere) (e.currentTarget as HTMLInputElement).blur();
+            else onPlay(e.currentTarget);
+          }}
+          maxLength={1000}
+          placeholder={t("Description (optional)", "Popis (voliteľné)", "Leírás (nem kötelező)")}
+          aria-label={t("Description", "Popis", "Leírás")}
+          data-testid="task-time-note"
+          className="h-9 min-w-40 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-ui outline-none placeholder:text-slate-400 focus:border-primary"
+        />
       {ask && (
         <span
           role="dialog"
@@ -243,6 +281,8 @@ export function TaskTimeControls({
           )}
         </span>
       )}
+      </span>
+      {tiles}
     </span>
   );
 }

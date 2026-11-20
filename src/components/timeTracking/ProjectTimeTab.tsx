@@ -1,44 +1,124 @@
-import { useEffect, useState } from "react";
-import { ListChecks, Play, Plus, Square, Timer, Wallet } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Download, ListChecks, Play, Plus, Square, Wallet } from "lucide-react";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { requestNewTimeEntry } from "./timeCreateBridge";
-import { clockTime, formatDuration, hoursOf } from "../../utils/timeTracking.ts";
-import { formatMoney } from "../../utils/currency";
+import { clockTime, entrySeconds, formatDuration, todayIso } from "../../utils/timeTracking.ts";
 import { localeCodeFor } from "../../utils/localTime";
+import { projectPeriodRange, timeByTask, type ProjectPeriod } from "../../utils/projectTimeStats.ts";
+import { buildReport, reportCsv, roundDurationSec } from "../../utils/timeReports.ts";
+import { entryWorkedSeconds, liveWorkedShares } from "../../utils/timeWorked.ts";
 import type { Language } from "../../utils/translations";
-import type { Project, UserProfile } from "../../types";
+import type { Project, Task, UserProfile } from "../../types";
+import { Switch } from "../ui/Switch";
+import { ProjectBlockHeader, ProjectTimeOverview, projectBlockClass } from "./ProjectTimeOverview";
 
 /**
- * The project's Time tab: start a timer here, the hours budget against what was
- * tracked, and the entries the viewer may see: the whole team's with
- * time_tracking_team, otherwise their own. Entries imported from Toggl carry a badge.
+ * The project's Time tab: the period and its CSV, the figures (tiles, hours per week, by task, by
+ * employee), then the timer, the entries the viewer may see (the whole team's with
+ * time_tracking_team, otherwise their own; Toggl imports carry a badge) and the budget and rate.
  */
 export function ProjectTimeTab({
   project,
   language,
   currency,
   users,
+  tasks = [],
   onPatch,
 }: {
   project: Project;
   language: Language;
   currency: string;
   users: UserProfile[];
+  tasks?: Task[];
   onPatch: (patch: Partial<Project>) => void;
 }) {
   const tt = useTimeTracking();
-  const { entries } = useTimeEntries({
+  const { entries: allEntries } = useTimeEntries({
     projectId: project.id,
     from: "2000-01-01",
     to: "2100-01-01",
     ...(tt.viewer.canTeam ? { userId: "all" } : {}),
   });
+  const t = tt.t;
+  const today = todayIso();
+  const [period, setPeriod] = useState<ProjectPeriod>("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const range = useMemo(() => projectPeriodRange(period, today, customFrom, customTo), [period, today, customFrom, customTo]);
+  const entries = useMemo(() => allEntries.filter((e) => e.entryDate >= range.from && e.entryDate <= range.to), [allEntries, range]);
+
   /** Someone else's entry names its person; the viewer's own stay unlabelled. */
   const personOf = (userId: string) =>
-    userId && userId !== tt.userId ? users.find((u) => u.id === userId)?.name || tt.t("Unknown", "Neznámy", "Ismeretlen") : "";
+    userId && userId !== tt.userId ? users.find((u) => u.id === userId)?.name || t("Unknown", "Neznámy", "Ismeretlen") : "";
   const totals = tt.totals.byProject[project.id];
-  const seconds = totals?.seconds ?? entries.reduce((sum, e) => sum + (e.durationSec ?? 0), 0);
+  const allSeconds = totals?.seconds ?? allEntries.reduce((sum, e) => sum + (e.durationSec ?? 0), 0);
+  const canCosts = tt.viewer.canCosts;
+
+  // The same report the Reports page builds, so rounding, cost gating, billable value and the comparable-lines margin agree.
+  const report = useMemo(() => {
+    const shares = entries.some((e) => e.running) ? liveWorkedShares(entries, tt.nowMs) : undefined;
+    return buildReport({
+      entries: entries.map((e) => ({
+        id: e.id,
+        userId: e.userId,
+        projectId: e.projectId,
+        clientId: null,
+        entryDate: e.entryDate,
+        title: e.title,
+        durationSec: entrySeconds(e, tt.nowMs),
+        workedSec: entryWorkedSeconds(e, tt.nowMs, shares),
+        billable: e.billable,
+        cost: e.cost,
+        currency,
+        billableRate: e.billableRate,
+        internal: !!project.isInternal,
+      })),
+      filters: { from: range.from, to: range.to, userId: null, projectId: null, clientId: null, billable: "all", groupBy: "person" },
+      rounding: tt.settings.rounding,
+      viewerUserId: tt.userId || "",
+      canCosts,
+      currency,
+      workingDays: 0,
+    });
+  }, [entries, tt.nowMs, tt.settings.rounding, tt.userId, canCosts, currency, project.isInternal, range]);
+
+  const taskRows = useMemo(
+    () =>
+      timeByTask(
+        entries.map((e) => ({ taskId: e.taskId, title: e.title || e.note || "", seconds: roundDurationSec(entrySeconds(e, tt.nowMs), tt.settings.rounding) })),
+        (id) => tasks.find((tk) => tk.id === id),
+      ),
+    [entries, tasks, tt.nowMs, tt.settings.rounding],
+  );
+
+  const exportCsv = () => {
+    const text = reportCsv(
+      report,
+      "detailed",
+      {
+        group: t("Group", "Skupina", "Csoport"),
+        date: t("Date", "Dátum", "Dátum"),
+        person: t("Person", "Osoba", "Személy"),
+        project: t("Project", "Projekt", "Projekt"),
+        title: t("Title", "Názov", "Cím"),
+        hours: t("Hours", "Hodiny", "Órák"),
+        billable: t("Billable", "Fakturovateľné", "Számlázható"),
+        cost: t("Cost", "Náklady", "Költség"),
+        total: t("Totals", "Spolu", "Összesen"),
+        workedHours: t("Worked hours", "Odpracované hodiny", "Ledolgozott órák"),
+        leverage: t("Leverage", "Násobok", "Szorzó"),
+      },
+      { group: (key) => key, person: (id) => users.find((u) => u.id === id)?.name || id, project: () => project.name || project.id },
+    );
+    const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "project-time.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const [budget, setBudget] = useState(project.hoursBudget != null ? String(project.hoursBudget) : "");
   const [rate, setRate] = useState(project.billableRate != null ? String(project.billableRate) : "");
   const [internal, setInternal] = useState(!!project.isInternal);
@@ -48,110 +128,110 @@ export function ProjectTimeTab({
     setInternal(!!project.isInternal);
   }, [project.id, project.hoursBudget, project.billableRate, project.isInternal]);
 
-  const t = tt.t;
   const dateLabel = (iso: string) => {
     const d = new Date(`${iso}T00:00:00`);
     return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(localeCodeFor(language), { day: "numeric", month: "numeric", year: "numeric" });
   };
-  const money = (n: number) => formatMoney(n, currency, language, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   // A timer on the project itself (not on one of its tasks) is in the running set.
   const runningHere = tt.running.find((e) => e.projectId === project.id && !e.taskId && !e.ticketId) ?? null;
 
   const inputClass = "w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-ui font-semibold text-slate-800 tabular-nums transition-colors duration-150 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20";
-  const blockClass = "p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3";
+  const periods: { id: ProjectPeriod; label: string }[] = [
+    { id: "all", label: t("All time", "Celé obdobie", "Teljes időszak") },
+    { id: "thisMonth", label: t("This month", "Tento mesiac", "Ez a hónap") },
+    { id: "lastMonth", label: t("Last month", "Minulý mesiac", "Előző hónap") },
+    { id: "custom", label: t("Custom…", "Vlastné…", "Egyéni…") },
+  ];
+  const dateInput = "h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui text-slate-800";
 
   return (
     <div className="space-y-4 text-left" data-testid="project-time-tab">
-      {/* Block 1: what was tracked, and the timer */}
-      <div className={blockClass}>
-        <div className="flex items-center gap-2">
-          <Timer className="h-4 w-4 text-indigo-600 shrink-0" />
-          <span className="text-ui font-bold text-slate-900">{t("Tracked time", "Zaznamenaný čas", "Rögzített idő")}</span>
+      {/* Period and export */}
+      <div className="flex flex-wrap items-center gap-2" data-testid="project-time-period">
+        <div className="inline-flex w-fit flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
+          {periods.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              aria-pressed={period === p.id}
+              onClick={() => setPeriod(p.id)}
+              className={`h-8 rounded-lg px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${period === p.id ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              {p.label}
+            </button>
+          ))}
         </div>
+        {period === "custom" && (
+          <>
+            <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} aria-label={t("From", "Od", "Ettől")} className={dateInput} />
+            <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} aria-label={t("To", "Do", "Eddig")} className={dateInput} />
+          </>
+        )}
+        <button
+          type="button"
+          data-testid="project-time-export"
+          disabled={report.lines.length === 0}
+          onClick={exportCsv}
+          className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-700 transition-all hover:bg-slate-50 active:scale-95 disabled:opacity-50 cursor-pointer"
+        >
+          <Download className="size-4" />
+          {t("Export CSV", "Exportovať CSV", "CSV exportálása")}
+        </button>
+      </div>
+
+      <ProjectTimeOverview
+        report={report}
+        range={range}
+        today={today}
+        taskRows={taskRows}
+        project={project}
+        budgetSeconds={allSeconds}
+        allTime={period === "all"}
+        users={users}
+        language={language}
+        canCosts={canCosts}
+        t={t}
+      />
+
+      {/* The entries, and the timer */}
+      <div className={projectBlockClass}>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="type-metric tabular-nums text-slate-900">{formatDuration(seconds)}</div>
-            <div className="text-caption font-medium text-slate-500">
-              {project.hoursBudget ? t(`${hoursOf(seconds)} of ${project.hoursBudget} h budget`, `${hoursOf(seconds)} z ${project.hoursBudget} h rozpočtu`, `${hoursOf(seconds)} / ${project.hoursBudget} óra keret`) : t("Tracked on this project", "Zaznamenané na projekte", "A projekten rögzítve")}
-              {totals?.cost != null ? ` · ${money(totals.cost)}` : ""}
-            </div>
-          </div>
+          <ProjectBlockHeader
+            icon={<ListChecks className="h-4 w-4 text-purple-600 shrink-0" />}
+            title={t("Time entries", "Záznamy času", "Időbejegyzések")}
+            extra={entries.length > 0 ? <span className="px-2 py-0.5 rounded-full text-micro font-semibold tabular-nums bg-indigo-50 text-indigo-700 border border-indigo-200">{entries.length}</span> : null}
+          />
           {tt.enabled && tt.viewer.canEdit && (
             <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              data-testid="project-add-time"
-              onClick={() => requestNewTimeEntry({ projectId: project.id })}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-ui font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-all active:scale-95 cursor-pointer"
-            >
-              <Plus className="size-4" />
-              {t("Add time", "Pridať čas", "Idő felvétele")}
-            </button>
-            <button
-              type="button"
-              data-testid="project-start-timer"
-              onClick={(ev) => {
-                if (runningHere) void tt.stop(runningHere.id);
-                else void tt.start({ projectId: project.id, description: null, originType: "project", originId: project.id }, { anchor: ev.currentTarget });
-              }}
-              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-ui font-bold shadow-sm transition-all active:scale-95 cursor-pointer ${runningHere ? "bg-rose-600 text-white hover:bg-rose-700" : "bg-primary text-primary-foreground hover:opacity-90"}`}
-            >
-              {runningHere ? <Square className="size-4 fill-current" /> : <Play className="size-4 fill-current" />}
-              {runningHere
-                ? t("Stop timer", "Zastaviť časovač", "Időzítő leállítása")
-                : t("Start timer on this project", "Spustiť časovač na tomto projekte", "Időzítő indítása ezen a projekten")}
-            </button>
+              <button
+                type="button"
+                data-testid="project-add-time"
+                onClick={() => requestNewTimeEntry({ projectId: project.id })}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-ui font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-all active:scale-95 cursor-pointer"
+              >
+                <Plus className="size-4" />
+                {t("Add time", "Pridať čas", "Idő felvétele")}
+              </button>
+              <button
+                type="button"
+                data-testid="project-start-timer"
+                onClick={(ev) => {
+                  if (runningHere) void tt.stop(runningHere.id);
+                  else void tt.start({ projectId: project.id, description: null, originType: "project", originId: project.id }, { anchor: ev.currentTarget });
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-ui font-bold shadow-sm transition-all active:scale-95 cursor-pointer ${runningHere ? "bg-rose-600 text-white hover:bg-rose-700" : "bg-primary text-primary-foreground hover:opacity-90"}`}
+              >
+                {runningHere ? <Square className="size-4 fill-current" /> : <Play className="size-4 fill-current" />}
+                {runningHere
+                  ? t("Stop timer", "Zastaviť časovač", "Időzítő leállítása")
+                  : t("Start timer on this project", "Spustiť časovač na tomto projekte", "Időzítő indítása ezen a projekten")}
+              </button>
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Block 2: budget and rate */}
-      <div className={blockClass}>
-        <div className="flex items-center gap-2">
-          <Wallet className="h-4 w-4 text-emerald-600 shrink-0" />
-          <span className="text-ui font-bold text-slate-900">{t("Budget & rate", "Rozpočet a sadzba", "Keret és díj")}</span>
-        </div>
-        <div className="grid gap-3 ws-sm:grid-cols-3">
-          <label className="grid gap-1 content-start">
-            <span className="block type-overline text-slate-400">{t("Hours budget", "Rozpočet hodín", "Órakeret")}</span>
-            <input
-              value={budget}
-              onChange={(e) => setBudget(e.target.value)}
-              onBlur={() => onPatch({ hoursBudget: budget.trim() === "" ? null : Number(budget) })}
-              inputMode="decimal"
-              className={inputClass}
-            />
-          </label>
-          <label className="grid gap-1 content-start">
-            <span className="block type-overline text-slate-400">{t("Billable rate", "Fakturačná sadzba", "Számlázási díj")}</span>
-            <input
-              value={rate}
-              onChange={(e) => setRate(e.target.value)}
-              onBlur={() => onPatch({ billableRate: rate.trim() === "" ? null : Number(rate) })}
-              inputMode="decimal"
-              className={inputClass}
-            />
-          </label>
-          <label className="flex items-center gap-2 ws-sm:self-end ws-sm:pb-2 text-ui font-semibold text-slate-700 cursor-pointer">
-            <input type="checkbox" checked={internal} onChange={(e) => { setInternal(e.target.checked); onPatch({ isInternal: e.target.checked }); }} />
-            {t("Internal project", "Interný projekt", "Belső projekt")}
-          </label>
-        </div>
-      </div>
-
-      {/* Block 3: the entries */}
-      <div className={blockClass}>
-        <div className="flex items-center gap-2">
-          <ListChecks className="h-4 w-4 text-purple-600 shrink-0" />
-          <span className="text-ui font-bold text-slate-900">{t("Time entries", "Záznamy času", "Időbejegyzések")}</span>
-          {entries.length > 0 && (
-            <span className="px-2 py-0.5 rounded-full text-micro font-semibold tabular-nums bg-indigo-50 text-indigo-700 border border-indigo-200">{entries.length}</span>
           )}
         </div>
         {entries.length === 0 ? (
           <p className="p-3 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-ui font-semibold">
-            {t("No time logged yet.", "Zatiaľ žiadny zaznamenaný čas.", "Még nincs rögzített idő.")}
+            {allEntries.length === 0 ? t("No time logged yet.", "Zatiaľ žiadny zaznamenaný čas.", "Még nincs rögzített idő.") : t("No time in this period.", "V tomto období nie je žiadny čas.", "Ebben az időszakban nincs rögzített idő.")}
           </p>
         ) : (
           <ul className="space-y-2">
@@ -186,6 +266,43 @@ export function ProjectTimeTab({
             })}
           </ul>
         )}
+      </div>
+
+      {/* Budget and rate */}
+      <div className={projectBlockClass}>
+        <ProjectBlockHeader icon={<Wallet className="h-4 w-4 text-emerald-600 shrink-0" />} title={t("Budget & rate", "Rozpočet a sadzba", "Keret és díj")} />
+        <div className="grid gap-3 ws-sm:grid-cols-3">
+          <label className="grid gap-1 content-start">
+            <span className="block type-overline text-slate-400">{t("Hours budget", "Rozpočet hodín", "Órakeret")}</span>
+            <input
+              value={budget}
+              onChange={(e) => setBudget(e.target.value)}
+              onBlur={() => onPatch({ hoursBudget: budget.trim() === "" ? null : Number(budget) })}
+              inputMode="decimal"
+              className={inputClass}
+            />
+          </label>
+          <label className="grid gap-1 content-start">
+            <span className="block type-overline text-slate-400">{t("Billable rate", "Fakturačná sadzba", "Számlázási díj")}</span>
+            <input
+              value={rate}
+              onChange={(e) => setRate(e.target.value)}
+              onBlur={() => onPatch({ billableRate: rate.trim() === "" ? null : Number(rate) })}
+              inputMode="decimal"
+              className={inputClass}
+            />
+          </label>
+          <label className="flex items-center gap-2 ws-sm:self-end ws-sm:pb-2 text-ui font-semibold text-slate-700 cursor-pointer">
+            <Switch
+              checked={internal}
+              onChange={(next) => {
+                setInternal(next);
+                onPatch({ isInternal: next });
+              }}
+            />
+            {t("Internal project", "Interný projekt", "Belső projekt")}
+          </label>
+        </div>
       </div>
     </div>
   );
