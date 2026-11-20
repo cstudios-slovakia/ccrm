@@ -41,6 +41,11 @@ export function Donut({
   const total = parts.reduce((s, p) => s + p.value, 0);
   if (total <= 0) return <p className={`py-8 text-center text-ui text-slate-400 ${className}`}>{emptyLabel}</p>;
 
+  // Largest-remainder rounding so the shown percentages add up to 100.
+  const raw = parts.map((p) => (p.value / total) * 100);
+  const pcts = raw.map(Math.floor);
+  const order = raw.map((r, i) => [r - pcts[i], i] as const).sort((a, b) => b[0] - a[0]);
+  for (let k = 0; k < 100 - pcts.reduce((s, n) => s + n, 0); k++) pcts[order[k][1]]++;
   const R = 40;
   const C = 2 * Math.PI * R;
   let offset = 0;
@@ -49,11 +54,11 @@ export function Donut({
       <div className="relative size-40 shrink-0">
         <svg role="img" aria-label={ariaLabel} viewBox="0 0 100 100" className="size-full -rotate-90">
           <circle cx="50" cy="50" r={R} fill="none" strokeWidth="14" className="stroke-slate-100" />
-          {parts.map((p) => {
+          {parts.map((p, i) => {
             const len = (p.value / total) * C;
             const el = (
               <circle key={p.key} cx="50" cy="50" r={R} fill="none" stroke={p.color} strokeWidth="14" strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-offset}>
-                <title>{`${p.label}: ${Math.round((p.value / total) * 100)} %`}</title>
+                <title>{`${p.label}: ${pcts[i]} %`}</title>
               </circle>
             );
             offset += len;
@@ -66,11 +71,11 @@ export function Donut({
         </div>
       </div>
       <ul className="grid min-w-40 flex-1 gap-1.5">
-        {parts.map((p) => (
+        {parts.map((p, i) => (
           <li key={p.key} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-ui">
             <span className="size-2.5 rounded-full" style={{ backgroundColor: p.color }} />
             <span className="truncate text-slate-700" title={p.label}>{p.label}</span>
-            <span className="tabular-nums font-semibold text-slate-900">{p.valueLabel ?? `${Math.round((p.value / total) * 100)} %`}</span>
+            <span className="tabular-nums font-semibold text-slate-900">{p.valueLabel ?? `${pcts[i]} %`}</span>
           </li>
         ))}
       </ul>

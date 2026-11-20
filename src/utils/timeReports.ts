@@ -78,6 +78,16 @@ export interface ReportLine {
   billableValue: number | null;
   currency: string;
   internal: boolean;
+  /** Billable hours (unrounded) x rate. Null without a rate or without cost permission. */
+  marginValue: number | null;
+  /** True when the entry has a cost and its worked time equals its project time, so value and cost are comparable. */
+  marginOk: boolean;
+}
+
+/** Margin over the comparable lines only. `partial` is true when some lines were left out. */
+export interface Margin {
+  amount: MoneyByCurrency;
+  partial: boolean;
 }
 
 export interface ReportGroup {
@@ -87,6 +97,7 @@ export interface ReportGroup {
   billableSeconds: number;
   cost: MoneyByCurrency;
   billableValue: MoneyByCurrency;
+  margin: Margin | null;
 }
 
 /** Labour cost split by where the time went: client projects, internal projects, no project. */
@@ -99,7 +110,7 @@ export interface CostSplit {
 export interface BuiltReport {
   lines: ReportLine[];
   groups: ReportGroup[];
-  totals: { seconds: number; workedSeconds: number; billableSeconds: number; cost: MoneyByCurrency; billableValue: MoneyByCurrency; costSplit: CostSplit };
+  totals: { seconds: number; workedSeconds: number; billableSeconds: number; cost: MoneyByCurrency; billableValue: MoneyByCurrency; costSplit: CostSplit; margin: Margin | null };
   /** Project time ÷ worked time over the lines (×1 = nothing parallel). Null when nothing was worked. */
   leverage: number | null;
   /** True when worked and project time differ, so the views show both measures. */
@@ -150,15 +161,28 @@ const costSplitOf = (lines: readonly ReportLine[]): CostSplit => ({
 });
 
 /**
- * Billable value minus labour cost, per currency. Null where there is no billable value, so a row
- * of pure internal time shows "—" rather than a loss.
+ * Billable value minus labour cost over the lines where both are comparable: the entry has a cost
+ * and its worked time equals its project time (parallel entries bill delivered time but cost worked
+ * time), value taken from unrounded seconds to match the unrounded cost. Null when no such line
+ * carries a billable value, so pure internal time shows "—" rather than a loss. `partial` marks a
+ * margin that left lines out.
  */
-export const marginOf = (value: MoneyByCurrency, cost: MoneyByCurrency): MoneyByCurrency | null => {
-  const codes = Object.keys(value);
-  if (!codes.length) return null;
-  const out: MoneyByCurrency = {};
-  for (const code of codes) addMoney(out, code, value[code] - (cost[code] ?? 0));
-  return out;
+export const marginOfLines = (lines: readonly ReportLine[]): Margin | null => {
+  const amount: MoneyByCurrency = {};
+  let hasValue = false;
+  let partial = false;
+  for (const l of lines) {
+    if (!l.marginOk) {
+      if (l.billableValue !== null || Object.keys(l.cost).length > 0 || l.billable) partial = true;
+      continue;
+    }
+    if (l.marginValue !== null) {
+      hasValue = true;
+      addMoney(amount, l.currency, l.marginValue);
+    }
+    for (const [code, c] of Object.entries(l.cost)) addMoney(amount, code, -c);
+  }
+  return hasValue ? { amount, partial } : null;
 };
 
 export interface DayBar {
@@ -246,19 +270,24 @@ export const buildReport = (input: {
       billableValue,
       currency,
       internal: e.internal === true && e.projectId != null,
+      marginValue: input.canCosts && e.billable && e.billableRate && e.billableRate > 0 ? (e.durationSec / 3600) * e.billableRate : null,
+      marginOk: Object.keys(cost).length > 0 && Math.abs(workedSeconds - e.durationSec) < 1,
     });
   }
   const groups = new Map<string, ReportGroup>();
+  const byGroup = new Map<string, ReportLine[]>();
   for (const line of lines) {
     const key = groupKey(line, filters.groupBy);
-    const g = groups.get(key) ?? { key, seconds: 0, workedSeconds: 0, billableSeconds: 0, cost: {}, billableValue: {} };
+    const g = groups.get(key) ?? { key, seconds: 0, workedSeconds: 0, billableSeconds: 0, cost: {}, billableValue: {}, margin: null };
     g.seconds += line.seconds;
     g.workedSeconds += line.workedSeconds;
     if (line.billable) g.billableSeconds += line.seconds;
     g.cost = sumMoney([g.cost, line.cost]);
     addMoney(g.billableValue, line.currency, line.billableValue);
     groups.set(key, g);
+    byGroup.set(key, [...(byGroup.get(key) ?? []), line]);
   }
+  for (const g of groups.values()) g.margin = marginOfLines(byGroup.get(g.key) ?? []);
   const ordered = [...groups.values()].sort((a, b) => b.seconds - a.seconds || a.key.localeCompare(b.key));
   const totals = {
     seconds: lines.reduce((s, l) => s + l.seconds, 0),
@@ -267,6 +296,7 @@ export const buildReport = (input: {
     cost: sumMoney(lines.map((l) => l.cost)),
     billableValue: billableValueOf(lines),
     costSplit: costSplitOf(lines),
+    margin: marginOfLines(lines),
   };
   const byProject = new Map<string, number>();
   for (const line of lines) {

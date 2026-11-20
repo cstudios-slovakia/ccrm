@@ -123,7 +123,8 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
                 prevLabel={t("Previous month", "Predchádzajúci mesiac", "Előző hónap")}
                 nextLabel={t("Next month", "Nasledujúci mesiac", "Következő hónap")}
                 onPrev={() => setMonth(shiftMonthAnchor(month, -1, 1))}
-                onNext={() => month < closed && setMonth(shiftMonthAnchor(month, 1, 1))}
+                onNext={() => setMonth(shiftMonthAnchor(month, 1, 1))}
+                nextDisabled={month >= closed}
               />
               <button
                 type="button"

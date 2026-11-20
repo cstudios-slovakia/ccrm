@@ -1,25 +1,31 @@
 import type { ReactNode } from "react";
 import { Surface } from "../layout";
 import { formatMoney } from "../../utils/currency";
-import { marginOf, type BuiltReport, type ReportGroupBy } from "../../utils/timeReports.ts";
+import { type BuiltReport, type Margin, type ReportGroupBy } from "../../utils/timeReports.ts";
 import { formatDuration } from "../../utils/timeTracking.ts";
-import type { MoneyByCurrency } from "../../utils/timeTeam.ts";
 import type { Language } from "../../utils/translations";
 import { MoneyText } from "./MoneyText";
 import { ProjectLabel } from "./ProjectLabel";
 
 type T = (en: string, sk: string, hu: string) => string;
 
-/** Margin: emerald when positive, rose when negative, "—" where there is no billable value. */
-export function MarginText({ value, cost, language }: { value: MoneyByCurrency; cost: MoneyByCurrency; language: Language }) {
-  const margin = marginOf(value, cost);
+const partialNote = (t: T) =>
+  t(
+    "Approximate: entries without a cost and entries that overlapped another timer are left out of the margin.",
+    "Približne: záznamy bez nákladu a záznamy, ktoré sa prekrývali s iným časovačom, sa do marže nezapočítavajú.",
+    "Hozzávetőleges: a költség nélküli és a másik időzítővel átfedő bejegyzések nincsenek benne az árrésben.",
+  );
+
+/** Margin: emerald when positive, rose when negative, "—" where there is no comparable billable value, "≈" when lines were left out. */
+export function MarginText({ margin, language, t }: { margin: Margin | null; language: Language; t: T }) {
   if (!margin) return <span className="tabular-nums text-slate-300">—</span>;
   return (
-    <span className="tabular-nums font-semibold">
-      {Object.keys(margin).sort().map((code, i) => (
-        <span key={code} className={margin[code] < 0 ? "text-rose-600" : "text-emerald-700"}>
+    <span className="tabular-nums font-semibold" title={margin.partial ? partialNote(t) : undefined}>
+      {margin.partial ? "≈ " : ""}
+      {Object.keys(margin.amount).sort().map((code, i) => (
+        <span key={code} className={margin.amount[code] < 0 ? "text-rose-600" : "text-emerald-700"}>
           {i > 0 ? " · " : ""}
-          {formatMoney(margin[code], code, language, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          {formatMoney(margin.amount[code], code, language, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
       ))}
     </span>
@@ -105,7 +111,7 @@ export function ReportSummaryTable({
               {cell(<span className="text-slate-600">{formatDuration(g.billableSeconds)}</span>)}
               {showValue && cell(<MoneyText bag={g.billableValue} language={language} />)}
               {showCost && cell(<MoneyText bag={g.cost} language={language} />)}
-              {showValue && cell(<MarginText value={g.billableValue} cost={g.cost} language={language} />)}
+              {showValue && cell(<MarginText margin={g.margin} language={language} t={t} />)}
             </tr>
           ))}
         </tbody>
@@ -117,10 +123,11 @@ export function ReportSummaryTable({
             <td className={`${td} py-3`}>{formatDuration(report.totals.billableSeconds)}</td>
             {showValue && <td className={`${td} py-3`}><MoneyText bag={report.totals.billableValue} language={language} /></td>}
             {showCost && <td className={`${td} py-3`}><MoneyText bag={report.totals.cost} language={language} /></td>}
-            {showValue && <td className={`${td} py-3`}><MarginText value={report.totals.billableValue} cost={report.totals.cost} language={language} /></td>}
+            {showValue && <td className={`${td} py-3`}><MarginText margin={report.totals.margin} language={language} t={t} /></td>}
           </tr>
         </tfoot>
       </table>
+      {showValue && (report.totals.margin?.partial || report.groups.some((g) => g.margin?.partial)) && <p className="px-4 pb-3 type-meta text-slate-500">≈ {partialNote(t)}</p>}
     </Surface>
   );
 }

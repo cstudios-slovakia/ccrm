@@ -8,10 +8,12 @@ import { StackedBars } from "./charts/StackedBars";
 type T = (en: string, sk: string, hu: string) => string;
 
 /** "Hours per working day": one stacked bar per working day (and any off-day with entries), billable against the rest. */
-export function HoursPerDayCard({ report, days, locale, t }: { report: BuiltReport; days: readonly string[]; locale: string; t: T }) {
+export function HoursPerDayCard({ report, days, totalDays, locale, t }: { report: BuiltReport; days: readonly string[]; totalDays: number; locale: string; t: T }) {
   const bars = useMemo(() => {
     const withEntries = new Set(report.lines.map((l) => l.entryDate));
-    const list = [...new Set([...days, ...withEntries])].sort();
+    const last = days[days.length - 1];
+    const capped = totalDays > days.length && last;
+    const list = [...new Set([...days, ...withEntries])].filter((d) => !capped || d <= last).sort();
     return hoursPerDay(report.lines, list).map((d) => ({
       key: d.date,
       label: String(Number(d.date.slice(8))),
@@ -25,9 +27,12 @@ export function HoursPerDayCard({ report, days, locale, t }: { report: BuiltRepo
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="type-card-title text-slate-900">{t("Hours per working day", "Hodiny na pracovný deň", "Óra munkanaponként")}</h3>
         {report.perWorkingDaySeconds != null && (
-          <span className="type-meta tabular-nums text-slate-500">{t(`avg ${formatDuration(report.perWorkingDaySeconds)} over ${days.length} working days`, `priemer ${formatDuration(report.perWorkingDaySeconds)} za ${days.length} pracovných dní`, `átlag ${formatDuration(report.perWorkingDaySeconds)}, ${days.length} munkanap alatt`)}</span>
+          <span className="type-meta tabular-nums text-slate-500">{t(`avg ${formatDuration(report.perWorkingDaySeconds)} over ${totalDays} working days`, `priemer ${formatDuration(report.perWorkingDaySeconds)} za ${totalDays} pracovných dní`, `átlag ${formatDuration(report.perWorkingDaySeconds)}, ${totalDays} munkanap alatt`)}</span>
         )}
       </div>
+      {totalDays > days.length && (
+        <p className="type-meta text-slate-500">{t(`The chart shows the first ${days.length} working days of the range.`, `Graf ukazuje prvých ${days.length} pracovných dní obdobia.`, `A diagram az időszak első ${days.length} munkanapját mutatja.`)}</p>
+      )}
       <StackedBars
         className="mt-3"
         bars={bars}
@@ -42,14 +47,14 @@ export function HoursPerDayCard({ report, days, locale, t }: { report: BuiltRepo
 }
 
 /** "Share by project": donut with the total hours in the middle, legend with colour and percentage. */
-export function ShareByProjectCard({ report, projectName, t }: { report: BuiltReport; projectName: (id: string | null) => string; t: T }) {
+export function ShareByProjectCard({ report, projectName, locale, t }: { report: BuiltReport; projectName: (id: string | null) => string; locale: string; t: T }) {
   return (
     <Surface className="min-w-0">
       <h3 className="type-card-title text-slate-900">{t("Share by project", "Podiel podľa projektu", "Megoszlás projekt szerint")}</h3>
       <Donut
         className="mt-3"
         slices={report.shareByProject.map((s) => ({ key: s.projectId ?? "none", label: projectName(s.projectId), value: s.seconds, color: projectColor(s.projectId) }))}
-        centerValue={hoursOf(report.totals.seconds).toFixed(1).replace(/\.0$/, "")}
+        centerValue={hoursOf(report.totals.seconds).toLocaleString(locale, { maximumFractionDigits: 1 })}
         centerLabel={t("hours", "hodín", "óra")}
         ariaLabel={t("Share of hours by project", "Podiel hodín podľa projektu", "Az órák megoszlása projekt szerint")}
         otherLabel={t("Other projects", "Ostatné projekty", "Egyéb projektek")}

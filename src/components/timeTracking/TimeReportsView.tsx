@@ -29,6 +29,9 @@ import type { Lead, Project } from "../../types";
 
 type Mode = ReportMode;
 
+/** The chart draws at most this many bars; a longer range shows its first days and says so. */
+const CHART_DAY_CAP = 62;
+
 const clientIdOf = (project: Project, leads: Lead[]): string | null => {
   if (project.clientId) return project.clientId;
   if (!project.leadId) return null;
@@ -90,10 +93,10 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
   const workingDayList = useMemo(() => {
     const cal = tt.calendarFor(tt.workCountry);
     const days: string[] = [];
-    for (let d = from; d <= to && days.length < 400 && from <= to; d = addDays(d, 1)) if (cal.isWorkingDay(d)) days.push(d);
+    for (let d = from; d <= to && days.length < CHART_DAY_CAP; d = addDays(d, 1)) if (cal.isWorkingDay(d)) days.push(d);
     return days;
   }, [from, to, tt.calendarFor, tt.workCountry]);
-  const workingDays = workingDayList.length;
+  const workingDays = useMemo(() => tt.calendarFor(tt.workCountry).workingDaysInRange(from, to), [from, to, tt.calendarFor, tt.workCountry]);
 
   const internalProjects = useMemo(
     () =>
@@ -348,14 +351,14 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
             {hasCost && (
               <StatTile
                 label={t("Labour cost · client work", "Náklady na prácu · klientska práca", "Munkaköltség · ügyfélmunka")}
-                value={<MoneyText bag={split.client} language={deps.language} />}
+                value={Object.keys(split.client).length ? <MoneyText bag={split.client} language={deps.language} /> : <MoneyText bag={{ [deps.currency || "EUR"]: 0 }} language={deps.language} />}
                 delta={splitParts.length ? splitParts.join(" · ") : t(`${report.lines.length} entries`, `${report.lines.length} záznamov`, `${report.lines.length} bejegyzés`)}
               />
             )}
           </StatGrid>
           <div className="grid gap-4 ws-lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-            <HoursPerDayCard report={report} days={workingDayList} locale={locale} t={t} />
-            <ShareByProjectCard report={report} projectName={projectName} t={t} />
+            <HoursPerDayCard report={report} days={workingDayList} totalDays={workingDays} locale={locale} t={t} />
+            <ShareByProjectCard report={report} projectName={projectName} locale={locale} t={t} />
           </div>
           <ReportSummaryTable
             report={report}
