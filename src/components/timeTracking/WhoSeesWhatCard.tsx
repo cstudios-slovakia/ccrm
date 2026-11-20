@@ -6,15 +6,15 @@ import { SettingsCard } from "./SettingsCard";
 
 /** What each line asks the permission registry; the admin role always passes. Read-only: roles are edited in Users & roles. */
 const LINES = [
-  { id: "costs", key: "time_tracking_costs" },
-  { id: "team", key: "time_tracking_team" },
-  { id: "salary", key: "time_tracking_salary_report" },
+  { id: "costs", keys: ["time_tracking_costs"] },
+  { id: "team", keys: ["time_tracking_team", "time_tracking"] },
+  { id: "salary", keys: ["time_tracking_salary_report"] },
 ] as const;
 
 /** Settings → Time tracking → "Who sees what" (canvas S6): the roles' real permissions as check / dash chips. */
-export function WhoSeesWhatCard({ t, roles }: { t: TFn; roles: RolePermission[] }) {
+export function WhoSeesWhatCard({ t, roles, canManageRoles }: { t: TFn; roles: RolePermission[]; canManageRoles: boolean }) {
   const titles = {
-    costs: t("See labour cost and rates", "Vidieť náklady na prácu a sadzby", "Munkaköltség és díjak megtekintése"),
+    costs: t("See other people's labour cost and rates", "Vidieť náklady na prácu a sadzby iných ľudí", "Mások munkaköltségének és díjainak megtekintése"),
     team: t("Edit other people's entries", "Upravovať záznamy iných ľudí", "Mások bejegyzéseinek szerkesztése"),
     salary: t("See salary allocation report", "Vidieť report rozdelenia miezd", "Bérallokációs riport megtekintése"),
   };
@@ -22,7 +22,7 @@ export function WhoSeesWhatCard({ t, roles }: { t: TFn; roles: RolePermission[] 
     const names = roles.some((r) => r.name === ADMIN_ROLE_NAME) ? roles.map((r) => r.name) : [ADMIN_ROLE_NAME, ...roles.map((r) => r.name)];
     return LINES.map((line) => ({
       ...line,
-      roles: names.map((name) => ({ name, yes: buildAccess({ role: name } as UserProfile, roles).can(line.key) })),
+      roles: names.map((name) => ({ name, yes: line.keys.every((k) => { const a = buildAccess({ role: name } as UserProfile, roles); return k === "time_tracking" ? a.canEdit(k) : a.can(k); }) })),
     }));
   }, [roles]);
   return (
@@ -30,7 +30,7 @@ export function WhoSeesWhatCard({ t, roles }: { t: TFn; roles: RolePermission[] 
       title={t("Who sees what", "Kto čo vidí", "Ki mit lát")}
       description={t("Read from each role's permissions.", "Načítané z oprávnení jednotlivých rolí.", "Az egyes szerepkörök jogosultságaiból olvasva.")}
       action={
-        <a href="#settings/access/roles" className="text-ui font-semibold text-primary hover:underline" data-testid="tt-who-sees-link">
+        canManageRoles && <a href="#settings/access/roles" className="text-ui font-semibold text-primary hover:underline" data-testid="tt-who-sees-link">
           {t("Managed in Users & roles", "Spravuje sa v Používateľoch a rolách", "A Felhasználók és szerepkörök résznél kezelhető")}
         </a>
       }

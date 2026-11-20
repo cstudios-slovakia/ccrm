@@ -4060,7 +4060,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               language={userLanguage}
               canEdit={getPermission("general_config") === "edit"}
               isAdmin={isAdminRoleName(currentUser?.role)}
-              currency={systemCurrency || "EUR"} projects={projects} employees={employees} leads={leads} roles={roles}
+              currency={systemCurrency || "EUR"} projects={projects} employees={employees} leads={leads} roles={roles} canManageRoles={getPermission("pm_managers") !== "nothing"}
             />
           </div>
         );

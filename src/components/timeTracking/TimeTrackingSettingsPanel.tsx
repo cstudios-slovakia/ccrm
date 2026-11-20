@@ -40,7 +40,7 @@ const OFFICIAL_SOURCE: Record<HolidayCountry, { label: string; href: string }> =
 const num = (v: string, fallback: number) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : fallback);
 
 /** Settings → Time tracking: cost basis, working days and holidays, rules, extension, re-pricing. */
-export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency, projects, employees, leads, roles }: { language: Language; canEdit: boolean; isAdmin: boolean; currency: string; projects?: Project[]; employees?: Employee[]; leads?: Lead[]; roles?: RolePermission[] }) {
+export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency, projects, employees, leads, roles, canManageRoles = false }: { language: Language; canEdit: boolean; isAdmin: boolean; currency: string; projects?: Project[]; employees?: Employee[]; leads?: Lead[]; roles?: RolePermission[]; canManageRoles?: boolean }) {
   const brand = PRODUCT_NAME;
   const tt = useTimeTracking();
   const { t, settings, ready, enabled } = tt;
@@ -167,9 +167,10 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
           <div className="grid gap-2 border-t border-slate-100 pt-4" data-testid="tt-reprice">
             <div className="flex flex-wrap items-center gap-3">
               <input type="month" value={repriceMonth} onChange={(e) => setRepriceMonth(e.target.value)} className="h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui" data-testid="tt-reprice-month" />
-              <HoldToConfirmButton onConfirm={() => void reprice()} tone="archive" lang={language} what={repriceMonth} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-ui font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer" icon={<RotateCcw className="size-4" />}>
+              <HoldToConfirmButton disabled={dirty} onConfirm={() => void reprice()} tone="archive" lang={language} what={repriceMonth} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-ui font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer" icon={<RotateCcw className="size-4" />}>
                 {t("Hold to re-price a period…", "Podržte pre prepočet obdobia…", "Tartsa az időszak újraárazásához…")}
               </HoldToConfirmButton>
+              {dirty && <span className="type-meta font-semibold text-slate-700" data-testid="tt-reprice-save-first">{t("Save your changes first", "Najprv uložte zmeny", "Előbb mentse a módosításokat")}</span>}
               <span className="min-w-0 flex-1 type-meta text-slate-500">{t("Recomputes frozen rates of entries in a month after a salary correction. Logged in the audit log.", "Prepočíta zafixované sadzby záznamov v mesiaci po oprave mzdy. Zapíše sa do auditu.", "Fizetéskorrekció után újraszámolja a hónap bejegyzéseinek rögzített díjait. Az auditnaplóba kerül.")}</span>
             </div>
             <p className="type-meta text-slate-500">{t("It uses the current salaries and calendar, fills in entries that had no rate once an employee is linked, and re-allocates worked time between overlapping entries.", "Použije aktuálne mzdy a kalendár, doplní záznamy bez sadzby po pripojení zamestnanca a znovu rozdelí odpracovaný čas medzi prekrývajúcimi sa záznamami.", "A jelenlegi fizetéseket és naptárat használja, kitölti a díj nélküli bejegyzéseket, ha már van hozzárendelt munkatárs, és újraosztja a ledolgozott időt az egymást átfedő bejegyzések között.")}</p>
@@ -295,7 +296,7 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
 
       <div className={`grid items-stretch gap-6 ${roles ? "ws-md:grid-cols-2" : ""}`}>
         <RoundingCard t={t} canEdit={canEdit} rounding={draft.rounding} onChange={(rounding) => set("rounding", rounding)} />
-        {roles && <WhoSeesWhatCard t={t} roles={roles} />}
+        {roles && <WhoSeesWhatCard t={t} roles={roles} canManageRoles={canManageRoles} />}
       </div>
 
       <ParallelTrackingBlock t={t} canEdit={canEdit} parallel={draft.parallel ?? DEFAULT_TIME_TRACKING_SETTINGS.parallel} onChange={(parallel) => set("parallel", parallel)} />

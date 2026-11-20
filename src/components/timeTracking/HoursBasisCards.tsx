@@ -59,10 +59,9 @@ export function HoursBasisCards({
         <input
           type="number"
           min={1}
-          disabled={!canEdit}
+          disabled={!canEdit || !fixed}
           value={draft.fixedHoursPerMonth}
           aria-label={t("Hours per month", "Hodiny za mesiac", "Órák havonta")}
-          onFocus={() => set("hoursBasis", "fixed")}
           onChange={(e) => set("fixedHoursPerMonth", Number.isFinite(parseFloat(e.target.value)) ? parseFloat(e.target.value) : 168)}
           className={`${field} w-24 text-center tabular-nums`}
           data-testid="tt-fixed-hours"

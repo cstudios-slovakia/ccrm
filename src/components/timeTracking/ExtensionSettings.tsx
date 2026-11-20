@@ -171,7 +171,7 @@ export function ExtensionSettings({ language, t, canEdit, isAdmin, extension, on
                     return known ? (
                       <ProjectLabel projectId={known.id} name={projectDisplayName(known, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt"))} compact className="type-meta" />
                     ) : (
-                      <span className="type-meta text-slate-400">{site.projectId}</span>
+                      <span className="type-meta text-slate-400">{t("Deleted project", "Odstránený projekt", "Törölt projekt")}</span>
                     );
                   })()}
                   <button type="button" onClick={() => setSites((curr) => curr.filter((_, i) => i !== index))} className="ml-auto text-ui font-semibold text-slate-400 hover:text-rose-600 cursor-pointer">

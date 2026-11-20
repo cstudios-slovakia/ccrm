@@ -32,7 +32,7 @@ export function RoundingCard({ t, canEdit, rounding, onChange }: { t: TFn; canEd
           </button>
         ))}
       </div>
-      <div className="grid gap-2" role="radiogroup" data-testid="tt-rounding-mode">
+      <div className="grid gap-2" role="radiogroup" aria-label={t("Rounding direction", "Smer zaokrúhľovania", "Kerekítés iránya")} data-testid="tt-rounding-mode">
         {modes.map((o) => (
           <label key={o.v} className={`flex items-center gap-3 text-ui ${off ? "text-slate-400" : "cursor-pointer text-slate-800"}`}>
             <input type="radio" name="tt-rounding-mode" disabled={!canEdit || off} checked={rounding.mode === o.v} onChange={() => onChange({ ...rounding, mode: o.v })} className="size-4 accent-primary" data-testid={`tt-rounding-mode-${o.v}`} />

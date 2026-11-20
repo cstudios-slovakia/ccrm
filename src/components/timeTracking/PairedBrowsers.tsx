@@ -18,7 +18,11 @@ export function PairedBrowsers({ t, language }: { t: TFn; language: Language }) 
   useEffect(() => {
     if (!expiresAt) return;
     setNowMs(Date.now());
-    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      setNowMs(now);
+      if (now >= Date.parse(expiresAt)) window.clearInterval(timer);
+    }, 1000);
     return () => window.clearInterval(timer);
   }, [expiresAt]);
   const clock = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
