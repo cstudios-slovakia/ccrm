@@ -16,6 +16,7 @@
 
 require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/task_done.php';
+require_once __DIR__ . '/recurring_tasks.php'; // ccrm_task_category_checked(), ccrm_tasks_have_category()
 
 if (!function_exists('ccrm_int_handle_task_push')) {
 
@@ -281,7 +282,18 @@ if (!function_exists('ccrm_int_handle_task_push')) {
             'has_project' => array_key_exists('project_id', $p),
             'lead_id' => null,
             'project_id' => null,
+            'has_category' => array_key_exists('category', $p),
+            'category' => null,
         ];
+        if ($incoming['has_category']) {
+            // The one rule of tasks.category (api/recurring_tasks.php); an absent key leaves it alone,
+            // null or "" clears it, a slug ("bug") sets it, anything else is a 422.
+            $cat = ccrm_task_category_checked($p);
+            if ($cat === null) {
+                $bad('category', 'Must be "bug" (or another short lowercase slug), or null / an empty string for none.');
+            }
+            $incoming['category'] = $cat[0];
+        }
         if ($incoming['has_lead'] && $p['lead_id'] !== null) {
             $incoming['lead_id'] = ccrm_int_task_row_exists($pdo, 'leads', $p['lead_id'], 'lead_id');
         }
@@ -337,6 +349,7 @@ if (!function_exists('ccrm_int_handle_task_push')) {
             'lead_id' => $row['related_lead_id'] ?? null,
             'project_id' => $row['related_project_id'] ?? null,
             'start' => $row['start_date'] ?? null,
+            'category' => $row['category'] ?? null,
         ];
     }
 
@@ -467,6 +480,11 @@ if (!function_exists('ccrm_int_handle_task_push')) {
         if ($in['has_project']) {
             $composed['project_id'] = $in['project_id'];
         }
+        // Left out while `tasks.category` is not migrated yet (a rollout window): no statement names a
+        // missing column, and the field is applied by the first push after the migration.
+        if ($in['has_category'] && ccrm_tasks_have_category($pdo)) {
+            $composed['category'] = $in['category'];
+        }
         $meta = [
             'conversation' => $in['context']['conversation'],
             'is_group' => $in['context']['is_group'],
@@ -555,18 +573,21 @@ if (!function_exists('ccrm_int_handle_task_push')) {
             $meta['inferred_deadline'] = $due['date'];
         }
         $done = $in['status'] === 'completed';
+        // `category` is in $composed only when the database has the column (see the push handler).
+        $withCategory = array_key_exists('category', $composed);
         $pdo->prepare(
             "INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`,
-                                  `related_lead_id`, `related_project_id`, `completed_by`, `completed_at`, `external_source`, `external_url`, `external_meta_json`)
-             VALUES (?, ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" /* recurring-template: integration tasks are real tasks */
-        )->execute([
+                                  `related_lead_id`, `related_project_id`, `completed_by`, `completed_at`, `external_source`, `external_url`, `external_meta_json`"
+            . ($withCategory ? ', `category`' : '') . ")
+             VALUES (?, ?, ?, 'medium', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?" . ($withCategory ? ', ?' : '') . ")" /* recurring-template: integration tasks are real tasks */
+        )->execute(array_merge([
             $id, $composed['title'], $composed['description'], $in['start'], $due['date'], $due['time'],
             $done ? ccrm_int_task_done_state($states) : ccrm_int_task_initial_state($states),
             $assigneeNames[0], $ownerName,
             $in['lead_id'], $in['project_id'],
             $done ? $ownerName : null, $done ? date('Y-m-d H:i') : null,
             $client['code'], $in['context']['path'], json_encode($meta, JSON_UNESCAPED_UNICODE),
-        ]);
+        ], $withCategory ? [$composed['category']] : []));
         ccrm_int_task_write_assignees($pdo, $id, $assigneeNames);
         return ['id' => $id];
     }
@@ -646,6 +667,9 @@ if (!function_exists('ccrm_int_handle_task_push')) {
                         break;
                     case 'project_id':
                         $set('related_project_id', $composed['project_id']);
+                        break;
+                    case 'category':
+                        $set('category', $composed['category']);
                         break;
                 }
                 $applied[] = $field;

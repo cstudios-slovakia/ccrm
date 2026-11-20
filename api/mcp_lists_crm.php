@@ -479,14 +479,15 @@ function mcp_list_tasks(\PDO $pdo, array $user, array $args): array {
     $params = array_merge($params, $win['params'], $bParams, $dParams, $aParams);
     $stmt = $pdo->prepare(
         'SELECT id, title, description, priority, deadline, deadline_time, original_deadline, deadline_moves, status, owner, created_by, related_lead_id, related_project_id,
-                completed_by, completed_at, archived, ' . mcp_moment_select('created_at', 'created_at') . ', ' . mcp_moment_select('updated_at', 'updated_at')
-        . ' FROM tasks WHERE ' . implode(' AND ', $where) . ' ' . $win['tail']
+                completed_by, completed_at, archived, ' . (ccrm_tasks_have_category($pdo) ? 'category, ' : '') . mcp_moment_select('created_at', 'created_at') . ', ' . mcp_moment_select('updated_at', 'updated_at')
+        . ' FROM tasks /* recurring-template: where holds ccrm_sql_real_tasks */ WHERE ' . implode(' AND ', $where) . ' ' . $win['tail']
     );
     $stmt->execute($params);
     $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
     $latest = mcp_task_activity_latest($pdo, $user, array_column($rows, 'id'));
     return array_map(function ($t) use ($latest) {
         $t['archived'] = (int)$t['archived'] === 1;
+        $t['category'] = $t['category'] ?? null; // null too on a database not migrated yet
         $t['deadline_moves'] = (int)$t['deadline_moves'];
         $t['completed_at_iso'] = mcp_local_iso($t['completed_at']);
         $t['last_activity_at__ts'] = mcp_last_activity_ts($t['updated_at__ts'], [(string)$t['id']], $latest);
@@ -505,6 +506,7 @@ function mcp_get_task(\PDO $pdo, array $user, array $args): array {
     $latest = mcp_task_activity_latest($pdo, $user, [(string)$args['id']]);
     $lastActivityTs = mcp_last_activity_ts($task['updated_ts'], [(string)$args['id']], $latest);
     $task = mcp_task_moments($task);
+    $task['category'] = $task['category'] ?? null; // "bug" or null; null too on a database not migrated yet
     $task['last_activity_at'] = mcp_format_moment($lastActivityTs);
     // completed_at is a local "YYYY-MM-DD HH:MM" string; the same moment with the offset sits beside it.
     $task['completed_at_iso'] = mcp_local_iso($task['completed_at'] ?? null);
@@ -599,7 +601,7 @@ function mcp_crm_defs(): array {
                 . 'Comments written before this field existed count only where one task of the client has that title. '
                 . 'Archived tasks are left out unless include_archived=true (each row says archived), so an archive can be found with include_archived + updated_from. '
                 . 'deadline_from/deadline_to take a deadline range (inclusive dates); original_deadline is the deadline the task was first given and deadline_moves how many times it was pushed later. '
-                . 'completed_at is a local "YYYY-MM-DD HH:MM" string; completed_at_iso is the same moment with the offset. '
+                . 'completed_at is a local "YYYY-MM-DD HH:MM" string; completed_at_iso is the same moment with the offset. category is "bug" for a task marked as a Bug, otherwise null. '
                 . mcp_window_doc('tasks', MCP_TASK_WINDOW),
             'inputSchema' => [
                 'type' => 'object',
@@ -618,7 +620,7 @@ function mcp_crm_defs(): array {
         ],
         'get_task' => [
             'name' => 'get_task',
-            'description' => 'Retrieve full task details, assignees, and tags. created_at and updated_at are ISO moments with the offset; last_activity_at is the later of updated_at, the newest comment and the newest time entry you may see; completed_at is a local "YYYY-MM-DD HH:MM" string and completed_at_iso the same moment with the offset; original_deadline and deadline_moves show how often the deadline was pushed.',
+            'description' => 'Retrieve full task details, assignees, and tags. created_at and updated_at are ISO moments with the offset; last_activity_at is the later of updated_at, the newest comment and the newest time entry you may see; completed_at is a local "YYYY-MM-DD HH:MM" string and completed_at_iso the same moment with the offset; original_deadline and deadline_moves show how often the deadline was pushed; category is "bug" for a task marked as a Bug, otherwise null.',
             'inputSchema' => ['type' => 'object', 'properties' => ['id' => $s('Task ID')], 'required' => ['id']],
         ],
         'list_meetings' => [

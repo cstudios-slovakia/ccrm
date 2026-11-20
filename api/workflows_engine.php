@@ -972,11 +972,19 @@ if (!function_exists('ccrm_execute_workflow')) {
                                 'title' => $title
                             ];
                         } else {
+                            // Optional category chosen on the action ("bug"), by the one rule of
+                            // tasks.category. A workflow saved before the field existed, an invalid
+                            // value, or a database without the column yet creates a task with none;
+                            // the statement only names the column when it is both wanted and there.
+                            require_once __DIR__ . '/recurring_tasks.php';
+                            $category = ccrm_task_category_write($nodeData)[0];
+                            $withCategory = $category !== null && ccrm_tasks_have_category($pdo);
                             $stmt = $pdo->prepare("
-                                INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `workflow_id`, `created_at`)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Automation', ?, ?, CURRENT_TIMESTAMP())
+                                INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `workflow_id`, `created_at`"
+                                . ($withCategory ? ', `category`' : '') . ")
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Automation', ?, ?, CURRENT_TIMESTAMP()" . ($withCategory ? ', ?' : '') . ")
                             "); /* recurring-template: workflows create normal tasks */
-                            $stmt->execute([$taskId, $title, $desc, $priority, $deadline, $deadlineTime, $taskStatus, $owner, $relatedLeadId, $workflowId]);
+                            $stmt->execute(array_merge([$taskId, $title, $desc, $priority, $deadline, $deadlineTime, $taskStatus, $owner, $relatedLeadId, $workflowId], $withCategory ? [$category] : []));
 
                             if (!empty($owner)) {
                                 $insAss = $pdo->prepare("INSERT IGNORE INTO `task_assignees` (`task_id`, `user_name`) VALUES (?, ?)");
@@ -994,7 +1002,8 @@ if (!function_exists('ccrm_execute_workflow')) {
                                 'owner' => $owner,
                                 'status' => $taskStatus,
                                 'deadline' => $deadline,
-                                'deadline_time' => $deadlineTime
+                                'deadline_time' => $deadlineTime,
+                                'category' => $withCategory ? $category : null
                             ];
                         }
                     } elseif ($actionType === 'send_email') {

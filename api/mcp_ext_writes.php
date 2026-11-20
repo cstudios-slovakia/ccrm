@@ -184,6 +184,25 @@ function mcp_task_done_state(\PDO $pdo): string {
     return ccrm_task_done_state(is_array($states) ? $states : []) ?? 'done';
 }
 
+/**
+ * The optional 'category' argument of create_task / update_task as [write?, value]: omitted leaves the
+ * task alone, null or "" clears, a slug ("bug") sets, anything else is an argument error (the rule is
+ * ccrm_task_category_write(), the one sync.php uses). While `tasks.category` is not migrated yet a
+ * clear is a no-op and a set is refused with a clear message; no statement ever names a missing column.
+ */
+function mcp_task_category_arg(\PDO $pdo, array $args): array {
+    if (!array_key_exists('category', $args)) return [false, null];
+    $w = ccrm_task_category_checked($args);
+    if ($w === null) {
+        throw new \InvalidArgumentException("'category' must be \"bug\" (or another short lowercase slug), or null / an empty string to clear it.");
+    }
+    if (!ccrm_tasks_have_category($pdo)) {
+        if ($w[0] !== null) throw new \InvalidArgumentException("Task categories are not available on this database yet (an update is still rolling out). Try again shortly.");
+        return [false, null];
+    }
+    return [true, $w[0]];
+}
+
 function mcp_do_create_task(\PDO $pdo, array $user, array $args): array {
     $title = mcp_require_string($args, 'title');
     $deadline = mcp_require_date($args, 'deadline');
@@ -197,17 +216,20 @@ function mcp_do_create_task(\PDO $pdo, array $user, array $args): array {
     $leadId = !empty($args['client_id']) ? (string)$args['client_id'] : null;
     if ($projId !== null) mcp_row_exists($pdo, 'projects', $projId, 'Project');
     if ($leadId !== null) mcp_row_exists($pdo, 'leads', $leadId, 'Client/lead');
+    [$catWrite, $category] = mcp_task_category_arg($pdo, $args);
     $assignees = [$owner];
     if (is_array($args['assignees'] ?? null)) {
         foreach ($args['assignees'] as $a) { if (trim((string)$a) !== '') $assignees[] = mcp_user_exists($pdo, (string)$a); }
     }
 
     $id = 'tsk_' . bin2hex(random_bytes(8));
-    mcp_tx($pdo, function () use ($pdo, $id, $title, $args, $priority, $deadline, $time, $status, $owner, $user, $projId, $leadId, $assignees) {
+    mcp_tx($pdo, function () use ($pdo, $id, $title, $args, $priority, $deadline, $time, $status, $owner, $user, $projId, $leadId, $assignees, $catWrite, $category) {
+        // The category column is named only when the database has it (mcp_task_category_arg checked).
         $pdo->prepare(
-            "INSERT INTO tasks (id, title, description, priority, deadline, deadline_time, status, owner, created_by, related_project_id, related_lead_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" /* recurring-template: mcp creates normal tasks */
-        )->execute([$id, $title, $args['description'] ?? null, $priority, $deadline, $time, $status, $owner, $user['name'], $projId, $leadId]);
+            "INSERT INTO tasks (id, title, description, priority, deadline, deadline_time, status, owner, created_by, related_project_id, related_lead_id"
+            . ($catWrite ? ', category' : '') . ")
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?" . ($catWrite ? ', ?' : '') . ")" /* recurring-template: mcp creates normal tasks */
+        )->execute(array_merge([$id, $title, $args['description'] ?? null, $priority, $deadline, $time, $status, $owner, $user['name'], $projId, $leadId], $catWrite ? [$category] : []));
         $ins = $pdo->prepare("INSERT IGNORE INTO task_assignees (task_id, user_name) VALUES (?, ?)");
         foreach (array_unique($assignees) as $a) $ins->execute([$id, $a]);
     });
@@ -215,7 +237,7 @@ function mcp_do_create_task(\PDO $pdo, array $user, array $args): array {
     // After the commit, so a rolled-back create never mails anyone.
     require_once __DIR__ . '/task_reminders.php';
     ccrm_notify_new_task_assignees($pdo, $id, $user['name']);
-    return ['success' => true, 'id' => $id, 'title' => $title, 'status' => $status, 'deadline' => $deadline, 'assignees' => array_values(array_unique($assignees))];
+    return ['success' => true, 'id' => $id, 'title' => $title, 'status' => $status, 'deadline' => $deadline, 'assignees' => array_values(array_unique($assignees)), 'category' => $catWrite ? $category : null];
 }
 
 /**
@@ -309,6 +331,8 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
         if ($arch === null) throw new \InvalidArgumentException("'archived' must be true or false.");
         $add('archived', $arch ? 1 : 0);
     }
+    [$catWrite, $category] = mcp_task_category_arg($pdo, $args);
+    if ($catWrite) $add('category', $category);
     if (!$sets) return ['success' => true, 'message' => 'No fields updated'];
     $params[] = $id;
     mcp_tx($pdo, function () use ($pdo, $sets, $params, $id, $newOwner, $reopened, $user) {

@@ -44,6 +44,35 @@ if (!function_exists('ccrm_task_category_write')) {
     }
 }
 
+if (!function_exists('ccrm_task_category_checked')) {
+    /**
+     * Strict form of ccrm_task_category_write() for callers that answer with an error instead of keeping
+     * silently (MCP, the integration API): the same [value, write flag], or null when the key is present
+     * with a value the rule rejects. An absent key is [null, 0], a valid slug [slug, 1], null or "" [null, 1].
+     */
+    function ccrm_task_category_checked(array $row): ?array {
+        $w = ccrm_task_category_write($row);
+        return (array_key_exists('category', $row) && $w[1] === 0) ? null : $w;
+    }
+}
+
+if (!function_exists('ccrm_tasks_have_category')) {
+    /**
+     * Whether `tasks.category` exists yet. Writers outside sync.php use it to pick a statement without the
+     * column during a rollout window (the migration adds the column, never the caller): one lookup per
+     * process, no DDL.
+     */
+    function ccrm_tasks_have_category(PDO $pdo): bool {
+        static $has = null;
+        if ($has === null) {
+            $q = $pdo->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'category'");
+            $q->execute();
+            $has = (int)$q->fetchColumn() > 0;
+        }
+        return $has;
+    }
+}
+
 /**
  * Returns the date of the nth weekday of a given month.
  * $nth <= 0 or > 4 indicates the last occurrence of that weekday in the month.
