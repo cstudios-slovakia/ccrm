@@ -448,6 +448,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `acceptance_criteria_json` TEXT NULL COMMENT 'Acceptance criteria, JSON [{id,title,done,createdAt,createdBy,removedAt,removedBy}]; a removed one stays (soft removal); NULL = none',
               `scope_approved_at` DATETIME NULL COMMENT 'When the scope was approved (UTC); criteria created after it are scope creep; NULL = not approved',
               `scope_approved_by` VARCHAR(100) NULL COMMENT 'Name of the user who approved the scope',
+              `github_repo` VARCHAR(200) NULL COMMENT 'Paired GitHub repository, owner/name; pushes to it are stored in project_pushes',
+              `github_branch` VARCHAR(200) NULL COMMENT 'Server branch whose pushes count; NULL = the repository default branch',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE RESTRICT
@@ -459,6 +461,25 @@ if (!function_exists('ccrm_schema_statements')) {
               `user_id` VARCHAR(50) NOT NULL,
               PRIMARY KEY (`project_id`, `user_id`),
               FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // GitHub pushes delivered to api/github_webhook.php, one row per (delivery, paired project).
+            // No foreign key on purpose: a row outlives a hiccup in `projects`; readers join to it.
+            "CREATE TABLE IF NOT EXISTS `project_pushes` (
+              `delivery_id` VARCHAR(64) NOT NULL COMMENT 'X-GitHub-Delivery; a redelivery is ignored',
+              `project_id` VARCHAR(50) NOT NULL,
+              `repo` VARCHAR(200) NOT NULL COMMENT 'Full name as GitHub sent it',
+              `branch` VARCHAR(200) NOT NULL,
+              `pushed_at` DATETIME NOT NULL COMMENT 'UTC',
+              `pusher` VARCHAR(100) NULL,
+              `commit_count` INT NOT NULL DEFAULT 0,
+              `head_sha` VARCHAR(40) NULL,
+              `head_message` VARCHAR(300) NULL COMMENT 'First line of the head commit message',
+              `compare_url` VARCHAR(500) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`delivery_id`, `project_id`),
+              INDEX `idx_pp_project_time` (`project_id`, `pushed_at`),
+              INDEX `idx_pp_time` (`pushed_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Audit trail for privileged / financial actions (see ccrm_audit_log).
@@ -2373,6 +2394,8 @@ if (!function_exists('ccrm_schema_statements')) {
             'acceptance_criteria_json' => "TEXT NULL COMMENT 'Acceptance criteria, JSON [{id,title,done,createdAt,createdBy,removedAt,removedBy}]; a removed one stays (soft removal); NULL = none'",
             'scope_approved_at' => "DATETIME NULL COMMENT 'When the scope was approved (UTC); criteria created after it are scope creep; NULL = not approved'",
             'scope_approved_by' => "VARCHAR(100) NULL COMMENT 'Name of the user who approved the scope'",
+            'github_repo' => "VARCHAR(200) NULL COMMENT 'Paired GitHub repository, owner/name; pushes to it are stored in project_pushes'",
+            'github_branch' => "VARCHAR(200) NULL COMMENT 'Server branch whose pushes count; NULL = the repository default branch'",
         ] as $scopeCol => $scopeDef) {
             if (ccrm_table_exists($pdo, 'projects') && !ccrm_column_exists($pdo, 'projects', $scopeCol)) {
                 $pdo->exec("ALTER TABLE `projects` ADD COLUMN `{$scopeCol}` {$scopeDef}");

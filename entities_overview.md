@@ -320,6 +320,8 @@ Individual instances of active project lifecycles.
 * `acceptance_criteria_json` TEXT [NULLable] (the project's acceptance criteria as JSON `[{"id","title","done","createdAt","createdBy","removedAt","removedBy"}]`, `createdAt` / `removedAt` UTC ISO 8601 with `Z`; a removed criterion stays in the array with `removedAt` set (soft removal); `NULL` = none. Written by the app's save only when the payload carries `acceptanceCriteria` (a client that omits the key leaves the stored list alone) and merged into the stored list by the server (`ccrm_scope_merge_criteria()` in `api/project_scope.php`): a new id gets the server's time and the session user as `createdAt` / `createdBy`, a stored criterion keeps its stamps, a removal is stamped by the server and cannot be undone, and a stored criterion missing from the client's list is kept. Returned by the sync GET as `acceptanceCriteria`. Criteria created after `scope_approved_at` are scope creep, read by the dashboard's "Scope creep" widget)
 * `scope_approved_at` DATETIME [NULLable] (when the scope was approved, stored in UTC; `NULL` = not approved. Never written by the sync upsert: a `scopeApprovedAt` / `scopeApprovedBy` in a project payload is ignored (a stale tab would clear or restore it). Written only by the one-shot action `POST /api/project_scope_action.php { projectId, action: "approve" | "withdraw" }` through `ccrm_scope_apply_action()` in `api/project_scope.php`: approve (only when not approved) stamps the server's time and the session user, withdraw clears both and is a reset (a later approval stamps a new instant, so criteria added in between become original scope); returned by the sync GET as `scopeApprovedAt`, a UTC ISO string with `Z`)
 * `scope_approved_by` VARCHAR(100) [NULLable] (name of the user who approved the scope, taken from the session by the approval action; written together with `scope_approved_at`, returned as `scopeApprovedBy`)
+* `github_repo` VARCHAR(200) [NULLable] (the paired GitHub repository as `owner/name`, case kept as typed; the server strips a pasted `https://github.com/` prefix, a trailing slash and `.git` and stores NULL for anything that is not `owner/name`; written by the app's save only when the payload carries `githubRepo`, `""` clears it; pushes to it arrive at `api/github_webhook.php`)
+* `github_branch` VARCHAR(200) [NULLable] (the server branch whose pushes count; NULL = the repository's default branch; at most 200 characters, no whitespace or control characters; written only when the payload carries `githubBranch`)
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP [INDEX `idx_project_updated`, for the machine API's directory paging] (also moves when the project's managers (`project_managers`) or Gantt rows (`proj_gantt_*`) really change, and when the MCP creates a milestone for it: `sync.php` snapshots the set before its delete + insert and bumps only when the stored set differs, `api/sync_child_bumps.php`. An unchanged re-save leaves it alone. Timeline entries do not move it)
 
@@ -328,6 +330,21 @@ Junction table mapping project managers to projects.
 * `project_id` VARCHAR(50)
 * `user_id` VARCHAR(50)
 * Primary Key: (`project_id`, `user_id`)
+
+### `project_pushes`
+GitHub pushes delivered to `api/github_webhook.php` (Settings → Integrations → GitHub): one row per (delivery, paired project). Counts pushes to the project's server branch, not pull requests. No foreign key: readers (`api/project_pushes.php`) join to `projects`, so a push of a deleted project is not reported.
+* `delivery_id` VARCHAR(64) (GitHub's `X-GitHub-Delivery`; a redelivery is ignored by `INSERT IGNORE`)
+* `project_id` VARCHAR(50)
+* `repo` VARCHAR(200) (full name as GitHub sent it)
+* `branch` VARCHAR(200)
+* `pushed_at` DATETIME (UTC; the head commit's timestamp, else the server's time)
+* `pusher` VARCHAR(100) [NULLable]
+* `commit_count` INT
+* `head_sha` VARCHAR(40) [NULLable]
+* `head_message` VARCHAR(300) [NULLable] (first line of the head commit message)
+* `compare_url` VARCHAR(500) [NULLable]
+* `created_at` TIMESTAMP
+* Primary Key: (`delivery_id`, `project_id`); indexes (`project_id`, `pushed_at`) and (`pushed_at`)
 
 ### Dynamic Tables (Per Project Type)
 Each custom project type with ID `{safeId}` generates three tables:
@@ -362,7 +379,7 @@ Saved AI-generated dashboard configurations.
 
 ### `system_settings`
 Global system configurations.
-* `key` VARCHAR(100) [PK] (e.g. INTEGRATIONS_CONFIG, SYSTEM_NAME, SYSTEM_LANGUAGE, NEWSLETTER_CONFIG: see section 12)
+* `key` VARCHAR(100) [PK] (e.g. INTEGRATIONS_CONFIG, SYSTEM_NAME, SYSTEM_LANGUAGE, NEWSLETTER_CONFIG: see section 12, GITHUB_WEBHOOK_SECRET: the key GitHub signs webhook deliveries with, AES-256-GCM encrypted at rest (`enc:v1:`), written only by `api/github_integration.php` and never part of a `sync.php` payload)
 * `value` LONGTEXT
 * `updated_at` TIMESTAMP
 

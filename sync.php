@@ -22,6 +22,7 @@ require_once __DIR__ . '/api/sync_child_bumps.php';
 require_once __DIR__ . '/api/deleted_records.php';
 require_once __DIR__ . '/api/sync_write_guards.php';
 require_once __DIR__ . '/api/project_scope.php';
+require_once __DIR__ . '/api/github_pushes.php';
 // ccrm_employee_file_key() / ccrm_employee_private_gc(). schema.php loads this file only when
 // a migration actually runs, which the schema fingerprint skips on almost every request.
 require_once __DIR__ . '/api/employee_files.php';
@@ -1511,6 +1512,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'acceptanceCriteria' => ccrm_scope_criteria_decode($pRow['acceptance_criteria_json'] ?? null),
                     'scopeApprovedAt' => ccrm_scope_ts_from_db($pRow['scope_approved_at'] ?? null),
                     'scopeApprovedBy' => $pRow['scope_approved_by'] ?? null,
+                    'githubRepo' => $pRow['github_repo'] ?? null,
+                    'githubBranch' => $pRow['github_branch'] ?? null,
                     'customFileFields' => json_decode($pRow['custom_files_json'] ?? '[]', true) ?: [],
                     // Widget and public status-board settings. `ticketPublicHash` is the
                     // key to the public board, so it stays server-side without `tickets`.
@@ -3059,6 +3062,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!ccrm_column_exists($pdo, 'projects', 'acceptance_criteria_json')) {
                 $pdo->exec("ALTER TABLE `projects` ADD COLUMN `acceptance_criteria_json` TEXT NULL");
             }
+            if (!ccrm_column_exists($pdo, 'projects', 'github_repo')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `github_repo` VARCHAR(200) NULL COMMENT 'Paired GitHub repository, owner/name; pushes to it are stored in project_pushes'");
+            }
+            if (!ccrm_column_exists($pdo, 'projects', 'github_branch')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `github_branch` VARCHAR(200) NULL COMMENT 'Server branch whose pushes count; NULL = the repository default branch'");
+            }
         }
         if (isset($payload['tasks']) && is_array($payload['tasks']) && !$ccrm_skip_writes('tasks', 'tasks')) {
             if (!ccrm_column_exists($pdo, 'tasks', 'original_deadline')) {
@@ -4035,7 +4044,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `invoice_date`, `completion_deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `value`, `custom_files_json`, `ticket_widget_enabled`, `ticket_allowed_domains`, `ticket_allowed_emails`, `ticket_public_hash`, `ticket_widget_config_json`, `archived`, `hours_budget`, `billable_rate`, `is_internal`, `contact_phone`, `acceptance_criteria_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `invoice_date`=VALUES(`invoice_date`), `completion_deadline`=VALUES(`completion_deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `value`=VALUES(`value`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `ticket_widget_enabled`=VALUES(`ticket_widget_enabled`), `ticket_allowed_domains`=COALESCE(VALUES(`ticket_allowed_domains`), `ticket_allowed_domains`), `ticket_allowed_emails`=COALESCE(VALUES(`ticket_allowed_emails`), `ticket_allowed_emails`), `ticket_public_hash`=COALESCE(VALUES(`ticket_public_hash`), `ticket_public_hash`), `ticket_widget_config_json`=COALESCE(VALUES(`ticket_widget_config_json`), `ticket_widget_config_json`), `archived`=VALUES(`archived`), `hours_budget`=IF(? = 1, VALUES(`hours_budget`), `hours_budget`), `billable_rate`=IF(? = 1, VALUES(`billable_rate`), `billable_rate`), `is_internal`=IF(? = 1, VALUES(`is_internal`), `is_internal`), `contact_phone`=IF(? = 1, VALUES(`contact_phone`), `contact_phone`), `acceptance_criteria_json`=IF(? = 1, VALUES(`acceptance_criteria_json`), `acceptance_criteria_json`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `invoice_date`, `completion_deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `value`, `custom_files_json`, `ticket_widget_enabled`, `ticket_allowed_domains`, `ticket_allowed_emails`, `ticket_public_hash`, `ticket_widget_config_json`, `archived`, `hours_budget`, `billable_rate`, `is_internal`, `contact_phone`, `acceptance_criteria_json`, `github_repo`, `github_branch`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `invoice_date`=VALUES(`invoice_date`), `completion_deadline`=VALUES(`completion_deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `value`=VALUES(`value`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `ticket_widget_enabled`=VALUES(`ticket_widget_enabled`), `ticket_allowed_domains`=COALESCE(VALUES(`ticket_allowed_domains`), `ticket_allowed_domains`), `ticket_allowed_emails`=COALESCE(VALUES(`ticket_allowed_emails`), `ticket_allowed_emails`), `ticket_public_hash`=COALESCE(VALUES(`ticket_public_hash`), `ticket_public_hash`), `ticket_widget_config_json`=COALESCE(VALUES(`ticket_widget_config_json`), `ticket_widget_config_json`), `archived`=VALUES(`archived`), `hours_budget`=IF(? = 1, VALUES(`hours_budget`), `hours_budget`), `billable_rate`=IF(? = 1, VALUES(`billable_rate`), `billable_rate`), `is_internal`=IF(? = 1, VALUES(`is_internal`), `is_internal`), `contact_phone`=IF(? = 1, VALUES(`contact_phone`), `contact_phone`), `acceptance_criteria_json`=IF(? = 1, VALUES(`acceptance_criteria_json`), `acceptance_criteria_json`), `github_repo`=IF(? = 1, VALUES(`github_repo`), `github_repo`), `github_branch`=IF(? = 1, VALUES(`github_branch`), `github_branch`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -4172,6 +4181,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // `scopeApprovedAt` / `scopeApprovedBy` in the payload are ignored (api/project_scope_action.php).
                 $scope = ccrm_scope_resolve_write($pdo, (string)$projId, $p, $sessionUserName !== '' ? $sessionUserName : null);
 
+                // GitHub pairing (api/github_pushes.php): a key the client omits leaves the stored value alone,
+                // "" or an invalid value clears it. The repository is normalised to owner/name.
+                $githubRepoSent = array_key_exists('githubRepo', $p) ? 1 : 0;
+                $githubBranchSent = array_key_exists('githubBranch', $p) ? 1 : 0;
+                $projGithubRepo = $githubRepoSent ? ccrm_github_normalize_repo($p['githubRepo']) : null;
+                $projGithubBranch = $githubBranchSent ? ccrm_github_normalize_branch($p['githubBranch']) : null;
+
                 $insProj->execute([
                     $projId,
                     $p['projectTypeId'],
@@ -4200,11 +4216,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projInternal,
                     $projContactPhone,
                     $scope['criteria'],
+                    $projGithubRepo,
+                    $projGithubBranch,
                     $hoursSent,
                     $rateSent,
                     $internalSent,
                     $contactPhoneSent,
                     $scope['criteriaSent'],
+                    $githubRepoSent,
+                    $githubBranchSent,
                 ]);
 
                 // Only rewrite this project's managers when the payload actually carries

@@ -853,6 +853,14 @@ export interface Project {
   scopeApprovedAt?: string | null;
   /** Name of the user who approved the scope. Read-only, like `scopeApprovedAt`. */
   scopeApprovedBy?: string | null;
+  /**
+   * The GitHub repository this project is paired with, "owner/name"; pushes to it are stored by the
+   * webhook (api/github_webhook.php). Normalised by the server (utils/githubRepo.ts has the same rules);
+   * absent on save means "unchanged", null or "" clears it.
+   */
+  githubRepo?: string | null;
+  /** The server branch whose pushes count; empty or null = the repository's default branch. Same save rules. */
+  githubBranch?: string | null;
   /** Hours the project is expected to take. Null while unset. */
   hoursBudget?: number | null;
   /** Default billable hourly rate for time logged on this project. */
