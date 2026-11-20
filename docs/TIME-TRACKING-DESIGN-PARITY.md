@@ -722,7 +722,7 @@ then merged into `css-main`. Not pushed, not ported.
 | F frame | `46d60c10`, `6230e256`, `e9fdc529` | F1–F5, F7–F16, F18–F21 | F6 tags and F17 filter not built (Q3 no, Q2 open). The linked-task chip shows "Task" / "Ticket" with ×, not the name: under C5 the name is already the title. Review fixes: Unsorted chip recount, Stop stays in Manual mode, duration follows the times, touch targets |
 | P1 List | `fef14e99`, `75dfd06d` | L1–L10 | No rate note (Q7). The lock tooltip reads "Only you and people with the cost permission see this." Day cost is hidden when another person's cost is hidden. L8 will rarely show: a linked entry's title normally equals the task's |
 | P2 Calendar | `bb2ae810`, `3c0ab3d6` | C1–C12 | The project picker stays editable in the popover (Q8). Delete is disabled, not hidden, on a locked entry. No Duplicate on a running entry |
-| P2b Calendar popover | HASH | C7 project as a label | — |
+| P2b Calendar popover | `96b1ba56` | C7 project as a label | — |
 | P3 Timesheet | `42a15ac7`, `adb48aa2` | T1–T4, T6–T8 | T5 Cost column not built (Q10 open). The canvas notes were reworded to what the code does: a new cell makes an hours-only entry with no start time; clearing a cell changes nothing; Submit marks the week approved at once (no manager step) |
 | P4 Day, Unsorted | `696e1dff`, `79861b02` | D1–D8 | The extension link opens Settings → Time tracking and does not scroll to the extension block |
 | P5 Team | `19d1fb21`, `aadcfbde` | W1, W2, W4, header card | People without an employee record have no bar; the legend says so |
