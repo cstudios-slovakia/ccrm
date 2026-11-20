@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { CheckSquare, ChevronRight, Euro, Link2, MoreHorizontal, Play } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import {
@@ -36,10 +36,12 @@ interface Props {
   onSelect?: (checked: boolean) => void;
   onOpen: (entry: TimeEntry) => void;
   onContinue?: (entry: TimeEntry, anchor?: Element) => void;
+  /** Replaces the hover Open / Continue column (the Day view shows its own always-visible actions). */
+  actions?: ReactNode;
 }
 
 /** One entry as a row, shared by the List and the Day view. */
-export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps, showPerson, selected, onSelect, onOpen, onContinue }: Props) {
+export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps, showPerson, selected, onSelect, onOpen, onContinue, actions }: Props) {
   const { t, nowMs, isRunningTarget, stop, userId: myUserId } = useTimeTracking();
   const lookups = useTimeLookups(deps);
   const money = useMoney(deps);
@@ -137,7 +139,7 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
           {cost !== null ? money(cost) : entry.costRate === null && !entry.running ? <span className="text-amber-600" title={t("No rate — no employee linked", "Bez sadzby — nie je pripojený zamestnanec", "Nincs díj — nincs munkatárs hozzárendelve")}>—</span> : ""}
         </span>
       )}
-      <span className="flex shrink-0 justify-end gap-1 opacity-100 ws-sm:w-16 ws-sm:opacity-0 ws-sm:transition-opacity ws-sm:group-hover:opacity-100 ws-sm:focus-within:opacity-100">
+      {actions ?? <span className="flex shrink-0 justify-end gap-1 opacity-100 ws-sm:w-16 ws-sm:opacity-0 ws-sm:transition-opacity ws-sm:group-hover:opacity-100 ws-sm:focus-within:opacity-100">
         {onContinue && !entry.running && !isRunningTarget({ taskId: entry.taskId, ticketId: entry.ticketId, projectId: entry.projectId, title: entry.description }) && (
           <button type="button" onClick={(ev) => onContinue(entry, ev.currentTarget)} title={t("Continue", "Pokračovať", "Folytatás")} aria-label={t("Continue", "Pokračovať", "Folytatás")} data-testid="time-entry-continue" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-primary/10 hover:text-primary cursor-pointer ws-sm:size-7 ws-sm:min-h-0 ws-sm:min-w-0">
             <Play className="size-3.5 fill-current" />
@@ -146,7 +148,7 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
         <button type="button" onClick={() => onOpen(entry)} title={t("Open", "Otvoriť", "Megnyitás")} aria-label={t("Open", "Otvoriť", "Megnyitás")} className="inline-flex size-7 items-center justify-center rounded-lg text-slate-500 hover:bg-primary/10 hover:text-primary cursor-pointer">
           <MoreHorizontal className="size-4" />
         </button>
-      </span>
+      </span>}
       {entry.running && !nested && entry.userId === myUserId && (
         <RoundTimerButton
           kind="stop"

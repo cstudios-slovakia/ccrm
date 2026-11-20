@@ -24,7 +24,7 @@ export function DayEntryActions({ entry, deps, onOpen }: { entry: TimeEntry; dep
   const reason = locked ? lockReason(entry, lock, todayIso()) : null;
   const lockTitle = reason ? describeTimeLock(reason, t) : undefined;
   return (
-    <span className="flex shrink-0 items-center gap-0.5 pr-2" data-testid="day-row-actions">
+    <span className="flex shrink-0 items-center gap-0.5 pr-3" data-testid="day-row-actions">
       <button
         type="button"
         onClick={() => onOpen(entry)}

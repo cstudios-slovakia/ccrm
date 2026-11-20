@@ -245,7 +245,6 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
                     onChange={(e) => { setRowNotes(e.target.value); setRowTaskQuery(e.target.value); }}
                     onKeyDown={(e) => { if (e.key === "Enter") void saveRow(); }}
                     placeholder={t("What did you do?", "Čo ste robili?", "Mit csinált?")}
-                    title={t("Type to find an open task, or write a note", "Píšte pre vyhľadanie otvorenej úlohy alebo napíšte poznámku", "Írjon egy nyitott feladat kereséséhez, vagy hagyjon jegyzetet")}
                     data-testid="day-row-notes"
                     className="h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-ui outline-none focus:border-primary"
                   />
@@ -275,7 +274,7 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
             <button type="button" onClick={() => setAdding(false)} className="h-9 rounded-xl px-3 text-ui font-semibold text-slate-500 hover:bg-slate-100 cursor-pointer">{t("Close", "Zavrieť", "Bezárás")}</button>
           </div>
           <p className="type-meta text-slate-500" data-testid="day-add-hint">
-            {t("Hours only — no start or end time needed. Type 1.5, 1:30 or 90m. Add a time range from the drawer if you want it on the calendar grid.", "Len hodiny — začiatok ani koniec netreba. Napíšte 1.5, 1:30 alebo 90m. Časový rozsah doplníte v paneli, ak ho chcete v kalendári.", "Csak órák — kezdés és befejezés nem kell. Írja be: 1.5, 1:30 vagy 90m. Időtartományt a panelben adhat hozzá, ha a naptárban is látni szeretné.")}
+            {t("Hours only — no start or end time needed. Type 1.5, 1:30 or 90m. Type in the notes to find an open task. Add a time range from the drawer if you want it on the calendar grid.", "Len hodiny — začiatok ani koniec netreba. Napíšte 1.5, 1:30 alebo 90m. Písaním do poznámok nájdete otvorenú úlohu. Časový rozsah doplníte v paneli, ak ho chcete v kalendári.", "Csak órák — kezdés és befejezés nem kell. Írja be: 1.5, 1:30 vagy 90m. A jegyzetmezőbe írva nyitott feladatot kereshet. Időtartományt a panelben adhat hozzá, ha a naptárban is látni szeretné.")}
           </p>
         </Surface>
       )}
@@ -314,12 +313,7 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
               <div role="table" className="divide-y divide-slate-100">
                 {segmentByCluster(list, clusterEntries(list, nowMs), (e) => [e.id]).map((seg, si) => {
                   const rows = seg.items.map((e) => (
-                    <div key={e.id} className="flex items-center">
-                      <div className="min-w-0 flex-1">
-                        <EntryRow entry={withoutHiddenCost(e, tt.userId || "", tt.viewer.canCosts)} deps={deps} onOpen={onOpen} />
-                      </div>
-                      <DayEntryActions entry={e} deps={deps} onOpen={onOpen} />
-                    </div>
+                    <EntryRow key={e.id} entry={withoutHiddenCost(e, tt.userId || "", tt.viewer.canCosts)} deps={deps} onOpen={onOpen} actions={<DayEntryActions entry={e} deps={deps} onOpen={onOpen} />} />
                   ));
                   return seg.cluster ? <ClusterGroup key={`c${si}`} cluster={seg.cluster}>{rows}</ClusterGroup> : <Fragment key={`s${si}`}>{rows}</Fragment>;
                 })}
