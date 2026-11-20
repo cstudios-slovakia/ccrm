@@ -734,6 +734,17 @@ export interface ProjectGanttRow {
  */
 export type ProjectStatus = string;
 
+/** One acceptance criterion of a project. `createdAt` / `removedAt` are UTC ISO 8601 with `Z`; `removedAt` is null while it is live. */
+export interface AcceptanceCriterion {
+  id: string;
+  title: string;
+  done: boolean;
+  createdAt: string;
+  createdBy: string | null;
+  removedAt: string | null;
+  removedBy: string | null;
+}
+
 export interface Project {
   id: string;
   projectTypeId: string;
@@ -824,6 +835,16 @@ export interface Project {
    * Absent on save means "unchanged", so an older client cannot wipe it.
    */
   contactPhone?: string | null;
+  /**
+   * Acceptance criteria of the project; a removed one stays in the list (soft removal, `removedAt`).
+   * Stored whole in `projects.acceptance_criteria_json`; absent from a payload means "unchanged".
+   * Rules: utils/acceptanceCriteria.ts.
+   */
+  acceptanceCriteria?: AcceptanceCriterion[];
+  /** When the scope was approved (UTC ISO 8601 with `Z`); null = not approved. Criteria created after it are scope creep. */
+  scopeApprovedAt?: string | null;
+  /** Name of the user who approved the scope. */
+  scopeApprovedBy?: string | null;
   /** Hours the project is expected to take. Null while unset. */
   hoursBudget?: number | null;
   /** Default billable hourly rate for time logged on this project. */

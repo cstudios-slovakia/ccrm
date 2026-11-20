@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   acceptedWord,
+  addedAfterApprovalCount,
   ofWhichOpen,
   openWord,
   count,
@@ -127,6 +128,16 @@ test("open tickets inflect in sk", () => {
   assert.equal(plain(ofWhichOpen(30, "sk")), "z toho 30 otvorených");
   assert.equal(plain(ofWhichOpen(30, "en")), "of which 30 open");
   assert.equal(plain(ofWhichOpen(30, "hu")), "ebből 30 nyitott");
+});
+
+test("criteria added after approval inflect in sk", () => {
+  const plain = (s: string) => s.replace(/\s/g, " ");
+  assert.equal(plain(addedAfterApprovalCount(1, "sk")), "1 pridané po schválení");
+  assert.equal(plain(addedAfterApprovalCount(3, "sk")), "3 pridané po schválení");
+  assert.equal(plain(addedAfterApprovalCount(5, "sk")), "5 pridaných po schválení");
+  assert.equal(plain(addedAfterApprovalCount(0, "sk")), "0 pridaných po schválení");
+  assert.equal(plain(addedAfterApprovalCount(3, "en")), "3 added after approval");
+  assert.equal(plain(addedAfterApprovalCount(3, "hu")), "3 jóváhagyás után hozzáadva");
 });
 
 test("accepted offers inflect in sk", () => {

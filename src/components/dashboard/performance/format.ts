@@ -156,6 +156,12 @@ export const acceptedWord = (n: number, l: Language): string =>
 export const openWord = (n: number, l: Language): string =>
   l === "sk" ? (n === 1 ? "otvorený" : n >= 2 && n <= 4 ? "otvorené" : "otvorených") : l === "hu" ? "nyitott" : "open";
 
+/** "1 pridané po schválení", "3 pridané po schválení", "5 pridaných po schválení". */
+export const addedAfterApprovalCount = (n: number, l: Language): string =>
+  l === "sk" ? `${count(n, l)} ${n >= 1 && n <= 4 ? "pridané" : "pridaných"} po schválení`
+  : l === "hu" ? `${count(n, l)} jóváhagyás után hozzáadva`
+  : `${count(n, l)} added after approval`;
+
 /** "z toho 1 otvorený", "z toho 3 otvorené", "z toho 5 otvorených". */
 export const ofWhichOpen = (n: number, l: Language): string =>
   `${l === "sk" ? "z toho" : l === "hu" ? "ebből" : "of which"} ${count(n, l)} ${openWord(n, l)}`;

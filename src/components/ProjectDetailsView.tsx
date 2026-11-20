@@ -41,6 +41,7 @@ import { ratingValue } from "../utils/rating";
 import { missingChecklistItems, readChecklistValue, writeChecklistValue } from "../utils/projectColumns";
 import { ProjectTasksPanel } from "./ProjectTasksPanel";
 import { ProjectTicketsPanel } from "./ProjectTicketsPanel";
+import { ProjectAcceptanceCriteria } from "./projects/ProjectAcceptanceCriteria";
 import type { Task, Ticket, TicketStatusDefinition, TicketSettings, SupportContract } from "../types";
 import { DEFAULT_TICKET_STATUSES, DEFAULT_TICKET_SETTINGS } from "../utils/tickets";
 import { isDoneTaskState } from "../utils/projectTasks";
@@ -57,9 +58,9 @@ import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { WhatsAppChip } from "./WhatsAppChip";
 
 /** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
-type RightTab = "timeline" | "tasks" | "time" | "gantt" | "finances" | "files" | "tickets";
+type RightTab = "timeline" | "criteria" | "tasks" | "time" | "gantt" | "finances" | "files" | "tickets";
 const isRightTab = (value: string | null): value is RightTab =>
-  value === "timeline" || value === "tasks" || value === "time" || value === "gantt" || value === "finances" || value === "files" || value === "tickets";
+  value === "timeline" || value === "criteria" || value === "tasks" || value === "time" || value === "gantt" || value === "finances" || value === "files" || value === "tickets";
 
 interface ProjectDetailsViewProps {
   project: Project | null;
@@ -573,6 +574,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       gantt,
       ...overrides,
     };
+  };
+  const patchProject = (patch: Partial<Project>) => { // saves with `patch` applied: Tickets, Time and Acceptance criteria tabs
+    const next = buildProject(patch);
+    if (next) onSave(next, { close: false });
   };
 
   // Which project the state was last loaded from. Until the load effect has
@@ -3134,6 +3139,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               }}
               items={[
                 { key: "timeline", hidden: !projectType.hasTimeline, icon: <Icons.Clock />, label: t("Timeline", "Časová os", "Idővonal") },
+                { key: "criteria", icon: <Icons.ClipboardCheck />, label: t("Acceptance criteria", "Akceptačné kritériá", "Elfogadási kritériumok") },
                 {
                   key: "tasks",
                   hidden: !(setTasks && taskAccess.view),
@@ -3196,12 +3202,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 currentUser={currentUser}
                 userLanguage={userLanguage}
                 canEdit={canEdit}
-                onUpdateProject={(patch) => {
-                  const next = buildProject(patch);
-                  if (next) {
-                    onSave(next, { close: false });
-                  }
-                }}
+                onUpdateProject={patchProject}
               />
             </div>
           )}
@@ -3212,10 +3213,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 project={project} users={users} tasks={tasks}
                 language={userLanguage}
                 currency={currencyCode || "EUR"}
-                onPatch={(patch) => {
-                  const next = buildProject(patch);
-                  if (next) onSave(next, { close: false });
-                }}
+                onPatch={patchProject}
               />
             </div>
           )}
@@ -3624,6 +3622,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 )}
               </div>
             </div>
+          )}
+
+          {(isSidebar || activeRightTab === "criteria") && wrapSection("criteria", <Icons.ClipboardCheck className="h-4 w-4 text-indigo-600" />, t("Acceptance criteria", "Akceptačné kritériá", "Elfogadási kritériumok"), undefined,
+            <ProjectAcceptanceCriteria project={project} canEdit={canEdit} userName={currentUser?.name ?? ""} language={userLanguage} onPatch={patchProject} />
           )}
 
           {/* TAB CONTENT: Gantt Chart */}

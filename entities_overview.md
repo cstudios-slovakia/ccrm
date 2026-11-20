@@ -317,6 +317,9 @@ Individual instances of active project lifecycles.
 * `ticket_public_hash` VARCHAR(64) [UNIQUE] (Random token for public `#public-tickets/<hash>` status page)
 * `ticket_widget_config_json` TEXT [NULLable] (JSON config for floating widget color, position, greeting, language)
 * `contact_phone` VARCHAR(50) [NULLable] (phone of the project contact as typed; WAAI pairs WhatsApp chats to the project by it; written by the app's save only when the payload carries `contactPhone`)
+* `acceptance_criteria_json` TEXT [NULLable] (the project's acceptance criteria as JSON `[{"id","title","done","createdAt","createdBy","removedAt","removedBy"}]`, `createdAt` / `removedAt` UTC ISO 8601 with `Z`; a removed criterion stays in the array with `removedAt` set (soft removal); `NULL` = none. Written by the app's save only when the payload carries `acceptanceCriteria` (a client that omits the key leaves the stored list alone), cleaned by `api/project_scope.php`; returned by the sync GET as `acceptanceCriteria`. Criteria created after `scope_approved_at` are scope creep, read by the dashboard's "Scope creep" widget)
+* `scope_approved_at` DATETIME [NULLable] (when the scope was approved, stored in UTC; `NULL` = not approved. Written only when the payload carries `scopeApprovedAt` (`null` withdraws the approval); returned as a UTC ISO string with `Z`)
+* `scope_approved_by` VARCHAR(100) [NULLable] (name of the user who approved the scope; same omitted-key rule, payload key `scopeApprovedBy`)
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP [INDEX `idx_project_updated`, for the machine API's directory paging] (also moves when the project's managers (`project_managers`) or Gantt rows (`proj_gantt_*`) really change, and when the MCP creates a milestone for it: `sync.php` snapshots the set before its delete + insert and bumps only when the stored set differs, `api/sync_child_bumps.php`. An unchanged re-save leaves it alone. Timeline entries do not move it)
 

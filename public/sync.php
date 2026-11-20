@@ -21,6 +21,7 @@ require_once __DIR__ . '/api/offer_document.php';
 require_once __DIR__ . '/api/sync_child_bumps.php';
 require_once __DIR__ . '/api/deleted_records.php';
 require_once __DIR__ . '/api/sync_write_guards.php';
+require_once __DIR__ . '/api/project_scope.php';
 // ccrm_employee_file_key() / ccrm_employee_private_gc(). schema.php loads this file only when
 // a migration actually runs, which the schema fingerprint skips on almost every request.
 require_once __DIR__ . '/api/employee_files.php';
@@ -1507,6 +1508,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'billableRate' => isset($pRow['billable_rate']) ? (float)$pRow['billable_rate'] : null,
                     'isInternal' => isset($pRow['is_internal']) && (int)$pRow['is_internal'] === 1,
                     'contactPhone' => $pRow['contact_phone'] ?? null,
+                    'acceptanceCriteria' => ccrm_scope_criteria_decode($pRow['acceptance_criteria_json'] ?? null),
+                    'scopeApprovedAt' => ccrm_scope_ts_from_db($pRow['scope_approved_at'] ?? null),
+                    'scopeApprovedBy' => $pRow['scope_approved_by'] ?? null,
                     'customFileFields' => json_decode($pRow['custom_files_json'] ?? '[]', true) ?: [],
                     // Widget and public status-board settings. `ticketPublicHash` is the
                     // key to the public board, so it stays server-side without `tickets`.
@@ -3052,6 +3056,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!ccrm_column_exists($pdo, 'projects', 'contact_phone')) {
                 $pdo->exec("ALTER TABLE `projects` ADD COLUMN `contact_phone` VARCHAR(50) NULL COMMENT 'Phone of the project contact; WhatsApp chats are paired to the project by it'");
             }
+            if (!ccrm_column_exists($pdo, 'projects', 'acceptance_criteria_json')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `acceptance_criteria_json` TEXT NULL");
+            }
+            if (!ccrm_column_exists($pdo, 'projects', 'scope_approved_at')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `scope_approved_at` DATETIME NULL");
+            }
+            if (!ccrm_column_exists($pdo, 'projects', 'scope_approved_by')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `scope_approved_by` VARCHAR(100) NULL");
+            }
         }
         if (isset($payload['tasks']) && is_array($payload['tasks']) && !$ccrm_skip_writes('tasks', 'tasks')) {
             if (!ccrm_column_exists($pdo, 'tasks', 'original_deadline')) {
@@ -4028,7 +4041,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `invoice_date`, `completion_deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `value`, `custom_files_json`, `ticket_widget_enabled`, `ticket_allowed_domains`, `ticket_allowed_emails`, `ticket_public_hash`, `ticket_widget_config_json`, `archived`, `hours_budget`, `billable_rate`, `is_internal`, `contact_phone`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `invoice_date`=VALUES(`invoice_date`), `completion_deadline`=VALUES(`completion_deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `value`=VALUES(`value`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `ticket_widget_enabled`=VALUES(`ticket_widget_enabled`), `ticket_allowed_domains`=COALESCE(VALUES(`ticket_allowed_domains`), `ticket_allowed_domains`), `ticket_allowed_emails`=COALESCE(VALUES(`ticket_allowed_emails`), `ticket_allowed_emails`), `ticket_public_hash`=COALESCE(VALUES(`ticket_public_hash`), `ticket_public_hash`), `ticket_widget_config_json`=COALESCE(VALUES(`ticket_widget_config_json`), `ticket_widget_config_json`), `archived`=VALUES(`archived`), `hours_budget`=IF(? = 1, VALUES(`hours_budget`), `hours_budget`), `billable_rate`=IF(? = 1, VALUES(`billable_rate`), `billable_rate`), `is_internal`=IF(? = 1, VALUES(`is_internal`), `is_internal`), `contact_phone`=IF(? = 1, VALUES(`contact_phone`), `contact_phone`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `invoice_date`, `completion_deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `value`, `custom_files_json`, `ticket_widget_enabled`, `ticket_allowed_domains`, `ticket_allowed_emails`, `ticket_public_hash`, `ticket_widget_config_json`, `archived`, `hours_budget`, `billable_rate`, `is_internal`, `contact_phone`, `acceptance_criteria_json`, `scope_approved_at`, `scope_approved_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `invoice_date`=VALUES(`invoice_date`), `completion_deadline`=VALUES(`completion_deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `value`=VALUES(`value`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `ticket_widget_enabled`=VALUES(`ticket_widget_enabled`), `ticket_allowed_domains`=COALESCE(VALUES(`ticket_allowed_domains`), `ticket_allowed_domains`), `ticket_allowed_emails`=COALESCE(VALUES(`ticket_allowed_emails`), `ticket_allowed_emails`), `ticket_public_hash`=COALESCE(VALUES(`ticket_public_hash`), `ticket_public_hash`), `ticket_widget_config_json`=COALESCE(VALUES(`ticket_widget_config_json`), `ticket_widget_config_json`), `archived`=VALUES(`archived`), `hours_budget`=IF(? = 1, VALUES(`hours_budget`), `hours_budget`), `billable_rate`=IF(? = 1, VALUES(`billable_rate`), `billable_rate`), `is_internal`=IF(? = 1, VALUES(`is_internal`), `is_internal`), `contact_phone`=IF(? = 1, VALUES(`contact_phone`), `contact_phone`), `acceptance_criteria_json`=IF(? = 1, VALUES(`acceptance_criteria_json`), `acceptance_criteria_json`), `scope_approved_at`=IF(? = 1, VALUES(`scope_approved_at`), `scope_approved_at`), `scope_approved_by`=IF(? = 1, VALUES(`scope_approved_by`), `scope_approved_by`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -4160,6 +4173,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projContactPhone = $projContactPhone === '' ? null : mb_substr($projContactPhone, 0, 50);
                 }
 
+                // Acceptance criteria and the scope approval (api/project_scope.php). Each key a client
+                // omits leaves the stored value alone; an empty list, null or "" clears it.
+                $criteriaSent = array_key_exists('acceptanceCriteria', $p) && is_array($p['acceptanceCriteria']) ? 1 : 0;
+                $projCriteria = $criteriaSent ? ccrm_scope_criteria_encode($p['acceptanceCriteria']) : null;
+                $scopeAtSent = array_key_exists('scopeApprovedAt', $p) ? 1 : 0;
+                $projScopeAt = $scopeAtSent ? ccrm_scope_ts_to_db($p['scopeApprovedAt']) : null;
+                $scopeBySent = array_key_exists('scopeApprovedBy', $p) ? 1 : 0;
+                $projScopeBy = $scopeBySent ? ccrm_scope_name($p['scopeApprovedBy']) : null;
+
                 $insProj->execute([
                     $projId,
                     $p['projectTypeId'],
@@ -4187,10 +4209,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projBillableRate,
                     $projInternal,
                     $projContactPhone,
+                    $projCriteria,
+                    $projScopeAt,
+                    $projScopeBy,
                     $hoursSent,
                     $rateSent,
                     $internalSent,
                     $contactPhoneSent,
+                    $criteriaSent,
+                    $scopeAtSent,
+                    $scopeBySent,
                 ]);
 
                 // Only rewrite this project's managers when the payload actually carries

@@ -445,6 +445,9 @@ if (!function_exists('ccrm_schema_statements')) {
               `billable_rate` DECIMAL(10,2) NULL COMMENT 'Default billable hourly rate for time entries',
               `is_internal` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Internal work: excluded from client billing',
               `contact_phone` VARCHAR(50) NULL COMMENT 'Phone of the project contact; WhatsApp chats are paired to the project by it',
+              `acceptance_criteria_json` TEXT NULL COMMENT 'Acceptance criteria, JSON [{id,title,done,createdAt,createdBy,removedAt,removedBy}]; a removed one stays (soft removal); NULL = none',
+              `scope_approved_at` DATETIME NULL COMMENT 'When the scope was approved (UTC); criteria created after it are scope creep; NULL = not approved',
+              `scope_approved_by` VARCHAR(100) NULL COMMENT 'Name of the user who approved the scope',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE RESTRICT
@@ -2365,6 +2368,15 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (ccrm_table_exists($pdo, 'tasks') && !ccrm_column_exists($pdo, 'tasks', 'reopens_json')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `reopens_json` TEXT NULL COMMENT 'Every reopening of a finished task, JSON [{at: UTC ISO, by: name|null}] oldest first; NULL = never reopened; written only by the server'");
+        }
+        foreach ([
+            'acceptance_criteria_json' => "TEXT NULL COMMENT 'Acceptance criteria, JSON [{id,title,done,createdAt,createdBy,removedAt,removedBy}]; a removed one stays (soft removal); NULL = none'",
+            'scope_approved_at' => "DATETIME NULL COMMENT 'When the scope was approved (UTC); criteria created after it are scope creep; NULL = not approved'",
+            'scope_approved_by' => "VARCHAR(100) NULL COMMENT 'Name of the user who approved the scope'",
+        ] as $scopeCol => $scopeDef) {
+            if (ccrm_table_exists($pdo, 'projects') && !ccrm_column_exists($pdo, 'projects', $scopeCol)) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `{$scopeCol}` {$scopeDef}");
+            }
         }
         ccrm_migrate_integration_tasks($pdo);
         ccrm_migrate_integration_directory($pdo);
