@@ -688,7 +688,7 @@ Order: F → (P1, P2, P3) → (P4, P5, P6) → (P7, P8, P9) → (P10, P11).
 | Q7 Cost tile note | no | — |
 | Q8 Calendar popover project | canvas: a label for existing entries, changed through Edit; a new entry still picks its project | P2b |
 | Q9 Rail title | canvas: "Your tasks this week", filtered to tasks due or tracked this week | P2 |
-| Q10 Timesheet Cost column | **open**: the owner asked which cost (answered: labour cost of the work, not the client's price) | not built |
+| Q10 Timesheet Cost column | add (labour cost of the work, not the client's price) | T5 |
 | Q11 Timesheet notes | add | P3, only true sentences (see Done log) |
 | Q12 Unsorted colours | canvas | P4 |
 | Q13 Day row icons | yes | P4 |
@@ -723,7 +723,8 @@ then merged into `css-main`. Not pushed, not ported.
 | P1 List | `fef14e99`, `75dfd06d` | L1–L10 | No rate note (Q7). The lock tooltip reads "Only you and people with the cost permission see this." Day cost is hidden when another person's cost is hidden. L8 will rarely show: a linked entry's title normally equals the task's |
 | P2 Calendar | `bb2ae810`, `3c0ab3d6` | C1–C12 | The project picker stays editable in the popover (Q8). Delete is disabled, not hidden, on a locked entry. No Duplicate on a running entry |
 | P2b Calendar popover | `96b1ba56`, `09c366bb` | C7 project as a label for existing entries; a new entry still picks its project | — |
-| P3 Timesheet | `42a15ac7`, `adb48aa2` | T1–T4, T6–T8 | T5 Cost column not built (Q10 open). The canvas notes were reworded to what the code does: a new cell makes an hours-only entry with no start time; clearing a cell changes nothing; Submit marks the week approved at once (no manager step) |
+| P3 Timesheet | `42a15ac7`, `adb48aa2` | T1–T4, T6–T8 | T5 came later (next row). The canvas notes were reworded to what the code does: a new cell makes an hours-only entry with no start time; clearing a cell changes nothing; Submit marks the week approved at once (no manager step) |
+| T5 Timesheet cost | `a7599dc9` | T5 | Entries without a project carry a cost, so the explainer has no "excludes time without a project" clause. A row or the total shows "—" when another person's cost is hidden from the viewer; the column is hidden when the viewer sees no cost. Entries carry no currency, so the app currency is used |
 | P4 Day, Unsorted | `696e1dff`, `79861b02` | D1–D8 | The extension link opens Settings → Time tracking and does not scroll to the extension block |
 | P5 Team | `19d1fb21`, `aadcfbde` | W1, W2, W4, header card | People without an employee record have no bar; the legend says so |
 | P6 Reports | `e04f5f08`, `d15d7387` | R1–R8, R10–R12 | R9 drill-down not built (Q18 open). Margin counts only entries with a cost whose worked time equals their duration, and is marked "≈" when some are left out. The badge reads "Restricted access": the salary report is a grantable permission, not admin-only. The day chart is capped at 62 working days |
@@ -733,7 +734,7 @@ then merged into `css-main`. Not pushed, not ported.
 | P10 Phone | `ccaf15fa`, `6ca83752` | M1, M3 | The running card is in the page flow, not fixed; Stop stays reachable from the sticky header pill (40 px on the phone). The sheet and the paused card were not restyled |
 | P11 Extension popup | `7499a606`, `a09251ce` | X9–X13 | The address field stays: the zip is generic and pairing needs the address (the audit's "the build knows its server" was wrong). No Pause in the popup: it has no pause endpoint. `EXTENSION_VERSION` unchanged |
 
-Still open after this pass: Q2, Q10, Q18, Q24, Q29 (owner), the C2 text about the sidebar
+Still open after this pass: Q2, Q18, Q24, Q29 (owner), the C2 text about the sidebar
 colour, and the two MISSING rows (E4, E11).
 
 ## Checks and QA (pass 2)
