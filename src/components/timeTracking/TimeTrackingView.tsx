@@ -11,6 +11,7 @@ import { TimeCalendarView } from "./TimeCalendarView";
 import { TimeDayView } from "./TimeDayView";
 import { TimeListView } from "./TimeListView";
 import { TimeTimesheetView } from "./TimeTimesheetView";
+import { MobileRunningCard } from "./MobileRunningCard";
 import { TimerBar } from "./TimerBar";
 import { TimeTrackingMobileBar } from "./TimeTrackingMobileBar";
 import { ViewingAsProvider, useEntriesFocus, useViewingAs } from "./ViewingAsContext";
@@ -56,6 +57,12 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
   const entriesFocus = useEntriesFocus();
 
   const { recentProjectIds, secondsByProject } = useRecentProjects();
+  // Phone, one timer running: the big card replaces the slim bar; its chips bring the bar's fields back.
+  const [barOpen, setBarOpen] = useState(false);
+  const singleRunning = tt.running.length === 1;
+  useEffect(() => {
+    if (!singleRunning) setBarOpen(false);
+  }, [singleRunning]);
 
   useEffect(() => {
     setTab(tabFromRoute(route));
@@ -91,7 +98,10 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
         actions={<TimeHeaderActions onNavigate={onNavigate} />}
       />
 
-      <TimerBar deps={deps} recentProjectIds={recentProjectIds} secondsByProject={secondsByProject} />
+      <MobileRunningCard deps={deps} editing={barOpen} onToggleEdit={() => setBarOpen((v) => !v)} />
+      <div className={singleRunning && !barOpen ? "hidden ws-sm:contents" : "contents"}>
+        <TimerBar deps={deps} recentProjectIds={recentProjectIds} secondsByProject={secondsByProject} />
+      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3" data-testid="time-toolbar">
         <div className="min-w-0 max-w-full shrink">

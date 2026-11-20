@@ -112,6 +112,9 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
   const isCurrentWeek = weekDays(anchor)[0] === weekDays(today)[0];
   const shortRange = `${new Date(`${days[0]}T12:00:00`).toLocaleDateString(locale, { day: "numeric" })} – ${new Date(`${days[days.length - 1]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })}`;
 
+  // Phone: the current week shows today only, the rest of the week opens in place.
+  const [wholeWeek, setWholeWeek] = useState(false);
+  const phoneTodayOnly = isCurrentWeek && !entriesFocus && !wholeWeek;
   const cards = [...days].reverse().filter((d) => byDay.has(d) || calendar.holiday(d));
   const holidayLabel = (iso: string) => {
     const h = calendar.holiday(iso);
@@ -205,6 +208,12 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
         </Surface>
       )}
 
+      {phoneTodayOnly && !byDay.has(today) && !loading && cards.length > 0 && (
+        <Surface className="ws-sm:hidden">
+          <p className="text-body text-slate-500" data-testid="time-today-empty">{t("Nothing tracked today yet. Start the timer above.", "Dnes ešte nie je zaznamenaný žiadny čas. Spustite časovač vyššie.", "Ma még nincs rögzített idő. Indítsa el az időzítőt fent.")}</p>
+        </Surface>
+      )}
+
       {cards.map((date) => {
         const list = byDay.get(date) ?? [];
         const rows = collapseIdentical(list);
@@ -212,7 +221,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
         const hiddenCost = list.some((m) => !tt.viewer.canCosts && m.userId !== (tt.userId || ""));
         const dayCost = hiddenCost ? null : totalCost(list.map((m) => withoutHiddenCost(m, tt.userId || "", tt.viewer.canCosts)));
         return (
-          <Surface key={date} padding="none" className="overflow-hidden" >
+          <Surface key={date} padding="none" className={`overflow-hidden ${phoneTodayOnly && date !== today ? "hidden ws-sm:block" : ""}`}>
             <div className={`flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 ${calendar.isOffDay(date) ? "bg-slate-50" : ""}`} data-testid="day-card-header" data-date={date}>
               <div className="flex flex-wrap items-center gap-2">
                 <input
@@ -300,6 +309,18 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
           </Surface>
         );
       })}
+
+      {isCurrentWeek && !entriesFocus && cards.some((d) => d !== today) && (
+        <button
+          type="button"
+          onClick={() => setWholeWeek((v) => !v)}
+          aria-expanded={wholeWeek}
+          data-testid="time-whole-week"
+          className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-ui font-semibold text-primary hover:bg-slate-50 cursor-pointer ws-sm:hidden"
+        >
+          {wholeWeek ? t("Today only", "Iba dnes", "Csak a mai nap") : t("Whole week", "Celý týždeň", "Egész hét")}
+        </button>
+      )}
     </div>
   );
 }

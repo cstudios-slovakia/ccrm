@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { CalendarDays, ListTodo, Play, Plus, Square, Timer, X } from "lucide-react";
+import { CalendarDays, ListTodo, Play, Plus, Timer, X } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { extraItemsLabel, workedClockSeconds } from "../../utils/timeContainer.ts";
 import { elapsedSeconds, formatDuration } from "../../utils/timeTracking.ts";
@@ -21,11 +21,11 @@ interface Props {
 /**
  * Phone bar for the time-tracking route: Timer, Calendar, Tasks, Add.
  * Hidden from the ws-sm workspace up. The running card sits above it; with several items it
- * is a summary that opens the container as a bottom sheet.
+ * is a summary that opens the container as a bottom sheet; a single timer is the big card at the top of the page (MobileRunningCard).
  */
 export function TimeTrackingMobileBar({ onNavigate, deps, recentProjectIds, secondsByProject }: Props) {
   const tt = useTimeTracking();
-  const { t, primaryRunning: running, running: all, nowMs, stop } = tt;
+  const { t, primaryRunning: running, running: all, nowMs } = tt;
   const several = all.length > 1;
   const [sheet, setSheet] = useState(false);
   const [dragY, setDragY] = useState(0);
@@ -94,24 +94,6 @@ export function TimeTrackingMobileBar({ onNavigate, deps, recentProjectIds, seco
           <ClockDigits value={elapsed} className="text-title font-bold text-slate-900" data-testid="mobile-running-worked" />
         </button>
         </CycleRing>
-      )}
-      {running && !several && (
-        <div data-testid="mobile-running-card" className="fixed inset-x-3 bottom-20 z-40 rounded-3xl border border-rose-200 bg-white p-4 shadow-xl">
-          <p className="type-overline text-rose-600">{t("Timer running", "Časovač beží", "Az időzítő fut")}</p>
-          <ClockDigits value={elapsed} className="text-metric text-slate-900" />
-          <p className="truncate text-body text-slate-700">{running.title || t("No title", "Bez názvu", "Nincs cím")}</p>
-          <CycleRing swap label radius={16} className="mt-3" buttonClass="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-2xl px-4 text-ui font-semibold text-white transition-all active:scale-95 cursor-pointer motion-reduce:transition-none">
-            <button
-              type="button"
-              onClick={() => void stop(running.id)}
-              data-testid="mobile-running-stop"
-              className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-2xl bg-rose-600 px-4 text-ui font-semibold text-white transition-all hover:bg-rose-700 active:scale-95 cursor-pointer motion-reduce:transition-none"
-            >
-              <Square className="size-4 fill-current" />
-              {t("Stop", "Zastaviť", "Leállítás")}
-            </button>
-          </CycleRing>
-        </div>
       )}
       {pausedOnly && (
         <div data-testid="mobile-paused-card" className="fixed inset-x-3 bottom-20 z-40 rounded-3xl border border-amber-200 bg-white p-4 shadow-xl">

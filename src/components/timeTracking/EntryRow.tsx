@@ -141,11 +141,11 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
       )}
       {actions ?? <span className="flex shrink-0 justify-end gap-1 opacity-100 ws-sm:w-16 ws-sm:opacity-0 ws-sm:transition-opacity ws-sm:group-hover:opacity-100 ws-sm:focus-within:opacity-100">
         {onContinue && !entry.running && !isRunningTarget({ taskId: entry.taskId, ticketId: entry.ticketId, projectId: entry.projectId, title: entry.description }) && (
-          <button type="button" onClick={(ev) => onContinue(entry, ev.currentTarget)} title={t("Continue", "Pokračovať", "Folytatás")} aria-label={t("Continue", "Pokračovať", "Folytatás")} data-testid="time-entry-continue" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-primary/10 hover:text-primary cursor-pointer ws-sm:size-7 ws-sm:min-h-0 ws-sm:min-w-0">
+          <button type="button" onClick={(ev) => onContinue(entry, ev.currentTarget)} title={t("Continue", "Pokračovať", "Folytatás")} aria-label={t("Continue", "Pokračovať", "Folytatás")} data-testid="time-entry-continue" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full bg-primary/10 text-primary hover:bg-primary/20 cursor-pointer ws-sm:size-7 ws-sm:min-h-0 ws-sm:min-w-0 ws-sm:rounded-lg ws-sm:bg-transparent ws-sm:text-slate-500 ws-sm:hover:bg-primary/10 ws-sm:hover:text-primary">
             <Play className="size-3.5 fill-current" />
           </button>
         )}
-        <button type="button" onClick={() => onOpen(entry)} title={t("Open", "Otvoriť", "Megnyitás")} aria-label={t("Open", "Otvoriť", "Megnyitás")} className="inline-flex size-7 items-center justify-center rounded-lg text-slate-500 hover:bg-primary/10 hover:text-primary cursor-pointer">
+        <button type="button" onClick={() => onOpen(entry)} title={t("Open", "Otvoriť", "Megnyitás")} aria-label={t("Open", "Otvoriť", "Megnyitás")} className="inline-flex size-10 items-center justify-center rounded-lg text-slate-500 hover:bg-primary/10 hover:text-primary cursor-pointer ws-sm:size-7">
           <MoreHorizontal className="size-4" />
         </button>
       </span>}
