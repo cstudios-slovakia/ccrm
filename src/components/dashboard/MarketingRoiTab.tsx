@@ -98,8 +98,9 @@ export const useMarketingRoiFigures = (
   const newsletterCost = categoryCost(agg, finance.categories, config.newsletterCostCategoryIds);
   const socialCost = categoryCost(agg, finance.categories, config.socialCostCategoryIds);
 
+  const newsletterAvailable = data.newsletter !== null;
   const newsletter = useMemo(
-    () => attributeNewsletter(data.newsletter, invoices, allLeads, invoiceStatuses, config.newsletterWindowDays, period),
+    () => attributeNewsletter(data.newsletter || [], invoices, allLeads, invoiceStatuses, config.newsletterWindowDays, period),
     [data.newsletter, invoices, allLeads, invoiceStatuses, config.newsletterWindowDays, period],
   );
   const channels = useMemo(() => leadsByChannel(pipelineLeads, config, isWon), [pipelineLeads, config, isWon]);
@@ -113,14 +114,17 @@ export const useMarketingRoiFigures = (
   const adsSpent = metaSpent + googleSpent;
   const adsRevenue = channels.meta_ads.wonValue + channels.google_ads.wonValue;
 
-  const totalCost = newsletterCost + socialCost + adsSpent;
-  const totalRevenue = newsletter.revenue + channels.social.wonValue + adsRevenue;
+  // Ad campaigns carry one lifetime spend and no dates, so with a date filter they cannot be set
+  // against the period's revenue: they stay out of the totals and the card says "all time".
+  const adsInTotals = !period.startIso && !period.endIso;
+  const totalCost = newsletterCost + socialCost + (adsInTotals ? adsSpent : 0);
+  const totalRevenue = newsletter.revenue + channels.social.wonValue + (adsInTotals ? adsRevenue : 0);
   const notConfigured =
     config.newsletterCostCategoryIds.length === 0 && config.socialCostCategoryIds.length === 0 && Object.keys(config.sourceChannels).length === 0;
 
   return {
-    data, config, newsletter, channels, posts, impressions, clicks, notConfigured,
-    newsletterCost, socialCost, metaSpent, googleSpent, adsSpent, adsRevenue, totalCost, totalRevenue,
+    data, config, newsletter, newsletterAvailable, channels, posts, impressions, clicks, notConfigured,
+    newsletterCost, socialCost, metaSpent, googleSpent, adsSpent, adsRevenue, adsInTotals, totalCost, totalRevenue,
   };
 };
 
@@ -146,9 +150,9 @@ const SetupHint: React.FC<{ t: T; error: boolean }> = ({ t, error }) => (
 export const MarketingRoiSummary: React.FC<Props & { onOpen: () => void }> = ({ t, money, onOpen, ...input }) => {
   const f = useMarketingRoiFigures(input, false);
   const rows = [
-    { key: "nl", name: t("Newsletter", "Newsletter", "Hírlevél"), cost: f.newsletterCost, revenue: f.newsletter.revenue, badge: "bg-sky-50 text-sky-700 border-sky-200" },
-    { key: "soc", name: t("Social media", "Sociálne siete", "Közösségi média"), cost: f.socialCost, revenue: f.channels.social.wonValue, badge: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200" },
-    { key: "ads", name: t("Paid ads (Meta, Google)", "Platená reklama (Meta, Google)", "Fizetett hirdetések (Meta, Google)"), cost: f.adsSpent, revenue: f.adsRevenue, badge: "bg-amber-50 text-amber-700 border-amber-200" },
+    { key: "nl", name: t("Newsletter", "Newsletter", "Hírlevél"), cost: f.newsletterCost, revenue: f.newsletter.revenue, roi: roiPct(f.newsletter.revenue, f.newsletterCost), badge: "bg-sky-50 text-sky-700 border-sky-200" },
+    { key: "soc", name: t("Social media", "Sociálne siete", "Közösségi média"), cost: f.socialCost, revenue: f.channels.social.wonValue, roi: roiPct(f.channels.social.wonValue, f.socialCost), badge: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200" },
+    { key: "ads", name: t("Paid ads (Meta, Google)", "Platená reklama (Meta, Google)", "Fizetett hirdetések (Meta, Google)"), cost: f.adsSpent, revenue: f.adsRevenue, roi: f.adsInTotals ? roiPct(f.adsRevenue, f.adsSpent) : null, badge: "bg-amber-50 text-amber-700 border-amber-200" },
   ];
   return (
     <div className="space-y-4 pt-2">
@@ -162,7 +166,7 @@ export const MarketingRoiSummary: React.FC<Props & { onOpen: () => void }> = ({ 
         >
           <div className="flex justify-between items-center">
             <span className="text-ui font-bold text-slate-800">{row.name}</span>
-            <span className={`px-2.5 py-0.5 rounded-full type-overline border ${row.badge}`}>ROI: {roiText(roiPct(row.revenue, row.cost))}</span>
+            <span className={`px-2.5 py-0.5 rounded-full type-overline border ${row.badge}`}>ROI: {roiText(row.roi)}</span>
           </div>
           <div className="grid grid-cols-2 gap-2 text-caption font-semibold text-slate-500">
             <div>{t("Cost", "Náklady", "Költség")}: <strong className="text-slate-800">{money(row.cost)}</strong></div>
@@ -176,8 +180,8 @@ export const MarketingRoiSummary: React.FC<Props & { onOpen: () => void }> = ({ 
 
 export const MarketingRoiTab: React.FC<Props> = ({ t, money, ...input }) => {
   const {
-    data, config, newsletter, channels, posts, impressions, clicks, notConfigured,
-    newsletterCost, socialCost, metaSpent, googleSpent, adsSpent, adsRevenue, totalCost, totalRevenue,
+    data, config, newsletter, newsletterAvailable, channels, posts, impressions, clicks, notConfigured,
+    newsletterCost, socialCost, metaSpent, googleSpent, adsSpent, adsRevenue, adsInTotals, totalCost, totalRevenue,
   } = useMarketingRoiFigures(input, true);
   const { adCampaigns } = input;
 
@@ -221,7 +225,7 @@ export const MarketingRoiTab: React.FC<Props> = ({ t, money, ...input }) => {
           t={t}
           icon={<Mail className="h-5 w-5 text-sky-600" />}
           title={t("Newsletter", "Newsletter", "Hírlevél")}
-          caption={t(
+          caption={!newsletterAvailable ? t("You have no access to the newsletter", "Nemáte prístup k newsletteru", "Nincs hozzáférése a hírlevélhez") : t(
             `Invoices within ${config.newsletterWindowDays} days after a send`,
             `Faktúry do ${config.newsletterWindowDays} dní po odoslaní`,
             `Számlák a kiküldést követő ${config.newsletterWindowDays} napon belül`,
@@ -261,8 +265,10 @@ export const MarketingRoiTab: React.FC<Props> = ({ t, money, ...input }) => {
           t={t}
           icon={<Megaphone className="h-5 w-5 text-amber-600" />}
           title={t("Paid ads", "Platená reklama", "Fizetett hirdetések")}
-          caption={t("Meta & Google campaign spend", "Výdavky na kampane Meta a Google", "Meta és Google kampányköltés")}
-          roi={roiPct(adsRevenue, adsSpent)}
+          caption={adsInTotals
+            ? t("Meta & Google campaign spend", "Výdavky na kampane Meta a Google", "Meta és Google kampányköltés")
+            : t("Spend is all-time; clear the date filter for ROI", "Výdavky sú za celé obdobie; ROI uvidíte bez filtra dátumu", "A költés a teljes időszakra szól; a ROI dátumszűrő nélkül látható")}
+          roi={adsInTotals ? roiPct(adsRevenue, adsSpent) : null}
         >
           <div className="space-y-2">
             {([
@@ -273,7 +279,7 @@ export const MarketingRoiTab: React.FC<Props> = ({ t, money, ...input }) => {
                 <span className="text-ui font-bold text-slate-800 flex items-center gap-1"><Globe className="h-3.5 w-3.5" />{name}</span>
                 <div>{t("Spent", "Minuté", "Elköltött")}<strong className="text-slate-800 block">{money(spent)}</strong></div>
                 <div>{t("Leads · won", "Leady · vyhraté", "Leadek · megnyert")}<strong className="text-slate-800 block">{ch.leads} · {ch.won}</strong></div>
-                <div>ROI<strong className="text-slate-800 block">{roiText(roiPct(ch.wonValue, spent))}</strong></div>
+                <div>ROI<strong className="text-slate-800 block">{roiText(adsInTotals ? roiPct(ch.wonValue, spent) : null)}</strong></div>
               </div>
             ))}
           </div>

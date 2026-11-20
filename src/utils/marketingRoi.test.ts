@@ -132,3 +132,27 @@ test("lead-source channels count leads and won value per channel", () => {
   assert.deepEqual(out.google_ads, { leads: 1, won: 0, wonValue: 0 });
   assert.deepEqual(out.meta_ads, { leads: 0, won: 0, wonValue: 0 });
 });
+
+test("newsletter: a month view credits the same campaign as the all-time view (no double counting)", () => {
+  const touch = (sentAt: string) => ({ leadId: "client-a", email: "", sentAt });
+  const sends: NewsletterSend[] = [
+    { id: "nov", name: "November", sentAt: "2026-11-20", recipients: [touch("2026-11-20")] },
+    { id: "dec", name: "December", sentAt: "2026-12-01", recipients: [touch("2026-12-01")] },
+  ];
+  const inv = [invoice("i", "2026-12-05", { clientId: "client-a" })];
+  const nov = attributeNewsletter(sends, inv, [], undefined, 30, { startIso: "2026-11-01", endIso: "2026-11-30" });
+  const dec = attributeNewsletter(sends, inv, [], undefined, 30, { startIso: "2026-12-01", endIso: "2026-12-31" });
+  const all = attributeNewsletter(sends, inv, [], undefined, 30, { startIso: null, endIso: null });
+  assert.equal(nov.revenue, 0, "the newer December campaign wins the invoice even when it is outside the month");
+  assert.equal(dec.revenue, 100);
+  assert.equal(all.revenue, nov.revenue + dec.revenue);
+});
+
+test("finance: a mistyped ancient date does not stretch 'all time' over centuries", () => {
+  const rec = { id: "x", type: "income", title: "x", categoryId: "inc", amountPlanned: 5, amountReal: 5, status: "paid", issueDate: "0202-03-01", paidDate: "0202-03-01", isRecurring: false } as unknown as FinancialRecord;
+  const ok = { ...rec, id: "y", issueDate: "2026-02-10", paidDate: "2026-02-10" } as FinancialRecord;
+  const agg = financeForPeriod({ mode: "connected", records: [rec, ok], categories, simplifiedTable: {}, todayIso: "2026-03-15" }, { startIso: null, endIso: null });
+  assert.ok(agg);
+  assert.ok(Object.keys(agg.totalIncomesByCol).length <= 2);
+  assert.equal(financeRevenue(agg).paid, 5);
+});

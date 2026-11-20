@@ -47,12 +47,17 @@ export const MarketingRoiSettings: React.FC<{
     value: draft,
     dirty: !!draft && JSON.stringify(draft) !== JSON.stringify(stored),
     enabled: canEdit && !!draft,
+    // `stored` stays what was sent: the server normalises with the same rules, and taking its
+    // answer back could leave the draft "dirty" forever on a tiny difference and re-save in a loop.
     save: (cfg) => {
       if (!cfg) return;
       setStored(cfg);
-      marketingRoiApi.save(cfg).then(setStored).catch(() => setError(true));
+      marketingRoiApi.save(cfg).catch(() => setError(true));
     },
   });
+  // The days field is typed as text and applied on blur, so clearing it to type "7" does not
+  // snap back to 30 on the first keystroke.
+  const [daysText, setDaysText] = useState<string | null>(null);
 
   // Expense categories in tree order, each with its depth for the indent.
   const expenseTree = useMemo(() => {
@@ -204,9 +209,14 @@ export const MarketingRoiSettings: React.FC<{
             min={1}
             max={365}
             className="w-24 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-ui text-slate-800 disabled:opacity-60"
-            value={draft.newsletterWindowDays}
+            value={daysText ?? String(draft.newsletterWindowDays)}
             disabled={!canEdit}
-            onChange={(e) => update({ newsletterWindowDays: Number(e.target.value) || DEFAULT_NEWSLETTER_WINDOW_DAYS })}
+            onChange={(e) => setDaysText(e.target.value)}
+            onBlur={() => {
+              if (daysText === null) return;
+              update({ newsletterWindowDays: Number(daysText) || DEFAULT_NEWSLETTER_WINDOW_DAYS });
+              setDaysText(null);
+            }}
           />
           {t("days after the send", "dní po odoslaní", "nappal a kiküldés után")}
         </label>

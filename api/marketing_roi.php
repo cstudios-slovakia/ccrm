@@ -11,6 +11,8 @@
  * The config lives in system_settings under MARKETING_ROI_CONFIG; it holds no column, so there is
  * no schema change. Reading needs the `overview` (dashboard) or `general_config` permission,
  * saving needs `general_config` at edit level, like the other Settings → Integrations sections.
+ * The recipient list (e-mails, record ids) goes only to users who may see the newsletter module;
+ * everyone else gets `newsletter: null` and the dashboard says the newsletter is not available.
  *
  * Only recipients whose e-mail actually went out (status `sent`) are returned: they are the
  * touches the dashboard credits invoices to. Costs and invoices are already on the client.
@@ -28,6 +30,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
     exit;
 }
 
+$sessionUser = ccrm_require_auth();
+
 function ccrm_mroi_respond(array $payload, int $status = 200): void {
     http_response_code($status);
     echo json_encode(['success' => $status < 400] + $payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -43,11 +47,13 @@ function ccrm_marketing_roi_normalize($raw): array {
         }
         $out = [];
         foreach ($list as $v) {
-            if (is_string($v) && trim($v) !== '') {
-                $out[trim($v)] = true;
+            // Values, not array keys: PHP turns a numeric-string key into an int, and the
+            // client drops anything that is not a string.
+            if (is_string($v) && trim($v) !== '' && !in_array(trim($v), $out, true)) {
+                $out[] = trim($v);
             }
         }
-        return array_keys($out);
+        return $out;
     };
     $channels = [];
     if (isset($src['sourceChannels']) && is_array($src['sourceChannels'])) {
@@ -64,8 +70,8 @@ function ccrm_marketing_roi_normalize($raw): array {
     return [
         'newsletterCostCategoryIds' => $ids($src['newsletterCostCategoryIds'] ?? []),
         'socialCostCategoryIds' => $ids($src['socialCostCategoryIds'] ?? []),
-        // An empty map has to travel as {} so the client never sees a list.
-        'sourceChannels' => $channels ?: (object)[],
+        // Always an object: an empty map, or one keyed 0..n, would otherwise encode as a list.
+        'sourceChannels' => (object)$channels,
         'newsletterWindowDays' => $days >= 1 ? min(365, $days) : 30,
     ];
 }
@@ -161,7 +167,7 @@ try {
         }
         ccrm_mroi_respond([
             'config' => ccrm_marketing_roi_load($pdo),
-            'newsletter' => ccrm_marketing_roi_newsletter($pdo),
+            'newsletter' => ccrm_can($scope, 'newsletter') ? ccrm_marketing_roi_newsletter($pdo) : null,
         ]);
     }
     if ($action === 'save') {
