@@ -8,8 +8,9 @@ import {
   projectStatusColor,
   projectStatusLabel,
 } from "../../utils/projects";
-import { formatDuration, projectColor, type TFn } from "../../utils/timeTracking.ts";
+import { projectColor, type TFn } from "../../utils/timeTracking.ts";
 import { ProjectLabel } from "./ProjectLabel";
+import { clientOfProject, groupProjects, optionMeta, RECENT_LIMIT } from "./projectPickerModel";
 import { ClientSelect } from "../ui/ClientSelect";
 import { CustomSelect } from "../ui/CustomSelect";
 
@@ -28,7 +29,7 @@ interface Props {
   t: TFn;
   /** Most recently used project ids, newest first. */
   recentIds?: string[];
-  /** Seconds already tracked on each project, for the meta line. */
+  /** Seconds tracked on each project this week, for the meta line. */
   secondsByProject?: Record<string, number>;
   /** Creating a project needs the projects create permission. */
   onCreateProject?: (input: NewProjectInput) => Project | null;
@@ -71,6 +72,7 @@ export function ProjectPicker({
   const [query, setQuery] = useState("");
   const [showFinished, setShowFinished] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
   const [newClient, setNewClient] = useState<string>("");
   const [newType, setNewType] = useState<string>(projectTypes[0]?.id ?? "");
   const root = useRef<HTMLDivElement>(null);
@@ -90,10 +92,7 @@ export function ProjectPicker({
 
   const fallbackName = t("Untitled project", "Projekt bez názvu", "Névtelen projekt");
   const nameOf = (p: Project) => projectDisplayName(p, leads, fallbackName);
-  const clientOf = (p: Project): Lead | undefined => {
-    const id = p.clientId || p.leadId;
-    return id ? leads.find((l) => l.id === id) : undefined;
-  };
+  const clientOf = (p: Project): Lead | undefined => clientOfProject(p, leads);
   const selected = projects.find((p) => p.id === value) ?? null;
 
   const q = query.trim().toLowerCase();
@@ -108,28 +107,12 @@ export function ProjectPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projects, leads, q, showFinished, statuses, value]);
 
-  const groups = useMemo(() => {
-    const out: { key: string; label: string; items: Project[] }[] = [];
-    const recent = recentIds.map((id) => visible.find((p) => p.id === id)).filter((p): p is Project => !!p).slice(0, 5);
-    if (recent.length && !q) out.push({ key: "recent", label: t("Recent", "Nedávne", "Legutóbbi"), items: recent });
-    const byClient = new Map<string, Project[]>();
-    for (const p of visible) {
-      const c = clientOf(p);
-      const key = c ? c.id : "_none";
-      byClient.set(key, [...(byClient.get(key) ?? []), p]);
-    }
-    const keys = [...byClient.keys()].sort((a, b) => {
-      if (a === "_none") return 1;
-      if (b === "_none") return -1;
-      return (leads.find((l) => l.id === a)?.name ?? "").localeCompare(leads.find((l) => l.id === b)?.name ?? "");
-    });
-    for (const key of keys) {
-      const items = byClient.get(key)!.sort((a, b) => nameOf(a).localeCompare(nameOf(b)));
-      out.push({ key, label: key === "_none" ? t("No client", "Bez klienta", "Ügyfél nélkül") : leads.find((l) => l.id === key)?.name ?? "", items });
-    }
-    return out;
+  const recentSet = useMemo(() => new Set(recentIds.slice(0, RECENT_LIMIT)), [recentIds]);
+  const groups = useMemo(
+    () => groupProjects(visible, leads, recentIds, nameOf),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, recentIds, q, leads]);
+    [visible, recentIds, leads],
+  );
 
   const choose = (id: string | null) => {
     onChange(id);
@@ -137,8 +120,8 @@ export function ProjectPicker({
   };
 
   const create = () => {
-    if (!onCreateProject || !newType || !query.trim()) return;
-    const made = onCreateProject({ name: query.trim(), clientId: newClient || null, projectTypeId: newType });
+    if (!onCreateProject || !newType || !newName.trim()) return;
+    const made = onCreateProject({ name: newName.trim(), clientId: newClient || null, projectTypeId: newType });
     if (made) {
       setCreating(false);
       setQuery("");
@@ -218,70 +201,109 @@ export function ProjectPicker({
         )}
         {groups.map((g) => (
           <div key={g.key}>
-            <div className="type-overline px-3 pb-1 pt-2 text-slate-400">{g.label}</div>
-            {g.items.map((p) => {
-              const sec = secondsByProject[p.id];
-              return (
-                <button
-                  key={`${g.key}-${p.id}`}
-                  type="button"
-                  onClick={() => choose(p.id)}
-                  data-testid="project-option"
-                  aria-current={p.id === value ? "true" : undefined}
-                  className={`flex w-full items-center gap-2.5 px-3 py-2 text-left cursor-pointer ${p.id === value ? "bg-primary/10 hover:bg-primary/15" : "hover:bg-slate-50"}`}
-                >
-                  <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: projectColor(p.id) }} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-ui font-semibold text-slate-800">{nameOf(p)}</span>
-                    {sec ? <span className="type-meta tabular-nums text-slate-500">{formatDuration(sec)} h</span> : null}
-                  </span>
-                  <span className="shrink-0 rounded-full px-2 py-0.5 text-micro font-semibold" style={{ color: projectStatusColor(p.status, statuses), backgroundColor: `${projectStatusColor(p.status, statuses)}1a` }}>
-                    {projectStatusLabel(p.status, t, statuses)}
-                  </span>
-                  {p.id === value && <Check className="size-4 shrink-0 text-primary" aria-hidden />}
-                </button>
-              );
-            })}
+            <div className="type-overline px-3 pb-1 pt-2 text-slate-400">{g.clientName ?? t("No client", "Bez klienta", "Ügyfél nélkül")}</div>
+            {g.items.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => choose(p.id)}
+                data-testid="project-option"
+                aria-current={p.id === value ? "true" : undefined}
+                className={`flex w-full items-center gap-2.5 px-3 py-2 text-left cursor-pointer ${p.id === value ? "bg-primary/10 hover:bg-primary/15" : "hover:bg-slate-50"}`}
+              >
+                <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: projectColor(p.id) }} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-ui font-semibold text-slate-800">{nameOf(p)}</span>
+                  <span className="type-meta block truncate tabular-nums text-slate-500">{optionMeta(recentSet.has(p.id), secondsByProject[p.id], t)}</span>
+                </span>
+                <span className="shrink-0 rounded-full px-2 py-0.5 text-micro font-semibold" style={{ color: projectStatusColor(p.status, statuses), backgroundColor: `${projectStatusColor(p.status, statuses)}1a` }}>
+                  {projectStatusLabel(p.status, t, statuses)}
+                </span>
+                {p.id === value && <Check className="size-4 shrink-0 text-primary" aria-hidden />}
+              </button>
+            ))}
           </div>
         ))}
         {groups.length === 0 && <div className="px-3 py-4 text-ui text-slate-500">{t("No project matches.", "Žiadny projekt nevyhovuje.", "Nincs találat.")}</div>}
       </div>
-      <div className="max-h-64 shrink-0 overflow-y-auto border-t border-slate-100 px-3 py-2">
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <label className="flex cursor-pointer items-center gap-2 text-ui text-slate-600">
-          <input type="checkbox" checked={showFinished} onChange={(e) => setShowFinished(e.target.checked)} className="size-4 accent-teal-600" />
-          {t("Show finished", "Zobraziť dokončené", "Befejezettek mutatása")}
-        </label>
-        {onCreateProject && query.trim() && !creating && (
-          <button type="button" onClick={() => setCreating(true)} data-testid="project-create-open" className="inline-flex items-center gap-1.5 text-ui font-semibold text-primary hover:underline cursor-pointer">
-            <Plus className="size-4" />
-            {t(`Create project "${query.trim()}"`, `Vytvoriť projekt „${query.trim()}“`, `Projekt létrehozása: „${query.trim()}”`)}
-          </button>
+      <div className="max-h-72 shrink-0 overflow-y-auto border-t border-slate-100 px-3 py-2">
+        {!creating && (
+          <div className="flex items-center gap-3">
+            {onCreateProject && query.trim() ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setNewName(query.trim());
+                  setCreating(true);
+                }}
+                data-testid="project-create-open"
+                className="flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-primary/10 px-3 py-2 text-left text-ui font-semibold text-primary hover:bg-primary/15 cursor-pointer"
+              >
+                <Plus className="size-4 shrink-0" />
+                <span className="truncate">{t(`Create project "${query.trim()}"`, `Vytvoriť projekt „${query.trim()}“`, `Projekt létrehozása: „${query.trim()}”`)}</span>
+              </button>
+            ) : (
+              <span className="flex-1" />
+            )}
+            <label className="flex shrink-0 cursor-pointer items-center gap-2 text-ui text-slate-600">
+              <input type="checkbox" checked={showFinished} onChange={(e) => setShowFinished(e.target.checked)} className="size-4 accent-teal-600" />
+              {t("Show finished", "Zobraziť dokončené", "Befejezettek mutatása")}
+            </label>
+          </div>
         )}
-        </div>
         {onCreateProject && creating && (
-          <div className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-2 rounded-xl bg-slate-50 p-2.5">
-            <ClientSelect
-              leads={leads}
-              value={newClient}
-              onChange={setNewClient}
-              noneLabel={t("No client", "Bez klienta", "Ügyfél nélkül")}
-              placeholder={t("No client", "Bez klienta", "Ügyfél nélkül")}
-              searchPlaceholder={t("Search client…", "Hľadať klienta…", "Ügyfél keresése…")}
-              size="sm"
-            />
-            <CustomSelect
-              searchable
-              size="sm"
-              value={newType}
-              onChange={setNewType}
-              placeholder={t("Project type", "Typ projektu", "Projekt típusa")}
-              searchPlaceholder={t("Search project type…", "Hľadať typ projektu…", "Projekttípus keresése…")}
-              options={projectTypes.map((pt) => ({ value: pt.id, label: pt.name }))}
-            />
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="text-ui font-semibold text-slate-800">{t("New project", "Nový projekt", "Új projekt")}</div>
+            <label className="grid gap-1">
+              <span className="type-label text-slate-600">{t("Project name", "Názov projektu", "Projekt neve")}</span>
+              <input
+                autoFocus
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    create();
+                  }
+                }}
+                data-testid="project-create-name"
+                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-ui outline-none focus:border-primary"
+              />
+            </label>
+            <div className="grid gap-1">
+              <span className="type-label text-slate-600">{t("Client", "Klient", "Ügyfél")}</span>
+              <ClientSelect
+                leads={leads}
+                value={newClient}
+                onChange={setNewClient}
+                noneLabel={t("No client", "Bez klienta", "Ügyfél nélkül")}
+                placeholder={t("No client", "Bez klienta", "Ügyfél nélkül")}
+                searchPlaceholder={t("Search client…", "Hľadať klienta…", "Ügyfél keresése…")}
+                size="sm"
+              />
+            </div>
+            <div className="grid gap-1">
+              <span className="type-label text-slate-600">{t("Project type", "Typ projektu", "Projekt típusa")}</span>
+              <CustomSelect
+                searchable
+                size="sm"
+                value={newType}
+                onChange={setNewType}
+                placeholder={t("Project type", "Typ projektu", "Projekt típusa")}
+                searchPlaceholder={t("Search project type…", "Hľadať typ projektu…", "Projekttípus keresése…")}
+                options={projectTypes.map((pt) => ({ value: pt.id, label: pt.name }))}
+              />
+            </div>
+            <p className="type-meta text-slate-500">
+              {t(
+                "Created with the default status. Everything else is filled in later on the project.",
+                "Vytvorí sa s predvoleným stavom. Všetko ostatné doplníte neskôr v projekte.",
+                "Az alapértelmezett státusszal jön létre. Minden mást később tölthet ki a projekten.",
+              )}
+            </p>
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setCreating(false)} className="h-9 rounded-lg px-3 text-ui font-semibold text-slate-500 hover:bg-slate-100 cursor-pointer">{t("Cancel", "Zrušiť", "Mégse")}</button>
-              <button type="button" onClick={create} disabled={!newType} data-testid="project-create-submit" className="h-9 rounded-lg bg-primary px-3 text-ui font-semibold text-primary-foreground disabled:opacity-50 cursor-pointer">{t("Create", "Vytvoriť", "Létrehozás")}</button>
+              <button type="button" onClick={() => setCreating(false)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer">{t("Back", "Späť", "Vissza")}</button>
+              <button type="button" onClick={create} disabled={!newType || !newName.trim()} data-testid="project-create-submit" className="h-9 rounded-lg bg-primary px-3 text-ui font-semibold text-primary-foreground disabled:opacity-50 cursor-pointer">{t("Create & assign", "Vytvoriť a priradiť", "Létrehozás és hozzárendelés")}</button>
             </div>
           </div>
         )}

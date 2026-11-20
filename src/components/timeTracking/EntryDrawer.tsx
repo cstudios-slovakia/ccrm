@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { CheckCircle2, Clock, Copy, Trash2, Unlink, X } from "lucide-react";
+import { CheckCircle2, Copy, Trash2, Unlink, X } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
 import { CustomSelect } from "../ui/CustomSelect";
@@ -87,7 +87,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
     () => (isLinked || !deps.canLinkTicket ? [] : matchOpenTickets(deps.tickets, ticketQuery, (row) => isClosedTicketStatus(row.status))),
     [deps.canLinkTicket, deps.tickets, ticketQuery, isLinked],
   );
-  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-US";
+  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-GB";
 
   const close = () => {
     setClosing(true);
@@ -222,6 +222,12 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
           : null;
   const chipClass = "type-meta inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-600";
   const originTask = entry.originType === "task" && entry.originId ? lookups.taskById.get(entry.originId) : null;
+  const provenanceWhen = (() => {
+    const at = entry.startAt ? new Date(entry.startAt) : entry.createdAt ? new Date(entry.createdAt.replace(" ", "T")) : null;
+    if (!at || Number.isNaN(at.getTime())) return "";
+    const day = at.toLocaleDateString(locale, { day: "numeric", month: "short" });
+    return entry.startAt ? `${day} ${clockTime(entry.startAt)}` : `${day} ${at.getFullYear()}`;
+  })();
   const isAdmin = isAdminRoleName(deps.currentUser.role);
   const lockSettings = {
     lockAfterDays: tt.settings.lockAfterDays,
@@ -243,15 +249,16 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
     <div className="fixed inset-0 z-[100000] flex justify-end" data-testid="entry-drawer">
       <div onClick={close} className={`absolute inset-0 bg-slate-900/40 backdrop-blur-sm ${closing ? "animate-fade-out" : "animate-fade-in"}`} />
       <div className={`relative flex h-full w-full max-w-md flex-col overflow-y-auto bg-white p-6 shadow-2xl ${closing ? "animate-slide-out-right" : "animate-slide-in-right"}`}>
-        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-          <span className="type-overline inline-flex items-center gap-1.5 rounded-full border border-teal-200/80 bg-teal-50 px-2.5 py-0.5 text-teal-700">
-            <Clock className="size-3.5" />
-            {readOnly ? t("Time entry", "Záznam času", "Időbejegyzés") : isNew ? t("New time entry", "Nový záznam času", "Új időbejegyzés") : t("Edit time entry", "Upraviť záznam času", "Időbejegyzés szerkesztése")}
-          </span>
-          <span className="ml-2 flex min-w-0 flex-1 flex-wrap items-center gap-1.5" data-testid="entry-source-chips">
-            {(entry.taskId || originTask) && <span className={chipClass}>{t("Started from task", "Spustené z úlohy", "Feladatból indítva")}</span>}
-            {sourceChip && <span className={chipClass}>{sourceChip}</span>}
-          </span>
+        <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-title font-bold text-slate-900" data-testid="entry-drawer-title">
+              {readOnly ? t("Time entry", "Záznam času", "Időbejegyzés") : isNew ? t("New time entry", "Nový záznam času", "Új időbejegyzés") : t("Edit time entry", "Upraviť záznam času", "Időbejegyzés szerkesztése")}
+            </h2>
+            <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5 empty:hidden" data-testid="entry-source-chips">
+              {(entry.taskId || originTask) && <span className={chipClass}>{t("Started from task", "Spustené z úlohy", "Feladatból indítva")}</span>}
+              {sourceChip && <span className={chipClass}>{sourceChip}</span>}
+            </div>
+          </div>
           <button type="button" onClick={close} aria-label={t("Close", "Zavrieť", "Bezárás")} className="rounded-lg p-1 text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-600 active:scale-95 cursor-pointer">
             <X className="size-5" />
           </button>
@@ -497,7 +504,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
             {importTool
               ? `${t(`Imported from ${importTool} by`, `Z ${importTool} importoval`, `${importTool}-importot végezte:`)} ${recordedBy?.name ?? "—"}`
               : `${t("Recorded by", "Zaznamenal", "Rögzítette")} ${recordedBy?.name ?? "—"} ${t("with", "cez", "ezzel:")} ${sourceText}`}
-            {entry.createdAt ? ` ${t("on", "dňa", "ekkor:")} ${new Date(entry.createdAt.replace(" ", "T")).toLocaleDateString(locale)}` : ""}
+            {provenanceWhen ? ` ${t("on", "dňa", "ekkor:")} ${provenanceWhen}` : ""}
             {originTask ? `, ${t("started from task", "spustené z úlohy", "feladatból indítva:")} “${originTask.title}”` : ""}
             {person_ && entry.userId !== entry.recordedByUserId ? ` · ${t("time of", "čas používateľa", "személy:")} ${person_.name}` : ""}
           </p>
