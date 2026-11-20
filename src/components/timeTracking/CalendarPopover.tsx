@@ -7,6 +7,7 @@ import { visibleEntryCost } from "../../utils/timeTeam.ts";
 import { TimeApiError, createEntry, timeErrorMessage, type EntryInput } from "../../utils/timeTrackingApi.ts";
 import { duplicateInput } from "./entryDuplicate";
 import { AssignProjectChip } from "./AssignProjectChip";
+import { ProjectPicker } from "./ProjectPicker";
 import { ProjectLabel } from "./ProjectLabel";
 import { projectClientName } from "./projectClient";
 import { continueInput } from "./TimerBar";
@@ -20,6 +21,8 @@ interface Props {
   popover: PopoverState;
   entry: TimeEntry | null;
   deps: TimeDeps;
+  recentProjectIds: string[];
+  secondsByProject?: Record<string, number>;
   nowMs: number;
   /** Edit actions (billable, duplicate, delete, save) are disabled: locked entry, no permission, no person picked. */
   readOnly: boolean;
@@ -33,12 +36,13 @@ interface Props {
 const ICON_BUTTON = "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border cursor-pointer disabled:cursor-not-allowed disabled:opacity-40";
 
 /** The Calendar's entry popover: title, project, task / billable / tag chips, when and how long, and the actions. */
-export function CalendarPopover({ popover, entry, deps, nowMs, readOnly, onClose, onOpen, onDelete, onPatch, onCreate }: Props) {
+export function CalendarPopover({ popover, entry, deps, recentProjectIds, secondsByProject, nowMs, readOnly, onClose, onOpen, onDelete, onPatch, onCreate }: Props) {
   const tt = useTimeTracking();
   const { t, settings } = tt;
   const money = useMoney(deps);
   const lookups = useTimeLookups(deps);
-  const projectId = entry?.projectId ?? (popover.kind === "draft" ? popover.projectId ?? null : null);
+  const [draftProjectId, setDraftProjectId] = useState<string | null>(popover.kind === "draft" ? popover.projectId ?? null : null);
+  const projectId = entry ? entry.projectId : draftProjectId;
   const [billable, setBillable] = useState(entry?.billable ?? settings.billableByDefault);
   const span = entry ? spanFromEntry(entry, nowMs) : popover.kind === "draft" ? popover.span : null;
   const plus = span ? plusDays(span.endMin) : 0;
@@ -79,7 +83,21 @@ export function CalendarPopover({ popover, entry, deps, nowMs, readOnly, onClose
         </button>
       </div>
       <div className="mt-0.5">
-        {projectId ? (
+        {!entry ? (
+          <ProjectPicker
+            chip
+            projects={deps.projects}
+            leads={deps.leads}
+            projectTypes={deps.projectTypes}
+            value={draftProjectId}
+            onChange={setDraftProjectId}
+            t={t}
+            recentIds={recentProjectIds}
+            secondsByProject={secondsByProject}
+            onCreateProject={deps.onCreateProject}
+            disabled={readOnly || !deps.canPickProject}
+          />
+        ) : projectId ? (
           <ProjectLabel projectId={projectId} name={lookups.projectName(projectId, entry?.projectName)} client={clientName} className="max-w-full text-ui" />
         ) : (
           <AssignProjectChip />
