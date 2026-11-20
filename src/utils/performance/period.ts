@@ -160,6 +160,27 @@ const unitStart = (preset: "week" | "month" | "quarter" | "year", d: Date): Date
   return new Date(d.getFullYear(), 0, 1);
 };
 
+export type QuickPeriodPreset = "week" | "month" | "quarter" | "year";
+
+/** The preset names the dashboard's date picker stores in `filterPresetName`. */
+const NAME_BY_PRESET: Record<QuickPeriodPreset, string> = {
+  week: "This week",
+  month: "This month",
+  quarter: "This quarter",
+  year: "This year",
+};
+
+export const presetNameOf = (preset: QuickPeriodPreset): string => NAME_BY_PRESET[preset];
+
+/**
+ * The range of a quick preset: the first day of the calendar unit that holds `today` (Monday for a
+ * week) through `today`, the same ranges the date picker's "This week" ... "This year" apply.
+ */
+export const presetRange = (preset: QuickPeriodPreset, today: Date): { start: Date; end: Date } => ({
+  start: startOfDay(unitStart(preset, today)),
+  end: startOfDay(today),
+});
+
 /**
  * The selected range and the one before it, as local day bounds.
  *

@@ -10,6 +10,8 @@ import {
   parseAppDate,
   parseUtcStamp,
   periodPresetFromName,
+  presetNameOf,
+  presetRange,
   toIsoDay,
 } from "./period.ts";
 
@@ -134,4 +136,29 @@ test("addMonthsClamped keeps the last day of a month the last day", () => {
   assert.equal(iso(addMonthsClamped(day(2026, 11, 30), -1)), "2026-10-31");
   assert.equal(iso(addMonthsClamped(day(2026, 3, 31), -1)), "2026-02-28");
   assert.equal(iso(addMonthsClamped(day(2026, 1, 15), -2)), "2025-11-15");
+});
+
+test("presetRange runs from the start of the unit to today", () => {
+  const range = (preset: "week" | "month" | "quarter" | "year", today: Date) => {
+    const r = presetRange(preset, today);
+    return [toIsoDay(r.start), toIsoDay(r.end)];
+  };
+  // 20 Nov 2026 is a Friday.
+  assert.deepEqual(range("week", TODAY), ["2026-11-16", "2026-11-20"]);
+  assert.deepEqual(range("month", TODAY), ["2026-11-01", "2026-11-20"]);
+  assert.deepEqual(range("quarter", TODAY), ["2026-10-01", "2026-11-20"]);
+  assert.deepEqual(range("year", TODAY), ["2026-01-01", "2026-11-20"]);
+  // A Sunday belongs to the week that started on the Monday before.
+  assert.deepEqual(range("week", day(2026, 11, 22)), ["2026-11-16", "2026-11-22"]);
+  // A Monday is the first day of its own week.
+  assert.deepEqual(range("week", day(2026, 11, 16)), ["2026-11-16", "2026-11-16"]);
+});
+
+test("presetRange drops the time of day and presetNameOf names the picker presets", () => {
+  const r = presetRange("month", new Date(2026, 10, 20, 15, 30));
+  assert.equal(r.start.getHours(), 0);
+  assert.equal(r.end.getHours(), 0);
+  for (const p of ["week", "month", "quarter", "year"] as const) {
+    assert.equal(periodPresetFromName(presetNameOf(p)), p);
+  }
 });

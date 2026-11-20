@@ -4497,6 +4497,7 @@ ${log.payload || ''}
             financialCategories={financialCategories} financialMode={financialMode} financialSimplifiedTable={financialSimplifiedTable}
             invoicesOffers={invoicesOffers}
             invoiceStatuses={invoiceStatuses}
+            tasks={tasks} taskStates={taskStates} employees={employees} tickets={tickets} ticketStatuses={ticketStatuses} ticketSettings={ticketSettings} offerStatuses={offerStatuses} canSeeFinancials={access.module("financial").view}
           />
         );
       case "rag_ai":

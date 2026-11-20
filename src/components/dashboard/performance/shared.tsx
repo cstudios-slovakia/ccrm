@@ -268,8 +268,19 @@ export const SegmentedSwitch = ({
 
 /* ------------------------------------------------------------- layout */
 
-export const Section = ({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) => (
-  <section className="flex flex-col gap-3">
+export const Section = ({
+  title,
+  action,
+  children,
+  rootProps,
+}: {
+  title: string;
+  action?: ReactNode;
+  children: ReactNode;
+  /** Extra attributes for the root element, e.g. a `data-*` test hook. */
+  rootProps?: Record<`data-${string}`, string | boolean>;
+}) => (
+  <section className="flex flex-col gap-3" {...rootProps}>
     <div className="flex items-center justify-between gap-3">
       <h2 className="type-overline text-slate-600">{title}</h2>
       {action}

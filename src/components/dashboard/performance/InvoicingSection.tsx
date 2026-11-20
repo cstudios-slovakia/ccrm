@@ -51,7 +51,7 @@ const GroupCard = ({
       />
       <div className="flex flex-col">
         {group.rows.map((row) => (
-          <label key={row.id} className={`${ROW_GROUP} cursor-pointer`}>
+          <label key={row.id} data-status-key={row.id} className={`${ROW_GROUP} cursor-pointer`}>
             <input
               type="checkbox"
               checked={row.included}
@@ -95,6 +95,7 @@ export const InvoicingSection = ({
 
   return (
     <Section
+      rootProps={{ "data-status-equation": true }}
       title={t("To invoice", "Na fakturovanie", "Számlázandó")}
       action={
         <button
