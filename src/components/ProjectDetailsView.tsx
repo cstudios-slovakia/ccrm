@@ -43,6 +43,9 @@ import { ProjectTasksPanel } from "./ProjectTasksPanel";
 import { ProjectTicketsPanel } from "./ProjectTicketsPanel";
 import { ProjectAcceptanceCriteria } from "./projects/ProjectAcceptanceCriteria";
 import { ProjectGithubFields } from "./projects/ProjectGithubFields";
+import { ProjectPushTimelineItem, ProjectPushesFailedNote } from "./projects/ProjectPushTimelineItem";
+import { useProjectPushes } from "../hooks/useProjectPushes";
+import { isPushItem, mergePushesIntoTimeline } from "../utils/projectPushTimeline";
 import type { Task, Ticket, TicketStatusDefinition, TicketSettings, SupportContract } from "../types";
 import { DEFAULT_TICKET_STATUSES, DEFAULT_TICKET_SETTINGS } from "../utils/tickets";
 import { isDoneTaskState } from "../utils/projectTasks";
@@ -414,6 +417,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   const [activeRightTab, setActiveRightTab] = useState<RightTab>(getInitialRightTab);
+
+  // GitHub pushes of a paired project: read-only items woven into the timeline (not part of the saved project).
+  const showsTimeline = layoutMode === "sidebar" || activeRightTab === "timeline";
+  const projectPushes = useProjectPushes(project?.id ?? "", showsTimeline && !isNew && !!project?.githubRepo && !!projectType?.hasTimeline);
+  const timelineEntries = useMemo(() => mergePushesIntoTimeline(timeline, projectPushes.pushes), [timeline, projectPushes.pushes]);
 
   const handleRightTabChange = (tab: RightTab) => {
     setActiveRightTab(tab);
@@ -3536,12 +3544,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
               {/* Timeline Events List */}
               <div className="flex-1 ws-lg:overflow-y-auto space-y-3.5 ws-lg:pr-1 scrollbar-thin">
-                {timeline.length === 0 ? (
+                {timelineEntries.length === 0 ? (
                   <div className="h-full min-h-50 flex items-center justify-center border-2 border-dashed border-slate-100 rounded-2xl p-6 text-slate-400 text-ui">
                     {t("No events logged for this project yet.", "Zatiaľ neboli zaznamenané žiadne udalosti.", "Még nincsenek események rögzítve.")}
                   </div>
                 ) : (
-                  timeline.map(event => (
+                  timelineEntries.map(event => isPushItem(event) ? <ProjectPushTimelineItem key={event.id} item={event} language={userLanguage} /> : (
                     <div key={event.id} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm text-ui font-semibold relative group flex gap-3.5 animate-fade-in">
                       <div className="p-2.5 rounded-xl bg-white border border-slate-200 shrink-0 self-start shadow-sm">
                         {getTimelineIcon(event.type, event.eventType)}
@@ -3634,6 +3642,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     </div>
                   ))
                 )}
+                {projectPushes.failed && <ProjectPushesFailedNote language={userLanguage} />}
               </div>
             </div>
           )}
