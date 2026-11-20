@@ -46,18 +46,22 @@ export function ProjectTimeTab({
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const range = useMemo(() => projectPeriodRange(period, today, customFrom, customTo), [period, today, customFrom, customTo]);
-  const entries = useMemo(() => allEntries.filter((e) => e.entryDate >= range.from && e.entryDate <= range.to), [allEntries, range]);
+  const entries = useMemo(() => (range.invalid ? [] : allEntries.filter((e) => e.entryDate >= range.from && e.entryDate <= range.to)), [allEntries, range]);
+  // The clock only matters while a timer runs; otherwise the figures must not recompute every second.
+  const liveNow = entries.some((e) => e.running) ? tt.nowMs : 0;
 
   /** Someone else's entry names its person; the viewer's own stay unlabelled. */
   const personOf = (userId: string) =>
     userId && userId !== tt.userId ? users.find((u) => u.id === userId)?.name || t("Unknown", "Neznámy", "Ismeretlen") : "";
   const totals = tt.totals.byProject[project.id];
-  const allSeconds = totals?.seconds ?? allEntries.reduce((sum, e) => sum + (e.durationSec ?? 0), 0);
+  // The stored total leaves running entries out; add them so the budget agrees with the Tracked tile.
+  const runningSeconds = allEntries.reduce((sum, e) => sum + (e.running ? entrySeconds(e, tt.nowMs) : 0), 0);
+  const allSeconds = (totals?.seconds ?? allEntries.reduce((sum, e) => sum + (e.durationSec ?? 0), 0)) + runningSeconds;
   const canCosts = tt.viewer.canCosts;
 
   // The same report the Reports page builds, so rounding, cost gating, billable value and the comparable-lines margin agree.
   const report = useMemo(() => {
-    const shares = entries.some((e) => e.running) ? liveWorkedShares(entries, tt.nowMs) : undefined;
+    const shares = entries.some((e) => e.running) ? liveWorkedShares(entries, liveNow) : undefined;
     return buildReport({
       entries: entries.map((e) => ({
         id: e.id,
@@ -66,8 +70,8 @@ export function ProjectTimeTab({
         clientId: null,
         entryDate: e.entryDate,
         title: e.title,
-        durationSec: entrySeconds(e, tt.nowMs),
-        workedSec: entryWorkedSeconds(e, tt.nowMs, shares),
+        durationSec: entrySeconds(e, liveNow),
+        workedSec: entryWorkedSeconds(e, liveNow, shares),
         billable: e.billable,
         cost: e.cost,
         currency,
@@ -81,20 +85,22 @@ export function ProjectTimeTab({
       currency,
       workingDays: 0,
     });
-  }, [entries, tt.nowMs, tt.settings.rounding, tt.userId, canCosts, currency, project.isInternal, range]);
+  }, [entries, liveNow, tt.settings.rounding, tt.userId, canCosts, currency, project.isInternal, range]);
 
   const taskRows = useMemo(
     () =>
       timeByTask(
-        entries.map((e) => ({ taskId: e.taskId, title: e.title || e.note || "", seconds: roundDurationSec(entrySeconds(e, tt.nowMs), tt.settings.rounding) })),
+        entries.map((e) => ({ taskId: e.taskId, title: e.title || e.note || "", seconds: roundDurationSec(entrySeconds(e, liveNow), tt.settings.rounding) })),
         (id) => tasks.find((tk) => tk.id === id),
       ),
-    [entries, tasks, tt.nowMs, tt.settings.rounding],
+    [entries, tasks, liveNow, tt.settings.rounding],
   );
 
   const exportCsv = () => {
+    // Own cost is visible to everyone, but the tab shows no cost without the permission, so the export has none either.
+    const exported = canCosts ? report : { ...report, lines: report.lines.map((l) => ({ ...l, cost: {} })), totals: { ...report.totals, cost: {} } };
     const text = reportCsv(
-      report,
+      exported,
       "detailed",
       {
         group: t("Group", "Skupina", "Csoport"),
@@ -167,6 +173,7 @@ export function ProjectTimeTab({
             <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} aria-label={t("To", "Do", "Eddig")} className={dateInput} />
           </>
         )}
+        {range.invalid && <span role="alert" className="type-meta text-rose-600">{t("End is before start", "Koniec je pred začiatkom", "A vége a kezdet előtt van")}</span>}
         <button
           type="button"
           data-testid="project-time-export"

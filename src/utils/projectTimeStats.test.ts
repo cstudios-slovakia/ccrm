@@ -3,14 +3,16 @@ import assert from "node:assert/strict";
 import { budgetUsedPercent, projectPeriodRange, timeByTask, weeklyByPerson } from "./projectTimeStats.ts";
 
 test("all time and an incomplete custom range cover everything", () => {
-  assert.deepEqual(projectPeriodRange("all", "2026-11-20", "", ""), { from: "2000-01-01", to: "2100-01-01" });
-  assert.deepEqual(projectPeriodRange("custom", "2026-11-20", "2026-11-01", ""), { from: "2000-01-01", to: "2100-01-01" });
-  assert.deepEqual(projectPeriodRange("custom", "2026-11-20", "2026-11-01", "2026-11-09"), { from: "2026-11-01", to: "2026-11-09" });
+  assert.deepEqual(projectPeriodRange("all", "2026-11-20", "", ""), { from: "2000-01-01", to: "2100-01-01", invalid: false });
+  assert.deepEqual(projectPeriodRange("custom", "2026-11-20", "", ""), { from: "2000-01-01", to: "2100-01-01", invalid: false });
+  assert.deepEqual(projectPeriodRange("custom", "2026-11-20", "2026-11-01", ""), { from: "2026-11-01", to: "2100-01-01", invalid: false });
+  assert.deepEqual(projectPeriodRange("custom", "2026-11-20", "2026-11-01", "2026-11-09"), { from: "2026-11-01", to: "2026-11-09", invalid: false });
+  assert.equal(projectPeriodRange("custom", "2026-11-20", "2026-11-09", "2026-11-01").invalid, true);
 });
 
 test("this and last month are calendar months", () => {
-  assert.deepEqual(projectPeriodRange("thisMonth", "2026-11-20", "", ""), { from: "2026-11-01", to: "2026-11-30" });
-  assert.deepEqual(projectPeriodRange("lastMonth", "2026-11-20", "", ""), { from: "2026-10-01", to: "2026-10-31" });
+  assert.deepEqual(projectPeriodRange("thisMonth", "2026-11-20", "", ""), { from: "2026-11-01", to: "2026-11-30", invalid: false });
+  assert.deepEqual(projectPeriodRange("lastMonth", "2026-11-20", "", ""), { from: "2026-10-01", to: "2026-10-31", invalid: false });
 });
 
 test("weeks end at today, stack by person and ignore time outside them", () => {
@@ -27,6 +29,16 @@ test("weeks end at today, stack by person and ignore time outside them", () => {
   assert.deepEqual(weeks.at(-1)?.byUser, { a: 3600, b: 1800 });
   assert.deepEqual(weeks.at(-2)?.byUser, { a: 600 });
   assert.deepEqual(people, [{ userId: "a", seconds: 4200 }, { userId: "b", seconds: 1800 }]);
+});
+
+test("a week that spans New Year is one bucket", () => {
+  const lines = [
+    { userId: "a", entryDate: "2026-12-31", seconds: 100 },
+    { userId: "a", entryDate: "2027-01-01", seconds: 200 },
+  ];
+  const { weeks } = weeklyByPerson(lines, { from: "2000-01-01", to: "2100-01-01" }, "2027-01-02", 3);
+  assert.deepEqual(weeks.map((w) => w.start), ["2026-12-14", "2026-12-21", "2026-12-28"]);
+  assert.deepEqual(weeks[2].byUser, { a: 300 });
 });
 
 test("a short period shows only its own weeks", () => {

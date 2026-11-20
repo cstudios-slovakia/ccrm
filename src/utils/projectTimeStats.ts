@@ -10,12 +10,19 @@ import { weekStart } from "./timeTracking.ts";
 
 export type ProjectPeriod = "all" | "thisMonth" | "lastMonth" | "custom";
 
-/** The date range of a period. "custom" falls back to all time until both dates are valid. */
-export const projectPeriodRange = (period: ProjectPeriod, today: string, customFrom: string, customTo: string): { from: string; to: string } => {
-  const all = { from: "2000-01-01", to: "2100-01-01" };
+/**
+ * The date range of a period. "custom" treats an empty date as open; From after To is `invalid`
+ * (the range then stays all time, and the caller shows no entries).
+ */
+export const projectPeriodRange = (period: ProjectPeriod, today: string, customFrom: string, customTo: string): { from: string; to: string; invalid: boolean } => {
+  const all = { from: "2000-01-01", to: "2100-01-01", invalid: false };
   if (period === "all") return all;
-  if (period === "custom") return customFrom && customTo && customFrom <= customTo ? { from: customFrom, to: customTo } : all;
-  return periodRange(period, today) ?? all;
+  if (period === "custom") {
+    if (customFrom && customTo && customFrom > customTo) return { ...all, invalid: true };
+    return { from: customFrom || all.from, to: customTo || all.to, invalid: false };
+  }
+  const r = periodRange(period, today);
+  return r ? { ...r, invalid: false } : all;
 };
 
 export interface WeekBucket {

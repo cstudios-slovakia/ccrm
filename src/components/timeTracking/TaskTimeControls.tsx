@@ -139,7 +139,7 @@ export function TaskTimeControls({
         delta={
           estimateSec
             ? over
-              ? t(`+${formatDuration(tracked - estimateSec)} over`, `+${formatDuration(tracked - estimateSec)} navyše`, `+${formatDuration(tracked - estimateSec)} túllépés`)
+              ? <span className="text-rose-600">{t(`+${formatDuration(tracked - estimateSec)} over`, `+${formatDuration(tracked - estimateSec)} navyše`, `+${formatDuration(tracked - estimateSec)} túllépés`)}</span>
               : t(`${formatDuration(estimateSec - tracked)} left`, `zostáva ${formatDuration(estimateSec - tracked)}`, `${formatDuration(estimateSec - tracked)} maradt`)
             : undefined
         }

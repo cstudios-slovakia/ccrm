@@ -123,7 +123,9 @@ export function ProjectTimeOverview({
       </StatGrid>
 
       <div className={projectBlockClass} data-testid="project-time-weekly">
-        <ProjectBlockHeader icon={<BarChart3 className="h-4 w-4 text-indigo-600 shrink-0" />} title={t("Hours per week", "Hodiny podľa týždňa", "Órák hetente")} />
+        <ProjectBlockHeader icon={<BarChart3 className="h-4 w-4 text-indigo-600 shrink-0" />} title={t("Hours per week", "Hodiny podľa týždňa", "Órák hetente")}
+          extra={<span className="type-meta text-slate-500">{bars.length === 1 ? t("1 week", "1 týždeň", "1 hét") : t(`Last ${bars.length} weeks`, `Posledných ${bars.length} týždňov`, `Utolsó ${bars.length} hét`)}</span>}
+        />
         <SegmentBars
           bars={bars}
           series={series}
