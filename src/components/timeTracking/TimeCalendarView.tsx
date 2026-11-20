@@ -127,7 +127,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range.from, range.to, country, tt.enabled]);
 
-  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-US";
+  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-GB";
   const today = todayIso(new Date(nowMs));
   const now = nowPosition(nowMs);
   const isAdmin = isAdminRoleName(deps.currentUser.role);
@@ -524,7 +524,12 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
     ? monthLabel
     : zoom === "day"
       ? new Date(`${anchor}T12:00:00`).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long" })
-      : `${new Date(`${days[0]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", ...(days[0].slice(0, 4) !== days[6].slice(0, 4) ? { year: "numeric" as const } : {}), month: "short" })} – ${new Date(`${days[6]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}`;
+      : (() => {
+          const fmt = (iso: string, year: boolean) => new Date(`${iso}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short", ...(year ? { year: "numeric" as const } : {}) });
+          const sameMonth = days[0].slice(0, 7) === days[6].slice(0, 7);
+          if (sameMonth && deps.language !== "hu") return `${Number(days[0].slice(8))} – ${fmt(days[6], true)}`;
+          return `${fmt(days[0], days[0].slice(0, 4) !== days[6].slice(0, 4))} – ${fmt(days[6], true)}`;
+        })();
 
   const daySeconds = useMemo(() => {
     // Worked time, like List and the Timesheet Worked row: parallel timers in one hour count once.

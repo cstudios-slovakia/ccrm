@@ -46,8 +46,8 @@ export function CalendarPopover({ popover, entry, deps, recentProjectIds, second
     ? t("hours only", "iba hodiny", "csak órák")
     : `${formatMinute(span.startMin)}–${formatMinute(span.endMin)}${plus > 0 ? ` +${plus}` : ""}`;
   const day = entry?.entryDate ?? (popover.kind === "draft" ? popover.day : "");
-  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-US";
-  const dayLabel = day ? new Date(`${day}T12:00:00`).toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short" }) : "";
+  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-GB";
+  const dayLabel = day ? `${new Date(`${day}T12:00:00`).toLocaleDateString(locale, { weekday: "short" })} ${new Date(`${day}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })}` : "";
   const seconds = entry ? entryDurationSec(entry, nowMs) : popover.kind === "draft" ? instantsForSpan(popover.day, popover.span).durationSec : 0;
   const cost = entry ? visibleEntryCost(entry, tt.userId || "", tt.viewer.canCosts) : null;
   const taskName = entry?.taskId ? deps.tasks.find((task) => task.id === entry.taskId)?.title ?? entry.title : "";
@@ -168,6 +168,7 @@ export function CalendarPopover({ popover, entry, deps, recentProjectIds, second
             <button type="button" onClick={() => onOpen(entry)} className="inline-flex h-9 flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">
               {t("Edit", "Upraviť", "Szerkesztés")}
             </button>
+            {!entry.running && (
             <button
               type="button"
               disabled={readOnly}
@@ -178,6 +179,7 @@ export function CalendarPopover({ popover, entry, deps, recentProjectIds, second
             >
               <Copy className="size-4" />
             </button>
+            )}
             <button
               type="button"
               disabled={readOnly}
