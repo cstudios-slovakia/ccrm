@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeGithubBranch, normalizeGithubRepo } from "./githubRepo";
+import { normalizeGithubBranch, normalizeGithubRepo } from "./githubRepo.ts";
 
 test("repository: plain, pasted URL, .git and trailing slash", () => {
   assert.equal(normalizeGithubRepo("Acme/Shop"), "Acme/Shop");

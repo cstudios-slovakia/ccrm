@@ -29,6 +29,7 @@ import { ShippingMethodSettings } from "./ShippingMethodSettings";
 import { PaymentMethodSettings } from "./PaymentMethodSettings";
 import { FinanceSettings } from "./FinanceSettings";
 import { MarketingRoiSettings } from "./settings/MarketingRoiSettings";
+import { GithubIntegrationSettings } from "./settings/GithubIntegrationSettings";
 import type { ProjectStatusDef } from "../utils/projects";
 import type { OrderStatusDef } from "../utils/orders";
 import type { Order, Ticket, TicketStatusDef, TicketSettingsConfig, OfferCategory, InvoiceOffer } from "../types";
@@ -7095,6 +7096,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         return <AiUsagePanel lang={userLanguage} />;
       case "integrations/waai":
         return <WaaiIntegrationSettings activeLang={userLanguage} />;
+      case "integrations/github":
+        return <GithubIntegrationSettings userLanguage={userLanguage} />;
       case "agency/workflow":
         return (
           <AgencySettingsSection

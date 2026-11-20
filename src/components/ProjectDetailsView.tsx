@@ -42,6 +42,7 @@ import { missingChecklistItems, readChecklistValue, writeChecklistValue } from "
 import { ProjectTasksPanel } from "./ProjectTasksPanel";
 import { ProjectTicketsPanel } from "./ProjectTicketsPanel";
 import { ProjectAcceptanceCriteria } from "./projects/ProjectAcceptanceCriteria";
+import { ProjectGithubFields } from "./projects/ProjectGithubFields";
 import type { Task, Ticket, TicketStatusDefinition, TicketSettings, SupportContract } from "../types";
 import { DEFAULT_TICKET_STATUSES, DEFAULT_TICKET_SETTINGS } from "../utils/tickets";
 import { isDoneTaskState } from "../utils/projectTasks";
@@ -343,6 +344,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [division, setDivision] = useState("");
   /* Phone of the project's contact. WAAI pairs WhatsApp chats to the project by it. */
   const [contactPhone, setContactPhone] = useState("");
+  /* GitHub pairing: repository ("owner/name") and server branch; pushes to it are stored by the webhook. */
+  const [githubRepo, setGithubRepo] = useState("");
+  const [githubBranch, setGithubBranch] = useState("");
   /* Star priority, 1-5, 0 while nobody has rated it. Like the status below it,
      a click saves on the spot. */
   const [rating, setRating] = useState(0);
@@ -533,6 +537,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     status: p.status || "active",
     division: p.division || "",
     contactPhone: p.contactPhone || "",
+    githubRepo: p.githubRepo || "",
+    githubBranch: p.githubBranch || "",
     rating: ratingValue(p.rating),
     leadId: p.leadId || "",
     clientId: p.clientId || "",
@@ -564,6 +570,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       status,
       division: division || null,
       contactPhone: contactPhone.trim() || null,
+      githubRepo: githubRepo || null,
+      githubBranch: githubBranch || null,
       rating,
       leadId: associatedLeadId || null,
       clientId: associatedClientId || null,
@@ -650,6 +658,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     setStatus(s.status);
     setDivision(s.division);
     setContactPhone(s.contactPhone);
+    setGithubRepo(s.githubRepo);
+    setGithubBranch(s.githubBranch);
     setRating(s.rating);
     setAssociatedLeadId(s.leadId);
     setAssociatedClientId(s.clientId);
@@ -675,6 +685,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     status,
     division,
     contactPhone,
+    githubRepo,
+    githubBranch,
     rating,
     leadId: associatedLeadId,
     clientId: associatedClientId,
@@ -2256,6 +2268,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </p>
               )}
             </div>
+
+            <ProjectGithubFields userLanguage={userLanguage} repo={githubRepo} branch={githubBranch} canEdit={canEdit} onRepoChange={setGithubRepo} onBranchChange={setGithubBranch} />
 
             {/* Invoice date and deadline. Each has its own switch on the project
                 type (Projects -> Settings -> project type): the invoice date is
