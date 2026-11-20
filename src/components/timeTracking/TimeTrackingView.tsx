@@ -13,7 +13,7 @@ import { TimeListView } from "./TimeListView";
 import { TimeTimesheetView } from "./TimeTimesheetView";
 import { TimerBar } from "./TimerBar";
 import { TimeTrackingMobileBar } from "./TimeTrackingMobileBar";
-import { ViewingAsProvider, useViewingAs } from "./ViewingAsContext";
+import { ViewingAsProvider, useEntriesFocus, useViewingAs } from "./ViewingAsContext";
 import { ViewingAsSelect } from "./ViewingAsSelect";
 import { TimeHeaderActions } from "./TimeHeaderActions";
 import { TimeToolbarProvider, TimeToolbarTarget } from "./TimeToolbarSlot";
@@ -53,6 +53,7 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
   const [tab, setTab] = useState(() => tabFromRoute(route));
   const [open, setOpen] = useState<TimeEntry | null>(null);
   const remove = useEntryDeletion();
+  const entriesFocus = useEntriesFocus();
 
   const { recentProjectIds, secondsByProject } = useRecentProjects();
 
@@ -109,7 +110,7 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <TimeToolbarTarget />
-          {scope === "me" && <UnsortedListChip />}
+          {scope === "me" && !entriesFocus && <UnsortedListChip refreshKey={tab} />}
           <ViewingAsSelect users={people} />
         </div>
       </div>

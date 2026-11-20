@@ -83,7 +83,8 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
   const { t, nowMs, settings } = tt;
   const [mode, setMode] = useState<"timer" | "manual">("timer");
   // In Manual mode the bar's fields belong to the NEW entry, also while a timer runs.
-  const running = adding || mode === "manual" ? null : tt.primaryRunning;
+  const live = adding ? null : tt.primaryRunning;
+  const running = mode === "manual" ? null : live;
   const lookups = useTimeLookups(deps);
   const [noteOpen, setNoteOpen] = useState(false);
   const noteField = useRef<HTMLInputElement>(null);
@@ -406,10 +407,19 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
 
       {manual ? (
         <>
+          {live && (
+            <>
+              <ClockDigits value={formatDuration(elapsedSeconds(live.startAt, nowMs), true)} className="justify-end text-title font-bold text-rose-600" data-testid="timer-elapsed" />
+              <CycleRing swap radius={roundButtonRadius("lg")} buttonClass={roundButtonClass("lg")}>
+                <RoundTimerButton kind="stop" label={t("Stop timer", "Zastaviť časovač", "Időzítő leállítása")} onClick={() => { if (!busy) { setBusy(true); void tt.stop(live.id).finally(() => setBusy(false)); } }} disabled={busy} data-testid="timer-stop" />
+              </CycleRing>
+              <span className="mx-1 hidden h-7 w-px bg-slate-200 ws-sm:block" aria-hidden />
+            </>
+          )}
           <div className="flex flex-wrap items-center gap-1.5">
-            <input type="time" value={from} onChange={(e) => setFrom(e.target.value)} className={timeInput} aria-label={t("Start", "Začiatok", "Kezdet")} />
+            <input type="time" value={from} onChange={(e) => { setFrom(e.target.value); setDur(""); }} className={timeInput} aria-label={t("Start", "Začiatok", "Kezdet")} />
             <ArrowRight className="size-3.5 text-slate-400" aria-hidden />
-            <input type="time" value={to} onChange={(e) => setTo(e.target.value)} className={timeInput} aria-label={t("End", "Koniec", "Vég")} />
+            <input type="time" value={to} onChange={(e) => { setTo(e.target.value); setDur(""); }} className={timeInput} aria-label={t("End", "Koniec", "Vég")} />
             <label className="relative inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 text-ui font-semibold text-slate-700 hover:bg-slate-50 focus-within:outline-2 focus-within:outline-primary">
               <CalendarDays className="size-3.5" aria-hidden />
               {dateLabel}
@@ -462,12 +472,12 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
         </>
       )}
 
-      <div className="flex flex-col gap-0.5" role="group" aria-label={t("Entry mode", "Spôsob zápisu", "Rögzítés módja")}>
+      <div className="flex gap-0.5 ws-sm:flex-col" role="group" aria-label={t("Entry mode", "Spôsob zápisu", "Rögzítés módja")}>
         {(["timer", "manual"] as const).map((m) => {
           const label = m === "timer" ? t("Timer", "Časovač", "Időzítő") : t("Manual", "Ručne", "Kézi");
           const Icon = m === "timer" ? Clock : ListPlus;
           return (
-            <button key={m} type="button" onClick={() => setMode(m)} aria-pressed={mode === m} aria-label={label} title={label} data-testid={`timer-mode-${m}`} className={`inline-flex h-5.5 w-6.5 items-center justify-center rounded-md transition-colors cursor-pointer ${mode === m ? "bg-slate-100 text-slate-900" : "text-slate-400 hover:text-slate-700"}`}>
+            <button key={m} type="button" onClick={() => setMode(m)} aria-pressed={mode === m} aria-label={label} title={label} data-testid={`timer-mode-${m}`} className={`inline-flex size-10 ws-sm:h-5.5 ws-sm:w-6.5 items-center justify-center rounded-md transition-colors cursor-pointer ${mode === m ? "bg-slate-100 text-slate-900" : "text-slate-400 hover:text-slate-700"}`}>
               <Icon className="size-3.5" />
             </button>
           );

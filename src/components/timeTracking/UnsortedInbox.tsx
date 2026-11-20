@@ -9,7 +9,10 @@ import { ProjectPicker } from "./ProjectPicker";
 import type { TimeDeps } from "./shared";
 
 /** List chip. Renders nothing until there is at least one unsorted item. */
-export function UnsortedListChip() {
+/** Fired after the inbox loaded, assigned or dismissed items, so the toolbar chip recounts. */
+export const UNSORTED_CHANGED_EVENT = "ccrm-unsorted-changed";
+
+export function UnsortedListChip({ refreshKey }: { refreshKey?: string }) {
   const { t } = useTimeTracking();
   const [count, setCount] = useState<number | null>(null);
 
@@ -26,12 +29,14 @@ export function UnsortedListChip() {
     };
     load();
     const onFocus = () => load();
+    window.addEventListener(UNSORTED_CHANGED_EVENT, onFocus);
     document.addEventListener("visibilitychange", onFocus);
     return () => {
       gone = true;
       document.removeEventListener("visibilitychange", onFocus);
+      window.removeEventListener(UNSORTED_CHANGED_EVENT, onFocus);
     };
-  }, []);
+  }, [refreshKey]);
 
   if (!count) return null;
   return (
@@ -67,6 +72,7 @@ export function UnsortedInbox({ deps }: { deps: TimeDeps }) {
     try {
       const res = await loadUnsorted();
       setItems(res.items);
+      window.dispatchEvent(new Event(UNSORTED_CHANGED_EVENT));
       setSelected(new Set());
     } catch (e) {
       window.showToast?.(timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t), "error");
