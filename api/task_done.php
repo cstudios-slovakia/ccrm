@@ -74,16 +74,13 @@ if (!function_exists('ccrm_sql_task_not_done')) {
 
 if (!function_exists('ccrm_task_is_reopened')) {
     /**
-     * Does saving a stored task with `$newStatus` reopen it? True when the stored task was finished (its
-     * status is a done state, or it carries a completion stamp while the save clears that stamp) and the
-     * new status is not a done state. Series templates never count. `$stored` needs `status`,
-     * `completed_at` and, when known, `task_kind`.
+     * Does saving a stored task with `$newStatus` reopen it? True when the stored status is a done state
+     * and the new status is not. A stale completion stamp on an open task does not count. Series
+     * templates never count. `$stored` needs `status` and, when known, `task_kind`.
      */
-    function ccrm_task_is_reopened(array $stored, $newStatus, array $states, $newCompletedAt = null): bool {
+    function ccrm_task_is_reopened(array $stored, $newStatus, array $states): bool {
         if (($stored['task_kind'] ?? null) === 'recurring') return false;
-        if (ccrm_task_status_is_done($newStatus, $states)) return false;
-        if (ccrm_task_status_is_done($stored['status'] ?? '', $states)) return true;
-        return trim((string)($stored['completed_at'] ?? '')) !== '' && trim((string)$newCompletedAt) === '';
+        return ccrm_task_status_is_done($stored['status'] ?? '', $states) && !ccrm_task_status_is_done($newStatus, $states);
     }
 }
 

@@ -285,7 +285,7 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
             $add('completed_by', $user['name']); $add('completed_at', date('Y-m-d H:i'));
         }
         // A finished task moved to an open state is a reopening: clear who finished it and log the reopening.
-        $reopened = ccrm_task_is_reopened($row, $status, (array)mcp_config_json($pdo, 'TASK_STATES', []), '');
+        $reopened = ccrm_task_is_reopened($row, $status, (array)mcp_config_json($pdo, 'TASK_STATES', []));
         if ($reopened) { $add('completed_by', null); $add('completed_at', null); }
     }
     if (array_key_exists('conclusion', $args)) {
@@ -315,7 +315,10 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
         $pdo->prepare("UPDATE tasks SET " . implode(', ', $sets) . " WHERE id = ? AND " . ccrm_sql_real_tasks())->execute($params);
         if ($reopened) {
             try { ccrm_task_record_reopen($pdo, $id, (string)($user['name'] ?? '')); }
-            catch (\Throwable $e) { if (function_exists('ccrm_log_exception')) ccrm_log_exception($e); } // column not migrated yet: the update still stands
+            catch (\PDOException $e) { // only a column not migrated yet is tolerated (the update stands); a deadlock must roll back
+                if (stripos($e->getMessage(), 'Unknown column') === false) throw $e;
+                if (function_exists('ccrm_log_exception')) ccrm_log_exception($e);
+            }
         }
         // The assignee list is the visibility rule, so a new owner must be on it.
         if ($newOwner !== null) $pdo->prepare("INSERT IGNORE INTO task_assignees (task_id, user_name) VALUES (?, ?)")->execute([$id, $newOwner]);

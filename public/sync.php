@@ -4992,7 +4992,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $oldRelatedTicketId = null;
                 $oldRelatedAgencyWorkerId = null;
                 if (!$isNewTask) {
-                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner`, `requires_conclusion`, `related_ticket_id`, `related_agency_worker_id`, `completed_at` AS `prev_completed_at` FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " LIMIT 1");
+                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner`, `requires_conclusion`, `related_ticket_id`, `related_agency_worker_id` FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " LIMIT 1 FOR UPDATE");
                     $oldStatusStmt->execute([$taskId]);
                     $oldRow = $oldStatusStmt->fetch(PDO::FETCH_ASSOC);
                     if ($oldRow) {
@@ -5063,7 +5063,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $catFlag,
                 ]);
                 // A finished task saved as unfinished: log who reopened it and when (server-owned column).
-                if (!$isNewTask && $oldRow && ccrm_task_is_reopened(['status' => $oldTaskStatus, 'completed_at' => $oldRow['prev_completed_at'] ?? null], $t['status'] ?? 'todo', $conclusionTaskStates, $t['completedAt'] ?? '')) {
+                if (!$isNewTask && $oldRow && ccrm_task_is_reopened(['status' => $oldTaskStatus], $t['status'] ?? 'todo', $conclusionTaskStates)) {
                     ccrm_task_record_reopen($pdo, (string)$taskId, $sessionUserName !== '' ? $sessionUserName : null);
                 }
                 if ($relTicketIdVal !== null && $ticketLinkAllowed) {
