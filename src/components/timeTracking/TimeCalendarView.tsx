@@ -1,7 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent } from "react";
-import { GripVertical, Play } from "lucide-react";
-import { Surface, Toolbar } from "../layout";
-import { CustomSelect } from "../ui/CustomSelect";
+import { Surface } from "../layout";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { holidayName } from "../../utils/holidays.ts";
@@ -43,14 +41,16 @@ import {
 import { isEntryLocked, lockReason, paidMonthsForOwner } from "../../utils/timeLock";
 import { formatDuration, localIsoDate, projectColor, todayIso, type TimeEntry } from "../../utils/timeTracking.ts";
 import { totalWorkedSeconds } from "../../utils/timeWorked.ts";
-import { TimeApiError, createEntry, timeErrorMessage, updateEntry, type EntryInput } from "../../utils/timeTrackingApi.ts";
+import { TimeApiError, createEntry, timeErrorMessage, updateEntry } from "../../utils/timeTrackingApi.ts";
 import { ProjectLabel } from "./ProjectLabel";
-import { ProjectPicker } from "./ProjectPicker";
 import { RangeNav } from "./RangeNav";
 import { RunningBadge } from "./RunningBadge";
 import { scopeParam } from "./TimeListView";
 import { clusterEntries } from "../../utils/timeClusters.ts";
 import { ClusterFrames } from "./ClusterChip";
+import { CalendarPopover, type PopoverState } from "./CalendarPopover";
+import { CalendarTaskRail } from "./CalendarTaskRail";
+import { TimeToolbarSlot } from "./TimeToolbarSlot";
 import { describeTimeLock, useEntryDeletion, useTimeLookups, type TimeDeps } from "./shared";
 import { typePx } from "../../utils/viewSize";
 
@@ -65,10 +65,6 @@ interface Props {
 type Ghost =
   | { kind: "draft"; day: string; span: MinuteSpan }
   | { kind: "entry"; id: string; day: string; span: MinuteSpan };
-
-type PopoverState =
-  | { kind: "entry"; id: string; top: number; left: number }
-  | { kind: "draft"; day: string; span: MinuteSpan; top: number; left: number; taskId?: string; projectId?: string | null };
 
 type Drag = {
   kind: "create" | "move" | "resize" | "month-resize" | "open";
@@ -519,14 +515,6 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
     };
   };
 
-  const myTasks = deps.tasks
-    .filter((task) => {
-      if (task.archived || deps.isTaskDone(task)) return false;
-      const names = [task.owner, ...(task.assignedUsers ?? [])].filter(Boolean);
-      return names.includes(deps.currentUser.name);
-    })
-    .sort((a, b) => (a.deadline || "").localeCompare(b.deadline || "") || a.title.localeCompare(b.title));
-
   const columns = `3.5rem repeat(${zoom === "day" ? 1 : 7}, minmax(0, 1fr))`;
   const hourDays = zoom === "month" ? [] : days;
   const anyHoliday = hourDays.some((day) => holidayLabel(day));
@@ -536,7 +524,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
     ? monthLabel
     : zoom === "day"
       ? new Date(`${anchor}T12:00:00`).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long" })
-      : `${new Date(`${days[0]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })} – ${new Date(`${days[6]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })}`;
+      : `${new Date(`${days[0]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", ...(days[0].slice(0, 4) !== days[6].slice(0, 4) ? { year: "numeric" as const } : {}), month: "short" })} – ${new Date(`${days[6]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}`;
 
   const daySeconds = useMemo(() => {
     // Worked time, like List and the Timesheet Worked row: parallel timers in one hour count once.
@@ -555,52 +543,46 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
   return (
     <div className="flex flex-col gap-3 ws-lg:flex-row" data-testid="time-calendar">
       <div ref={rootRef} className="relative min-w-0 flex-1">
-        <Toolbar
-          filters={
-            <RangeNav
-              label={<span className="capitalize">{rangeLabel}</span>}
-              prevLabel={t("Earlier", "Skôr", "Korábbi")}
-              nextLabel={t("Later", "Neskôr", "Későbbi")}
-              onPrev={() => setAnchor(shiftAnchor(zoom, anchor, -1))}
-              onNext={() => setAnchor(shiftAnchor(zoom, anchor, 1))}
-              resetLabel={t("Today", "Dnes", "Ma")}
-              onReset={isCurrentRange ? undefined : () => setAnchor(todayIso())}
-            />
-          }
-          trailing={
-            <div className="flex items-center gap-3">
-            <span className="type-meta text-slate-500" data-testid="calendar-total">
-              {totalLabel} <span className="text-ui font-semibold tabular-nums text-slate-800">{formatDuration(rangeSeconds)}</span>
-            </span>
-            <div data-testid="calendar-zoom">
-              <CustomSelect
-                value={zoom}
-                onChange={(value) => setZoom(value as CalendarZoom)}
-                options={[
-                  { value: "day", label: t("Day", "Deň", "Nap") },
-                  { value: "week", label: t("Week", "Týždeň", "Hét") },
-                  { value: "month", label: t("Month", "Mesiac", "Hónap") },
-                ]}
-                size="sm"
-                fitLabel
-              />
-            </div>
-            </div>
-          }
-        />
+        <TimeToolbarSlot>
+          <div className="inline-flex gap-1 rounded-xl bg-slate-100 p-1" data-testid="calendar-zoom" role="group">
+            {(["day", "week", "month"] as const).map((id) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setZoom(id)}
+                aria-pressed={zoom === id}
+                className={`h-8 rounded-lg px-3 type-overline transition-all active:scale-95 cursor-pointer ${zoom === id ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+              >
+                {id === "day" ? t("Day", "Deň", "Nap") : id === "week" ? t("Week", "Týždeň", "Hét") : t("Month", "Mesiac", "Hónap")}
+              </button>
+            ))}
+          </div>
+          <RangeNav
+            label={<span className="capitalize">{rangeLabel}</span>}
+            prevLabel={t("Earlier", "Skôr", "Korábbi")}
+            nextLabel={t("Later", "Neskôr", "Későbbi")}
+            onPrev={() => setAnchor(shiftAnchor(zoom, anchor, -1))}
+            onNext={() => setAnchor(shiftAnchor(zoom, anchor, 1))}
+            resetLabel={t("Today", "Dnes", "Ma")}
+            onReset={isCurrentRange ? undefined : () => setAnchor(todayIso())}
+          />
+          <span className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 type-meta text-slate-500" data-testid="calendar-total">
+            {totalLabel} <span className="text-ui font-semibold tabular-nums text-slate-900">{formatDuration(rangeSeconds)}</span>
+          </span>
+        </TimeToolbarSlot>
 
         {zoom !== "month" ? (
-          <Surface padding="none" className="mt-3 overflow-hidden">
+          <Surface padding="none" className="overflow-hidden">
             <div className="grid" style={{ gridTemplateColumns: columns }}>
               <div />
               {hourDays.map((day) => {
                 const dt = new Date(`${day}T12:00:00`);
                 const off = calendar.isOffDay(day) && !holidayLabel(day);
                 return (
-                  <div key={day} className={`border-l border-slate-100 px-1 py-2 text-center ${day === today ? "bg-teal-600 text-white" : off ? "text-slate-400" : "text-slate-700"}`}>
-                    <div className="type-overline">{dt.toLocaleDateString(locale, { weekday: "short" })}</div>
-                    <div className="text-ui font-bold tabular-nums">{dt.getDate()}</div>
-                    <div className={`type-meta tabular-nums ${day === today ? "text-white/80" : "text-slate-500"}`} data-testid="calendar-day-total">{(daySeconds.get(day) ?? 0) > 0 ? formatDuration(daySeconds.get(day) ?? 0) : "–"}</div>
+                  <div key={day} className={`flex items-center gap-1.5 border-l border-slate-100 px-2 py-2 ${day === today ? "bg-primary/5" : ""} ${off ? "text-slate-400" : "text-slate-700"}`}>
+                    <span className="type-overline">{dt.toLocaleDateString(locale, { weekday: "short" })}</span>
+                    <span className={`inline-flex size-6 items-center justify-center rounded-full text-ui font-bold tabular-nums ${day === today ? "bg-primary text-primary-foreground" : ""}`}>{dt.getDate()}</span>
+                    <span className="type-meta ml-auto tabular-nums text-slate-500" data-testid="calendar-day-total">{(daySeconds.get(day) ?? 0) > 0 ? formatDuration(daySeconds.get(day) ?? 0) : "–"}</span>
                   </div>
                 );
               })}
@@ -617,9 +599,9 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
                   })}
                 </>
               )}
-              <div className="bg-amber-50 px-1 py-1 type-meta font-semibold text-amber-700">{t("Untimed", "Bez času", "Idő nélkül")}</div>
+              <div className="bg-slate-50 px-1 py-1 type-meta font-semibold text-slate-500">{t("Untimed", "Bez času", "Idő nélkül")}</div>
               {hourDays.map((day) => (
-                <div key={`u-${day}`} data-testid="calendar-untimed" className="flex max-h-24 flex-col gap-1 overflow-y-auto border-l border-t border-amber-100 bg-amber-50/70 p-1">
+                <div key={`u-${day}`} data-testid="calendar-untimed" className="flex max-h-24 flex-col gap-1 overflow-y-auto border-l border-t border-slate-100 bg-slate-50/70 p-1">
                   {layoutDay(entries, day, nowMs).untimed
                     .filter((item) => !(ghost?.kind === "entry" && ghost.id === item.id))
                     .map((item) => {
@@ -637,7 +619,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
                             e.dataTransfer.effectAllowed = "move";
                           }}
                           onClick={() => setPopover({ kind: "entry", id: entry.id, top: 72, left: 24 })}
-                          className="truncate rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-left text-micro font-semibold text-amber-800 cursor-grab"
+                          className="truncate rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-left text-micro font-semibold text-slate-700 cursor-grab"
                         >
                           <span className="tabular-nums">{formatDuration(item.durationSec)}</span> {entry.title || t("Untitled", "Bez názvu", "Névtelen")}
                         </button>
@@ -713,7 +695,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
             </div>
           </Surface>
         ) : (
-          <Surface padding="none" className="mt-3 overflow-hidden">
+          <Surface padding="none" className="overflow-hidden">
             <div className="grid grid-cols-7">
               {monthDays.slice(0, 7).map((day) => (
                 <div key={day} className="px-1 py-2 text-center type-overline text-slate-500">
@@ -738,13 +720,13 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
                     onDrop={(e) => void onDrop(e, day, "month")}
                     className={`min-h-28 border-t border-l border-slate-100 p-1 ${name ? "bg-slate-100" : ""} ${inMonth ? "" : "bg-slate-50 text-slate-400"}`}
                   >
-                    <div className={`mb-1 text-ui font-semibold tabular-nums ${day === today ? "inline-flex size-6 items-center justify-center rounded-full bg-teal-600 text-white" : ""}`}>{Number(day.slice(8))}</div>
+                    <div className={`mb-1 text-ui font-semibold tabular-nums ${day === today ? "inline-flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground" : ""}`}>{Number(day.slice(8))}</div>
                     {name && <div className="truncate text-micro font-semibold text-slate-500" data-testid="calendar-holiday">{name}</div>}
                     {layout.untimed.map((item) => {
                       const entry = byId.get(item.id);
                       if (!entry) return null;
                       return (
-                        <button key={item.id} type="button" data-cal-block draggable={mayChange(entry)} onDragStart={(e) => { e.dataTransfer.setData("application/x-ccrm-entry", entry.id); e.dataTransfer.setData("text/plain", `entry:${entry.id}`); }} onClick={() => setPopover({ kind: "entry", id: entry.id, top: 80, left: 24 })} className="mb-0.5 block w-full truncate rounded-md border border-amber-200 bg-amber-50 px-1 text-left text-micro font-semibold text-amber-800">
+                        <button key={item.id} type="button" data-cal-block draggable={mayChange(entry)} onDragStart={(e) => { e.dataTransfer.setData("application/x-ccrm-entry", entry.id); e.dataTransfer.setData("text/plain", `entry:${entry.id}`); }} onClick={() => setPopover({ kind: "entry", id: entry.id, top: 80, left: 24 })} className="mb-0.5 block w-full truncate rounded-md border border-slate-200 bg-white px-1 text-left text-micro font-semibold text-slate-700">
                           {formatDuration(item.durationSec)} {entry.title}
                         </button>
                       );
@@ -769,7 +751,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
         )}
 
         {popover && (popover.kind === "draft" || openEntry) && (
-          <QuickPopover
+          <CalendarPopover
             key={popover.kind === "entry" ? popover.id : `draft-${popover.day}`}
             popover={popover}
             entry={openEntry ?? null}
@@ -816,146 +798,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
         )}
       </div>
 
-      <aside className="ws-lg:w-64 ws-lg:shrink-0" data-testid="calendar-task-rail">
-        <Surface className="flex max-h-[36rem] flex-col gap-2">
-          <h3 className="type-label text-slate-800">{t("Your tasks", "Vaše úlohy", "Az Ön feladatai")}</h3>
-          <p className="type-meta text-slate-500">{t("Drag a task onto the calendar, or press play to start the timer.", "Úlohu pretiahnite do kalendára alebo spustite časovač.", "Húzza a feladatot a naptárra, vagy indítsa az időzítőt.")}</p>
-          <div className="flex flex-col gap-1 overflow-y-auto">
-            {myTasks.length === 0 && <p className="text-ui text-slate-500">{t("No open tasks.", "Žiadne otvorené úlohy.", "Nincs nyitott feladat.")}</p>}
-            {myTasks.map((task) => {
-              const projectId = lookups.resolveTaskProject(task).projectId;
-              return (
-                <div key={task.id} className="flex items-center gap-1 rounded-xl border border-slate-200/80 px-2 py-1.5">
-                  <span
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData("application/x-ccrm-task", task.id);
-                      e.dataTransfer.setData("text/plain", `task:${task.id}`);
-                      e.dataTransfer.effectAllowed = "copy";
-                    }}
-                    className="cursor-grab text-slate-400"
-                    aria-label={t("Drag onto the calendar", "Pretiahnuť do kalendára", "Húzza a naptárra")}
-                  >
-                    <GripVertical className="size-4" />
-                  </span>
-                  <button
-                    type="button"
-                    onClick={(ev) => void tt.start({ taskId: task.id, projectId, originType: "task", originId: task.id, billable: settings.billableByDefault }, { anchor: ev.currentTarget })}
-                    className="inline-flex size-7 items-center justify-center rounded-lg text-teal-700 hover:bg-teal-50 cursor-pointer"
-                    aria-label={t("Start timer", "Spustiť časovač", "Időzítő indítása")}
-                  >
-                    <Play className="size-3.5 fill-current" />
-                  </button>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-ui font-semibold text-slate-800">{task.title}</div>
-                    <div className={`truncate type-meta ${projectId ? "text-slate-500" : "text-amber-700"}`}>{projectId ? lookups.projectName(projectId) : t("No project", "Bez projektu", "Nincs projekt")}</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Surface>
-      </aside>
-    </div>
-  );
-}
-
-function QuickPopover({
-  popover,
-  entry,
-  deps,
-  recentProjectIds,
-  secondsByProject,
-  nowMs,
-  readOnly,
-  onClose,
-  onOpen,
-  onDelete,
-  onPatch,
-  onCreate,
-}: {
-  popover: PopoverState;
-  entry: TimeEntry | null;
-  deps: TimeDeps;
-  recentProjectIds: string[];
-  secondsByProject?: Record<string, number>;
-  nowMs: number;
-  readOnly: boolean;
-  onClose: () => void;
-  onOpen: (entry: TimeEntry) => void;
-  onDelete: (entry: TimeEntry) => void;
-  onPatch: (entry: TimeEntry, patch: EntryInput) => Promise<void>;
-  onCreate: (day: string, span: MinuteSpan, projectId: string | null, billable: boolean) => Promise<void>;
-}) {
-  const { t, settings } = useTimeTracking();
-  const [projectId, setProjectId] = useState<string | null>(entry?.projectId ?? (popover.kind === "draft" ? popover.projectId ?? null : null));
-  const [billable, setBillable] = useState(entry?.billable ?? settings.billableByDefault);
-  const span = entry ? spanFromEntry(entry, nowMs) : popover.kind === "draft" ? popover.span : null;
-  const when = !span
-    ? t("hours only", "iba hodiny", "csak órák")
-    : `${formatMinute(span.startMin)}–${formatMinute(span.endMin)}${plusDays(span.endMin) > 0 ? ` +${plusDays(span.endMin)}` : ""}`;
-  return (
-    <div data-cal-popover className="absolute z-30 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl" style={{ top: popover.top, left: popover.left }}>
-      {entry ? (
-        <div className={`mb-1 truncate text-ui font-semibold ${entry.titleDeleted ? "text-slate-400" : "text-slate-900"}`}>{entry.title || t("Untitled", "Bez názvu", "Névtelen")}</div>
-      ) : (
-        <div className="mb-1 text-ui font-semibold text-slate-900">{t("New entry", "Nový záznam", "Új bejegyzés")}</div>
-      )}
-      <div className="mb-2 text-ui tabular-nums text-slate-600">
-        {when}
-        {entry && <span className="ml-2">{formatDuration(entryDurationSec(entry, nowMs))}</span>}
-        {popover.kind === "draft" && <span className="ml-2">{formatDuration(instantsForSpan(popover.day, popover.span).durationSec)}</span>}
-      </div>
-      <ProjectPicker
-        projects={deps.projects}
-        leads={deps.leads}
-        projectTypes={deps.projectTypes}
-        value={projectId}
-        onChange={(id) => {
-          setProjectId(id);
-          if (entry && !readOnly) void onPatch(entry, { projectId: id });
-        }}
-        t={t}
-        recentIds={recentProjectIds}
-        secondsByProject={secondsByProject}
-        onCreateProject={deps.onCreateProject}
-        disabled={readOnly || !deps.canPickProject}
-      />
-      <button
-        type="button"
-        disabled={readOnly}
-        onClick={() => {
-          const next = !billable;
-          setBillable(next);
-          if (entry) void onPatch(entry, { billable: next });
-        }}
-        className={`mt-2 inline-flex h-8 items-center rounded-lg px-2 text-ui font-semibold cursor-pointer disabled:opacity-40 ${billable ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600"}`}
-      >
-        {t("Billable", "Fakturovateľné", "Számlázható")}
-      </button>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {entry ? (
-          <>
-            <button type="button" onClick={() => onOpen(entry)} className="inline-flex h-8 items-center rounded-lg bg-teal-600 px-2 text-ui font-semibold text-white cursor-pointer">
-              {t("Open", "Otvoriť", "Megnyitás")}
-            </button>
-            {!readOnly && (
-              <button type="button" onClick={() => onDelete(entry)} className="inline-flex h-8 items-center rounded-lg px-2 text-ui font-semibold text-rose-600 hover:bg-rose-50 cursor-pointer">
-                {t("Delete", "Odstrániť", "Törlés")}
-              </button>
-            )}
-          </>
-        ) : (
-          popover.kind === "draft" && (
-            <button type="button" disabled={readOnly} onClick={() => void onCreate(popover.day, popover.span, projectId, billable)} className="inline-flex h-8 items-center rounded-lg bg-teal-600 px-2 text-ui font-semibold text-white cursor-pointer disabled:opacity-40">
-              {t("Save", "Uložiť", "Mentés")}
-            </button>
-          )
-        )}
-        <button type="button" onClick={onClose} className="inline-flex h-8 items-center rounded-lg px-2 text-ui font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer">
-          {t("Close", "Zavrieť", "Bezárás")}
-        </button>
-      </div>
+      <CalendarTaskRail deps={deps} />
     </div>
   );
 }

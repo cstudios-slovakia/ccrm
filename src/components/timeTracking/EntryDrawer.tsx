@@ -20,6 +20,7 @@ import {
   todayIso,
   type TimeEntry,
 } from "../../utils/timeTracking.ts";
+import { duplicateInput } from "./entryDuplicate";
 import { TimeApiError, createEntry, timeErrorMessage, updateEntry, type EntryInput } from "../../utils/timeTrackingApi.ts";
 import type { Task } from "../../types";
 import { ProjectPicker } from "./ProjectPicker";
@@ -176,19 +177,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
 
   const duplicate = async () => {
     try {
-      await createEntry({
-        description: entry.titleSource === "entry" ? entry.title : null,
-        note: entry.note,
-        taskId: entry.taskId,
-        ticketId: entry.taskId ? null : entry.ticketId,
-        projectId: entry.projectId,
-        entryDate: entry.entryDate,
-        durationSec: entry.durationSec ?? 0,
-        billable: entry.billable,
-        tags: entry.tags,
-        source: "manual",
-        userId: entry.userId !== userId ? entry.userId : undefined,
-      });
+      await createEntry(duplicateInput(entry, userId));
       tt.bump();
       close();
     } catch (e) {
