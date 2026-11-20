@@ -1,1 +1,0 @@
-- **Time tracking: presence ring no longer draws a stray 300×150 box** (`CycleRing.tsx`): the ring's SVG was positioned with `inset` only, which does not size an SVG, so it fell back to 300×150 px from each Stop button's corner. It is now sized to the control plus 3px.

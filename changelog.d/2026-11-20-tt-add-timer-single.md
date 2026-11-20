@@ -1,1 +1,0 @@
-- **Time tracking: "+ Add timer" while one timer runs** (`TimerBar.tsx`): with parallel timers allowed, the single-timer bar now has an "Add timer" button that opens a fresh bar under it, so a second timer can start from scratch instead of only by continuing an existing entry. A start from an "Add timer" bar runs in parallel without asking Switch / Parallel.
