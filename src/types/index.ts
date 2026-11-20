@@ -365,6 +365,8 @@ export interface Task {
   originalDeadline?: string | null;
   /** How many times the deadline was pushed to a later date. Kept by the server; read-only. */
   deadlineMoves?: number;
+  /** Every reopening of a finished task, oldest first: `at` is a UTC ISO instant, `by` the user's name. Written by the server only; read-only. */
+  reopens?: { at: string; by: string | null }[];
   /** Integration that pushed the task in over the machine API ("waai"); read-only, set by the server. */
   externalSource?: string | null;
   /** Path of the source chat in that system (WhatsApp: `/c/<id>`); read-only. */

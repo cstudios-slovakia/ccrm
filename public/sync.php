@@ -995,6 +995,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'conclusion' => $row['conclusion'] ?? null,
                 'estimateMinutes' => isset($row['estimate_minutes']) ? (int)$row['estimate_minutes'] : null,
                 'category' => $row['category'] ?? null,
+                'reopens' => ccrm_task_reopens_decode($row['reopens_json'] ?? null), // read-only for clients (api/task_done.php)
                 // Deadline history: kept by the server on every save (see the tasks upsert), read-only for clients.
                 'originalDeadline' => $row['original_deadline'] ?? null,
                 'deadlineMoves' => (int)($row['deadline_moves'] ?? 0),
@@ -3227,6 +3228,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!ccrm_column_exists($pdo, 'tasks', 'category')) {
                 $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `category` VARCHAR(32) NULL");
             }
+            if (!ccrm_column_exists($pdo, 'tasks', 'reopens_json')) {
+                $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `reopens_json` TEXT NULL");
+            }
         }
 
         if (isset($payload['tickets']) && is_array($payload['tickets']) && !$ccrm_skip_writes('tickets', 'tickets')) {
@@ -4988,7 +4992,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $oldRelatedTicketId = null;
                 $oldRelatedAgencyWorkerId = null;
                 if (!$isNewTask) {
-                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner`, `requires_conclusion`, `related_ticket_id`, `related_agency_worker_id` FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " LIMIT 1");
+                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner`, `requires_conclusion`, `related_ticket_id`, `related_agency_worker_id`, `completed_at` AS `prev_completed_at` FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " LIMIT 1");
                     $oldStatusStmt->execute([$taskId]);
                     $oldRow = $oldStatusStmt->fetch(PDO::FETCH_ASSOC);
                     if ($oldRow) {
@@ -5058,6 +5062,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     array_key_exists('estimateMinutes', $t) ? 1 : 0,
                     $catFlag,
                 ]);
+                // A finished task saved as unfinished: log who reopened it and when (server-owned column).
+                if (!$isNewTask && $oldRow && ccrm_task_is_reopened(['status' => $oldTaskStatus, 'completed_at' => $oldRow['prev_completed_at'] ?? null], $t['status'] ?? 'todo', $conclusionTaskStates, $t['completedAt'] ?? '')) {
+                    ccrm_task_record_reopen($pdo, (string)$taskId, $sessionUserName !== '' ? $sessionUserName : null);
+                }
                 if ($relTicketIdVal !== null && $ticketLinkAllowed) {
                     try {
                         $pdo->prepare("INSERT IGNORE INTO `ticket_task_links` (`ticket_id`, `task_id`, `sync_mode`, `created_at`) VALUES (?, ?, 'auto_resolve', NOW())")->execute([$relTicketIdVal, $taskId]);

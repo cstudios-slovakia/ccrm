@@ -179,6 +179,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `original_deadline` DATE NULL COMMENT 'Deadline the task was first given; set when it is created or first postponed',
               `deadline_moves` INT NOT NULL DEFAULT 0 COMMENT 'How many times the deadline was pushed to a later date',
               `category` VARCHAR(32) NULL COMMENT 'Task category; NULL = none, bug = Bug (a string so more categories need no migration)',
+              `reopens_json` TEXT NULL COMMENT 'Every reopening of a finished task, JSON [{at: UTC ISO, by: name|null}] oldest first; NULL = never reopened; written only by the server',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
@@ -2361,6 +2362,9 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_time_tracking($pdo);
         if (ccrm_table_exists($pdo, 'tasks') && !ccrm_column_exists($pdo, 'tasks', 'category')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `category` VARCHAR(32) NULL COMMENT 'Task category; NULL = none, bug = Bug (a string so more categories need no migration)'");
+        }
+        if (ccrm_table_exists($pdo, 'tasks') && !ccrm_column_exists($pdo, 'tasks', 'reopens_json')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `reopens_json` TEXT NULL COMMENT 'Every reopening of a finished task, JSON [{at: UTC ISO, by: name|null}] oldest first; NULL = never reopened; written only by the server'");
         }
         ccrm_migrate_integration_tasks($pdo);
         ccrm_migrate_integration_directory($pdo);

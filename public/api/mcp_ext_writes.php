@@ -248,6 +248,7 @@ function mcp_task_status_timer(\PDO $pdo, array $user, string $taskId, string $o
 }
 
 function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
+    require_once __DIR__ . '/task_done.php';
     $id = mcp_require_string($args, 'id');
     $chkKind = $pdo->prepare("SELECT task_kind FROM tasks WHERE id = ? LIMIT 1"); /* recurring-template: template refusal */
     $chkKind->execute([$id]);
@@ -263,7 +264,7 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
     $row = $cur->fetch(\PDO::FETCH_ASSOC);
     if (!$row) throw new \Exception("Task not found with ID: {$id}");
 
-    $sets = []; $params = []; $newOwner = null;
+    $sets = []; $params = []; $newOwner = null; $reopened = false;
     $add = function (string $col, $val) use (&$sets, &$params) { $sets[] = "`{$col}` = ?"; $params[] = $val; };
     if (array_key_exists('title', $args)) $add('title', mcp_require_string($args, 'title'));
     if (array_key_exists('description', $args)) $add('description', $args['description']);
@@ -283,7 +284,9 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
             mcp_require_conclusion_to_finish($row, $args['conclusion'] ?? null);
             $add('completed_by', $user['name']); $add('completed_at', date('Y-m-d H:i'));
         }
-        if (!$isDone && $wasDone) { $add('completed_by', null); $add('completed_at', null); }
+        // A finished task moved to an open state is a reopening: clear who finished it and log the reopening.
+        $reopened = ccrm_task_is_reopened($row, $status, (array)mcp_config_json($pdo, 'TASK_STATES', []), '');
+        if ($reopened) { $add('completed_by', null); $add('completed_at', null); }
     }
     if (array_key_exists('conclusion', $args)) {
         $c = trim((string)$args['conclusion']);
@@ -308,8 +311,12 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
     }
     if (!$sets) return ['success' => true, 'message' => 'No fields updated'];
     $params[] = $id;
-    mcp_tx($pdo, function () use ($pdo, $sets, $params, $id, $newOwner) {
+    mcp_tx($pdo, function () use ($pdo, $sets, $params, $id, $newOwner, $reopened, $user) {
         $pdo->prepare("UPDATE tasks SET " . implode(', ', $sets) . " WHERE id = ? AND " . ccrm_sql_real_tasks())->execute($params);
+        if ($reopened) {
+            try { ccrm_task_record_reopen($pdo, $id, (string)($user['name'] ?? '')); }
+            catch (\Throwable $e) { if (function_exists('ccrm_log_exception')) ccrm_log_exception($e); } // column not migrated yet: the update still stands
+        }
         // The assignee list is the visibility rule, so a new owner must be on it.
         if ($newOwner !== null) $pdo->prepare("INSERT IGNORE INTO task_assignees (task_id, user_name) VALUES (?, ?)")->execute([$id, $newOwner]);
     });

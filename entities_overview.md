@@ -158,6 +158,7 @@ General system and operational tasks.
 * `original_deadline` DATE [NULLable] (the deadline the task was first given; set on creation, or pinned to the previous date at the first postponement of an older row; written only by the sync upsert, never by a client)
 * `deadline_moves` INT NOT NULL DEFAULT 0 (how many times the deadline was pushed to a later date; incremented by the sync upsert)
 * `category` VARCHAR(32) [NULLable] (task category slug: `NULL` = none, `'bug'` = Bug; a string so more categories need no migration. Written by the sync upsert for tasks and recurring templates (a client that omits the key leaves the stored value alone) and copied from a template to each occurrence; read by the dashboard's "Utilizácia · čas na bugoch" widget)
+* `reopens_json` TEXT [NULLable] (every reopening of a finished task as JSON `[{"at": "<UTC ISO 8601 with Z>", "by": "<user name or null>"}]`, oldest first; `NULL` = never reopened. Written only by the server through `ccrm_task_record_reopen()` in `api/task_done.php`, called from the sync upsert and MCP `update_task` when a finished task is saved with an open status; a client-sent value is ignored. Returned by the sync GET as `reopens`; series templates never carry one. Reopenings made before the column existed are not recorded)
 * `owner` VARCHAR(100) (primary assignee; empty when unassigned)
 * `created_by` VARCHAR(100) (immutable creator name; nullable for legacy rows)
 * `related_lead_id` VARCHAR(50)

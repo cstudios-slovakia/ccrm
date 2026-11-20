@@ -71,3 +71,51 @@ if (!function_exists('ccrm_sql_task_not_done')) {
         return ['(' . $sql . ')', $params];
     }
 }
+
+if (!function_exists('ccrm_task_is_reopened')) {
+    /**
+     * Does saving a stored task with `$newStatus` reopen it? True when the stored task was finished (its
+     * status is a done state, or it carries a completion stamp while the save clears that stamp) and the
+     * new status is not a done state. Series templates never count. `$stored` needs `status`,
+     * `completed_at` and, when known, `task_kind`.
+     */
+    function ccrm_task_is_reopened(array $stored, $newStatus, array $states, $newCompletedAt = null): bool {
+        if (($stored['task_kind'] ?? null) === 'recurring') return false;
+        if (ccrm_task_status_is_done($newStatus, $states)) return false;
+        if (ccrm_task_status_is_done($stored['status'] ?? '', $states)) return true;
+        return trim((string)($stored['completed_at'] ?? '')) !== '' && trim((string)$newCompletedAt) === '';
+    }
+}
+
+if (!function_exists('ccrm_task_reopens_decode')) {
+    /** `tasks.reopens_json` as a clean list of ['at' => UTC ISO string, 'by' => name|null], oldest first. */
+    function ccrm_task_reopens_decode($json): array {
+        $list = is_string($json) && $json !== '' ? json_decode($json, true) : null;
+        $out = [];
+        foreach (is_array($list) ? $list : [] as $e) {
+            if (!is_array($e) || !isset($e['at']) || !is_string($e['at']) || $e['at'] === '') continue;
+            $out[] = ['at' => $e['at'], 'by' => (isset($e['by']) && is_string($e['by']) && $e['by'] !== '') ? $e['by'] : null];
+        }
+        return $out;
+    }
+}
+
+if (!function_exists('ccrm_task_record_reopen')) {
+    /**
+     * Appends one reopening to `tasks.reopens_json`. The only writer of that column; callers decide with
+     * ccrm_task_is_reopened() first. Reads the row with FOR UPDATE, so inside the caller's transaction
+     * two appends cannot overwrite each other. A series template is refused. Needs the column to exist
+     * (no DDL here): a caller outside sync.php wraps it in try/catch. Returns whether a record was added.
+     */
+    function ccrm_task_record_reopen(\PDO $pdo, string $taskId, ?string $by, ?string $atUtc = null): bool {
+        $stmt = $pdo->prepare("SELECT `task_kind`, `reopens_json` FROM `tasks` WHERE `id` = ? LIMIT 1 FOR UPDATE"); /* recurring-template: by-id read, a template is refused below */
+        $stmt->execute([$taskId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$row || ($row['task_kind'] ?? null) === 'recurring') return false;
+        $list = ccrm_task_reopens_decode($row['reopens_json'] ?? null);
+        $list[] = ['at' => $atUtc ?? gmdate('Y-m-d\TH:i:s\Z'), 'by' => ($by !== null && trim($by) !== '') ? mb_substr(trim($by), 0, 100) : null];
+        $list = array_slice($list, -300);
+        $pdo->prepare("UPDATE `tasks` SET `reopens_json` = ? WHERE `id` = ?")->execute([json_encode($list, JSON_UNESCAPED_UNICODE), $taskId]); /* recurring-template: by-id write, a template is refused above */
+        return true;
+    }
+}
