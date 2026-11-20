@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  acceptedWord,
   count,
   countNoun,
   deadlineDistance,
@@ -36,7 +37,7 @@ test("money: signed with the real minus sign, null is a dash", () => {
 test("percent, signed percent and percentage points", () => {
   assert.equal(n(percent(23.5, "sk")), "23,5 %");
   assert.equal(n(percent(62, "sk")), "62 %");
-  assert.equal(percent(12.34, "en"), "12.3%");
+  assert.equal(n(percent(12.34, "en")), "12,3 %");
   assert.equal(n(signedPercent(12, "sk")), "+12 %");
   assert.equal(n(signedPercent(-4, "sk")), "−4 %");
   assert.equal(n(pointsDelta(2.1, "sk")), "+2,1 p. b.");
@@ -106,6 +107,18 @@ test("sk plurals of every counted noun", () => {
   assert.equal(n(ofTotal(8, 34, "lead", "sk")), "8 z 34 leadov");
   assert.equal(n(ofTotal(31, 258, "task", "sk")), "31 z 258 úloh");
   assert.equal(count(1234, "sk").replace(/\s/g, " "), "1 234");
+});
+
+test("accepted offers inflect in sk", () => {
+  assert.deepEqual([0, 1, 2, 4, 5, 18].map((c) => acceptedWord(c, "sk")), [
+    "prijatých",
+    "prijatá",
+    "prijaté",
+    "prijaté",
+    "prijatých",
+    "prijatých",
+  ]);
+  assert.equal(acceptedWord(3, "en"), "accepted");
 });
 
 test("statuses: z and zo", () => {

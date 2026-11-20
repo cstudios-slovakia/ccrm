@@ -8,11 +8,11 @@ const COLUMN = "relative flex h-full items-end justify-center gap-0.5";
 const MonthColumn = ({ m, scaleMax, faded }: { m: CashflowMonth; scaleMax: number; faded: boolean }) => (
   <div className={`${COLUMN} flex-1`}>
     <div
-      className={`w-4 rounded-t-sm bg-emerald-500 ${faded ? "opacity-45" : ""}`}
+      className={`w-4 rounded-t-xs bg-emerald-500 ${faded ? "opacity-45" : ""}`}
       style={{ height: `${ratioPct(m.income, scaleMax)}%` }}
     />
     <div
-      className={`w-4 rounded-t-sm bg-rose-500 ${faded ? "opacity-45" : ""}`}
+      className={`w-4 rounded-t-xs bg-rose-500 ${faded ? "opacity-45" : ""}`}
       style={{ height: `${ratioPct(m.expenses, scaleMax)}%` }}
     />
   </div>

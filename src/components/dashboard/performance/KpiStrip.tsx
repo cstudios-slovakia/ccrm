@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { StatGrid, StatTile } from "../../layout/StatGrid";
 import type { Language } from "../../../utils/translations";
 import type { KpiStripData, PeriodLabels } from "./types";
-import { countNoun, makeT, money, noun, ofTotal, percent, pointsDelta, signedPercent } from "./format";
+import { acceptedWord, countNoun, makeT, money, noun, ofTotal, percent, pointsDelta, signedPercent } from "./format";
 import { DeltaPhrase, DotJoin, Figure, Track, deltaTone } from "./shared";
 
 /** A bar-high block: tiles without a bar reserve its height so all caption lines share one baseline. */
@@ -90,7 +90,7 @@ export const KpiStrip = ({
               </BarSlot>
               <div className="mt-1.5">
                 <Figure tone="good">
-                  {t(`${os.accepted} accepted`, `${os.accepted} prijatých`, `${os.accepted} elfogadott`)}
+                  {`${os.accepted} ${acceptedWord(os.accepted, language)}`}
                 </Figure>{" "}
                 {closedOffers}
               </div>

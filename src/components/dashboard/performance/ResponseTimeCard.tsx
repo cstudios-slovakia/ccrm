@@ -65,7 +65,7 @@ export const ResponseTimeCard = ({
             {data.weeks.map((w) => (
               <div
                 key={w.isoWeek}
-                className="flex-1 rounded-t-sm bg-primary"
+                className="flex-1 rounded-t-xs bg-primary"
                 style={{ height: `${w.averageMs === null ? 0 : ratioPct(w.averageMs, weekMax)}%` }}
               />
             ))}

@@ -82,7 +82,7 @@ export const Card = ({ children, className = "" }: { children: ReactNode; classN
 
 export const LegendItem = ({ swatch, label, dot = false }: { swatch: string; label: string; dot?: boolean }) => (
   <span className="type-meta flex items-center gap-1.5 text-slate-600">
-    <span className={`size-2.5 ${dot ? "rounded-full" : "rounded-sm"} ${swatch}`} />
+    <span className={`size-2.5 ${dot ? "rounded-full" : "rounded-xs"} ${swatch}`} />
     {label}
   </span>
 );
@@ -207,10 +207,10 @@ export const SegmentedBar = ({
           shown.length === 1
             ? "rounded-full"
             : i === 0
-              ? "rounded-l-full rounded-r-sm"
+              ? "rounded-l-full rounded-r-xs"
               : i === shown.length - 1
-                ? "rounded-r-full rounded-l-sm"
-                : "rounded-sm";
+                ? "rounded-r-full rounded-l-xs"
+                : "rounded-xs";
         const style =
           scaleMax !== undefined
             ? { width: `${ratioPct(s.value, scaleMax)}%`, background: s.color }

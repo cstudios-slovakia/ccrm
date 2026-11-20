@@ -15,7 +15,8 @@ export const makeT =
   (en: string, sk: string, hu: string): string =>
     language === "sk" ? sk : language === "hu" ? hu : en;
 
-const localeOf = (l: Language): string => (l === "en" ? "en-US" : l === "hu" ? "hu-HU" : "sk-SK");
+// Same mapping as formatMoney, so one screen never mixes separators.
+const localeOf = (l: Language): string => (l === "hu" ? "hu-HU" : "sk-SK");
 
 const round = (v: number, digits: number): number => {
   const f = 10 ** digits;
@@ -41,7 +42,7 @@ export const signedMoney = (v: number | null, currency: string | null | undefine
 
 /* -------------------------------------------------------------- percent */
 
-const percentUnit = (l: Language): string => (l === "en" ? "%" : `${NBSP}%`);
+const percentUnit = (_l: Language): string => `${NBSP}%`;
 
 export const percent = (v: number | null, l: Language, digits = 1): string =>
   v === null ? DASH : `${v < 0 ? MINUS : ""}${num(round(v, digits), l, digits)}${percentUnit(l)}`;
@@ -146,6 +147,10 @@ export const noun = (kind: Noun, n: number, l: Language): string => {
   if (l === "en") return n === 1 ? e.en[0] : e.en[1];
   return n === 1 ? e.sk[0] : n >= 2 && n <= 4 ? e.sk[1] : e.sk[2];
 };
+
+/** "prijatá" / "prijaté" / "prijatých" by count (en and hu do not inflect). */
+export const acceptedWord = (n: number, l: Language): string =>
+  l === "sk" ? (n === 1 ? "prijatá" : n >= 2 && n <= 4 ? "prijaté" : "prijatých") : l === "hu" ? "elfogadott" : "accepted";
 
 /** "20 leadov". */
 export const countNoun = (kind: Noun, n: number, l: Language): string => `${count(n, l)}${NBSP}${noun(kind, n, l)}`;
