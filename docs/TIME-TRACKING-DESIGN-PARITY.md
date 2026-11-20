@@ -346,7 +346,7 @@ Commits on `css-main` (the same changes were cherry-picked to `1.13-nectarine`).
 Prompt: [`docs/prompts/time-tracking-design-parity-2.md`](prompts/time-tracking-design-parity-2.md). Audit against
 `css-main` at `d2ea4268`. Canvas renders: `test-results/tt-design-parity-2/canvas/`; app screenshots (QA mock data,
 Normal view size, 1440 wide, phone 390): `test-results/tt-design-parity-2/before/` (local, not committed).
-Review page (canvas beside app): see "Review page" at the end of this part.
+Review page (canvas, app before, app after): see "Review page" at the end of this part.
 
 **Precedence (highest first):** owner decisions (only for what they actually decided) → `docs/TIME-TRACKING-V2.md`
 (drawn in the canvas's visual language) → the app's tokens only (font, colour tokens, View size, shell, Settings
@@ -675,16 +675,86 @@ reviewed by `ccrm-reviewer` before it merges.
 
 Order: F → (P1, P2, P3) → (P4, P5, P6) → (P7, P8, P9) → (P10, P11).
 
-## Owner answers
+## Owner answers (2026-11-20)
 
-Pending (the stop, 2026-11-20).
+| Q | Answer | Carried out |
+|---|---|---|
+| Q1 Settings into ⋯ | yes | F |
+| Q2 Filter button | **open**: the owner asked what "on the client" means (answered: only in the browser, no server change) | not built |
+| Q3 Tags button in the timer bar | no; tags stay as they are in the app | not built |
+| Q4 Timer/Manual toggle while running | yes | F |
+| Q5 Phone | keep the input bar, Today as on the canvas, keep the stat tiles, the tab row stays | P10 |
+| Q6 Task element only when it differs | yes | P1 |
+| Q7 Cost tile note | no | — |
+| Q8 Calendar popover project | read as "stays editable" (to be confirmed) | P2 |
+| Q9 Rail title | canvas: "Your tasks this week", filtered to tasks due or tracked this week | P2 |
+| Q10 Timesheet Cost column | **open**: the owner asked which cost (answered: labour cost of the work, not the client's price) | not built |
+| Q11 Timesheet notes | add | P3, only true sentences (see Done log) |
+| Q12 Unsorted colours | canvas | P4 |
+| Q13 Day row icons | yes | P4 |
+| Q14 Role badges | Employee emerald, Manager indigo, Contractor teal, Admin slate | P5 |
+| Q15 Under 75 % only with a weekly target | yes | P5 (Team and salary Utilisation) |
+| Q16 Reports grouped by project | yes | P6 |
+| Q17 Billable tile shows hours | yes | P6 |
+| Q18 Report row drill-down | **open** (same question as Q2) | not built |
+| Q19 Period chip | yes | P6 |
+| Q20 Salary allocation as a section | yes | P6 |
+| Q21 Create form with a Name field | yes | P7 |
+| Q22 Tags as chips | no ("probably deprecated"); the comma field stays | — |
+| Q23 Task drawer tiles | yes, without the cost tile; the per-person list stays | P8 |
+| Q24 Contractors field | **open**: the owner asked which options it would have (answered: only "apply the multiplier to contractors too") | not built; the existing sentence stays |
+| Q25 "Who sees what" | yes, read-only | P9 |
+| Q26 Clockify | no mention of Clockify anywhere | P9 |
+| Q27 "Setup guide" | declined | — |
+| Q28 Zip name | rename | P11 (`<product slug>-time-tracker.zip`; the old file is still written) |
+| Q29 "Require a task" on manual entries | **open**: the owner asked what it is (answered: the switch in Settings → Time tracking; enforced only on Stop today) | not changed |
+| Q30 Sidebar colour | keep rust | — (C2 text to be corrected) |
+| Q31 Porting to `1.13-nectarine` | stop | not ported |
 
 ## Done log (pass 2)
 
-| Package | Commit(s) | Rows done | Rows not done, and why |
+Every package was built by an implementer in its own worktree, reviewed by an independent `ccrm-reviewer`, fixed,
+then merged into `css-main`. Not pushed, not ported.
+
+| Package | Commit(s) | Rows done | Not done or changed, and why |
 |---|---|---|---|
-| Audit | this commit | this part | |
+| Audit | `fb2f9ab7` | this part | |
+| F frame | `46d60c10`, `6230e256`, `e9fdc529` | F1–F5, F7–F16, F18–F21 | F6 tags and F17 filter not built (Q3 no, Q2 open). The linked-task chip shows "Task" / "Ticket" with ×, not the name: under C5 the name is already the title. Review fixes: Unsorted chip recount, Stop stays in Manual mode, duration follows the times, touch targets |
+| P1 List | `fef14e99`, `75dfd06d` | L1–L10 | No rate note (Q7). The lock tooltip reads "Only you and people with the cost permission see this." Day cost is hidden when another person's cost is hidden. L8 will rarely show: a linked entry's title normally equals the task's |
+| P2 Calendar | `bb2ae810`, `3c0ab3d6` | C1–C12 | The project picker stays editable in the popover (Q8). Delete is disabled, not hidden, on a locked entry. No Duplicate on a running entry |
+| P3 Timesheet | `42a15ac7`, `adb48aa2` | T1–T4, T6–T8 | T5 Cost column not built (Q10 open). The canvas notes were reworded to what the code does: a new cell makes an hours-only entry with no start time; clearing a cell changes nothing; Submit marks the week approved at once (no manager step) |
+| P4 Day, Unsorted | `696e1dff`, `79861b02` | D1–D8 | The extension link opens Settings → Time tracking and does not scroll to the extension block |
+| P5 Team | `19d1fb21`, `aadcfbde` | W1, W2, W4, header card | People without an employee record have no bar; the legend says so |
+| P6 Reports | `e04f5f08`, `d15d7387` | R1–R8, R10–R12 | R9 drill-down not built (Q18 open). Margin counts only entries with a cost whose worked time equals their duration, and is marked "≈" when some are left out. The badge reads "Restricted access": the salary report is a grantable permission, not admin-only. The day chart is capped at 62 working days |
+| P7 Drawer, picker | `ec4aa4e2`, `52a173eb` | E1, E3, E6–E8, E10 | Meta line reads "No time this week" (the picker has no all-time data). No keyboard navigation in the picker, as before |
+| P8 Task drawer, project tab | `50749da2`, `56dad0a8` | K1–K3, K5, P1–P7 | No cost tile (Q23). No rate column in "By employee": there is no per-person rate on the client. Hours budget % is always all-time |
+| P9 Settings, extension settings | `bd0b0a8c`, `6eb74bc8` | S1, S3–S8, S10, X1, X3–X6 | S2 Contractors not built (Q24 open). Canvas claims dropped as untrue: "saved but flagged Assign project", "only for projects with tasks", "notifies the owner", pairing code "never stored" |
+| P10 Phone | `ccaf15fa`, `6ca83752` | M1, M3 | The running card is in the page flow, not fixed; Stop stays reachable from the sticky header pill (40 px on the phone). The sheet and the paused card were not restyled |
+| P11 Extension popup | `7499a606`, `a09251ce` | X9–X13 | The address field stays: the zip is generic and pairing needs the address (the audit's "the build knows its server" was wrong). No Pause in the popup: it has no pause endpoint. `EXTENSION_VERSION` unchanged |
+
+Still open after this pass: Q2, Q10, Q18, Q24, Q29 (owner), Q8 (confirm the reading), the C2 text about the sidebar
+colour, and the two MISSING rows (E4, E11).
+
+## Checks and QA (pass 2)
+
+- `npm run check` green on `css-main` after the last merge (`56dad0a8`): app, QA-suite and extension type-check,
+  unit tests, backend mirror, undefined-symbol audit (193 baselined, none new). Every package was also green in
+  its own worktree before merging.
+- After Package F: the five time-tracking specs (`timeTracking`, `…Parallel`, `…Mobile`, `…Presence`) passed, 40
+  tests. `timeTracking.spec.ts` › "the timer bar takes a Description before Start…" (registered in
+  `scripts/qa/known-failing.json`) **passes** now that it opens the Description from the new button.
+- One scoped QA run over all 147 changed files (`css-main` at `56dad0a8`): **113 passed, 2 failed, 27 did not run.**
+  - **Failed, both pre-existing** (`scripts/qa/known-failing.json`): `projectStatuses.spec.ts` › "statuses are added,
+    renamed and removed in settings…" and › "one click settles the rest of the value as a paid income row"
+    (symptom: the button "Označiť zvyšok ako uhradený" is not found). Not caused by this pass; not fixed.
+  - **Did not run:** the run hit its 900 s limit. Left out: 2 tests of `timeTrackingPresence.spec.ts`, 1 of
+    `timeTrackingWorked.spec.ts`, `togglImportMap.spec.ts`, `viewMenuOverTableHead.spec.ts`, all 20 of
+    `viewSize.spec.ts`, `whatsappDemo.spec.ts`, `whatsappNativeModule.spec.ts`. A second run of only these files was
+    stopped by the machine running out of memory before it reported. **They are still to be run.**
+- Nothing in this pass was checked on a real phone or in the real extension popup; the popup was changed and
+  type-checked and built, never opened in Chrome.
+- Screenshots: `test-results/tt-design-parity-2/canvas/`, `before/`, `after/` (local only).
 
 ## Review page
 
-https://claude.ai/artifact/Nw7ptoiMgUg4LFDhsVPQSW (canvas beside the app before the fixes, pins on the questions).
+https://claude.ai/artifact/Nw7ptoiMgUg4LFDhsVPQSW (canvas | app before | app after for every screen).
