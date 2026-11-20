@@ -43,6 +43,15 @@ export const ProfitabilityCard = ({
           </>
         }
       />
+      {data.labourCostHidden && (
+        <p className="type-meta mt-1 text-amber-700">
+          {t(
+            "Labour cost not included: time-tracking costs are not visible to you.",
+            "Bez nákladov na prácu: náklady z evidencie času nie sú pre vás viditeľné.",
+            "Munkaköltség nélkül: az időnyilvántartás költségei az Ön számára nem láthatók.",
+          )}
+        </p>
+      )}
       <div className="mt-4 overflow-x-auto">
         <div className="min-w-180 text-ui tabular-nums">
           <div className={`${COLS} ${HEAD}`}>

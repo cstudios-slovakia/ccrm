@@ -82,11 +82,19 @@ export const formatDayRange = (start: Date, end: Date, language: Language): stri
   return `${sd}. ${sm + 1}. ${sy} – ${ed}. ${em + 1}. ${ey}`;
 };
 
-/** What the header range button shows: the range, or "Celý čas" when there is none. */
+/** A range with a start and no end yet (the first click of a custom range): "5. 11. 2026 –". */
+const formatOpenRange = (start: Date, language: Language): string => `${formatDayRange(start, start, language)} –`;
+
+/**
+ * What the header range button shows: the range, "5. 11. 2026 –" while the end is not chosen yet,
+ * or "Celý čas" when there is no range.
+ */
 export const periodRangeLabel = (period: PerformancePeriod, language: Language): string =>
   period.start && period.end
     ? formatDayRange(period.start, period.end, language)
-    : tr(language, "All time", "Celý čas", "Teljes időszak");
+    : period.start
+      ? formatOpenRange(period.start, language)
+      : tr(language, "All time", "Celý čas", "Teljes időszak");
 
 /* ------------------------------------------------------------------ caption labels */
 
@@ -102,6 +110,10 @@ export const periodLabels = (period: PerformancePeriod, language: Language, _tod
   const { preset, start, end } = period;
   const previousMonthOfEnd = end ? addMonthsClamped(new Date(end.getFullYear(), end.getMonth(), 1), -1).getMonth() : null;
   const versusPreviousMonth = previousMonthOfEnd === null ? "" : versusMonthPhrase(language, previousMonthOfEnd);
+
+  if (start && !end) {
+    return { current: formatOpenRange(start, language), versusPrevious: "", versusPreviousMonth: "" };
+  }
 
   if (preset === "all" || !start || !end) {
     return {

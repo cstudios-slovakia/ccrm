@@ -162,3 +162,13 @@ test("presetRange drops the time of day and presetNameOf names the picker preset
     assert.equal(periodPresetFromName(presetNameOf(p)), p);
   }
 });
+
+test("a custom range without an end is open-ended: no end bound, no previous range", () => {
+  const p = buildPeriod("custom", day(2026, 11, 5), null, TODAY);
+  assert.equal(iso(p.start), "2026-11-05");
+  assert.equal(p.end, null);
+  assert.equal(p.previousStart, null);
+  assert.equal(p.previousEnd, null);
+  assert.equal(isInRange(day(2027, 3, 1), p.start, p.end), true);
+  assert.equal(isInRange(day(2026, 11, 4), p.start, p.end), false);
+});

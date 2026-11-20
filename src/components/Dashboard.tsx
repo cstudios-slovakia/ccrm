@@ -559,7 +559,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Performance overview tab and the period control of the header
   const overview = usePerformanceOverview({
     today: now, language: systemLanguage, presetName: filterPresetName, startDate: filterStartDate, endDate: filterEndDate,
-    canSeeFinancials, leads, leadStageGroups, leadStateParents, kpis,
+    canSeeFinancials, leads, leadStageGroups, leadStateParents,
     invoicesOffers, invoiceStatuses, offerStatuses,
     financeInput, financialRecords, uncategorizedLabel: t("Uncategorized", "Bez kategórie", "Kategória nélkül"),
     invoicingGroups: dashboardEquationGroups, excludedStatusKeys: equationExcluded,
@@ -760,81 +760,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const currencyValuePrefix = currencyPosition === "suffix" ? "" : currencySymbol;
   const currencyValueSuffix = currencyPosition === "suffix" ? ` ${currencySymbol}` : "";
 
-  const handleInspectChart = (type: "revenue" | "pipeline" | "leads" | "conversion" | "pm", pmName?: string) => {
+  const handleInspectChart = (type: "pm", pmName?: string) => {
     let title = "";
     let color = "";
     let valuePrefix = "";
     let valueSuffix = "";
     let details: InspectableDataPoint[] = [];
 
-    if (type === "revenue") {
-      title = t("Won Deals Value Trend", "Vývoj hodnoty vyhratých obchodov", "Megnyert üzletek értékének alakulása");
-      color = "#10b981";
-      valuePrefix = currencyValuePrefix;
-      valueSuffix = currencyValueSuffix;
-      let sum = 0;
-      details = sortedLeads
-        .filter(l => isWon(l.status))
-        .map(l => {
-          sum += l.value;
-          return {
-            label: l.name,
-            value: l.value,
-            cumulative: sum,
-            date: l.createdAt ? l.createdAt.substring(0, 16).replace("T", " ") : "N/A"
-          };
-        });
-    } else if (type === "pipeline") {
-      title = t("Active Pipeline Chronological Trend", "Chronologický vývoj aktívneho pipeline", "Aktív pipeline kronologikus trendje");
-      color = "#6366f1";
-      valuePrefix = currencyValuePrefix;
-      valueSuffix = currencyValueSuffix;
-      let sum = 0;
-      details = sortedLeads
-        .filter(l => isOpen(l.status))
-        .map(l => {
-          sum += l.value;
-          return {
-            label: l.name,
-            value: l.value,
-            cumulative: sum,
-            date: l.createdAt ? l.createdAt.substring(0, 16).replace("T", " ") : "N/A"
-          };
-        });
-    } else if (type === "leads") {
-      title = t("Lead Growth Chronological Trend", "Chronologický vývoj rastu záujemcov", "Érdeklődők növekedésének kronologikus trendje");
-      color = "#3b82f6";
-      valueSuffix = t(" leads", " záujemcov", " érdeklődő");
-      let count = 0;
-      details = sortedLeads.filter(l => isOpen(l.status)).map(l => {
-        count += 1;
-        return {
-          label: l.name,
-          value: 1,
-          cumulative: count,
-          date: l.createdAt ? l.createdAt.substring(0, 16).replace("T", " ") : "N/A"
-        };
-      });
-    } else if (type === "conversion") {
-      title = t("Lead-to-Client Conversion Rolling Rate", "Priebežná miera konverzie záujemca → klient", "Érdeklődő–ügyfél konverziós ráta");
-      color = "#f43f5e";
-      valueSuffix = "%";
-      let wonCount = 0;
-      let totalCount = 0;
-      details = sortedLeads.map(l => {
-        totalCount += 1;
-        const won = isWon(l.status);
-        if (won) {
-          wonCount += 1;
-        }
-        return {
-          label: `${l.name} (${won ? t("Won", "Vyhraný", "Megnyert") : t("Registered", "Registrovaný", "Regisztrált")})`,
-          value: won ? 100 : 0,
-          cumulative: Number(((wonCount / totalCount) * 100).toFixed(1)),
-          date: l.createdAt ? l.createdAt.substring(0, 16).replace("T", " ") : "N/A"
-        };
-      });
-    } else if (type === "pm" && pmName) {
+    if (type === "pm" && pmName) {
       title = `${pmName} - ${t("Sales Performance Trend", "Vývoj predajnej výkonnosti", "Értékesítési teljesítmény trendje")}`;
       color = "#f59e0b";
       valuePrefix = currencyValuePrefix;
@@ -906,6 +839,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 setFilterStartDate(range.start);
                 setFilterEndDate(range.end);
                 setFilterPresetName(presetNameOf(preset));
+                setIsDatePickerOpen(false);
               }}
               rangeLabel={periodRangeLabel(overview.period, systemLanguage)}
               onOpenPicker={() => setIsDatePickerOpen(!isDatePickerOpen)}
@@ -914,7 +848,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             />
 
             {isDatePickerOpen && (
-              <div className="absolute top-12 right-0 bg-white border-2 border-slate-100 shadow-2xl rounded-[32px] p-6 flex flex-col ws-md:flex-row gap-6 z-[999] animate-in fade-in slide-in-from-top-4 duration-200 w-full ws-md:w-210">
+              <div className="absolute top-full mt-1 right-0 bg-white border-2 border-slate-100 shadow-2xl rounded-[32px] p-6 flex flex-col ws-md:flex-row gap-6 z-[999] animate-in fade-in slide-in-from-top-4 duration-200 w-full ws-md:w-210">
           
                 {/* Left sidebar: Preset quick intervals */}
                 <div className="w-full ws-md:w-65 border-r border-slate-100 pr-4 flex flex-col space-y-1.5 justify-start text-left shrink-0">

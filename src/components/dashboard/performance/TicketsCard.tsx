@@ -1,7 +1,7 @@
 import type { Language } from "../../../utils/translations";
 import { Surface } from "../../layout/Surface";
 import type { TicketCategoryKey, TicketsByStatusData } from "./types";
-import { count, countNoun, makeT, percent } from "./format";
+import { count, countNoun, makeT, ofWhichOpen, percent } from "./format";
 import { Card, CardTitle, HeadlineValue, SegmentedBar } from "./shared";
 
 const SWATCH: Record<TicketCategoryKey, string> = {
@@ -29,8 +29,6 @@ export const TicketsCard = ({
     resolved: t("Resolved", "Vyriešený", "Megoldva"),
     closed: t("Closed", "Uzavretý", "Lezárva"),
   };
-  const openWord =
-    language === "sk" ? `z toho ${data.open} ${data.open === 1 ? "otvoreného" : "otvorených"}` : t(`of which ${data.open} open`, "", `ebből ${data.open} nyitott`);
   return (
     <Card className={className}>
       <CardTitle
@@ -41,7 +39,7 @@ export const TicketsCard = ({
           "Az időszakban beérkezett összes jegy",
         )}
       />
-      <HeadlineValue value={countNoun("ticket", data.total, language)} unit={openWord} />
+      <HeadlineValue value={countNoun("ticket", data.total, language)} unit={ofWhichOpen(data.open, language)} />
       <SegmentedBar
         className="mt-4"
         heightClass="h-4"

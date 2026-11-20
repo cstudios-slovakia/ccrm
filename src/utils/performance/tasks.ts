@@ -104,7 +104,9 @@ export const computeThroughput = ({ tasks, projects, taskStates, period }: Throu
   const perProject = new Map<string, number[]>();
   for (const { days, projectId } of current) {
     if (!projectId) continue;
-    perProject.set(projectId, [...(perProject.get(projectId) ?? []), days]);
+    const list = perProject.get(projectId);
+    if (list) list.push(days);
+    else perProject.set(projectId, [days]);
   }
   const byProject = [...perProject.entries()]
     .map(([projectId, days]) => ({ projectId, name: projectName.get(projectId) ?? projectId, days: mean(days) ?? 0 }))

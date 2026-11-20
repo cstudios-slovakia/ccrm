@@ -81,6 +81,23 @@ export const computeProfitability = ({
   };
 };
 
+/** What time tracking knows about a project (a slice of `TimeTotals["byProject"]`). */
+export type LabourTotals = Readonly<Record<string, { seconds: number; cost: number | null }>>;
+
+/**
+ * Is any of the listed projects' labour cost withheld from this user? True when a project has
+ * tracked time and its `cost` is null (the server sends null where the user may not see costs).
+ * `byProject` is null when time tracking is off: nothing is withheld then.
+ */
+export const isLabourCostHidden = (projectIds: Iterable<string>, byProject: LabourTotals | null): boolean => {
+  if (!byProject) return false;
+  for (const id of projectIds) {
+    const entry = byProject[id];
+    if (entry && entry.seconds > 0 && entry.cost === null) return true;
+  }
+  return false;
+};
+
 /* ------------------------------------------------------------------ input builders */
 
 export interface ProjectInvoicedInput {

@@ -166,6 +166,11 @@ export interface ProfitabilityData {
   rows: ProfitabilityRow[];
   /** Footer "Spolu · N projektov". */
   total: { projects: number; invoiced: number; costs: number; profit: number; costRatioPct: number | null };
+  /**
+   * Time tracking is on and a listed project has tracked time whose cost the server withheld from
+   * this user: `costs` then holds the expenses only. The card says so.
+   */
+  labourCostHidden?: boolean;
 }
 
 export type DeadlineTone = "overdue" | "soon" | "later";

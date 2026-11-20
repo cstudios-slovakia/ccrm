@@ -24,7 +24,6 @@ import type {
 } from "../../../types";
 import type { Language } from "../../../utils/translations";
 import type { StatusStatGroup } from "../../GroupedStatusValueEquationStats";
-import type { LeadKpis } from "../../../utils/dashboardMetrics";
 import type { FinanceInput } from "../../../utils/marketingRoi";
 import { DEFAULT_INVOICE_STATUS_DEFS, DEFAULT_OFFER_STATUS_DEFS, type OfferStatusDef } from "../../../utils/offerStatuses";
 import { resolveLinkedClient } from "../../../utils/leadClient";
@@ -44,6 +43,7 @@ import {
   projectExpenseCosts,
   projectHasRecentExpense,
   projectInvoicedAmount,
+  isLabourCostHidden,
 } from "../../../utils/performance/profitability";
 import { computeRecurringIncome } from "../../../utils/performance/recurringIncome";
 import { computeAssignedTasks, computeThroughput } from "../../../utils/performance/tasks";
@@ -69,8 +69,6 @@ export interface PerformanceOverviewInput {
   leads: readonly Lead[];
   leadStageGroups: Record<string, string>;
   leadStateParents: Record<string, string>;
-  /** The dashboard's own KPIs for the selected range (not recomputed here). */
-  kpis: LeadKpis;
 
   invoicesOffers: readonly InvoiceOffer[];
   /** Settings → Invoice / Offer statuses; undefined falls back to the defaults, as everywhere else. */
@@ -111,7 +109,7 @@ const EMPTY_PROFITABILITY: ProfitabilityData = {
 export const usePerformanceOverview = (input: PerformanceOverviewInput): PerformanceOverviewData => {
   const {
     today, language, presetName, startDate, endDate, canSeeFinancials,
-    leads, leadStageGroups, leadStateParents, kpis,
+    leads, leadStageGroups, leadStateParents,
     invoicesOffers,
     financeInput, financialRecords, uncategorizedLabel,
     invoicingGroups, excludedStatusKeys,
@@ -132,13 +130,14 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
   const labels = useMemo(() => periodLabels(period, language, today), [period, language, today]);
 
   const kpiStrip = useMemo(() => {
+    const current = computeLeadKpis(leads, { start: period.start, end: period.end }, leadStageGroups, leadStateParents);
     const previous =
       period.previousStart && period.previousEnd
         ? computeLeadKpis(leads, { start: period.previousStart, end: period.previousEnd }, leadStageGroups, leadStateParents)
         : null;
     const offerSuccess = computeOfferSuccess(invoicesOffers, offerStatuses, period, today);
-    return buildKpiStrip({ current: kpis, previous, offerSuccess, period });
-  }, [kpis, leads, leadStageGroups, leadStateParents, invoicesOffers, offerStatuses, period, today]);
+    return buildKpiStrip({ current, previous, offerSuccess, period });
+  }, [leads, leadStageGroups, leadStateParents, invoicesOffers, offerStatuses, period, today]);
 
   const invoicing = useMemo(
     () => buildInvoicingData(invoicingGroups, excludedStatusKeys),
@@ -209,7 +208,8 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
       );
       costsByProject.set(project.id, projectExpenseCosts(own, project.id, "real") + (labourByProject?.[project.id]?.cost ?? 0));
     }
-    return computeProfitability({ projects, isActive, invoicedByProject, costsByProject, recentCostProjectIds, clientNameOf });
+    const data = computeProfitability({ projects, isActive, invoicedByProject, costsByProject, recentCostProjectIds, clientNameOf });
+    return { ...data, labourCostHidden: isLabourCostHidden(data.rows.map((row) => row.projectId), labourByProject) };
   }, [
     canSeeFinancials, projects, projectTypes, isActive, financialRecords, invoicesOffers, invoiceStatuses,
     defaultCurrency, leadById, clientNameOf, labourByProject, today,

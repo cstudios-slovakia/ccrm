@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { FinancialRecord, InvoiceOffer, Project } from "../../types/index.ts";
 import { DEFAULT_INVOICE_STATUS_DEFS } from "../offerStatuses.ts";
-import { computeProfitability, projectExpenseCosts, projectHasRecentExpense, projectInvoicedAmount } from "./profitability.ts";
+import { computeProfitability, isLabourCostHidden, projectExpenseCosts, projectHasRecentExpense, projectInvoicedAmount } from "./profitability.ts";
 
 const project = (id: string, over: Partial<Project> = {}): Project =>
   ({ id, name: `P ${id}`, status: "active", archived: false, ...over }) as unknown as Project;
@@ -133,4 +133,18 @@ test("projectInvoicedAmount: the ledger when it has records, else the lead's liv
   assert.equal(projectInvoicedAmount({ ...common, financialRecords: ledger }), 5500);
   assert.equal(projectInvoicedAmount({ ...common, financialRecords: [] }), 700);
   assert.equal(projectInvoicedAmount({ ...common, project: project("p1"), financialRecords: [] }), 0);
+});
+
+test("labour cost is hidden when a listed project has tracked time with a withheld cost", () => {
+  const totals = {
+    a: { seconds: 3600, cost: 50 },
+    b: { seconds: 7200, cost: null },
+    c: { seconds: 0, cost: null },
+  };
+  assert.equal(isLabourCostHidden(["a", "b"], totals), true);
+  assert.equal(isLabourCostHidden(["a"], totals), false);
+  // No tracked time, so nothing to withhold.
+  assert.equal(isLabourCostHidden(["c", "unknown"], totals), false);
+  // Time tracking is off.
+  assert.equal(isLabourCostHidden(["b"], null), false);
 });

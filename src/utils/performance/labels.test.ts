@@ -89,3 +89,17 @@ test("short month names", () => {
   assert.equal(shortMonthNames("en")[4], "May");
   assert.equal(shortMonthNames("hu")[8], "Sze");
 });
+
+test("a custom range with only a start reads as open-ended, in every language", () => {
+  const open = buildPeriod("custom", day(2026, 11, 5), null, TODAY);
+  assert.equal(periodRangeLabel(open, "sk"), "5. 11. 2026 \u2013");
+  assert.equal(periodRangeLabel(open, "en"), "5 Nov 2026 \u2013");
+  assert.equal(periodRangeLabel(open, "hu"), "2026. 11. 5. \u2013");
+  assert.deepEqual(periodLabels(open, "sk", TODAY), { current: "5. 11. 2026 \u2013", versusPrevious: "", versusPreviousMonth: "" });
+  assert.equal(periodLabels(open, "en", TODAY).current, "5 Nov 2026 \u2013");
+});
+
+test("an all-time period still reads as all time", () => {
+  const all = buildPeriod("all", null, null, TODAY);
+  assert.equal(periodRangeLabel(all, "sk"), "Celý čas");
+});

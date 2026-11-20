@@ -152,6 +152,14 @@ export const noun = (kind: Noun, n: number, l: Language): string => {
 export const acceptedWord = (n: number, l: Language): string =>
   l === "sk" ? (n === 1 ? "prijatá" : n >= 2 && n <= 4 ? "prijaté" : "prijatých") : l === "hu" ? "elfogadott" : "accepted";
 
+/** "otvorený" / "otvorené" / "otvorených" by count (en and hu do not inflect). */
+export const openWord = (n: number, l: Language): string =>
+  l === "sk" ? (n === 1 ? "otvorený" : n >= 2 && n <= 4 ? "otvorené" : "otvorených") : l === "hu" ? "nyitott" : "open";
+
+/** "z toho 1 otvorený", "z toho 3 otvorené", "z toho 5 otvorených". */
+export const ofWhichOpen = (n: number, l: Language): string =>
+  `${l === "sk" ? "z toho" : l === "hu" ? "ebből" : "of which"} ${count(n, l)} ${openWord(n, l)}`;
+
 /** "20 leadov". */
 export const countNoun = (kind: Noun, n: number, l: Language): string => `${count(n, l)}${NBSP}${noun(kind, n, l)}`;
 

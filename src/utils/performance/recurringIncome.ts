@@ -58,13 +58,19 @@ export const computeRecurringIncome = (
   // Breakdown of the reference month by category.
   const uncategorized = options.uncategorizedLabel ?? "Uncategorized";
   const categoryById = new Map(finance.categories.map((c) => [c.id, c]));
-  const byLabel = new Map<string, number>();
+  // One aggregation per category label, not per record: the matrix is built once for each.
+  const recordsByLabel = new Map<string, FinancialRecord[]>();
   for (const rec of recurring.records) {
-    const amount = incomeOf({ ...recurring, records: [rec] }, refSpan);
-    if (amount === 0) continue;
     const category = rec.categoryId ? categoryById.get(rec.categoryId) : undefined;
     const label = rec.categoryPath?.trim() || (category && category.type === "income" ? category.name : "") || uncategorized;
-    byLabel.set(label, (byLabel.get(label) ?? 0) + amount);
+    const list = recordsByLabel.get(label);
+    if (list) list.push(rec);
+    else recordsByLabel.set(label, [rec]);
+  }
+  const byLabel = new Map<string, number>();
+  for (const [label, records] of recordsByLabel) {
+    const amount = incomeOf({ ...recurring, records }, refSpan);
+    if (amount !== 0) byLabel.set(label, amount);
   }
   const sorted = [...byLabel.entries()]
     .map(([label, amount]) => ({ label, amount, other: false }))

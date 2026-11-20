@@ -102,6 +102,12 @@ test.describe('Na fakturovanie block of the performance overview', () => {
     expect(count).toBeGreaterThan(0);
     for (let i = 0; i < count; i++) await expect(rows(section(page)).nth(i).getByRole('checkbox')).toBeChecked();
 
+    // Dashboard chrome: shared card surface, hairline dividers, and NO gradients anywhere
+    const gradients = await section(page).evaluate((el) =>
+      [el, ...Array.from(el.querySelectorAll('*'))].filter((n) => getComputedStyle(n).backgroundImage.includes('gradient')).length
+    );
+    expect(gradients).toBe(0);
+
     // The grand total is the two group totals together.
     expect(await figure(grand(page))).toBeCloseTo((await figure(pipeline(page))) + (await figure(projects(page))), 1);
   });

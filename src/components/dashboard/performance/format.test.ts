@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   acceptedWord,
+  ofWhichOpen,
+  openWord,
   count,
   countNoun,
   deadlineDistance,
@@ -107,6 +109,24 @@ test("sk plurals of every counted noun", () => {
   assert.equal(n(ofTotal(8, 34, "lead", "sk")), "8 z 34 leadov");
   assert.equal(n(ofTotal(31, 258, "task", "sk")), "31 z 258 úloh");
   assert.equal(count(1234, "sk").replace(/\s/g, " "), "1 234");
+});
+
+test("open tickets inflect in sk", () => {
+  assert.deepEqual([0, 1, 2, 4, 5, 30].map((c) => openWord(c, "sk")), [
+    "otvorených",
+    "otvorený",
+    "otvorené",
+    "otvorené",
+    "otvorených",
+    "otvorených",
+  ]);
+  const plain = (s: string) => s.replace(/\s/g, " ");
+  assert.equal(plain(ofWhichOpen(1, "sk")), "z toho 1 otvorený");
+  assert.equal(plain(ofWhichOpen(3, "sk")), "z toho 3 otvorené");
+  assert.equal(plain(ofWhichOpen(0, "sk")), "z toho 0 otvorených");
+  assert.equal(plain(ofWhichOpen(30, "sk")), "z toho 30 otvorených");
+  assert.equal(plain(ofWhichOpen(30, "en")), "of which 30 open");
+  assert.equal(plain(ofWhichOpen(30, "hu")), "ebből 30 nyitott");
 });
 
 test("accepted offers inflect in sk", () => {
