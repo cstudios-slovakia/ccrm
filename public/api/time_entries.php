@@ -1865,7 +1865,7 @@ if ($action === 'create') {
     [$startUtc, $endUtc, $duration, $entryDate] = $time;
     // "Require a task on every entry": a finished entry is created with a task or ticket (the same `task_required` Stop answers).
     // A running one is not asked yet; the rule bites at Stop.
-    if (!empty($settings['requireTask']) && $endUtc !== null && $links['task_id'] === null && $links['ticket_id'] === null) {
+    if (!empty($settings['requireTask']) && ($startUtc === null || $endUtc !== null) && $links['task_id'] === null && $links['ticket_id'] === null) {
         ccrm_te_fail('task_required', 422);
     }
     /* PHASE6-LOCK-START */
@@ -1972,7 +1972,7 @@ if ($action === 'update') {
     [$startUtc, $endUtc, $duration, $entryDate] = $time;
     // "Require a task on every entry": reject only a request that removes the task/ticket of a linked entry, or that finishes a
     // running one without any. An entry that predates the rule (never had a task) stays editable in its other fields.
-    if (!empty($settings['requireTask']) && $endUtc !== null && !$isLinkedNow && ($wasLinked || $wasRunning)) {
+    if (!empty($settings['requireTask']) && ($startUtc === null || $endUtc !== null) && !$isLinkedNow && ($wasLinked || $wasRunning)) {
         ccrm_te_fail('task_required', 422);
     }
     /* PHASE6-LOCK-START */

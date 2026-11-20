@@ -535,7 +535,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       if (durationSec != null && (durationSec < 0 || durationSec > 86_400)) return route.fulfill(fail('duration_out_of_range', 422));
       // "Require a task on every entry": same rule as the server. A finished entry is created with a task or ticket; an update is refused
       // only when it removes the link of a linked entry or finishes a running one without any. A legacy task-less entry stays editable.
-      if (settings.requireTask && endAt && !links.taskId && !links.ticketId && (!existing || existing.taskId || existing.ticketId || !existing.endAt)) {
+      if (settings.requireTask && (!startAt || endAt) && !links.taskId && !links.ticketId && (!existing || existing.taskId || existing.ticketId || (existing.startAt && !existing.endAt))) {
         return route.fulfill(fail('task_required', 422));
       }
       if ('entryDate' in body && body.entryDate) entryDate = body.entryDate;

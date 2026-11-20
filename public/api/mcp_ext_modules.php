@@ -850,7 +850,7 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             }
             // "Require a task on every entry": only a request that removes the task/ticket of a finished, linked entry is refused.
             $curLinked = $cur['task_id'] !== null || $cur['ticket_id'] !== null;
-            if (!empty($settings['requireTask']) && $curLinked && $links['task_id'] === null && $links['ticket_id'] === null && $cur['end_at'] !== null) {
+            if (!empty($settings['requireTask']) && $curLinked && $links['task_id'] === null && $links['ticket_id'] === null && !($cur['start_at'] !== null && $cur['end_at'] === null)) {
                 throw new \InvalidArgumentException('Workspace settings require a task_id or ticket_id on every time entry (task_required).');
             }
 
