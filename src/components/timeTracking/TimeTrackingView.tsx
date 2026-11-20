@@ -17,7 +17,8 @@ import { TimeTrackingMobileBar } from "./TimeTrackingMobileBar";
 import { ViewingAsProvider, useEntriesFocus, useViewingAs } from "./ViewingAsContext";
 import { ViewingAsSelect } from "./ViewingAsSelect";
 import { TimeHeaderActions } from "./TimeHeaderActions";
-import { TimeToolbarProvider, TimeToolbarTarget } from "./TimeToolbarSlot";
+import { TimeToolbarEndTarget, TimeToolbarProvider, TimeToolbarTarget } from "./TimeToolbarSlot";
+import { TimeListFilterProvider } from "./TimeListFilter";
 import { UnsortedListChip } from "./UnsortedInbox";
 import { useEntryDeletion, type TimeDeps } from "./shared";
 
@@ -39,9 +40,11 @@ const tabFromRoute = (route: string): string => {
 export function TimeTrackingView(props: Props) {
   return (
     <ViewingAsProvider>
+      <TimeListFilterProvider>
       <TimeToolbarProvider>
         <TimeTrackingScreen {...props} />
       </TimeToolbarProvider>
+      </TimeListFilterProvider>
     </ViewingAsProvider>
   );
 }
@@ -131,6 +134,7 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
           <TimeToolbarTarget />
           {scope === "me" && !entriesFocus && <UnsortedListChip refreshKey={tab} />}
           <ViewingAsSelect users={people} />
+          <TimeToolbarEndTarget />
         </div>
       </div>
 

@@ -61,6 +61,33 @@ test.describe('Time tracking', () => {
     await expect(row(page, 'Fakturácia')).toHaveCount(0);
   });
 
+  test('List filter: Billable → Not billable shows only the non-billable entry, Clear restores every row, the stat tiles keep the whole week', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#tasks');
+    await openTimeTrackingFromSidebar(page);
+    await expect(row(page, 'Návrh cenovej ponuky')).toBeVisible();
+    // The seeded "Porada s klientom" is dated yesterday: on a Monday it falls in the previous week, so count instead of assuming three.
+    const before = await rows(page).count();
+    const weekTotal = await page.getByTestId('stat-week').innerText();
+
+    await page.getByTestId('time-filter-button').click();
+    await expect(page.getByTestId('time-filter-popover')).toBeVisible();
+    await page.getByTestId('time-filter-billable-not-billable').click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('time-filter-popover')).toHaveCount(0);
+    await expect(page.getByTestId('time-filter-summary')).toBeVisible();
+    await expect(row(page, 'Návrh cenovej ponuky')).toHaveCount(0);
+    await expect(row(page, 'Objednať krytinu')).toHaveCount(0);
+    expect(await rows(page).count()).toBeLessThan(before);
+    await expect(page.getByTestId('stat-week')).toHaveText(weekTotal);
+
+    await page.getByTestId('time-filter-button').click();
+    await page.getByTestId('time-filter-clear').click();
+    await expect(page.getByTestId('time-filter-summary')).toHaveCount(0);
+    await expect(rows(page)).toHaveCount(before);
+    await expect(row(page, 'Návrh cenovej ponuky')).toBeVisible();
+  });
+
   test('start, stop (asks for a project), then Continue replaces the running timer and Undo brings it back', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#time-tracking');

@@ -28,7 +28,9 @@ import { ClockDigits } from "./ClockDigits";
 import { EntryRow } from "./EntryRow";
 import { RangeNav } from "./RangeNav";
 import { continueInput } from "./TimerBar";
-import { TimeToolbarSlot } from "./TimeToolbarSlot";
+import { TimeToolbarEndSlot, TimeToolbarSlot } from "./TimeToolbarSlot";
+import { TimeListFilterButton, useTimeListFilter } from "./TimeListFilter";
+import { EMPTY_LIST_FILTER, applyListFilter, isFilterActive } from "../../utils/timeListFilter.ts";
 import { EntriesFocusBanner, clearEntriesFocus, useEntriesFocus, useViewingAsOptional, viewingFromScope } from "./ViewingAsContext";
 import { useMoney, type TimeDeps } from "./shared";
 
@@ -48,6 +50,8 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
   const money = useMoney(deps);
   const [anchor, setAnchor] = useState(todayIso());
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const { filter, setFilter } = useTimeListFilter();
+  const filterActive = isFilterActive(filter);
   /** Grouped rows the user opened, by the group's first entry id. */
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   /* PHASE4-VIEWING-AS */
@@ -87,10 +91,14 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
     tt.ensureHolidayYears(tt.workCountry, [...new Set(days.map((d) => Number(d.slice(0, 4))))]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchor, tt.workCountry, tt.enabled]);
-  useEffect(() => setSelected(new Set()), [anchor, viewScope, entriesFocus?.nonce]);
+  // The bulk bar only ever acts on rows that are shown: a changed filter drops the selection.
+  useEffect(() => setSelected(new Set()), [anchor, viewScope, entriesFocus?.nonce, filter]);
 
-  const byDay = useMemo(() => groupByDay(entries), [entries]);
-  const todays = byDay.get(today) ?? [];
+  // The stat tiles keep showing the whole week; only the day cards follow the filter.
+  const allByDay = useMemo(() => groupByDay(entries), [entries]);
+  const shown = useMemo(() => applyListFilter(entries, filter) as TimeEntry[], [entries, filter]);
+  const byDay = useMemo(() => (filterActive ? groupByDay(shown) : allByDay), [filterActive, shown, allByDay]);
+  const todays = allByDay.get(today) ?? [];
   const week = entries;
   const target = viewScope === "me" ? targetSeconds(calendar, days, settings.hoursPerDay) : null;
   const finishedToday = todays.filter((e) => !e.running).length;
@@ -115,7 +123,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
   // Phone: the current week shows today only, the rest of the week opens in place.
   const [wholeWeek, setWholeWeek] = useState(false);
   const phoneTodayOnly = isCurrentWeek && !entriesFocus && !wholeWeek;
-  const cards = [...days].reverse().filter((d) => byDay.has(d) || calendar.holiday(d));
+  const cards = [...days].reverse().filter((d) => byDay.has(d) || (!filterActive && calendar.holiday(d)));
   const holidayLabel = (iso: string) => {
     const h = calendar.holiday(iso);
     return h ? holidayName(h, tt.workCountry, deps.language) : null;
@@ -188,7 +196,18 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
         />
       </TimeToolbarSlot>
 
+      <TimeToolbarEndSlot>
+        <TimeListFilterButton entries={entries} />
+      </TimeToolbarEndSlot>
+
       <div className="flex flex-wrap items-center gap-2 empty:hidden">
+        {filterActive && (
+          <p className="type-meta text-slate-500" data-testid="time-filter-summary" role="status">
+            {t(`Filtered: ${shown.length} of ${entries.length} entries`, `Filtrované: ${shown.length} z ${entries.length} záznamov`, `Szűrve: ${shown.length} / ${entries.length} bejegyzés`)}
+            {" · "}
+            <button type="button" onClick={() => setFilter(EMPTY_LIST_FILTER)} className="font-semibold text-primary hover:underline cursor-pointer" data-testid="time-filter-summary-clear">{t("Clear", "Zrušiť", "Törlés")}</button>
+          </p>
+        )}
         {selected.size > 0 && (
           <div className="ml-auto flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-1.5 text-ui font-semibold text-white" data-testid="bulk-bar">
             {selected.size} {t("selected", "vybraných", "kijelölve")}
@@ -202,13 +221,19 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
         {/* END-PHASE4-VIEWING-AS */}
       </div>
 
-      {cards.length === 0 && !loading && (
+      {cards.length === 0 && !loading && filterActive && entries.length > 0 && (
+        <Surface>
+          <p className="text-body text-slate-500" data-testid="time-filter-empty">{t("No entries match the filter.", "Filtru nezodpovedá žiadny záznam.", "Egyetlen bejegyzés sem felel meg a szűrőnek.")}</p>
+        </Surface>
+      )}
+
+      {cards.length === 0 && !loading && !(filterActive && entries.length > 0) && (
         <Surface>
           <p className="text-body text-slate-500" data-testid="time-empty">{t("No time tracked this week. Start the timer above, or add time manually.", "Tento týždeň nie je zaznamenaný žiadny čas. Spustite časovač vyššie alebo pridajte čas ručne.", "Ezen a héten nincs rögzített idő. Indítsa el az időzítőt, vagy adjon hozzá kézzel.")}</p>
         </Surface>
       )}
 
-      {phoneTodayOnly && !byDay.has(today) && !loading && cards.length > 0 && !entries.some((e) => e.running) && (
+      {phoneTodayOnly && !filterActive && !byDay.has(today) && !loading && cards.length > 0 && !entries.some((e) => e.running) && (
         <Surface className="ws-sm:hidden">
           <p className="text-body text-slate-500" data-testid="time-today-empty">{t("Nothing tracked today yet. Start the timer above.", "Dnes ešte nie je zaznamenaný žiadny čas. Spustite časovač vyššie.", "Ma még nincs rögzített idő. Indítsa el az időzítőt fent.")}</p>
         </Surface>

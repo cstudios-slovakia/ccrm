@@ -397,7 +397,7 @@ extension popup has no app screenshot and was compared from code. The Unsorted i
 | F14 | Range navigator on the right of the toolbar row | Inside each view, under the tiles in List | FIX | owner decision 20 Nov; G2 | F |
 | F15 | Amber "Unsorted · N" chip in the toolbar row | Only inside the Day tab | FIX | owner decision 20 Nov; the count is on the client (`UnsortedInbox`) | F |
 | F16 | "Viewing as" as an avatar button | Label and bare select, `ViewingAsSelect.tsx` | FIX | owner decision 20 Nov (same dropdown inside) | F |
-| F17 | Filter button | None | ASK [Q2] | M1 | F |
+| F17 | Filter button | List tab: funnel button with Project, Billable, Tags (browser-side) | DONE [Q2] | M1 | F17 |
 | F18 | (single timer) | Parallel container: rows with text "Pause", square Stop, footer with "Pause all" / "Stop all" | KEEP-V2 / FIX (style) | V2 D5.4; each row drawn like the slim bar: title, project chip, clock, round Pause, round Stop | F |
 | F19 | (single timer) | Start-mode popover "Switch / Run in parallel" | KEEP-V2 | V2 D5; canvas popover style | F |
 | F20 | Header pill: title with a project line under it | Title only, project dot, `HeaderTimerPill.tsx:94` | FIX | canvas; V2 "+N" badge stays | F |
@@ -680,7 +680,7 @@ Order: F → (P1, P2, P3) → (P4, P5, P6) → (P7, P8, P9) → (P10, P11).
 | Q | Answer | Carried out |
 |---|---|---|
 | Q1 Settings into ⋯ | yes | F |
-| Q2 Filter button | **open**: the owner asked what "on the client" means (answered: only in the browser, no server change) | not built |
+| Q2 Filter button | yes, in the browser, if the data is complete (it is: the List loads the whole shown week, server cap 5000 rows) | F17 |
 | Q3 Tags button in the timer bar | no; tags stay as they are in the app | not built |
 | Q4 Timer/Manual toggle while running | yes | F |
 | Q5 Phone | keep the input bar, Today as on the canvas, keep the stat tiles, the tab row stays | P10 |
@@ -733,8 +733,9 @@ then merged into `css-main`. Not pushed, not ported.
 | P9 Settings, extension settings | `bd0b0a8c`, `6eb74bc8` | S1, S3–S8, S10, X1, X3–X6 | S2 Contractors not built (Q24 open). Canvas claims dropped as untrue: "saved but flagged Assign project", "only for projects with tasks", "notifies the owner", pairing code "never stored" |
 | P10 Phone | `ccaf15fa`, `6ca83752` | M1, M3 | The running card is in the page flow, not fixed; Stop stays reachable from the sticky header pill (40 px on the phone). The sheet and the paused card were not restyled |
 | P11 Extension popup | `7499a606`, `a09251ce` | X9–X13 | The address field stays: the zip is generic and pairing needs the address (the audit's "the build knows its server" was wrong). No Pause in the popup: it has no pause endpoint. `EXTENSION_VERSION` unchanged |
+| F17 List filter | `COMMIT` | F17 | Applies to the List tab only (also its phone Today view). The stat tiles stay unfiltered (a "Filtered: N of M" line says so). Not persisted across reloads. Filter is not applied to Day, Calendar, Timesheet or Reports |
 
-Still open after this pass: Q2, Q18, Q24, Q29 (owner), the C2 text about the sidebar
+Still open after this pass: Q18, Q24, Q29 (owner), the C2 text about the sidebar
 colour, and the two MISSING rows (E4, E11).
 
 ## Checks and QA (pass 2)
