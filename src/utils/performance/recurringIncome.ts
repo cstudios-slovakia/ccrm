@@ -5,16 +5,18 @@
  * Recurring income is every income rule (`isRecurring && type === "income"`) together with the
  * stored payments that came out of a rule (an income movement with a `recurringSourceId`: the
  * ledger keeps each past charge as a movement of its own, see recurringRuleDeletion.ts). The
- * amounts are not re-derived: they go through `aggregateOverviewTable` exactly as the Finance
- * table sums them (a rule's charges from its schedule, a stored payment on its own date, a rule's
- * own row only when the schedule does not already account for it), read as `real + estimated`.
+ * amounts are not re-derived: the recurring subset goes through `financeForPeriod` (marketingRoi.ts),
+ * which is `aggregateOverviewTable`, exactly as the Finance table sums them (a rule's charges from
+ * its schedule, a stored payment on its own date, a rule's own row only when the schedule does not
+ * already account for it), read as `real + estimated`.
+ *
+ * Simplified Finance has no ledger and so no rules: everything is 0 / null / empty there.
  */
 
-import type { FinancialCategory, FinancialRecord } from "../../types/index.ts";
-import type { PerformancePeriod, RecurringIncomeData } from "../../components/dashboard/performance/types.ts";
-import { aggregateOverviewTable, type OverviewColumn } from "../financialOverviewTable.ts";
-import { monthColumn, periodColumn, shiftMonth } from "./cashflow.ts";
-import { toIsoDay } from "./period.ts";
+import type { RecurringIncomeData, PerformancePeriod } from "../../components/dashboard/performance/types.ts";
+import type { FinancialRecord } from "../../types/index.ts";
+import { financeForPeriod, type FinanceInput } from "../marketingRoi.ts";
+import { financePeriodOf, monthSpan, shiftMonth } from "./cashflow.ts";
 
 export interface RecurringIncomeOptions {
   /** The translated "Uncategorized" label (the Finance tab's: "Bez kategórie"). Default "Uncategorized". */
@@ -25,42 +27,40 @@ export interface RecurringIncomeOptions {
 export const isRecurringIncomeRecord = (rec: FinancialRecord): boolean =>
   rec.type === "income" && (rec.isRecurring || Boolean(rec.recurringSourceId));
 
-const incomeIn = (records: FinancialRecord[], categories: FinancialCategory[], column: OverviewColumn, todayIso: string): number =>
-  aggregateOverviewTable(records, categories, [column], todayIso).totalIncomesByCol[column.id]?.total ?? 0;
-
 export const computeRecurringIncome = (
-  records: readonly FinancialRecord[],
-  categories: readonly FinancialCategory[],
+  finance: FinanceInput,
   period: PerformancePeriod,
   today: Date,
   options: RecurringIncomeOptions = {},
 ): RecurringIncomeData => {
-  const todayIso = toIsoDay(today);
-  const all = records as FinancialRecord[];
-  const cats = categories as FinancialCategory[];
-  const recurring = all.filter(isRecurringIncomeRecord);
+  if (finance.mode === "simplified") {
+    return { monthly: 0, deltaMonthly: null, yearly: 0, shareOfIncomePct: null, breakdown: [] };
+  }
+
+  const recurring: FinanceInput = { ...finance, records: finance.records.filter(isRecurringIncomeRecord) };
+  const incomeOf = (input: FinanceInput, span: { startIso: string | null; endIso: string | null }): number =>
+    financeForPeriod(input, span)?.totalIncomeSummary.total ?? 0;
 
   // The month the period ends in; today's month for "all time".
   const reference = period.end ?? today;
-  const refYear = reference.getFullYear();
-  const refMonth = reference.getMonth();
-  const prev = shiftMonth(refYear, refMonth, -1);
+  const ref = { year: reference.getFullYear(), month: reference.getMonth() };
+  const prev = shiftMonth(ref.year, ref.month, -1);
 
-  const refColumn = monthColumn(refYear, refMonth, todayIso);
-  const monthly = incomeIn(recurring, cats, refColumn, todayIso);
-  const previousMonthly = incomeIn(recurring, cats, monthColumn(prev.year, prev.month, todayIso), todayIso);
+  const refSpan = monthSpan(ref, ref);
+  const monthly = incomeOf(recurring, refSpan);
+  const previousMonthly = incomeOf(recurring, monthSpan(prev, prev));
 
   // Share of all income in the period, with the same amount and date rules as the cashflow card.
-  const col = periodColumn(all, period, today);
-  const recurringInPeriod = incomeIn(recurring, cats, col, todayIso);
-  const incomeInPeriod = incomeIn(all, cats, col, todayIso);
+  const periodSpan = financePeriodOf(period);
+  const recurringInPeriod = incomeOf(recurring, periodSpan);
+  const incomeInPeriod = incomeOf(finance, periodSpan);
 
   // Breakdown of the reference month by category.
   const uncategorized = options.uncategorizedLabel ?? "Uncategorized";
-  const categoryById = new Map(cats.map((c) => [c.id, c]));
+  const categoryById = new Map(finance.categories.map((c) => [c.id, c]));
   const byLabel = new Map<string, number>();
-  for (const rec of recurring) {
-    const amount = incomeIn([rec], cats, refColumn, todayIso);
+  for (const rec of recurring.records) {
+    const amount = incomeOf({ ...recurring, records: [rec] }, refSpan);
     if (amount === 0) continue;
     const category = rec.categoryId ? categoryById.get(rec.categoryId) : undefined;
     const label = rec.categoryPath?.trim() || (category && category.type === "income" ? category.name : "") || uncategorized;

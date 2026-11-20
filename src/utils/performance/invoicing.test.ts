@@ -30,10 +30,20 @@ test("an excluded status stays listed but leaves every sum (key format group:sta
   assert.equal(d.projects.itemCount, 3);
   assert.deepEqual([d.pipeline.includedStatuses, d.pipeline.totalStatuses], [2, 3]);
   assert.equal(d.pipeline.rows.length, 3);
-  const row = d.pipeline.rows.find((r) => r.id === "negotiation")!;
+  const row = d.pipeline.rows.find((r) => r.id === "leads:negotiation")!;
   assert.deepEqual([row.included, row.value, row.count, row.label, row.color], [false, 6000, 1, "NEGOTIATION", "#3b82f6"]);
   assert.equal(d.total, 12000);
   assert.ok(Math.abs(d.pipelineSharePct! - (4000 / 12000) * 100) < 1e-9);
+});
+
+test("row ids are the full exclusion keys, so equal status keys of two groups stay apart", () => {
+  const shared = [
+    { id: "leads", name: "Pipeline", items: [item("new", 100, 1)] },
+    { id: "projects", name: "Projects", items: [item("new", 900, 2)] },
+  ] as unknown as StatusStatGroup[];
+  const d = buildInvoicingData(shared, ["projects:new"]);
+  assert.deepEqual([d.pipeline.rows[0].id, d.projects.rows[0].id], ["leads:new", "projects:new"]);
+  assert.deepEqual([d.pipeline.rows[0].included, d.projects.rows[0].included], [true, false]);
 });
 
 test("a key of the other group does not exclude", () => {

@@ -1,9 +1,9 @@
 /**
  * Úspešnosť cenových ponúk: accepted price offers over the offers that reached a verdict.
  *
- * Which statuses count as "closed" is a decision the owner still has to confirm, so the two
- * debatable kinds are switches: an offer that lapsed unanswered (`countExpired`, on by default)
- * and one that was withdrawn (`countCancelled`, off by default). Accepted and rejected always count.
+ * Closed means accepted, rejected or expired (sent and past `validUntil`); a withdrawn offer does
+ * not count. The two kinds that are not plain verdicts stay switches: `countExpired` (on by
+ * default) and `countCancelled` (off by default).
  */
 
 import type { InvoiceOffer } from "../../types/index.ts";

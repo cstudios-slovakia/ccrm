@@ -1,38 +1,23 @@
 /**
  * Lead KPIs of the KPI strip: Obrat, Konverzia lead -> klient, Priemerná hodnota zákazky.
  *
- * `computeLeadKpis` is the formula `Dashboard.tsx` has used for these cards (`filteredLeads`,
- * `wonLeads`, `activePipelineLeads`, `totalRevenue`, `leadToClientConversion`, `averageDealValue`),
- * moved here so the tab and the old cards cannot drift apart:
- *
- * - a lead counts when it is not archived, is not the `unassigned-docs` row and its `createdAt`
- *   lies in the range (end of day inclusive);
- * - "won" is `isClosedLeadState` (note: that is every closed phase of the pipeline settings);
- * - the pipeline is every counted lead whose phase group is not "closed" (a phase with no group
- *   counts as "in_progress");
- * - conversion = won / pipeline x 100; average deal = revenue / won.
+ * `computeLeadKpis` is what `Dashboard.tsx` does for its own cards: the date filter of
+ * `filteredLeads` (not archived, not the `unassigned-docs` row, `createdAt` in the range, end of
+ * day inclusive), then `leadKpis` of `dashboardMetrics.ts` over the pipeline leads (a client
+ * record is not a lead; "won" is a winning closed stage, never a lost one). The counting itself
+ * lives there and is reused, not copied.
  */
 
 import type { Lead } from "../../types/index.ts";
 import type { KpiStripData, PerformancePeriod } from "../../components/dashboard/performance/types.ts";
-import { isClosedLeadState } from "../leadSla.ts";
+import { isPipelineLead, leadKpis, type LeadKpis } from "../dashboardMetrics.ts";
 import { endOfDay, isInRange, parseAppDate, startOfDay } from "./period.ts";
+
+export type LeadKpiResult = LeadKpis;
 
 export interface LeadKpiRange {
   start: Date | null;
   end: Date | null;
-}
-
-export interface LeadKpiResult {
-  /** Sum of the value of the won leads. */
-  revenue: number;
-  wonCount: number;
-  /** Leads in the open pipeline: the figure the conversion divides by. */
-  openCount: number;
-  /** wonCount / openCount x 100; null when the pipeline is empty. */
-  conversionPct: number | null;
-  /** revenue / wonCount; null without a won lead. */
-  averageDeal: number | null;
 }
 
 export const computeLeadKpis = (
@@ -44,35 +29,17 @@ export const computeLeadKpis = (
   const start = range.start ? startOfDay(range.start) : null;
   const end = range.end ? endOfDay(range.end) : null;
 
-  let revenue = 0;
-  let wonCount = 0;
-  let openCount = 0;
-
-  for (const lead of leads) {
-    if (lead.id === "unassigned-docs" || lead.archived) continue;
-    if (!lead.createdAt) continue;
-    if (!isInRange(parseAppDate(lead.createdAt), start, end)) continue;
-
-    if (isClosedLeadState(lead.status, leadStageGroups, leadStateParents)) {
-      wonCount += 1;
-      revenue += Number(lead.value) || 0;
-    }
-
-    const statusLower = (lead.status || "").toLowerCase();
-    const parentStatus = leadStateParents[statusLower];
-    const targetStatus = parentStatus ? parentStatus.toLowerCase() : statusLower;
-    const group = leadStageGroups[targetStatus] || "in_progress";
-    if (group !== "closed") openCount += 1;
-  }
-
-  return {
-    revenue,
-    wonCount,
-    openCount,
-    conversionPct: openCount > 0 ? (wonCount / openCount) * 100 : null,
-    averageDeal: wonCount > 0 ? revenue / wonCount : null,
-  };
+  const filtered = leads.filter((lead) => {
+    if (lead.id === "unassigned-docs" || lead.archived) return false;
+    if (!lead.createdAt) return false;
+    return isInRange(parseAppDate(lead.createdAt), start, end);
+  });
+  return leadKpis(filtered.filter(isPipelineLead), leadStageGroups, leadStateParents);
 };
+
+/** conversionPct is 0 for an empty pipeline in `leadKpis`; the strip wants null there. */
+const rateOf = (k: LeadKpiResult): number | null => (k.total > 0 ? k.conversionPct : null);
+const averageOf = (k: LeadKpiResult): number | null => (k.won.count > 0 ? k.won.value / k.won.count : null);
 
 const pctChange = (current: number, previous: number | null | undefined): number | null =>
   previous === null || previous === undefined || previous === 0 ? null : ((current - previous) / previous) * 100;
@@ -88,20 +55,22 @@ export interface KpiStripInput {
 
 export const buildKpiStrip = ({ current, previous, offerSuccess, period }: KpiStripInput): KpiStripData => {
   const prev = period?.preset === "all" ? null : previous;
+  const rate = rateOf(current);
+  const prevRate = prev ? rateOf(prev) : null;
+  const average = averageOf(current);
   return {
-    revenue: { value: current.revenue, deltaPct: prev ? pctChange(current.revenue, prev.revenue) : null },
+    revenue: { value: current.won.value, deltaPct: prev ? pctChange(current.won.value, prev.won.value) : null },
     leadConversion: {
-      ratePct: current.conversionPct,
-      converted: current.wonCount,
-      total: current.openCount,
-      deltaPp:
-        prev && current.conversionPct !== null && prev.conversionPct !== null ? current.conversionPct - prev.conversionPct : null,
+      ratePct: rate,
+      converted: current.won.count,
+      total: current.total,
+      deltaPp: rate !== null && prevRate !== null ? rate - prevRate : null,
     },
     offerSuccess,
     averageDeal: {
-      value: current.averageDeal,
-      deals: current.wonCount,
-      deltaPct: prev && current.averageDeal !== null ? pctChange(current.averageDeal, prev.averageDeal) : null,
+      value: average,
+      deals: current.won.count,
+      deltaPct: prev && average !== null ? pctChange(average, averageOf(prev)) : null,
     },
   };
 };

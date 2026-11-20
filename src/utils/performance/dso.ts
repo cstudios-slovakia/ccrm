@@ -19,8 +19,6 @@ export interface DsoInput {
   leads: readonly Lead[];
   invoiceStatuses: readonly OfferStatusDef[];
   period: PerformancePeriod;
-  /** The company's payment term, handed through to the widget. */
-  paymentTermDays: number | null;
 }
 
 interface PaidInvoice {
@@ -50,7 +48,22 @@ const paidInvoicesIn = (
   return out;
 };
 
-export const computeDso = ({ invoices, financialRecords, leads, invoiceStatuses, period, paymentTermDays }: DsoInput): DsoData => {
+/**
+ * The agreed payment term: the mean of (`dueDate` - `issuedAt`) in whole days over the counted
+ * invoices that have a due date (never below 0), rounded to a whole day; null when none has one.
+ */
+const agreedTermDays = (counted: readonly PaidInvoice[]): number | null => {
+  const terms: number[] = [];
+  for (const { invoice } of counted) {
+    const issued = parseAppDate(invoice.issuedAt);
+    const due = parseAppDate(invoice.dueDate);
+    if (issued && due) terms.push(Math.max(0, dayDiff(issued, due)));
+  }
+  const term = mean(terms);
+  return term === null ? null : Math.round(term);
+};
+
+export const computeDso = ({ invoices, financialRecords, leads, invoiceStatuses, period }: DsoInput): DsoData => {
   const ledger = new Map(financialRecords.map((r) => [r.id, r]));
   const leadList = leads as Lead[];
   const leadById = new Map(leadList.map((l) => [l.id, l]));
@@ -85,7 +98,7 @@ export const computeDso = ({ invoices, financialRecords, leads, invoiceStatuses,
   return {
     averageDays,
     deltaDays,
-    paymentTermDays,
+    paymentTermDays: agreedTermDays(current),
     worst: [...rows].sort((a, b) => b.days - a.days || byName(a, b)).slice(0, 5),
     best: [...rows].sort((a, b) => a.days - b.days || byName(a, b)).slice(0, 5),
   };

@@ -30,14 +30,13 @@ const input = (invoices: InvoiceOffer[], rows: FinancialRecord[], p = period): D
   leads,
   invoiceStatuses: DEFAULT_INVOICE_STATUS_DEFS,
   period: p,
-  paymentTermDays: 14,
 });
 
 test("average, change against the previous period, per client, worst and best", () => {
   const invoices = [
-    invoice("a1", "2026-11-01", { clientId: "client-a" }), // 10 days
+    invoice("a1", "2026-11-01", { clientId: "client-a", dueDate: "2026-11-15" }), // 10 days, term 14
     invoice("a2", "2026-10-20", { clientId: "client-a" }), // 21 days -> Alfa 15.5
-    invoice("b1", "2026-11-01", { clientId: "client-b" }), // 1 day
+    invoice("b1", "2026-11-01", { clientId: "client-b", dueDate: "2026-11-09" }), // 1 day, term 8
     invoice("c1", "2026-11-03", { leadId: "lead-c" }), // 5 days, client through the lead's link
     invoice("s1", "2026-11-02", { leadId: "lead-solo" }), // 8 days, the lead itself
     invoice("p1", "2026-09-25", { clientId: "client-a" }), // previous period: paid 5 Oct, 10 days
@@ -61,7 +60,7 @@ test("average, change against the previous period, per client, worst and best", 
   // (10 + 21 + 1 + 5 + 8) / 5
   assert.equal(d.averageDays, 9);
   assert.equal(d.deltaDays, 9 - 10);
-  assert.equal(d.paymentTermDays, 14);
+  assert.equal(d.paymentTermDays, 11); // the invoices with a due date: (14 + 8) / 2
   assert.deepEqual(d.worst.map((r) => [r.clientId, r.name, r.days]), [
     ["client-a", "Alfa", 15.5],
     ["lead-solo", "Solo lead", 8],
@@ -96,7 +95,7 @@ test("an invoice paid before it was issued counts as 0 days", () => {
 });
 
 test("empty input: no average, no change, no rows", () => {
-  assert.deepEqual(computeDso(input([], [])), { averageDays: null, deltaDays: null, paymentTermDays: 14, worst: [], best: [] });
+  assert.deepEqual(computeDso(input([], [])), { averageDays: null, deltaDays: null, paymentTermDays: null, worst: [], best: [] });
 });
 
 test("all time has no change; a missing previous average gives no change", () => {
@@ -104,5 +103,27 @@ test("all time has no change; a missing previous average gives no change", () =>
   const rows = [ledgerRow("a1", "2026-11-11")];
   assert.equal(computeDso(input(invoices, rows, all)).deltaDays, null);
   assert.equal(computeDso(input(invoices, rows)).deltaDays, null); // nothing paid in October
-  assert.equal(computeDso({ ...input(invoices, rows), paymentTermDays: null }).paymentTermDays, null);
+});
+
+test("payment term: none without a due date, the mean otherwise, never below 0, only counted invoices", () => {
+  // One counted invoice without a due date.
+  assert.equal(computeDso(input([invoice("a", "2026-11-01")], [ledgerRow("a", "2026-11-11")])).paymentTermDays, null);
+
+  const invoices = [
+    invoice("a", "2026-11-01", { dueDate: "2026-11-15" }), // 14
+    invoice("b", "2026-11-01", { dueDate: "2026-11-08" }), // 7
+    invoice("c", "2026-11-01", { dueDate: "2026-10-20" }), // due before issue: 0
+    invoice("d", "2026-11-01"), // no due date: left out of the mean
+    invoice("unpaid", "2026-11-01", { dueDate: "2027-11-01" }), // not counted at all
+    invoice("late", "2026-11-01", { dueDate: "2027-11-01" }), // paid outside the period: not counted
+  ];
+  const rows = [
+    ledgerRow("a", "2026-11-11"),
+    ledgerRow("b", "2026-11-11"),
+    ledgerRow("c", "2026-11-11"),
+    ledgerRow("d", "2026-11-11"),
+    ledgerRow("unpaid", null),
+    ledgerRow("late", "2026-12-01"),
+  ];
+  assert.equal(computeDso(input(invoices, rows)).paymentTermDays, 7); // (14 + 7 + 0) / 3
 });

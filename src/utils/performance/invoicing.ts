@@ -17,7 +17,8 @@ const buildGroup = (group: StatusStatGroup | undefined, excluded: ReadonlySet<st
   if (!group) return { rows: [], itemCount: 0, includedStatuses: 0, totalStatuses: 0, total: 0 };
 
   const rows = group.items.map((item) => ({
-    id: item.key,
+    // The full exclusion key: a lead state and a project status can share a key ("new").
+    id: `${group.id}:${item.key}`,
     label: item.name,
     color: item.color ?? "",
     count: Number(item.count) || 0,
