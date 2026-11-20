@@ -1,5 +1,6 @@
 import type { Lead, Project } from "../../types";
 import { isClientRecord } from "../../utils/clientRecord.ts";
+import { resolveLinkedClient } from "../../utils/leadClient.ts";
 import { formatDuration, type TFn } from "../../utils/timeTracking.ts";
 
 /** How many of the newest project ids count as "recent". */
@@ -14,7 +15,7 @@ export const clientOfProject = (project: Project, leads: readonly Lead[]): Lead 
   const lead = project.leadId ? leads.find((l) => l.id === project.leadId) : undefined;
   if (!lead) return undefined;
   if (isClientRecord(lead)) return lead;
-  return lead.clientId ? leads.find((l) => l.id === lead.clientId) ?? lead : lead;
+  return resolveLinkedClient(lead, leads as Lead[]) ?? lead;
 };
 
 export interface PickerGroup {
@@ -55,12 +56,13 @@ export function groupProjects(
   });
 }
 
-/** "Recent · 3:27 this week", "3:27 this week", "Recent · no time this week" or "No time yet". */
+/** "Recent · 3:27 this week", "3:27 this week", "Recent · No time this week" or "No time this week". */
 export function optionMeta(recent: boolean, weekSeconds: number | undefined, t: TFn): string {
   const mark = t("Recent", "Nedávne", "Legutóbbi");
   if (weekSeconds && weekSeconds > 0) {
     const time = `${formatDuration(weekSeconds)} ${t("this week", "tento týždeň", "ezen a héten")}`;
     return recent ? `${mark} · ${time}` : time;
   }
-  return recent ? `${mark} · ${t("no time this week", "tento týždeň bez času", "ezen a héten nincs idő")}` : t("No time yet", "Zatiaľ bez času", "Még nincs idő");
+  const none = t("No time this week", "Tento týždeň bez času", "Ezen a héten nincs idő");
+  return recent ? `${mark} · ${none}` : none;
 }

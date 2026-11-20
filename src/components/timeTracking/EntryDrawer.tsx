@@ -223,7 +223,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
   const chipClass = "type-meta inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-600";
   const originTask = entry.originType === "task" && entry.originId ? lookups.taskById.get(entry.originId) : null;
   const provenanceWhen = (() => {
-    const at = entry.startAt ? new Date(entry.startAt) : entry.createdAt ? new Date(entry.createdAt.replace(" ", "T")) : null;
+    const at = entry.startAt ? new Date(entry.startAt) : entry.createdAt ? new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(entry.createdAt) ? entry.createdAt.replace(" ", "T") : `${entry.createdAt.replace(" ", "T")}Z`) : null;
     if (!at || Number.isNaN(at.getTime())) return "";
     const day = at.toLocaleDateString(locale, { day: "numeric", month: "short" });
     return entry.startAt ? `${day} ${clockTime(entry.startAt)}` : `${day} ${at.getFullYear()}`;
