@@ -4479,6 +4479,7 @@ ${log.payload || ''}
             projects={projects}
             projectTypes={projectTypes}
             financialRecords={financialRecords}
+            financialCategories={financialCategories} financialMode={financialMode} financialSimplifiedTable={financialSimplifiedTable}
             invoicesOffers={invoicesOffers}
             invoiceStatuses={invoiceStatuses}
           />

@@ -19,7 +19,7 @@
     "src/components/MeetingRoomView.tsx": 2990,
     "public/api/auth.php": 2903,
     "src/components/DynamicDashboardView.tsx": 2841,
-    "src/components/Dashboard.tsx": 2626,
+    "src/components/Dashboard.tsx": 2442,
     "src/utils/translations.ts": 2591,
     "src/components/SocialMediaView.tsx": 2524
   }

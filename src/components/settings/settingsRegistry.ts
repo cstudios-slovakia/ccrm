@@ -214,6 +214,7 @@ export const SETTINGS_CATEGORIES: SettingsCategoryDef[] = [
       S("ai", Bot, "ai_config"),
       S("usage", Coins, "ai_config"),
       S("ads", Megaphone, "general_config"),
+      S("marketing_roi", BadgePercent, "general_config"),
       S("social", Share2, "general_config", { flag: "social" }),
       S("waai", MessageCircle, "general_config", { adminOnly: true }),
     ],
