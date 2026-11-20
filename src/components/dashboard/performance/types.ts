@@ -310,7 +310,7 @@ export interface PerformanceOverviewData {
   dso: DsoData;
   profitability: ProfitabilityData;
   deadlines: DeadlinesData;
-  /** Phase 2 (item c): null until acceptance criteria are stored. */
+  /** From the projects' acceptance criteria; null is still allowed by the contract but the overview always fills it. */
   scopeCreep: ScopeCreepData | null;
   /** Phase 2 (item d): null until GitHub pushes are stored. */
   deployments: DeploymentsData | null;

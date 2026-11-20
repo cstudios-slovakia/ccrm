@@ -48,6 +48,7 @@ import {
 } from "../../../utils/performance/profitability";
 import { computeRecurringIncome } from "../../../utils/performance/recurringIncome";
 import { computeReworkCount, computeReworkRatio } from "../../../utils/performance/rework";
+import { computeScopeCreep } from "../../../utils/performance/scopeCreep";
 import { computeAssignedTasks, computeThroughput } from "../../../utils/performance/tasks";
 import { computeUtilization } from "../../../utils/performance/utilization";
 import { computeResponseTime, computeTicketsByStatus, firstResponseWithinSla } from "../../../utils/performance/tickets";
@@ -231,6 +232,8 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
     [projects, isActive, clientNameOf, today],
   );
 
+  const scopeCreep = useMemo(() => computeScopeCreep({ projects, period, leads }), [projects, period, leads]);
+
   const throughput = useMemo(
     () => computeThroughput({ tasks, projects, taskStates, period }),
     [tasks, projects, taskStates, period],
@@ -283,8 +286,8 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
       dso,
       profitability,
       deadlines,
+      scopeCreep,
       // Phase 2: not stored yet.
-      scopeCreep: null,
       deployments: null,
       throughput,
       utilization,
@@ -297,7 +300,7 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
       responseTime,
     }),
     [
-      period, labels, kpiStrip, invoicing, cashflow, recurringIncome, dso, profitability, deadlines,
+      period, labels, kpiStrip, invoicing, cashflow, recurringIncome, dso, profitability, deadlines, scopeCreep,
       throughput, utilization, utilizationState, timeEntries.truncated, assignedTasks, reworkRatio, reworkCount, ticketsByStatus, responseTime,
     ],
   );
