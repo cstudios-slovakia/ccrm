@@ -80,7 +80,7 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
     [entries, anchor, nowMs, extra, byPerson],
   );
   const byId = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
-  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-US";
+  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-GB";
   const today = todayIso(new Date(nowMs));
   const isAdmin = isAdminRoleName(deps.currentUser.role);
   const stampedByUser = useMemo(() => {
@@ -214,7 +214,12 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
 
   const fmtDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" });
   const sameMonth = from.slice(0, 7) === to.slice(0, 7);
-  const rangeText = sameMonth ? `${new Date(`${from}T12:00:00`).getDate()} – ${fmtDay(to)}` : `${fmtDay(from)} – ${fmtDay(to)}`;
+  const toDay = new Date(`${to}T12:00:00`).getDate();
+  const rangeText = !sameMonth
+    ? `${fmtDay(from)} – ${fmtDay(to)}`
+    : deps.language === "hu"
+      ? `${fmtDay(from)} – ${toDay}.`
+      : `${new Date(`${from}T12:00:00`).getDate()} – ${fmtDay(to)}`;
   const weekNo = isoWeekNumber(from);
   const rangeLabel = `${t(`Week ${weekNo}`, `Týždeň ${weekNo}`, `${weekNo}. hét`)} · ${rangeText}`;
   const rowLabel = (row: TimesheetRow): { project: string; task: string; person: string } => ({
@@ -371,10 +376,10 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
             <tr className="border-t border-slate-100">
               <td colSpan={9} className="p-0">
                 <div className="p-2">
-                <button type="button" onClick={() => setAdding(true)} disabled={!mayEdit} data-testid="timesheet-add-row" className="inline-flex h-10 w-full items-center gap-1.5 rounded-xl border border-dashed border-slate-300 px-3 text-ui font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-40 cursor-pointer">
-                  <Plus className="size-4" />
-                  {t("Add row — pick project and task", "Pridať riadok — vyberte projekt a úlohu", "Sor hozzáadása — válasszon projektet és feladatot")}
-                </button>
+                  <button type="button" onClick={() => setAdding(true)} disabled={!mayEdit} data-testid="timesheet-add-row" className="inline-flex h-10 w-full items-center gap-1.5 rounded-xl border border-dashed border-slate-300 px-3 text-ui font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-40 cursor-pointer">
+                    <Plus className="size-4" />
+                    {t("Add row — pick project and task", "Pridať riadok — vyberte projekt a úlohu", "Sor hozzáadása — válasszon projektet és feladatot")}
+                  </button>
                 </div>
               </td>
             </tr>
@@ -405,9 +410,9 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
           <Info className="mt-0.5 size-4 shrink-0 text-slate-400" />
           <p>
             {t(
-              "Typing hours into an empty cell creates one hours-only entry for that day, with no start time. Editing a cell that holds several entries changes the last one so the cell adds up to what you typed. Clearing a cell changes nothing.",
-              "Zadanie hodín do prázdnej bunky vytvorí jeden záznam len s hodinami pre daný deň, bez času začiatku. Úprava bunky s viacerými záznamami zmení posledný z nich, aby bunka dávala zadaný súčet. Vymazanie bunky nič nezmení.",
-              "Ha órákat írsz egy üres cellába, egy csak órákat tartalmazó bejegyzés jön létre arra a napra, kezdési idő nélkül. Ha több bejegyzést tartalmazó cellát szerkesztesz, az utolsó bejegyzés változik, hogy a cella a beírt összeget adja. A cella törlése nem változtat semmit.",
+              "Typing hours into an empty cell creates one hours-only entry for that day, with no start time. Editing a cell that holds several entries changes the last one so the cell adds up to what you typed. Clearing a cell changes nothing. A cell with a running timer cannot be edited.",
+              "Zadanie hodín do prázdnej bunky vytvorí jeden záznam len s hodinami pre daný deň, bez času začiatku. Úprava bunky s viacerými záznamami zmení posledný z nich, aby bunka dávala zadaný súčet. Vymazanie bunky nič nezmení. Bunku s bežiacim časovačom nemožno upraviť.",
+              "Ha órákat ír egy üres cellába, egy csak órákat tartalmazó bejegyzés jön létre arra a napra, kezdési idő nélkül. Ha több bejegyzést tartalmazó cellát szerkeszt, az utolsó bejegyzés változik, hogy a cella a beírt összeget adja. A cella törlése nem változtat semmit. A futó időzítőt tartalmazó cella nem szerkeszthető.",
             )}
           </p>
         </div>
