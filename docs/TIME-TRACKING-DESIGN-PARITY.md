@@ -728,7 +728,7 @@ then merged into `css-main`. Not pushed, not ported.
 | P4 Day, Unsorted | `696e1dff`, `79861b02` | D1–D8 | The extension link opens Settings → Time tracking and does not scroll to the extension block |
 | P5 Team | `19d1fb21`, `aadcfbde` | W1, W2, W4, header card | People without an employee record have no bar; the legend says so |
 | P6 Reports | `e04f5f08`, `d15d7387` | R1–R8, R10–R12 | Margin counts only entries with a cost whose worked time equals their duration, and is marked "≈" when some are left out. The badge reads "Restricted access": the salary report is a grantable permission, not admin-only. The day chart is capped at 62 working days |
-| R9 Reports drill-down | `fef39283` | R9 | The report (before and after) reads at most 5000 entries per period from the server; a notice now says so |
+| R9 Reports drill-down | `0c7c32c3` | R9 | The report (before and after) reads at most 5000 entries per period from the server; a notice now says so |
 | P7 Drawer, picker | `ec4aa4e2`, `52a173eb` | E1, E3, E6–E8, E10 | Meta line reads "No time this week" (the picker has no all-time data). No keyboard navigation in the picker, as before |
 | P8 Task drawer, project tab | `50749da2`, `56dad0a8` | K1–K3, K5, P1–P7 | No cost tile (Q23). No rate column in "By employee": there is no per-person rate on the client. Hours budget % is always all-time |
 | P9 Settings, extension settings | `bd0b0a8c`, `6eb74bc8` | S1, S3–S8, S10, X1, X3–X6 | S2 Contractors not built (Q24 open). Canvas claims dropped as untrue: "saved but flagged Assign project", "only for projects with tasks", "notifies the owner", pairing code "never stored" |
