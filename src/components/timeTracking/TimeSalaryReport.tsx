@@ -211,7 +211,7 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
                     <td className="px-3 py-3"><MoneyText bag={row.clientCost} language={deps.language} /></td>
                     <td className="px-3 py-3"><MoneyText bag={row.internalCost} language={deps.language} /></td>
                     <td className="px-3 py-3"><MoneyText bag={row.unallocatedCost} language={deps.language} /></td>
-                    <td className={`px-3 py-3 tabular-nums ${util != null && util < 75 ? "text-amber-700" : "text-slate-800"}`}>{util == null ? "—" : `${util} %`}</td>
+                    <td className={`px-3 py-3 tabular-nums ${util != null && row.employeeId != null && employee?.kind !== "contractor" && util < 75 ? "text-amber-700" : "text-slate-800"}`}>{util == null ? "—" : `${util} %`}</td>
                   </tr>
                 );
               })}
