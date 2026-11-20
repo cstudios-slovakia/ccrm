@@ -40,6 +40,8 @@ interface Props {
   /** Render the panel inline instead of as a popover (inside a modal). */
   inline?: boolean;
   align?: "left" | "right";
+  /** The default trigger as a pill in the project's colour (amber "Assign project" when none): the timer bar's. */
+  chip?: boolean;
 }
 
 /**
@@ -62,6 +64,7 @@ export function ProjectPicker({
   defaultOpen = false,
   inline = false,
   align = "left",
+  chip = false,
 }: Props) {
   const statuses = useProjectStatuses();
   const [open, setOpen] = useState(defaultOpen || inline);
@@ -146,7 +149,25 @@ export function ProjectPicker({
   const label = selected ? nameOf(selected) : t("Assign project", "Priradiť projekt", "Projekt hozzárendelése");
   const toggle = () => !disabled && setOpen((v) => !v);
 
-  const defaultTrigger = (
+  const chipColor = selected ? projectColor(selected.id) : null;
+  const chipTrigger = (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={toggle}
+      data-testid="project-picker-trigger"
+      style={chipColor ? { backgroundColor: `${chipColor}1a`, borderColor: `${chipColor}40` } : undefined}
+      className={`inline-flex h-9 max-w-64 items-center gap-2 rounded-full border px-3 text-ui font-semibold transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
+        selected ? "text-slate-800 hover:brightness-95" : "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+      }`}
+    >
+      <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: chipColor ?? "#d97706" }} />
+      <span className="truncate">{label}</span>
+      <ChevronDown className="size-3.5 shrink-0 text-slate-500" />
+    </button>
+  );
+
+  const defaultTrigger = chip ? chipTrigger : (
     <button
       type="button"
       disabled={disabled}

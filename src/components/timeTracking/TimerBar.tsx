@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Euro, Play, Plus, Square, X } from "lucide-react";
+import { AlignLeft, ArrowRight, CalendarDays, CheckSquare, Clock, Euro, ListPlus, Plus, X } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { matchOpenTasks, matchOpenTickets } from "../../utils/timeLinks.ts";
 import {
@@ -16,6 +16,7 @@ import { isClosedTicketStatus } from "../../utils/tickets";
 import { ClockDigits } from "./ClockDigits";
 import { CycleRing } from "./CycleRing";
 import { ProjectPicker } from "./ProjectPicker";
+import { RoundTimerButton, roundButtonClass, roundButtonRadius } from "./RoundTimerButton";
 import { TimerContainer } from "./TimerContainer";
 import { canRenameTitle, renameHint, useTimeLookups, type TimeDeps } from "./shared";
 
@@ -36,13 +37,13 @@ interface Props {
 }
 
 /**
- * The timer bar: title · project · task · billable · elapsed · Start/Stop · Timer/Manual.
+ * The timer bar, one slim row: title · project chip · task chip · Description · billable · clock · round Start/Stop · Timer/Manual.
  *
  * Typing matches open tasks by title; picking one LINKS it (the task, and its project) and
  * copies no text. While a timer runs, the title field edits the running entry — and when the
  * entry is linked, that title is the task's, so editing it renames the task.
  *
- * Under the row sits an optional Description of the work. It is typed before Start (or in manual
+ * A small Description button opens an optional note row under the bar (it stays open while it has text). It is typed before Start (or in manual
  * mode) and travels with the new entry; while a timer runs the same field edits the running entry.
  */
 export function TimerBar(props: Props) {
@@ -80,9 +81,12 @@ export function TimerBar(props: Props) {
 function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, adding, onStarted, onAddTimer, addOpen }: Props) {
   const tt = useTimeTracking();
   const { t, nowMs, settings } = tt;
-  const running = adding ? null : tt.primaryRunning;
-  const lookups = useTimeLookups(deps);
   const [mode, setMode] = useState<"timer" | "manual">("timer");
+  // In Manual mode the bar's fields belong to the NEW entry, also while a timer runs.
+  const running = adding || mode === "manual" ? null : tt.primaryRunning;
+  const lookups = useTimeLookups(deps);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const noteField = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [task, setTask] = useState<Task | null>(null);
   const [ticket, setTicket] = useState<Ticket | null>(null);
@@ -265,7 +269,18 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
   const effectiveProject = running ? running.projectId : projectId;
   const effectiveBillable = running ? running.billable : billable;
   const canPick = deps.canPickProject && !(running && running.taskId && running.projectId && !deps.canPickProject);
+  const noteValue = running ? runningNote : note;
+  const showNote = noteOpen || noteValue.length > 0;
+  useEffect(() => {
+    if (noteOpen) noteField.current?.focus();
+  }, [noteOpen]);
 
+  // The title a linked item gives the entry is the task's (C5); it is edited on the task itself.
+  const linked = running ? (running.taskId ? "task" : running.ticketId ? "ticket" : null) : task ? "task" : ticket ? "ticket" : null;
+  const linkedKind = linked === "ticket" ? t("Ticket", "Tiket", "Jegy") : t("Task", "Úloha", "Feladat");
+  const linkedName = running ? running.title : task?.title || ticket?.title || ticket?.subject || "";
+
+  const titleClass = "h-10 w-full min-w-40 rounded-xl border border-transparent bg-transparent px-3 text-body outline-none placeholder:text-slate-400 hover:border-slate-200 focus:border-primary focus:bg-white";
   const titleField = running ? (
     <div className="min-w-0 flex-1 basis-60">
       <input
@@ -277,18 +292,15 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
         title={!rename.can ? t("You cannot edit this task, so you cannot rename it.", "Túto úlohu nemôžete upravovať, preto ju nemôžete premenovať.", "Ezt a feladatot nem szerkesztheti, ezért nem nevezheti át.") : undefined}
         placeholder={t("What are you working on?", "Na čom pracujete?", "min dolgozik?")}
         data-testid="timer-title"
-        className="h-10 w-full min-w-40 rounded-xl border border-transparent bg-transparent px-3 text-body font-semibold text-slate-900 outline-none placeholder:font-normal placeholder:text-slate-400 hover:border-slate-200 focus:border-primary focus:bg-white read-only:cursor-default"
+        className={`${titleClass} font-semibold text-slate-900 read-only:cursor-default`}
       />
       {hint && rename.can && <div className="px-3 type-meta text-slate-400">{hint}</div>}
     </div>
   ) : (
     <div ref={box} className="relative min-w-0 flex-1 basis-60">
       {task || ticket ? (
-        <div className="flex h-10 items-center gap-2 rounded-xl bg-teal-50 px-3 text-ui font-semibold text-teal-800" data-testid="timer-linked-task">
-          <span className="truncate">{task?.title || ticket?.title || ticket?.subject}</span>
-          <button type="button" onClick={() => { setTask(null); setTicket(null); setProjectId(null); }} aria-label={t("Unlink", "Odpojiť", "Leválasztás")} className="text-teal-600 hover:text-teal-900 cursor-pointer">
-            <X className="size-4" />
-          </button>
+        <div className="flex h-10 items-center px-3 text-body font-semibold text-slate-900" data-testid="timer-linked-title">
+          <span className="truncate">{linkedName}</span>
         </div>
       ) : (
         <input
@@ -298,7 +310,7 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
           onKeyDown={(e) => { if (e.key === "Enter" && mode === "timer") void onStart(); }}
           placeholder={t("What are you working on?", "Na čom pracujete?", "min dolgozik?")}
           data-testid="timer-title"
-          className="h-10 w-full min-w-40 rounded-xl border border-transparent bg-transparent px-3 text-body outline-none placeholder:text-slate-400 hover:border-slate-200 focus:border-primary focus:bg-white"
+          className={titleClass}
         />
       )}
       {suggestOpen && (suggestions.length > 0 || ticketSuggestions.length > 0) && (
@@ -321,8 +333,17 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
     </div>
   );
 
+  const iconButton = "inline-flex size-10 shrink-0 items-center justify-center rounded-xl transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+  const manual = mode === "manual";
+  // Start → End gives the duration; a typed duration shows instead until those times are filled in.
+  const spanSeconds = from && to ? Math.round((new Date(isoFromLocal(date, to)).getTime() - new Date(isoFromLocal(date, from)).getTime()) / 1000) : 0;
+  const durShown = dur !== "" ? dur : spanSeconds > 0 ? formatDuration(spanSeconds, true) : "";
+  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-US";
+  const dateLabel = date === todayIso() ? t("Today", "Dnes", "Ma") : new Date(`${date}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" });
+  const timeInput = "h-9 w-24 rounded-xl border border-slate-200 bg-white px-2 text-center text-ui tabular-nums";
+
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-3xl border border-slate-200/80 bg-white p-3 shadow-sm ws-sm:p-4" data-testid="timer-bar">
+    <div className="flex flex-wrap items-center gap-2 rounded-3xl border border-slate-200/80 bg-white p-2 pl-3 shadow-sm ws-sm:pl-5" data-testid="timer-bar">
       {titleField}
 
       <ProjectPicker
@@ -340,42 +361,84 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
         onCreateProject={deps.onCreateProject}
         disabled={!canPick}
         align="right"
+        chip
       />
+
+      {linked && (
+        <span className="inline-flex h-9 max-w-48 items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 pl-3 pr-2 text-ui font-medium text-slate-600" data-testid="timer-linked-task" title={linkedName}>
+          <CheckSquare className="size-3.5 shrink-0" aria-hidden />
+          <span className="truncate">{linkedKind}</span>
+          {running ? (
+            <span className="w-1" aria-hidden />
+          ) : (
+            <button type="button" onClick={() => { setTask(null); setTicket(null); setProjectId(null); }} aria-label={t("Unlink", "Odpojiť", "Leválasztás")} className="rounded-full p-0.5 text-slate-400 hover:text-slate-800 cursor-pointer">
+              <X className="size-3.5" />
+            </button>
+          )}
+        </span>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setNoteOpen((v) => !v)}
+        aria-expanded={showNote}
+        aria-label={t("Description", "Popis", "Leírás")}
+        title={t("Description", "Popis", "Leírás")}
+        data-testid="timer-note-toggle"
+        className={`${iconButton} ${noteValue ? "bg-teal-50 text-teal-700" : "text-slate-500 hover:bg-slate-100"}`}
+      >
+        <AlignLeft className="size-4" />
+      </button>
 
       <button
         type="button"
         onClick={() => (running ? void saveRunning({ billable: !running.billable }) : setBillable((b) => !b))}
         aria-pressed={effectiveBillable}
+        aria-label={t("Billable", "Fakturovateľné", "Számlázható")}
         title={effectiveBillable ? t("Billable", "Fakturovateľné", "Számlázható") : t("Not billable", "Nefakturovateľné", "Nem számlázható")}
         data-testid="timer-billable"
-        className={`inline-flex size-9 items-center justify-center rounded-xl border transition-all cursor-pointer ${effectiveBillable ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-400 hover:text-slate-600"}`}
+        className={`${iconButton} ${effectiveBillable ? "bg-emerald-50 text-emerald-700" : "text-slate-400 hover:bg-slate-100 hover:text-slate-600"}`}
       >
         <Euro className="size-4" />
       </button>
 
-      {mode === "manual" && !running ? (
+      <span className="mx-1 hidden h-7 w-px bg-slate-200 ws-sm:block" aria-hidden />
+
+      {manual ? (
         <>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui" aria-label={t("Date", "Dátum", "Dátum")} />
-          <input type="time" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 w-28 rounded-xl border border-slate-200 bg-white px-2 text-ui tabular-nums" aria-label={t("Start", "Začiatok", "Kezdet")} />
-          <span className="text-slate-400">–</span>
-          <input type="time" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 w-28 rounded-xl border border-slate-200 bg-white px-2 text-ui tabular-nums" aria-label={t("End", "Koniec", "Vég")} />
-          <input value={dur} onChange={(e) => setDur(e.target.value)} placeholder="1:30" className="h-9 w-20 rounded-xl border border-slate-200 bg-white px-2 text-center text-ui tabular-nums" aria-label={t("Duration", "Trvanie", "Időtartam")} data-testid="manual-duration" />
-          <button type="button" onClick={addManual} disabled={busy} data-testid="manual-add" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-ui font-semibold text-primary-foreground transition-all active:scale-95 disabled:opacity-60 cursor-pointer">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <input type="time" value={from} onChange={(e) => setFrom(e.target.value)} className={timeInput} aria-label={t("Start", "Začiatok", "Kezdet")} />
+            <ArrowRight className="size-3.5 text-slate-400" aria-hidden />
+            <input type="time" value={to} onChange={(e) => setTo(e.target.value)} className={timeInput} aria-label={t("End", "Koniec", "Vég")} />
+            <label className="relative inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 text-ui font-semibold text-slate-700 hover:bg-slate-50 focus-within:outline-2 focus-within:outline-primary">
+              <CalendarDays className="size-3.5" aria-hidden />
+              {dateLabel}
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => e.target.value && setDate(e.target.value)}
+                onClick={(e) => (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.()}
+                aria-label={t("Date", "Dátum", "Dátum")}
+                className="absolute inset-0 size-full cursor-pointer opacity-0"
+              />
+            </label>
+          </div>
+          <input
+            value={durShown}
+            onChange={(e) => setDur(e.target.value)}
+            placeholder="0:00:00"
+            className="h-10 w-28 rounded-xl border border-transparent bg-transparent px-2 text-right text-title font-bold tabular-nums text-slate-900 outline-none placeholder:text-slate-300 hover:border-slate-200 focus:border-primary focus:bg-white"
+            aria-label={t("Duration", "Trvanie", "Időtartam")}
+            data-testid="manual-duration"
+          />
+          <button type="button" onClick={addManual} disabled={busy} data-testid="manual-add" className="inline-flex h-12 items-center gap-1.5 rounded-full bg-primary px-5 text-ui font-semibold text-primary-foreground shadow-sm transition-all hover:opacity-90 active:scale-95 disabled:opacity-60 cursor-pointer">
             <Plus className="size-4" />
             {t("Add", "Pridať", "Hozzáad")}
           </button>
         </>
       ) : (
         <>
-          <ClockDigits value={formatDuration(elapsed, true)} className="min-w-20 justify-center text-title font-bold text-slate-900" data-testid="timer-elapsed" />
-          {running ? (
-            <CycleRing swap label radius={12} buttonClass="inline-flex h-10 items-center gap-1.5 rounded-xl px-4 text-ui font-semibold text-white transition-all active:scale-95 cursor-pointer">
-              <button type="button" onClick={onStop} disabled={busy} data-testid="timer-stop" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-rose-600 px-4 text-ui font-semibold text-white transition-all hover:bg-rose-700 active:scale-95 disabled:opacity-60 cursor-pointer">
-                <Square className="size-4 fill-current" />
-                {t("Stop", "Zastaviť", "Leállítás")}
-              </button>
-            </CycleRing>
-          ) : null}
+          <ClockDigits value={formatDuration(elapsed, true)} className={`min-w-24 justify-end text-title font-bold ${running ? "text-rose-600" : "text-slate-500"}`} data-testid="timer-elapsed" />
           {running && onAddTimer && (
             <button
               type="button"
@@ -383,46 +446,52 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
               aria-expanded={!!addOpen}
               title={t("Start another timer alongside this one", "Spustiť ďalší časovač popri tomto", "Újabb időzítő indítása emellett")}
               data-testid="timer-add"
-              className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-ui font-semibold text-primary transition-all hover:bg-slate-100 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-ui font-semibold text-primary transition-all hover:bg-slate-100 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             >
               <Plus className="size-4" />
               {t("Add timer", "Pridať časovač", "Időzítő hozzáadása")}
             </button>
           )}
-          {running ? null : (
-            <button type="button" onClick={onStart} disabled={busy} data-testid="timer-start" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-ui font-semibold text-primary-foreground transition-all hover:opacity-90 active:scale-95 disabled:opacity-60 cursor-pointer">
-              <Play className="size-4 fill-current" />
-              {t("Start", "Spustiť", "Indítás")}
-            </button>
+          {running ? (
+            <CycleRing swap radius={roundButtonRadius("lg")} buttonClass={roundButtonClass("lg")}>
+              <RoundTimerButton kind="stop" label={t("Stop timer", "Zastaviť časovač", "Időzítő leállítása")} onClick={onStop} disabled={busy} data-testid="timer-stop" />
+            </CycleRing>
+          ) : (
+            <RoundTimerButton kind="start" label={t("Start timer", "Spustiť časovač", "Időzítő indítása")} onClick={onStart} disabled={busy} data-testid="timer-start" />
           )}
         </>
       )}
 
-      {!running && (
-        <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-0.5" role="group">
-          {(["timer", "manual"] as const).map((m) => (
-            <button key={m} type="button" onClick={() => setMode(m)} aria-pressed={mode === m} data-testid={`timer-mode-${m}`} className={`h-8 rounded-lg px-2.5 text-ui font-semibold cursor-pointer ${mode === m ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>
-              {m === "timer" ? t("Timer", "Časovač", "Időzítő") : t("Manual", "Ručne", "Kézi")}
+      <div className="flex flex-col gap-0.5" role="group" aria-label={t("Entry mode", "Spôsob zápisu", "Rögzítés módja")}>
+        {(["timer", "manual"] as const).map((m) => {
+          const label = m === "timer" ? t("Timer", "Časovač", "Időzítő") : t("Manual", "Ručne", "Kézi");
+          const Icon = m === "timer" ? Clock : ListPlus;
+          return (
+            <button key={m} type="button" onClick={() => setMode(m)} aria-pressed={mode === m} aria-label={label} title={label} data-testid={`timer-mode-${m}`} className={`inline-flex h-5.5 w-6.5 items-center justify-center rounded-md transition-colors cursor-pointer ${mode === m ? "bg-slate-100 text-slate-900" : "text-slate-400 hover:text-slate-700"}`}>
+              <Icon className="size-3.5" />
             </button>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
 
-      <input
-        value={running ? runningNote : note}
-        onChange={(e) => (running ? setRunningNote(e.target.value) : setNote(e.target.value))}
-        onBlur={commitRunningNote}
-        onKeyDown={(e) => {
-          if (e.key !== "Enter") return;
-          if (running) (e.currentTarget as HTMLInputElement).blur();
-          else if (mode === "timer") void onStart();
-        }}
-        maxLength={1000}
-        placeholder={t("Description (optional)", "Popis (voliteľné)", "Leírás (nem kötelező)")}
-        aria-label={t("Description", "Popis", "Leírás")}
-        data-testid="timer-note"
-        className="h-9 w-full basis-full rounded-xl border border-transparent bg-transparent px-3 text-ui text-slate-700 outline-none placeholder:text-slate-400 hover:border-slate-200 focus:border-primary focus:bg-white"
-      />
+      {showNote && (
+        <input
+          ref={noteField}
+          value={noteValue}
+          onChange={(e) => (running ? setRunningNote(e.target.value) : setNote(e.target.value))}
+          onBlur={commitRunningNote}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            if (running) (e.currentTarget as HTMLInputElement).blur();
+            else if (mode === "timer") void onStart();
+          }}
+          maxLength={1000}
+          placeholder={t("Description (optional)", "Popis (voliteľné)", "Leírás (nem kötelező)")}
+          aria-label={t("Description", "Popis", "Leírás")}
+          data-testid="timer-note"
+          className="h-9 w-full basis-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-ui text-slate-700 outline-none placeholder:text-slate-400 focus:border-primary focus:bg-white"
+        />
+      )}
       {footer}
     </div>
   );

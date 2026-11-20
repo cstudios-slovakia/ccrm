@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from "react";
-import { Pause, Play, Plus, Square } from "lucide-react";
+import { Pause, Plus, Square } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { deliveredSeconds, workedClockSeconds } from "../../utils/timeContainer.ts";
 import { elapsedSeconds, formatDuration, projectColor, type TimeEntry } from "../../utils/timeTracking.ts";
 import { ClockDigits } from "./ClockDigits";
 import { CycleRing } from "./CycleRing";
+import { RoundTimerButton, roundButtonRadius } from "./RoundTimerButton";
 
 interface Props {
   /** Name of a project by id (entries carry their own `projectName`, which wins). */
@@ -20,17 +21,20 @@ interface Props {
 }
 
 const BTN =
-  "inline-flex items-center justify-center gap-1.5 rounded-xl font-semibold transition-all active:scale-95 disabled:opacity-60 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none motion-reduce:active:scale-100";
+  "inline-flex items-center justify-center gap-1.5 rounded-full font-semibold transition-all active:scale-95 disabled:opacity-60 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none motion-reduce:active:scale-100";
 
 /**
- * The timer bar with two or more items (D5.4): one row per running or paused item, and a footer
- * with "+ Add timer", the worked and delivered clocks, Pause all and Stop all.
+ * The timer bar with two or more items (D5.4): one row per running or paused item, drawn like the
+ * slim timer bar (dot, title, project, clock, round Pause/Resume and Stop), and a footer with
+ * "+ Add timer", the worked and delivered clocks, Pause all and Stop all.
  */
 export function TimerContainer({ projectName, renderAdd, onAdd, footer, touch = false }: Props) {
   const { t, running, paused, nowMs, pause, pauseAll, resume, stop, stopAll } = useTimeTracking();
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
-  const size = touch ? "min-h-11 min-w-11 px-3" : "h-9 px-3";
+  const size = touch ? "min-h-11 min-w-11 px-3" : "h-9 px-3.5";
+  const round = touch ? "touch" : "md";
+  const stopLabel = t("Stop", "Zastaviť", "Leállítás");
 
   const act = async (fn: () => Promise<unknown>) => {
     if (busy) return;
@@ -45,6 +49,7 @@ export function TimerContainer({ projectName, renderAdd, onAdd, footer, touch = 
   const row = (e: TimeEntry, isPaused: boolean) => {
     const project = e.projectName || (projectName && e.projectId ? projectName(e.projectId) : "");
     const seconds = isPaused ? e.durationSec ?? 0 : elapsedSeconds(e.startAt, nowMs);
+    const color = e.projectId ? projectColor(e.projectId) : "#e11d48";
     return (
       <li
         key={e.id}
@@ -54,38 +59,24 @@ export function TimerContainer({ projectName, renderAdd, onAdd, footer, touch = 
       >
         <span
           className={`size-2.5 shrink-0 rounded-full ${isPaused ? "" : "animate-pulse motion-reduce:animate-none"}`}
-          style={{ backgroundColor: e.projectId ? projectColor(e.projectId) : "#e11d48" }}
+          style={{ backgroundColor: color }}
         />
-        <div className="min-w-0 flex-1 basis-40">
-          <div className="truncate text-body font-semibold text-slate-900" data-testid="timer-container-title">
-            {e.title || t("No title", "Bez názvu", "Nincs cím")}
-          </div>
-          {project && <div className="truncate type-meta text-slate-500">{project}</div>}
+        <div className="min-w-0 flex-1 basis-40 truncate text-body font-semibold text-slate-900" data-testid="timer-container-title">
+          {e.title || t("No title", "Bez názvu", "Nincs cím")}
         </div>
-        <ClockDigits value={formatDuration(seconds, true)} className="font-bold text-slate-900" data-testid="timer-container-elapsed" />
-        {isPaused ? (
-          <>
-            <button type="button" disabled={busy} onClick={() => void act(() => resume(e.id))} data-testid="timer-container-resume" className={`${BTN} ${size} bg-teal-50 text-ui text-teal-800 hover:bg-teal-100`}>
-              <Play className="size-4 fill-current" />
-              {t("Resume", "Pokračovať", "Folytatás")}
-            </button>
-            <button type="button" disabled={busy} onClick={() => void act(() => stop(e.id))} data-testid="timer-container-stop-paused" aria-label={t("Stop", "Zastaviť", "Leállítás")} className={`${BTN} ${size} bg-rose-600 text-ui text-white hover:bg-rose-700`}>
-              <Square className="size-4 fill-current" />
-              {touch && t("Stop", "Zastaviť", "Leállítás")}
-            </button>
-          </>
-        ) : (
-          <>
-            <button type="button" disabled={busy} onClick={() => void act(() => pause(e.id))} data-testid="timer-container-pause" className={`${BTN} ${size} border border-slate-200 bg-white text-ui text-slate-700 hover:bg-slate-100`}>
-              <Pause className="size-4 fill-current" />
-              {t("Pause", "Pozastaviť", "Szünet")}
-            </button>
-            <button type="button" disabled={busy} onClick={() => void act(() => stop(e.id))} data-testid="timer-container-stop" aria-label={t("Stop", "Zastaviť", "Leállítás")} className={`${BTN} ${size} bg-rose-600 text-ui text-white hover:bg-rose-700`}>
-              <Square className="size-4 fill-current" />
-              {touch && t("Stop", "Zastaviť", "Leállítás")}
-            </button>
-          </>
+        {project && (
+          <span className="inline-flex h-8 max-w-56 items-center gap-1.5 rounded-full border px-3 type-meta font-semibold text-slate-700" style={{ backgroundColor: `${color}1a`, borderColor: `${color}40` }}>
+            <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+            <span className="truncate">{project}</span>
+          </span>
         )}
+        <ClockDigits value={formatDuration(seconds, true)} className={`text-title font-bold ${isPaused ? "text-slate-500" : "text-rose-600"}`} data-testid="timer-container-elapsed" />
+        {isPaused ? (
+          <RoundTimerButton kind="resume" size={round} label={t("Resume", "Pokračovať", "Folytatás")} disabled={busy} onClick={() => void act(() => resume(e.id))} data-testid="timer-container-resume" />
+        ) : (
+          <RoundTimerButton kind="pause" size={round} label={t("Pause", "Pozastaviť", "Szünet")} disabled={busy} onClick={() => void act(() => pause(e.id))} data-testid="timer-container-pause" />
+        )}
+        <RoundTimerButton kind="stop" size={round} label={stopLabel} disabled={busy} onClick={() => void act(() => stop(e.id))} data-testid={isPaused ? "timer-container-stop-paused" : "timer-container-stop"} />
       </li>
     );
   };
@@ -121,8 +112,8 @@ export function TimerContainer({ projectName, renderAdd, onAdd, footer, touch = 
             </button>
           )}
           {running.length > 0 && (
-            <CycleRing radius={12}>
-              <button type="button" disabled={busy} onClick={() => void act(stopAll)} data-testid="timer-container-stop-all" className={`${BTN} ${size} bg-rose-600 text-ui text-white hover:bg-rose-700`}>
+            <CycleRing radius={touch ? 22 : roundButtonRadius("md")}>
+              <button type="button" disabled={busy} onClick={() => void act(stopAll)} data-testid="timer-container-stop-all" className={`${BTN} ${size} border border-rose-200 bg-white text-ui text-rose-700 hover:bg-rose-50`}>
                 <Square className="size-4 fill-current" />
                 {t("Stop all", "Zastaviť všetko", "Mind leállítása")}
               </button>

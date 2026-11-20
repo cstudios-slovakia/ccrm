@@ -98,7 +98,7 @@ export function StartModePopover({ anchor, variant, runningCount, parallelEnable
       aria-modal="false"
       aria-label={t("Start while a timer runs", "Spustiť, kým beží časovač", "Indítás futó időzítő mellett")}
       data-testid="start-mode-popover"
-      className="fixed z-[100001] rounded-2xl border border-slate-200 bg-white p-2 shadow-xl animate-in fade-in zoom-in-95 duration-150 motion-reduce:animate-none"
+      className="fixed z-[100001] rounded-3xl border border-slate-200/80 bg-white p-2 shadow-2xl animate-in fade-in zoom-in-95 duration-150 motion-reduce:animate-none"
       style={{ width: Math.min(WIDTH, typeof window !== "undefined" ? window.innerWidth - MARGIN * 2 : WIDTH), top: pos?.top ?? -9999, left: pos?.left ?? -9999 }}
     >
       {message && <p className="px-3 pb-2 pt-1 type-meta text-slate-500">{message}</p>}
@@ -107,13 +107,13 @@ export function StartModePopover({ anchor, variant, runningCount, parallelEnable
         type="button"
         onClick={() => onChoose("switch", remember)}
         data-testid="start-mode-switch"
-        className={`${choiceClass} bg-slate-900 text-white hover:bg-slate-800 focus-visible:outline-slate-900`}
+        className={`${choiceClass} bg-primary text-primary-foreground hover:opacity-90 focus-visible:outline-primary`}
       >
         <ArrowRightLeft className="size-4 shrink-0" aria-hidden />
         <span className="min-w-0 flex-1 truncate">
           {variant === "fallback" ? t("Switch instead", "Prepnúť namiesto toho", "Inkább váltás") : t("Switch to this", "Prepnúť na toto", "Váltás erre")}
         </span>
-        <kbd className="rounded border border-white/30 px-1 text-micro font-medium text-white/70">Enter</kbd>
+        <kbd className="rounded-md border border-white/30 px-1 text-micro font-medium opacity-80">Enter</kbd>
       </button>
       {offerParallel && (
         <button

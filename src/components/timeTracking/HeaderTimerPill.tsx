@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Play, Square } from "lucide-react";
+import { ArrowRight, Play } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { useRecentProjects } from "../../hooks/useRecentProjects";
 import { CycleRing } from "./CycleRing";
 import { ClockDigits } from "./ClockDigits";
+import { RoundTimerButton, roundButtonClass } from "./RoundTimerButton";
 import { TimerBar } from "./TimerBar";
 import type { TimeDeps } from "./shared";
 import { elapsedSeconds, formatDuration, projectColor } from "../../utils/timeTracking.ts";
@@ -47,6 +48,64 @@ export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
     else window.location.hash = "time-tracking";
   };
 
+  const projectLine = running?.projectName || "";
+  const pill = running ? (
+    <div
+      data-testid="header-timer-running"
+      onClick={toggle}
+      className={`inline-flex h-10 max-w-72 cursor-pointer items-center gap-2 rounded-full border pl-3 pr-1 shadow-sm transition-colors xs:h-11 ${open ? "border-rose-300 bg-rose-50" : "border-rose-200 bg-white hover:border-rose-300"}`}
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        data-testid="header-timer-toggle"
+        title={running.title || undefined}
+        className="flex min-w-0 items-center gap-2 text-left text-ui cursor-pointer"
+      >
+        {/* One dot: it pulses to say "recording" and takes the project's colour when there is one. */}
+        <span
+          className="size-2.5 shrink-0 animate-pulse rounded-full motion-reduce:animate-none"
+          style={{ backgroundColor: running.projectId ? projectColor(running.projectId) : "#e11d48" }}
+          data-testid="header-timer-dot"
+        />
+        <span className="hidden min-w-0 flex-col leading-tight md:flex">
+          <span className="truncate font-semibold text-slate-900">{running.title || t("Timer running", "Časovač beží", "Az időzítő fut")}</span>
+          {projectLine && (
+            <span className="flex items-center gap-1.5 type-meta text-slate-500" data-testid="header-timer-project">
+              <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: running.projectId ? projectColor(running.projectId) : "#94a3b8" }} />
+              <span className="truncate">{projectLine}</span>
+            </span>
+          )}
+        </span>
+        {several && (
+          <span className="shrink-0 rounded-md bg-rose-100 px-1.5 type-meta font-bold text-rose-700" data-testid="header-timer-extra" title={t(`${runningAll.length} running`, `beží ${runningAll.length}`, `${runningAll.length} fut`)}>
+            {extraItemsLabel(runningAll.length)}
+          </span>
+        )}
+        <ClockDigits
+          value={formatDuration(several ? workedClockSeconds(runningAll, nowMs) : elapsedSeconds(running.startAt, nowMs), true)}
+          className="shrink-0 font-bold text-rose-700"
+          data-testid="header-timer-elapsed"
+        />
+      </button>
+      {!several && (
+        <CycleRing swap radius={18} buttonClass={roundButtonClass("md")} className="shrink-0">
+          <RoundTimerButton
+            kind="stop"
+            label={t("Stop timer", "Zastaviť časovač", "Időzítő leállítása")}
+            onClick={(e) => {
+              e.stopPropagation();
+              void stop(running.id);
+            }}
+            data-testid="header-timer-stop"
+          />
+        </CycleRing>
+      )}
+      {several && <span className="w-1" aria-hidden />}
+    </div>
+  ) : null;
+
   return (
     <>
       {!running && paused.length > 0 ? (
@@ -68,117 +127,17 @@ export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
           onClick={() => void start()}
           data-testid="header-timer-start"
           title={t("Start timer", "Spustiť časovač", "Időzítő indítása")}
-          className="inline-flex h-8.5 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white/80 px-2.5 text-ui font-semibold text-slate-700 shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary cursor-pointer xs:h-9"
+          className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-slate-200 bg-white/80 py-1 pl-1 pr-3 text-ui font-semibold text-slate-700 shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary cursor-pointer xs:h-11"
         >
-          <Play className="size-3.5 fill-current text-primary" />
+          <span className="inline-flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <Play className="ml-0.5 size-3 fill-current" />
+          </span>
           <span className="hidden md:inline">{t("Start timer", "Spustiť časovač", "Időzítő indítása")}</span>
         </button>
       ) : (
         // Not `relative`: the panel anchors to the (sticky) header, right-aligned, so it never runs under the sidebar.
         <div ref={wrap} className="shrink-0">
-          {several ? (
-            <CycleRing radius={12} className="max-w-72">
-          <div
-            data-testid="header-timer-running"
-            onClick={toggle}
-            className={`inline-flex h-8.5 max-w-72 cursor-pointer items-center gap-2 rounded-xl border pl-2.5 pr-1 shadow-sm transition-colors xs:h-9 ${open ? "border-rose-300 bg-rose-100" : "border-rose-200 bg-rose-50 hover:border-rose-300"}`}
-          >
-            <button
-              type="button"
-              aria-expanded={open}
-              aria-haspopup="dialog"
-              data-testid="header-timer-toggle"
-              title={running.title || undefined}
-              className="flex min-w-0 items-center gap-2 text-ui cursor-pointer"
-            >
-              {/* One dot: it pulses to say "recording" and takes the project's colour when there is one. */}
-              <span
-                className="size-2.5 shrink-0 animate-pulse rounded-full"
-                style={{ backgroundColor: running.projectId ? projectColor(running.projectId) : "#e11d48" }}
-                data-testid="header-timer-dot"
-              />
-              <span className="hidden min-w-0 truncate font-semibold text-slate-800 md:inline">{running.title || t("Timer running", "Časovač beží", "Az időzítő fut")}</span>
-              {several && (
-                <span className="shrink-0 rounded-md bg-rose-100 px-1.5 type-meta font-bold text-rose-700" data-testid="header-timer-extra" title={t(`${runningAll.length} running`, `beží ${runningAll.length}`, `${runningAll.length} fut`)}>
-                  {extraItemsLabel(runningAll.length)}
-                </span>
-              )}
-              <ClockDigits
-                value={formatDuration(several ? workedClockSeconds(runningAll, nowMs) : elapsedSeconds(running.startAt, nowMs), true)}
-                className="shrink-0 font-bold text-rose-700"
-                data-testid="header-timer-elapsed"
-              />
-            </button>
-            {!several && (
-              <CycleRing swap radius={10} buttonClass="inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-white transition-all active:scale-95 cursor-pointer" className="shrink-0">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void stop(running.id);
-                  }}
-                  data-testid="header-timer-stop"
-                  aria-label={t("Stop timer", "Zastaviť časovač", "Időzítő leállítása")}
-                  className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-rose-600 text-white transition-all hover:bg-rose-700 active:scale-95 cursor-pointer"
-                >
-                  <Square className="size-3 fill-current" />
-                </button>
-              </CycleRing>
-            )}
-            {several && <span className="w-1" aria-hidden />}
-          </div>
-            </CycleRing>
-          ) : (
-          <div
-            data-testid="header-timer-running"
-            onClick={toggle}
-            className={`inline-flex h-8.5 max-w-72 cursor-pointer items-center gap-2 rounded-xl border pl-2.5 pr-1 shadow-sm transition-colors xs:h-9 ${open ? "border-rose-300 bg-rose-100" : "border-rose-200 bg-rose-50 hover:border-rose-300"}`}
-          >
-            <button
-              type="button"
-              aria-expanded={open}
-              aria-haspopup="dialog"
-              data-testid="header-timer-toggle"
-              title={running.title || undefined}
-              className="flex min-w-0 items-center gap-2 text-ui cursor-pointer"
-            >
-              {/* One dot: it pulses to say "recording" and takes the project's colour when there is one. */}
-              <span
-                className="size-2.5 shrink-0 animate-pulse rounded-full"
-                style={{ backgroundColor: running.projectId ? projectColor(running.projectId) : "#e11d48" }}
-                data-testid="header-timer-dot"
-              />
-              <span className="hidden min-w-0 truncate font-semibold text-slate-800 md:inline">{running.title || t("Timer running", "Časovač beží", "Az időzítő fut")}</span>
-              {several && (
-                <span className="shrink-0 rounded-md bg-rose-100 px-1.5 type-meta font-bold text-rose-700" data-testid="header-timer-extra" title={t(`${runningAll.length} running`, `beží ${runningAll.length}`, `${runningAll.length} fut`)}>
-                  {extraItemsLabel(runningAll.length)}
-                </span>
-              )}
-              <ClockDigits
-                value={formatDuration(several ? workedClockSeconds(runningAll, nowMs) : elapsedSeconds(running.startAt, nowMs), true)}
-                className="shrink-0 font-bold text-rose-700"
-                data-testid="header-timer-elapsed"
-              />
-            </button>
-            {!several && (
-              <CycleRing swap radius={10} buttonClass="inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-white transition-all active:scale-95 cursor-pointer" className="shrink-0">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void stop(running.id);
-                  }}
-                  data-testid="header-timer-stop"
-                  aria-label={t("Stop timer", "Zastaviť časovač", "Időzítő leállítása")}
-                  className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-rose-600 text-white transition-all hover:bg-rose-700 active:scale-95 cursor-pointer"
-                >
-                  <Square className="size-3 fill-current" />
-                </button>
-              </CycleRing>
-            )}
-            {several && <span className="w-1" aria-hidden />}
-          </div>
-          )}
+          {several ? <CycleRing radius={22} className="max-w-72">{pill}</CycleRing> : pill}
           {open && deps && <HeaderTimerPanel deps={deps} onClose={() => setOpen(false)} />}
         </div>
       )}

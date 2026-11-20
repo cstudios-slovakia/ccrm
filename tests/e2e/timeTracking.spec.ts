@@ -310,6 +310,7 @@ test.describe('Time tracking', () => {
     await startSession(page);
     await gotoView(page, '#time-tracking');
     await page.getByTestId('timer-title').fill('Popisná práca');
+    await page.getByTestId('timer-note-toggle').click();
     await page.getByTestId('timer-note').fill('Prvý popis');
     await page.getByTestId('timer-start').click();
     await expect(page.getByTestId('timer-note')).toHaveValue('Prvý popis');
@@ -495,6 +496,7 @@ test.describe('Time tracking', () => {
     const panel = page.getByTestId('header-timer-panel');
     await expect(panel).toBeVisible();
     await expect(panel.getByTestId('timer-title')).toBeVisible();
+    await panel.getByTestId('timer-note-toggle').click();
     await expect(panel.getByTestId('timer-note')).toBeVisible();
     await expect(panel.getByTestId('timer-stop')).toBeVisible();
 
