@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ExternalLink, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, ExternalLink, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { Surface } from "../layout";
-import { Switch } from "../ui/Switch";
-import type { Employee, Lead, Project } from "../../types";
+import type { Employee, Lead, Project, RolePermission } from "../../types";
+import { HoursBasisCards } from "./HoursBasisCards";
+import { RoundingCard } from "./RoundingCard";
+import { SettingsCard } from "./SettingsCard";
+import { TimerRulesCard } from "./TimerRulesCard";
+import { WhoSeesWhatCard } from "./WhoSeesWhatCard";
 import { RateCardPreview } from "./RateCardPreview";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
 import { CustomSelect } from "../ui/CustomSelect";
@@ -36,7 +40,7 @@ const OFFICIAL_SOURCE: Record<HolidayCountry, { label: string; href: string }> =
 const num = (v: string, fallback: number) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : fallback);
 
 /** Settings → Time tracking: cost basis, working days and holidays, rules, extension, re-pricing. */
-export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency, projects, employees, leads }: { language: Language; canEdit: boolean; isAdmin: boolean; currency: string; projects?: Project[]; employees?: Employee[]; leads?: Lead[] }) {
+export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency, projects, employees, leads, roles }: { language: Language; canEdit: boolean; isAdmin: boolean; currency: string; projects?: Project[]; employees?: Employee[]; leads?: Lead[]; roles?: RolePermission[] }) {
   const brand = PRODUCT_NAME;
   const tt = useTimeTracking();
   const { t, settings, ready, enabled } = tt;
@@ -124,52 +128,28 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
 
   const field = "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-ui outline-none focus:border-primary disabled:bg-slate-50";
   const label = "type-label text-slate-600";
-  const toggle = (key: "requireProjectToStop" | "requireTask" | "billableByDefault" | "weeklyApproval", text: string, note: string) => (
-    <label className="flex cursor-pointer items-start gap-3 text-ui text-slate-800">
-      <Switch checked={draft[key]} disabled={!canEdit} onChange={(next) => set(key, next)} testId={`tt-${key}`} className="mt-0.5" />
-      <span className="grid gap-0.5">
-        {text}
-        <span className="type-meta text-slate-500">{note}</span>
-      </span>
-    </label>
-  );
 
   return (
     <div className="space-y-6" data-testid="tt-settings">
       {/* Cost */}
-      <Surface className="space-y-4">
-        <h3 className="type-card-title text-slate-900">{t("Cost rate from salary", "Nákladová sadzba z mzdy", "Költségdíj a fizetésből")}</h3>
-        <p className="text-body text-slate-500">{t("Every entry is priced from the employee's salary when it is saved, and the rate stays provisional until the month's payroll is closed or the month after next begins; then it is frozen. A monthly salary is divided by that month's real working days in the person's country.", "Každý záznam sa pri uložení ocení podľa mzdy zamestnanca a sadzba ostáva predbežná, kým sa neuzavrie výplata mesiaca alebo nezačne nasledujúci mesiac po ňom; potom sa zafixuje. Mesačná mzda sa delí skutočným počtom pracovných dní mesiaca v krajine danej osoby.", "Minden bejegyzést mentéskor a munkatárs fizetéséből áraz a rendszer, és a díj ideiglenes marad, amíg a hónap bérszámfejtése le nem zárul vagy el nem kezdődik a rá következő második hónap; utána rögzül. A havi fizetést az adott ország hónapjának valós munkanapjaival osztja.")}</p>
-        <div className="grid gap-4 ws-sm:grid-cols-2 ws-md:grid-cols-3">
-          <label className="grid gap-1">
-            <span className={label}>{t("Monthly hours basis", "Základ mesačných hodín", "Havi óraalap")}</span>
-            <div data-testid="tt-hours-basis">
-              <CustomSelect
-                disabled={!canEdit}
-                value={draft.hoursBasis}
-                onChange={(v) => set("hoursBasis", v as TimeTrackingSettings["hoursBasis"])}
-                options={[
-                  { value: "workingDays", label: t("Working days × hours per day", "Pracovné dni × hodiny za deň", "Munkanapok × napi órák") },
-                  { value: "fixed", label: t("Fixed hours per month", "Pevný počet hodín za mesiac", "Fix havi óraszám") },
-                ]}
-              />
-            </div>
+      <SettingsCard
+        title={t("Cost rate from salary", "Nákladová sadzba z mzdy", "Költségdíj a fizetésből")}
+        description={t("Every entry is priced from the employee's salary when it is saved, and the rate stays provisional until the month's payroll is closed or the month after next begins; then it is frozen. A monthly salary is divided by that month's real working days in the person's country.", "Každý záznam sa pri uložení ocení podľa mzdy zamestnanca a sadzba ostáva predbežná, kým sa neuzavrie výplata mesiaca alebo nezačne nasledujúci mesiac po ňom; potom sa zafixuje. Mesačná mzda sa delí skutočným počtom pracovných dní mesiaca v krajine danej osoby.", "Minden bejegyzést mentéskor a munkatárs fizetéséből áraz a rendszer, és a díj ideiglenes marad, amíg a hónap bérszámfejtése le nem zárul vagy el nem kezdődik a rá következő második hónap; utána rögzül. A havi fizetést az adott ország hónapjának valós munkanapjaival osztja.")}
+      >
+        <div className="grid gap-1.5">
+          <span className={label}>{t("Hours basis for monthly salaries", "Základ hodín pre mesačné mzdy", "Havi fizetések óraalapja")}</span>
+          <HoursBasisCards t={t} canEdit={canEdit} draft={draft} set={set} workingDaysOf={(m) => calendar.workingDaysInMonth(new Date().getFullYear(), m)} locale={locale} />
+        </div>
+        <div className="grid gap-4 ws-sm:grid-cols-2">
+          <label className="grid content-start gap-1">
+            <span className={label}>{t("Hours per working day", "Hodiny za pracovný deň", "Napi órák munkanaponként")}</span>
+            <input disabled={!canEdit} type="number" min={1} max={24} step={0.5} value={draft.hoursPerDay} onChange={(e) => set("hoursPerDay", num(e.target.value, 8))} className={field} data-testid="tt-hours-per-day" />
+            <span className="type-meta text-slate-500">{t("Also divides daily salaries.", "Delí aj denné mzdy.", "A napi fizetéseket is ezzel osztja.")}</span>
           </label>
-          {draft.hoursBasis === "fixed" ? (
-            <label className="grid gap-1">
-              <span className={label}>{t("Hours per month", "Hodiny za mesiac", "Órák havonta")}</span>
-              <input disabled={!canEdit} type="number" min={1} value={draft.fixedHoursPerMonth} onChange={(e) => set("fixedHoursPerMonth", num(e.target.value, 168))} className={field} />
-            </label>
-          ) : (
-            <label className="grid gap-1">
-              <span className={label}>{t("Hours per day", "Hodiny za deň", "Napi órák")}</span>
-              <input disabled={!canEdit} type="number" min={1} max={24} step={0.5} value={draft.hoursPerDay} onChange={(e) => set("hoursPerDay", num(e.target.value, 8))} className={field} data-testid="tt-hours-per-day" />
-            </label>
-          )}
-          <label className="grid gap-1">
+          <label className="grid content-start gap-1">
             <span className={label}>{t("Employer contributions multiplier", "Násobok odvodov zamestnávateľa", "Munkáltatói járulék szorzó")}</span>
             <input disabled={!canEdit} type="number" min={0.5} max={5} step={0.001} value={draft.employerMultiplier} onChange={(e) => set("employerMultiplier", num(e.target.value, 1.352))} className={field} data-testid="tt-multiplier" />
-            <span className="type-meta text-slate-500">{t("Applies to employees, not to contractors.", "Platí pre zamestnancov, nie pre dodávateľov.", "Munkavállalókra vonatkozik, vállalkozókra nem.")}</span>
+            <span className="type-meta text-slate-500">{t("1.000 = gross salary only. Applies to employees, not to contractors.", "1,000 = len hrubá mzda. Platí pre zamestnancov, nie pre dodávateľov.", "1,000 = csak a bruttó fizetés. Munkavállalókra vonatkozik, vállalkozókra nem.")}</span>
           </label>
         </div>
         <ul className="grid list-disc gap-1 pl-5 type-meta text-slate-500" data-testid="tt-leave-notes">
@@ -180,16 +160,42 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
         <div className="rounded-2xl bg-slate-50 p-4 text-ui text-slate-700" data-testid="tt-example">
           {t("Example", "Príklad", "Példa")}: {money(3200)} / {t("month", "mesiac", "hó")}, {new Date(new Date().getFullYear(), exampleMonth - 1, 1).toLocaleDateString(locale, { month: "long" })} ({country}) →{" "}
           <b className="tabular-nums">{exampleDays} {t("working days", "pracovných dní", "munkanap")}</b> →{" "}
-          <b className="tabular-nums text-violet-700">{example.rate !== null ? `${money(example.rate)}/h` : "—"}</b>
+          <b className="tabular-nums text-slate-900">{example.rate !== null ? `${money(example.rate)}/h` : "—"}</b>
         </div>
         <RateCardPreview t={t} employees={employees} draft={draft} tt={tt} money={money} locale={locale} />
-      </Surface>
+        {isAdmin && (
+          <div className="grid gap-2 border-t border-slate-100 pt-4" data-testid="tt-reprice">
+            <div className="flex flex-wrap items-center gap-3">
+              <input type="month" value={repriceMonth} onChange={(e) => setRepriceMonth(e.target.value)} className="h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui" data-testid="tt-reprice-month" />
+              <HoldToConfirmButton onConfirm={() => void reprice()} tone="archive" lang={language} what={repriceMonth} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-ui font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer" icon={<RotateCcw className="size-4" />}>
+                {t("Hold to re-price a period…", "Podržte pre prepočet obdobia…", "Tartsa az időszak újraárazásához…")}
+              </HoldToConfirmButton>
+              <span className="min-w-0 flex-1 type-meta text-slate-500">{t("Recomputes frozen rates of entries in a month after a salary correction. Logged in the audit log.", "Prepočíta zafixované sadzby záznamov v mesiaci po oprave mzdy. Zapíše sa do auditu.", "Fizetéskorrekció után újraszámolja a hónap bejegyzéseinek rögzített díjait. Az auditnaplóba kerül.")}</span>
+            </div>
+            <p className="type-meta text-slate-500">{t("It uses the current salaries and calendar, fills in entries that had no rate once an employee is linked, and re-allocates worked time between overlapping entries.", "Použije aktuálne mzdy a kalendár, doplní záznamy bez sadzby po pripojení zamestnanca a znovu rozdelí odpracovaný čas medzi prekrývajúcimi sa záznamami.", "A jelenlegi fizetéseket és naptárat használja, kitölti a díj nélküli bejegyzéseket, ha már van hozzárendelt munkatárs, és újraosztja a ledolgozott időt az egymást átfedő bejegyzések között.")}</p>
+            {overlaps.filter((o) => o.entries > 0).map((o) => {
+              const [y, m] = o.month.split("-").map(Number);
+              const mLabel = new Date(y, m - 1, 1).toLocaleDateString(language, { month: "short", year: "numeric" });
+              return (
+                <p key={o.month} className="type-meta text-slate-500" data-testid="tt-overlap-month">
+                  {t(`${mLabel}: ${o.entries} entries overlap (${o.users} people)`, `${mLabel}: ${o.entries} záznamov sa prekrýva (${o.users} ľudí)`, `${mLabel}: ${o.entries} bejegyzés fedi egymást (${o.users} fő)`)}
+                </p>
+              );
+            })}
+          </div>
+        )}
+      </SettingsCard>
 
       {/* Holidays */}
-      <Surface className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="type-card-title text-slate-900">{t("Working days and public holidays", "Pracovné dni a štátne sviatky", "Munkanapok és állami ünnepek")}</h3>
-          <div className="flex items-center gap-2">
+      <SettingsCard
+        title={t("Working days and public holidays", "Pracovné dni a štátne sviatky", "Munkanapok és állami ünnepek")}
+        description={t(
+          "Holidays come from the public Nager.Date service, fetched by the server and cached. Which days count is decided by the person's work calendar (set per employee, otherwise the company's country), never by the language of the app.",
+          "Sviatky pochádzajú z verejnej služby Nager.Date, ktorú načítava server a ukladá ich do cache. Ktoré dni sa rátajú, určuje pracovný kalendár osoby (nastavuje sa pri zamestnancovi, inak krajina firmy), nikdy jazyk aplikácie.",
+          "Az ünnepnapok a nyilvános Nager.Date szolgáltatásból származnak, a szerver tölti le és gyorsítótárazza őket. Hogy mely napok számítanak, a személy munkanaptára dönti el (munkatársanként állítható, egyébként a cég országa), soha nem az alkalmazás nyelve.",
+        )}
+        action={
+          <>
             <div data-testid="tt-holiday-country">
               <CustomSelect
                 size="sm"
@@ -206,15 +212,9 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
               onChange={(v) => setYear(Number(v))}
               options={[new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1].map((y) => ({ value: String(y), label: String(y) }))}
             />
-          </div>
-        </div>
-        <p className="text-body text-slate-500">
-          {t(
-            "Holidays come from the public Nager.Date service, fetched by the server and cached. Which days count is decided by the person's work calendar (set per employee, otherwise the company's country), never by the language of the app.",
-            "Sviatky pochádzajú z verejnej služby Nager.Date, ktorú načítava server a ukladá ich do cache. Ktoré dni sa rátajú, určuje pracovný kalendár osoby (nastavuje sa pri zamestnancovi, inak krajina firmy), nikdy jazyk aplikácie.",
-            "Az ünnepnapok a nyilvános Nager.Date szolgáltatásból származnak, a szerver tölti le és gyorsítótárazza őket. Hogy mely napok számítanak, a személy munkanaptára dönti el (munkatársanként állítható, egyébként a cég országa), soha nem az alkalmazás nyelve.",
-          )}
-        </p>
+          </>
+        }
+      >
         {tt.holidaysFallback && (
           <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-ui font-semibold text-amber-900" data-testid="tt-holidays-fallback">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
@@ -288,86 +288,31 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
             </div>
           )}
         </div>
-      </Surface>
+      </SettingsCard>
 
       {/* Rules */}
-      <Surface className="space-y-4">
-        <h3 className="type-card-title text-slate-900">{t("Rules", "Pravidlá", "Szabályok")}</h3>
-        <div className="grid gap-3">
-          {toggle("requireProjectToStop", t("Require a project before stopping the timer", "Vyžadovať projekt pred zastavením časovača", "Projekt megkövetelése az időzítő leállítása előtt"), t("For people who can pick a project, a timer cannot be stopped until one is chosen.", "Pre ľudí, ktorí môžu vybrať projekt, sa časovač nedá zastaviť, kým sa nevyberie projekt.", "Azoknál, akik projektet választhatnak, az időzítő nem állítható le, amíg nincs projekt kiválasztva."))}
-          {toggle("requireTask", t("Require a task on every entry", "Vyžadovať úlohu pri každom zázname", "Feladat megkövetelése minden bejegyzésnél"), t("A timer cannot be stopped without a task.", "Časovač sa nedá zastaviť bez úlohy.", "Feladat nélkül az időzítő nem állítható le."))}
-          {toggle("billableByDefault", t("New entries are billable by default", "Nové záznamy sú predvolene fakturovateľné", "Az új bejegyzések alapból számlázhatók"), t("The Billable switch starts on; you can still change it on each entry.", "Prepínač Fakturovateľné je predvolene zapnutý; na každom zázname ho môžete zmeniť.", "A Számlázható kapcsoló alapból be van kapcsolva; bejegyzésenként továbbra is módosítható."))}
-        </div>
-        <div className="grid gap-4 ws-sm:grid-cols-2">
-          <label className="grid gap-1">
-            <span className={label}>{t("Stop running timers at", "Zastaviť bežiace časovače o", "Futó időzítők leállítása ekkor")}</span>
-            <input disabled={!canEdit} type="time" value={draft.autoStopAt ?? ""} onChange={(e) => set("autoStopAt", e.target.value || null)} className={field} />
-          </label>
-          <label className="grid gap-1">
-            <span className={label}>{t("Rounding in reports and client PDFs", "Zaokrúhľovanie v reportoch a PDF pre klientov", "Kerekítés riportokban és ügyfél-PDF-ekben")}</span>
-            <div className="flex gap-2">
-              <div className="min-w-0 flex-1">
-                <CustomSelect
-                  disabled={!canEdit}
-                  value={String(draft.rounding.minutes)}
-                  onChange={(v) => set("rounding", { ...draft.rounding, minutes: Number(v) as 0 | 5 | 15 | 30 })}
-                  options={[
-                    { value: "0", label: t("No rounding", "Bez zaokrúhľovania", "Nincs kerekítés") },
-                    { value: "5", label: "5 min" },
-                    { value: "15", label: "15 min" },
-                    { value: "30", label: "30 min" },
-                  ]}
-                />
-              </div>
-              <div className="min-w-0 flex-1">
-                <CustomSelect
-                  disabled={!canEdit || draft.rounding.minutes === 0}
-                  value={draft.rounding.mode}
-                  onChange={(v) => set("rounding", { ...draft.rounding, mode: v as "nearest" | "up" })}
-                  options={[
-                    { value: "nearest", label: t("Nearest", "Na najbližšie", "Legközelebbi") },
-                    { value: "up", label: t("Up", "Nahor", "Felfelé") },
-                  ]}
-                />
-              </div>
-            </div>
-          </label>
-        </div>
-      </Surface>
+      <TimerRulesCard t={t} canEdit={canEdit} draft={draft} set={set} />
+
+      <div className={`grid items-stretch gap-6 ${roles ? "ws-md:grid-cols-2" : ""}`}>
+        <RoundingCard t={t} canEdit={canEdit} rounding={draft.rounding} onChange={(rounding) => set("rounding", rounding)} />
+        {roles && <WhoSeesWhatCard t={t} roles={roles} />}
+      </div>
 
       <ParallelTrackingBlock t={t} canEdit={canEdit} parallel={draft.parallel ?? DEFAULT_TIME_TRACKING_SETTINGS.parallel} onChange={(parallel) => set("parallel", parallel)} />
       <PresenceBlock t={t} canEdit={canEdit} isAdmin={isAdmin} presence={draft.presence ?? DEFAULT_TIME_TRACKING_SETTINGS.presence} onChange={(presence) => set("presence", presence)} />
       <StartWhileRunningBlock />
       <PresenceSoundBlock />
 
-      {/* PHASE6-SETTINGS */}
-      <Surface className="space-y-4">
-        <h3 className="type-card-title text-slate-900">{t("Locking and approval", "Zamykanie a schvaľovanie", "Zárolás és jóváhagyás")}</h3>
-        <p className="text-body text-slate-500">{t(
-          "Entries older than the lock, in a paid payroll month, or in a submitted week can be changed only by an admin. That change is written to the audit log. Leave a field empty to turn that rule off.",
-          "Záznamy staršie ako zámok, v uhradenom mzdovom mesiaci alebo v odoslanom týždni môže zmeniť len administrátor. Zmena sa zapíše do auditu. Prázdne pole pravidlo vypne.",
-          "A zárolásnál régebbi, kifizetett bérhónapba eső vagy beküldött heti bejegyzést csak adminisztrátor módosíthatja. A módosítás az auditnaplóba kerül. Az üres mező kikapcsolja a szabályt.",
-        )}</p>
-        {toggle("weeklyApproval", t("Weekly approval of timesheets", "Týždenné schvaľovanie výkazov", "Heti munkalap-jóváhagyás"), t("People submit each week for approval; a submitted week is locked for them.", "Ľudia odosielajú každý týždeň na schválenie; odoslaný týždeň sa im zamkne.", "A munkatársak hetente beküldik jóváhagyásra; a beküldött hét számukra zárolt."))}
-        <div className="grid gap-4 ws-sm:grid-cols-2">
-          <label className="grid gap-1">
-            <span className={label}>{t("Lock entries older than (days)", "Zamknúť záznamy staršie ako (dni)", "Ennél régebbi bejegyzések zárolása (nap)")}</span>
-            <input disabled={!canEdit} type="number" min={0} value={draft.lockAfterDays ?? ""} onChange={(e) => set("lockAfterDays", e.target.value ? num(e.target.value, 14) : null)} className={field} data-testid="tt-lock-after-days" />
-          </label>
-        </div>
-      </Surface>
       <TogglImportPanel language={language} t={t} canEdit={canEdit || isAdmin} />
-      <Surface className="space-y-2">
-        <h3 className="type-card-title text-slate-900">{t("External time tracker", "Externý nástroj na evidenciu času", "Külső időkövető")}</h3>
-        <p className="text-body text-slate-500">{t(
+      <SettingsCard
+        title={t("External time tracker", "Externý nástroj na evidenciu času", "Külső időkövető")}
+        description={t(
           `Toggl connections stay where they are: Employees → Settings. The employee summary keeps its Toggl hours and can switch to ${brand} time tracking for that view only.`,
           `Pripojenia na Toggl zostávajú tam, kde sú: Zamestnanci → Nastavenia. Súhrn zamestnanca si ponecháva hodiny z Toggl a v tom zobrazení sa dá prepnúť na evidenciu času ${brand}.`,
           `A Toggl-kapcsolatok ott maradnak, ahol vannak: Munkatársak → Beállítások. A munkatárs összesítője megtartja a Toggl-órákat, és azon a nézeten átváltható ${brand} időkövetésre.`,
-        )}</p>
-      </Surface>
-      {/* END-PHASE6-SETTINGS */}
+        )}
+      />
 
-      {/* PHASE5-SETTINGS */}
       <ExtensionSettings
         language={language}
         t={t}
@@ -378,29 +323,6 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
         extension={draft.extension ?? DEFAULT_TIME_TRACKING_SETTINGS.extension}
         onExtension={(extension) => setDraft((d) => ({ ...d, extension }))}
       />
-      {/* END-PHASE5-SETTINGS */}
-
-      {isAdmin && (
-        <Surface className="space-y-3">
-          <h3 className="type-card-title text-slate-900">{t("Re-price a period", "Prepočítať obdobie", "Időszak újraárazása")}</h3>
-          <p className="text-body text-slate-500">{t("Rates are provisional until their month is frozen. Re-pricing recomputes every entry of a month with the current salaries and calendar, and fills in entries that had no rate once an employee is linked. It also re-allocates worked time between overlapping entries.", "Sadzby sú predbežné, kým sa ich mesiac nezafixuje. Prepočet znovu vypočíta všetky záznamy mesiaca podľa aktuálnych miezd a kalendára a doplní záznamy bez sadzby po pripojení zamestnanca. Zároveň znovu rozdelí odpracovaný čas medzi prekrývajúcimi sa záznamami.", "A díjak ideiglenesek, amíg a hónapjuk rögzül. Az újraárazás a hónap minden bejegyzését a jelenlegi fizetésekkel és naptárral számolja újra, és kitölti a díj nélküli bejegyzéseket, ha már van hozzárendelt munkatárs. Emellett újraosztja a ledolgozott időt az egymást átfedő bejegyzések között.")}</p>
-          <div className="flex flex-wrap items-center gap-3">
-            <input type="month" value={repriceMonth} onChange={(e) => setRepriceMonth(e.target.value)} className="h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui" data-testid="tt-reprice-month" />
-            <HoldToConfirmButton onConfirm={() => void reprice()} tone="archive" lang={language} what={repriceMonth} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-ui font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer" icon={<span className="size-4" />}>
-              {t("Hold to re-price", "Podržte pre prepočet", "Tartsa az újraárazáshoz")}
-            </HoldToConfirmButton>
-          </div>
-          {overlaps.filter((o) => o.entries > 0).map((o) => {
-            const [y, m] = o.month.split("-").map(Number);
-            const label = new Date(y, m - 1, 1).toLocaleDateString(language, { month: "short", year: "numeric" });
-            return (
-              <p key={o.month} className="type-meta text-slate-500" data-testid="tt-overlap-month">
-                {t(`${label}: ${o.entries} entries overlap (${o.users} people)`, `${label}: ${o.entries} záznamov sa prekrýva (${o.users} ľudí)`, `${label}: ${o.entries} bejegyzés fedi egymást (${o.users} fő)`)}
-              </p>
-            );
-          })}
-        </Surface>
-      )}
 
       {canEdit && (
         <div className="sticky bottom-4 flex justify-end">

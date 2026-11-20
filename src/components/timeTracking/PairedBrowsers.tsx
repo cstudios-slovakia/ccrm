@@ -13,6 +13,15 @@ export function PairedBrowsers({ t, language }: { t: TFn; language: Language }) 
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const remaining = expiresAt ? Math.max(0, Math.round((Date.parse(expiresAt) - nowMs) / 1000)) : 0;
+  useEffect(() => {
+    if (!expiresAt) return;
+    setNowMs(Date.now());
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [expiresAt]);
+  const clock = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
 
   const reload = useCallback(async () => {
     try {
@@ -70,36 +79,60 @@ export function PairedBrowsers({ t, language }: { t: TFn; language: Language }) 
 
   return (
     <div className="grid gap-3" data-testid="paired-browsers">
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={() => void freshCode()}
-          disabled={busy}
-          data-testid="tt-new-pairing-code"
-          className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-ui font-semibold text-white transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-60 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
-        >
-          <RefreshCw className="size-4" />
-          {t("New code", "Nový kód", "Új kód")}
-        </button>
-        {code && (
-          <div className="grid gap-0.5">
-            <span className="type-panel-title tracking-widest text-slate-900 tabular-nums" data-testid="tt-pairing-code">{code}</span>
-            <span className="type-meta text-slate-500">
-              {t("Valid for 10 minutes, once.", "Platí 10 minút, raz.", "10 percig érvényes, egyszer.")}
-              {expiresAt ? ` · ${when(expiresAt)}` : ""}
-            </span>
+      <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4" data-testid="tt-pairing-card">
+        <div>
+          <p className="text-ui font-semibold text-slate-900">{t("One-time pairing code", "Jednorazový párovací kód", "Egyszer használatos párosító kód")}</p>
+          <p className="type-meta text-slate-500">
+            {t("Works once and expires after 10 minutes. The extension trades it for its own device key.", "Platí raz a vyprší po 10 minútach. Rozšírenie si ho vymení za vlastný kľúč zariadenia.", "Egyszer használható, és 10 perc után lejár. A bővítmény a saját eszközkulcsára cseréli.")}
+            {code && expiresAt && (
+              <>
+                {" "}
+                {remaining > 0 ? (
+                  <span data-testid="tt-pairing-expires">{t("Expires in", "Vyprší o", "Lejár")} <span className="font-semibold tabular-nums text-slate-700">{clock(remaining)}</span>.</span>
+                ) : (
+                  <span className="font-semibold text-slate-700" data-testid="tt-pairing-expires">{t("This code has expired.", "Tento kód vypršal.", "Ez a kód lejárt.")}</span>
+                )}
+              </>
+            )}
+          </p>
+        </div>
+        {code ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <span className={`rounded-xl border border-slate-200 bg-white px-4 py-2 type-panel-title tracking-widest tabular-nums ${remaining > 0 ? "text-slate-900" : "text-slate-400 line-through"}`} data-testid="tt-pairing-code">{code}</span>
+            <button
+              type="button"
+              onClick={() => void copyCode()}
+              data-testid="tt-copy-pairing-code"
+              className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-ui font-semibold text-primary-foreground transition-all hover:opacity-90 active:scale-95 cursor-pointer"
+            >
+              {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+              {copied ? t("Copied", "Skopírované", "Másolva") : t("Copy", "Kopírovať", "Másolás")}
+            </button>
+            <button
+              type="button"
+              onClick={() => void freshCode()}
+              disabled={busy}
+              data-testid="tt-new-pairing-code"
+              aria-label={t("New code", "Nový kód", "Új kód")}
+              title={t("New code", "Nový kód", "Új kód")}
+              className="inline-flex size-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition-all hover:bg-slate-50 active:scale-95 disabled:opacity-60 cursor-pointer"
+            >
+              <RefreshCw className={`size-4 ${busy ? "animate-spin" : ""}`} />
+            </button>
           </div>
-        )}
-        {code && (
-          <button
-            type="button"
-            onClick={() => void copyCode()}
-            data-testid="tt-copy-pairing-code"
-            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-ui font-semibold text-slate-700 transition-all hover:bg-slate-50 active:scale-95 cursor-pointer"
-          >
-            {copied ? <Check className="size-4 text-emerald-600" /> : <Copy className="size-4" />}
-            {copied ? t("Copied", "Skopírované", "Másolva") : t("Copy", "Kopírovať", "Másolás")}
-          </button>
+        ) : (
+          <div>
+            <button
+              type="button"
+              onClick={() => void freshCode()}
+              disabled={busy}
+              data-testid="tt-new-pairing-code"
+              className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-ui font-semibold text-primary-foreground transition-all hover:opacity-90 active:scale-95 disabled:opacity-60 cursor-pointer"
+            >
+              <RefreshCw className="size-4" />
+              {t("New code", "Nový kód", "Új kód")}
+            </button>
+          </div>
         )}
       </div>
       {devices.length === 0 ? (
@@ -112,7 +145,8 @@ export function PairedBrowsers({ t, language }: { t: TFn; language: Language }) 
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-ui font-semibold text-slate-900">{device.name}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-micro font-semibold ${device.state === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-micro font-semibold ${device.state === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                    <span className={`size-1.5 rounded-full ${device.state === "active" ? "bg-emerald-500" : "bg-slate-400"}`} />
                     {device.state === "active" ? t("Active", "Aktívny", "Aktív") : t("Idle", "Nečinný", "Tétlen")}
                   </span>
                   {device.updateAvailable && (

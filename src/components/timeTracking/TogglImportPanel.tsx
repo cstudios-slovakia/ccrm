@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, RefreshCw, Search } from "lucide-react";
-import { Surface } from "../layout";
+import { ChevronLeft, ChevronRight, Download, RefreshCw, Search } from "lucide-react";
+import { SettingsCard } from "./SettingsCard";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
 import { CustomSelect } from "../ui/CustomSelect";
 import { TimeApiError, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
@@ -288,15 +288,16 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
   const field = "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-ui outline-none focus:border-primary disabled:bg-slate-50";
 
   return (
-    <Surface className="space-y-4" data-testid="toggl-import">
-      <h3 className="type-card-title text-slate-900">{t("Map projects and import from Toggl", "Mapovať projekty a importovať z Toggl", "Projektek hozzárendelése és importálás Togglból")}</h3>
-      <p className="text-body text-slate-500">
-        {t(
-          `One-way import into ${brand}. Toggl hours on the employee summary stay where they are. Clockify is not imported. The same Toggl entry is never imported twice; an entry imported without a project gets one when you pair its Toggl project and import again.`,
-          `Jednosmerný import do ${brand}. Hodiny z Toggl v súhrne zamestnanca zostávajú. Clockify sa neimportuje. Ten istý záznam z Toggl sa nikdy neimportuje dvakrát; záznam importovaný bez projektu ho dostane, keď jeho projekt v Toggl priradíte a importujete znova.`,
-          `Egyirányú import a ${brand}-be. A Toggl-órák a munkatárs összesítőjében megmaradnak. A Clockify nem importálható. Ugyanaz a Toggl-bejegyzés nem kerül be kétszer; a projekt nélkül importált bejegyzés megkapja a projektjét, ha a Toggl-projektet hozzárendeli és újra importál.`,
-        )}
-      </p>
+    <SettingsCard
+      testId="toggl-import"
+      icon={<Download className="size-5" aria-hidden />}
+      title={t("Import from Toggl", "Import z Toggl", "Importálás Togglból")}
+      description={t(
+        `One-way import into ${brand}: map the Toggl projects to your projects once, then import a date range. Toggl hours on the employee summary stay where they are. The same Toggl entry is never imported twice; an entry imported without a project gets one when you pair its Toggl project and import again.`,
+        `Jednosmerný import do ${brand}: projekty z Toggl raz priraďte k vašim projektom a potom importujte rozsah dátumov. Hodiny z Toggl v súhrne zamestnanca zostávajú. Ten istý záznam z Toggl sa nikdy neimportuje dvakrát; záznam importovaný bez projektu ho dostane, keď jeho projekt v Toggl priradíte a importujete znova.`,
+        `Egyirányú import a ${brand}-be: a Toggl-projekteket egyszer rendelje hozzá a saját projektjeihez, majd importáljon egy időszakot. A Toggl-órák a munkatárs összesítőjében megmaradnak. Ugyanaz a Toggl-bejegyzés nem kerül be kétszer; a projekt nélkül importált bejegyzés megkapja a projektjét, ha a Toggl-projektet hozzárendeli és újra importál.`,
+      )}
+    >
       {error && <p className="text-ui text-rose-700">{error}</p>}
       {canEdit && (
         <div className="flex flex-wrap items-center gap-3">
@@ -530,7 +531,7 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
           {preview.projectsFillLocked > 0 ? ` ${t(`${preview.projectsFillLocked} imported earlier are locked; an administrator can set their project.`, `${preview.projectsFillLocked} skôr importovaných je zamknutých; projekt im môže doplniť administrátor.`, `${preview.projectsFillLocked} korábban importált bejegyzés zárolva; a projektjüket adminisztrátor állíthatja be.`)}` : ""}
         </p>
       )}
-    </Surface>
+    </SettingsCard>
   );
 }
 

@@ -1,4 +1,4 @@
-import { Surface } from "../layout";
+import { SettingsCard } from "./SettingsCard";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import type { StartWhileRunning, TFn, TimeTrackingSettings } from "../../utils/timeTracking.ts";
 
@@ -17,19 +17,19 @@ export function ParallelTrackingBlock({ t, canEdit, parallel, onChange }: { t: T
   const off = !canEdit || !parallel.enabled;
   const pick = (v: string) => set({ sameProject: v as Parallel["sameProject"] });
   return (
-    <Surface className="space-y-4">
-      <h3 data-testid="tt-parallel" className="type-card-title text-slate-900">{t("Parallel tracking", "Súbežné sledovanie", "Párhuzamos követés")}</h3>
+    <SettingsCard
+      title={t("Parallel tracking", "Súbežné sledovanie", "Párhuzamos követés")}
+      titleTestId="tt-parallel"
+      description={t(
+        "Each project receives the full time; each person's cost is split. The role permission \"Track time in parallel\" decides who may.",
+        "Každý projekt dostane celý čas; náklad osoby sa rozdelí. Kto môže, určuje oprávnenie roly „Sledovať čas súbežne“.",
+        "Minden projekt a teljes időt megkapja; a személy költsége megoszlik. Hogy kinek szabad, azt a „Idő követése párhuzamosan” szerepkör-jogosultság dönti el.",
+      )}
+    >
       <label className="flex cursor-pointer items-center gap-3 text-ui text-slate-800">
         <input type="checkbox" disabled={!canEdit} checked={parallel.enabled} onChange={(e) => set({ enabled: e.target.checked })} className="size-4 accent-teal-600" data-testid="tt-parallel-enabled" />
         {t("Allow several timers to run at once", "Povoliť beh viacerých časovačov naraz", "Több időzítő futhat egyszerre")}
       </label>
-      <p className="text-body text-slate-500">
-        {t(
-          "Each project receives the full time; each person's cost is split. The role permission \"Track time in parallel\" decides who may.",
-          "Každý projekt dostane celý čas; náklad osoby sa rozdelí. Kto môže, určuje oprávnenie roly „Sledovať čas súbežne“.",
-          "Minden projekt a teljes időt megkapja; a személy költsége megoszlik. Hogy kinek szabad, azt a „Idő követése párhuzamosan” szerepkör-jogosultság dönti el.",
-        )}
-      </p>
       <label className="grid gap-1 ws-sm:max-w-48">
         <span className="type-label text-slate-600">{t("Maximum at once", "Maximum naraz", "Legfeljebb egyszerre")}</span>
         <input
@@ -49,7 +49,7 @@ export function ParallelTrackingBlock({ t, canEdit, parallel, onChange }: { t: T
         {radio("tt-parallel-same", "never", parallel.sameProject, t("Never", "Nikdy", "Soha"), pick, off)}
         {radio("tt-parallel-same", "always", parallel.sameProject, t("Always", "Vždy", "Mindig"), pick, off)}
       </fieldset>
-    </Surface>
+    </SettingsCard>
   );
 }
 
@@ -63,8 +63,7 @@ export function StartWhileRunningBlock() {
     { v: "parallel", text: t("Run in parallel", "Spustiť súbežne", "Futtatás párhuzamosan") },
   ];
   return (
-    <Surface className="space-y-3">
-      <h3 data-testid="tt-start-while-running" className="type-card-title text-slate-900">{t("When I start a timer while another runs", "Keď spustím časovač, kým beží iný", "Ha időzítőt indítok, amíg másik fut")}</h3>
+    <SettingsCard title={t("When I start a timer while another runs", "Keď spustím časovač, kým beží iný", "Ha időzítőt indítok, amíg másik fut")} titleTestId="tt-start-while-running">
       {tt.settings.parallel.enabled ? (
         <div className="grid gap-2">
           {options.map((o) => (
@@ -77,6 +76,6 @@ export function StartWhileRunningBlock() {
       ) : (
         <p className="text-body text-slate-500">{t("Your company has not enabled parallel tracking, so a new timer always replaces the running one.", "Vaša firma nepovolila súbežné sledovanie, nový časovač vždy nahradí bežiaci.", "A cége nem engedélyezte a párhuzamos követést, ezért az új időzítő mindig leváltja a futót.")}</p>
       )}
-    </Surface>
+    </SettingsCard>
   );
 }

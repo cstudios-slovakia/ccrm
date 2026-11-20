@@ -463,7 +463,7 @@ export const timeErrorMessage = (
     case "bad_request":
       return t("The request was not valid. Reload the page and try again.", "Požiadavka nebola platná. Obnovte stránku a skúste znova.", "A kérés érvénytelen. Töltse újra az oldalt, és próbálja újra.");
     case "unsupported_provider":
-      return t("Clockify import is not available.", "Import z Clockify nie je k dispozícii.", "A Clockify import nem érhető el.");
+      return t("Only Toggl can be imported.", "Importovať sa dá len z Toggl.", "Csak Togglból lehet importálni.");
     case "not_paired":
       return t("This browser is not paired. Enter a new code.", "Tento prehliadač nie je spárovaný. Zadajte nový kód.", "Ez a böngésző nincs párosítva. Adjon meg egy új kódot.");
     case "code_invalid":

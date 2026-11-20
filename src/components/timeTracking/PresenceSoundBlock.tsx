@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Play } from "lucide-react";
-import { Surface } from "../layout";
+import { SettingsCard } from "./SettingsCard";
 import { Switch } from "../ui/Switch";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { PRESENCE_SOUND_IDS, playPresenceSound, unlockPresenceAudio, type PresenceSoundId } from "../../utils/presenceSound.ts";
@@ -31,15 +31,15 @@ export function PresenceSoundBlock() {
   };
 
   return (
-    <Surface className="space-y-4">
-      <h3 data-testid="tt-presence-sound" className="type-card-title text-slate-900">{t("Presence sound", "Zvuk kontroly prítomnosti", "Jelenlét-ellenőrzés hangja")}</h3>
-      <p className="text-body text-slate-500">
-        {t(
-          "Plays in one tab while the question is open. The notification and the dialog always appear; only the sound is yours to turn off.",
-          "Hrá v jednej karte, kým je otázka otvorená. Oznámenie a dialóg sa zobrazia vždy; vypnúť môžete len zvuk.",
-          "Egy lapon szól, amíg a kérdés nyitva van. Az értesítés és a párbeszédablak mindig megjelenik; csak a hangot kapcsolhatja ki.",
-        )}
-      </p>
+    <SettingsCard
+      title={t("Presence sound", "Zvuk kontroly prítomnosti", "Jelenlét-ellenőrzés hangja")}
+      titleTestId="tt-presence-sound"
+      description={t(
+        "Plays in one tab while the question is open. The notification and the dialog always appear; only the sound is yours to turn off.",
+        "Hrá v jednej karte, kým je otázka otvorená. Oznámenie a dialóg sa zobrazia vždy; vypnúť môžete len zvuk.",
+        "Egy lapon szól, amíg a kérdés nyitva van. Az értesítés és a párbeszédablak mindig megjelenik; csak a hangot kapcsolhatja ki.",
+      )}
+    >
       <label className="flex cursor-pointer items-center gap-3 text-ui text-slate-800">
         <Switch checked={presenceSound.muted} onChange={(muted) => void tt.savePresenceSound({ ...presenceSound, muted })} label={t("Mute", "Stlmiť", "Némítás")} testId="tt-presence-sound-mute" />
         {t("Mute", "Stlmiť", "Némítás")}
@@ -81,6 +81,6 @@ export function PresenceSoundBlock() {
           </div>
         ))}
       </fieldset>
-    </Surface>
+    </SettingsCard>
   );
 }

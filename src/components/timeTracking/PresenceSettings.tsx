@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import { Surface } from "../layout";
+import { SettingsCard } from "./SettingsCard";
 import { CustomSelect } from "../ui/CustomSelect";
 import { getCronStatus } from "../../utils/timeTrackingApi.ts";
 import type { PresenceSettings, TFn, TimeTrackingCronStatus } from "../../utils/timeTracking.ts";
@@ -28,13 +28,15 @@ export function PresenceBlock({ t, canEdit, isAdmin, presence, onChange }: { t: 
   );
 
   return (
-    <Surface className="space-y-4" data-testid="tt-presence-block">
-      <h3 className="type-card-title text-slate-900">{t("Presence check", "Kontrola prítomnosti", "Jelenlét-ellenőrzés")}</h3>
-      <p className="text-body text-slate-500">{t(
+    <SettingsCard
+      testId="tt-presence-block"
+      title={t("Presence check", "Kontrola prítomnosti", "Jelenlét-ellenőrzés")}
+      description={t(
         "While a timer runs, the person is asked whether they are still working. No answer within the answer window pauses the timer; a late answer inside the resume window continues it. The person answers only in the app, never from a push notification.",
         "Kým beží časovač, človek sa opýta, či ešte pracuje. Bez odpovede v čase na odpoveď sa časovač pozastaví; neskorá odpoveď v čase na obnovenie ho znova rozbehne. Odpovedá sa len v aplikácii, nikdy z push upozornenia.",
         "Futó időzítő mellett a rendszer megkérdezi, hogy a munkatárs még dolgozik-e. Ha a válaszidőn belül nem érkezik válasz, az időzítő szünetel; a folytatási időn belüli késői válasz újraindítja. A válasz csak az alkalmazásban adható meg, push értesítésből soha.",
-      )}</p>
+      )}
+    >
       <label className="flex cursor-pointer items-center gap-3 text-ui text-slate-800">
         <input type="checkbox" disabled={!canEdit} checked={presence.enabled} onChange={(e) => onChange({ ...presence, enabled: e.target.checked })} className="size-4 accent-teal-600" data-testid="tt-presence-enabled" />
         {t("Ask whether the person is still working", "Pýtať sa, či človek ešte pracuje", "Rákérdezés, hogy a munkatárs még dolgozik-e")}
@@ -66,6 +68,6 @@ export function PresenceBlock({ t, canEdit, isAdmin, presence, onChange }: { t: 
           )}</span>
         </div>
       )}
-    </Surface>
+    </SettingsCard>
   );
 }
