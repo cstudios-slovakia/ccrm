@@ -135,10 +135,14 @@ export interface FinanceInput {
   todayIso: string;
 }
 
+// A mistyped year (0202-03-01) must not turn "all time" into 20 000 month columns.
+const MAX_YEARS_BACK = 25;
+
 const earliestFinanceDay = (input: FinanceInput): string | null => {
   let min: string | null = null;
+  const floor = `${Number(input.todayIso.slice(0, 4)) - MAX_YEARS_BACK}-01-01`;
   const consider = (day: string) => {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(day) && (min === null || day < min)) min = day;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(day) && day >= floor && (min === null || day < min)) min = day;
   };
   if (input.mode === "simplified") {
     Object.keys(input.simplifiedTable).forEach((key) => {
@@ -210,14 +214,14 @@ export const categoryCost = (
 export interface NewsletterRecipientTouch {
   leadId: string | null;
   email: string;
-  /** When this recipient's e-mail went out (ISO). */
+  /** Local calendar day (YYYY-MM-DD, Koperniq time zone) this recipient's e-mail went out. */
   sentAt: string;
 }
 
 export interface NewsletterSend {
   id: string;
   name: string;
-  /** First delivery of the campaign (ISO); decides whether it falls in the period. */
+  /** Local day of the first delivery (YYYY-MM-DD); decides whether the campaign falls in the period. */
   sentAt: string;
   recipients: NewsletterRecipientTouch[];
 }
@@ -279,10 +283,13 @@ export const attributeNewsletter = (
     return client ? [`id:${id}`, `id:${client}`] : [`id:${id}`];
   };
 
-  const inScope = sends.filter((s) => inPeriod(s.sentAt, period));
-  // key → touches (campaign index + send day)
+  // Every campaign competes for an invoice, wherever it falls; only a campaign sent in the period
+  // shows up in the result. Otherwise a month view would hand an invoice to an older campaign
+  // just because the newer one is outside the month, and monthly figures would add up to more
+  // than the all-time one.
+  // key → touches (index into `sends` + send day)
   const touches = new Map<string, { campaign: number; day: string }[]>();
-  inScope.forEach((send, campaign) => {
+  sends.forEach((send, campaign) => {
     send.recipients.forEach((r) => {
       const day = (r.sentAt || send.sentAt).slice(0, 10);
       if (!day) return;
@@ -295,9 +302,13 @@ export const attributeNewsletter = (
     });
   });
 
-  const results: NewsletterCampaignResult[] = inScope.map((s) => ({
-    id: s.id, name: s.name, sentAt: s.sentAt, recipients: s.recipients.length, revenue: 0, invoices: 0,
-  }));
+  const resultOf = new Map<number, NewsletterCampaignResult>();
+  sends.forEach((s, i) => {
+    if (inPeriod(s.sentAt, period)) {
+      resultOf.set(i, { id: s.id, name: s.name, sentAt: s.sentAt, recipients: s.recipients.length, revenue: 0, invoices: 0 });
+    }
+  });
+  const results = Array.from(resultOf.values());
 
   invoices.forEach((inv) => {
     if (inv.type !== "invoice" || !isLiveInvoiceStatus(inv.status, invoiceStatuses)) return;
@@ -313,8 +324,8 @@ export const attributeNewsletter = (
         if (!best || t.day > best.day) best = t;
       });
     });
-    if (best) {
-      const r = results[(best as { campaign: number }).campaign];
+    const r = best ? resultOf.get((best as { campaign: number }).campaign) : undefined;
+    if (r) {
       r.revenue += Number(inv.totalPrice) || 0;
       r.invoices += 1;
     }

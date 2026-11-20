@@ -28,25 +28,35 @@ const post = async (body: Record<string, unknown>): Promise<Record<string, unkno
   return data;
 };
 
-const toSends = (raw: unknown): NewsletterSend[] =>
-  Array.isArray(raw)
-    ? raw.flatMap((c) => {
+// The server sends UTC moments; periods and invoice dates are local days. A send at 00:30 on
+// 1 December (23:30 UTC on 30 November) belongs to December.
+const localDay = (iso: string): string => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+
+/** null = the server withheld the recipients (no access to the newsletter module). */
+const toSends = (raw: unknown): NewsletterSend[] | null =>
+  !Array.isArray(raw)
+    ? null
+    : raw.flatMap((c) => {
         if (!c || typeof c !== "object") return [];
         const o = c as Record<string, unknown>;
         if (typeof o.id !== "string" || typeof o.sentAt !== "string") return [];
         const recipients = Array.isArray(o.recipients)
           ? o.recipients.flatMap((r) =>
               Array.isArray(r) && typeof r[2] === "string"
-                ? [{ leadId: typeof r[0] === "string" ? r[0] : null, email: String(r[1] ?? ""), sentAt: r[2] }]
+                ? [{ leadId: typeof r[0] === "string" ? r[0] : null, email: String(r[1] ?? ""), sentAt: localDay(r[2]) }]
                 : [],
             )
           : [];
-        return [{ id: o.id, name: String(o.name ?? ""), sentAt: o.sentAt, recipients }];
-      })
-    : [];
+        return [{ id: o.id, name: String(o.name ?? ""), sentAt: localDay(o.sentAt), recipients }];
+      });
 
 export const marketingRoiApi = {
-  get: async (): Promise<{ config: MarketingRoiConfig; newsletter: NewsletterSend[] }> => {
+  get: async (): Promise<{ config: MarketingRoiConfig; newsletter: NewsletterSend[] | null }> => {
     const data = await post({ action: "get" });
     return { config: normalizeMarketingRoiConfig(data.config), newsletter: toSends(data.newsletter) };
   },
@@ -90,7 +100,8 @@ export interface MarketingRoiData {
   /** The server could not be read (permission, network); the config then stays at its defaults. */
   error: string | null;
   config: MarketingRoiConfig;
-  newsletter: NewsletterSend[];
+  /** null = no access to the newsletter module, so no recipients to credit invoices to. */
+  newsletter: NewsletterSend[] | null;
   /** null = no Zernio connection or no access to Social media. */
   socialPosts: SocialPostStat[] | null;
   reload: () => void;
