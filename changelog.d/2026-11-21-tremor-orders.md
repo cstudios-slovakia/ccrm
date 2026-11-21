@@ -1,0 +1,1 @@
+- Remake Orders list and Order Detail editor in the Tremor Blocks design system with entity-blue (`#2563eb`) accents, crisp `rounded-lg`/`rounded-md` cards and inputs, and scoped `<EntityBadge>` pills for Clients, Leads, Warehouse products, and Invoices.

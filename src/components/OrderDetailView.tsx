@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { SectionIcon } from "./icons/SectionIcon";
-import { SECTION_VISUALS } from "../utils/sectionVisuals";
 import { appliedPriceLevel, clientPriceLevelId, matchesItemQuery, packHint, resolveItemVatRate, resolveSellPrice, type PriceLevel } from "../utils/priceLevels";
 import {
   Search,
@@ -57,6 +56,8 @@ import { getAvailablePaymentMethods, getDefaultPaymentMethod } from "../utils/pa
 import { formatDateLocalized } from "../utils/localTime";
 import { isClientRecord } from "../utils/clientRecord";
 import { PRODUCT_NAME } from "../utils/brand";
+import { EntityBadge } from "./tremor/EntityBadge";
+import { entityAccentStyle } from "../utils/entityAccent";
 
 export interface OrderDetailViewProps {
   order: Order;
@@ -460,13 +461,13 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 select-none animate-in fade-in duration-300 text-slate-800 pb-20 relative">
+    <div style={entityAccentStyle("orders")} className="space-y-6 select-none animate-in fade-in duration-300 text-gray-900 pb-20 relative">
       {/* 1. TOP ENTITY HEADER (Standardized with Leads and Projects) */}
       <EntityHeader
         onBack={onClose}
         backLabel={backLabel || t("Back to Orders", "Späť na objednávky", "Vissza a rendelésekhez")}
         avatar={
-          <div className="size-12 rounded-2xl text-white flex items-center justify-center font-bold text-title shadow-md shrink-0" style={{ backgroundColor: SECTION_VISUALS.orders.color }}>
+          <div className="size-12 rounded-lg bg-entity-solid text-white flex items-center justify-center font-heading font-semibold text-title shadow-xs shrink-0">
             <SectionIcon id="orders" className="size-6" color="#ffffff" />
           </div>
         }
@@ -478,7 +479,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                 : formData.orderNumber}
             </span>
             {isNew && (
-              <span className="px-2.5 py-0.5 rounded-full text-micro font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase tracking-wider">
+              <span className="px-2.5 py-0.5 rounded-md text-micro font-semibold bg-entity-subtle text-entity-text border border-entity-border uppercase tracking-wider">
                 {formData.orderNumber}
               </span>
             )}
@@ -494,7 +495,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                 value={formData.status}
                 disabled={!canEdit}
                 onChange={status => setFormData({ ...formData, status })}
-                className="!rounded-full !py-1 !font-bold !text-white !border-transparent"
+                className="!rounded-md !py-1 !font-semibold !text-white !border-transparent"
                 style={{ backgroundColor: orderStatusColor(formData.status, orderStatuses) }}
                 options={orderStatuses.map(st => ({
                   value: st.key,
@@ -506,17 +507,16 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
 
             {/* Customer Type Badge */}
             {formData.customerType === "client" && selectedIsLead ? (
-              <span className="px-2.5 py-0.5 rounded-full text-micro font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1">
-                <User className="size-3" />
-                {t("Lead", "Lead", "Lead")}
-              </span>
+              <EntityBadge entity="leads" label={t("Lead", "Lead", "Lead")} showIcon size="sm" />
             ) : formData.customerType === "client" ? (
-              <span className="px-2.5 py-0.5 rounded-full text-micro font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                <UserCheck className="size-3" />
-                {t(`${PRODUCT_NAME} Client`, `${PRODUCT_NAME} Klient`, `${PRODUCT_NAME} Ügyfél`)}
-              </span>
+              <EntityBadge
+                entity="clients"
+                label={t(`${PRODUCT_NAME} Client`, `${PRODUCT_NAME} Klient`, `${PRODUCT_NAME} Ügyfél`)}
+                showIcon
+                size="sm"
+              />
             ) : (
-              <span className="px-2.5 py-0.5 rounded-full text-micro font-bold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
+              <span className="px-2 py-0.5 rounded-md text-micro font-semibold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
                 <User className="size-3" />
                 {t("Guest", "Hosť", "Vendég")}
               </span>
@@ -524,7 +524,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
 
             {/* Payment Status Badge */}
             <span
-              className={`px-2.5 py-0.5 rounded-full text-micro font-bold border flex items-center gap-1 ${
+              className={`px-2 py-0.5 rounded-md text-micro font-semibold border flex items-center gap-1 ${
                 formData.paymentStatus === "paid"
                   ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                   : formData.paymentStatus === "refunded"
@@ -546,22 +546,17 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
 
             {/* Invoice Status Badge */}
             {formData.invoiceNumber && (
-              <span
-                className="px-2.5 py-0.5 rounded-full text-micro font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80 flex items-center gap-1 font-mono"
-                title={t(
-                  `Invoice issued: ${formData.invoiceNumber}`,
-                  `Faktúra vystavená: ${formData.invoiceNumber}`,
-                  `Számla kiállítva: ${formData.invoiceNumber}`
-                )}
-              >
-                <FileCheck className="size-3 text-emerald-600" />
-                {formData.invoiceNumber}
-              </span>
+              <EntityBadge
+                entity="invoices"
+                label={formData.invoiceNumber}
+                showIcon
+                size="sm"
+              />
             )}
 
             {/* Order Date */}
-            <span className="text-slate-500 text-ui font-medium flex items-center gap-1">
-              <Calendar className="size-3.5 text-slate-400" />
+            <span className="text-gray-500 text-ui font-medium flex items-center gap-1">
+              <Calendar className="size-3.5 text-gray-400" />
               {formData.orderDate}
             </span>
           </>
@@ -572,7 +567,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
               type="button"
               onClick={() => handleSave()}
               disabled={isSaving}
-              className="h-11 px-5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] transition-all text-white font-bold text-ui flex items-center gap-2 shadow-sm shadow-indigo-600/25 cursor-pointer disabled:opacity-50"
+              className="h-9 px-4 rounded-md bg-entity-solid hover:bg-entity-solid-hover transition-all text-white font-semibold text-ui flex items-center gap-2 shadow-xs cursor-pointer disabled:opacity-50"
             >
               <Save className="size-4" />
               <span>{isSaving ? t("Saving…", "Ukladá sa…", "Mentés…") : t("Save Order", "Uložiť objednávku", "Rendelés mentése")}</span>
@@ -585,11 +580,12 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
             {!isNew && onCreateInvoice && (
               <button
                 type="button"
+                style={entityAccentStyle("invoices")}
                 onClick={() => onCreateInvoice(formData)}
-                className={`h-11 px-3.5 rounded-xl border text-ui font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer ${
+                className={`h-9 px-3 rounded-md border text-ui font-semibold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer ${
                   formData.invoiceNumber
-                    ? "bg-emerald-50/80 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
-                    : "bg-white border-slate-200 text-slate-700 hover:text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50/50"
+                    ? "bg-entity-subtle border-entity-border text-entity-text hover:bg-entity-muted"
+                    : "bg-white border-gray-200 text-gray-700 hover:text-entity-text hover:border-entity-border hover:bg-entity-subtle"
                 }`}
                 title={
                   formData.invoiceNumber
@@ -602,9 +598,9 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                 }
               >
                 {formData.invoiceNumber ? (
-                  <FileCheck className="size-4 text-emerald-600" />
+                  <FileCheck className="size-4 text-entity-text" />
                 ) : (
-                  <FileText className="size-4 text-emerald-600" />
+                  <FileText className="size-4 text-entity-text" />
                 )}
                 <span className="hidden ws-sm:inline">
                   {formData.invoiceNumber || t("Invoice", "Faktúra", "Számla")}
@@ -615,11 +611,12 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
             {!isNew && onFulfillWarehouse && (
               <button
                 type="button"
+                style={entityAccentStyle("warehouse")}
                 onClick={() => onFulfillWarehouse(formData)}
-                className="h-11 px-3.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-blue-700 hover:border-blue-300 hover:bg-blue-50/50 text-ui font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                className="h-9 px-3 rounded-md bg-white border border-gray-200 text-gray-700 hover:text-entity-text hover:border-entity-border hover:bg-entity-subtle text-ui font-semibold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
                 title={t("Fulfill Physical Products from Warehouse", "Vyskladniť výdajku", "Raktári kiadás")}
               >
-                <PackageCheck className="size-4 text-blue-600" />
+                <PackageCheck className="size-4 text-entity-text" />
                 <span className="hidden ws-sm:inline">{t("Fulfill", "Výdajka", "Kiadás")}</span>
               </button>
             )}
@@ -628,7 +625,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
               <button
                 type="button"
                 onClick={() => onDelete(formData)}
-                className="size-11 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all flex items-center justify-center shadow-sm cursor-pointer"
+                className="size-9 rounded-md bg-white border border-gray-200 text-gray-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-all flex items-center justify-center shadow-2xs cursor-pointer"
                 title={t("Delete Order", "Zmazať objednávku", "Rendelés törlése")}
               >
                 <Trash2 className="size-4" />
@@ -638,7 +635,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="h-11 px-4 rounded-xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 text-ui font-semibold transition-all shadow-sm cursor-pointer"
+              className="h-9 px-3.5 rounded-md bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 text-ui font-semibold transition-all shadow-2xs cursor-pointer"
             >
               {t("Cancel", "Zrušiť", "Mégse")}
             </button>
@@ -655,22 +652,22 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
         <div className="ws-lg:col-span-5 space-y-6">
 
           {/* 1. Client Attachment & Relationship Card */}
-          <div className="bg-white border border-slate-200 rounded-[28px] p-6 shadow-sm space-y-5">
-            <div className="border-b border-slate-100 pb-3 flex items-center justify-between gap-2">
-              <span className="text-ui font-bold text-slate-900 flex items-center gap-2">
-                <Building2 className="size-4.5 text-indigo-600" />
+          <div className="bg-white border border-gray-200 border-t-2 border-t-entity-solid rounded-lg p-5 shadow-xs space-y-5">
+            <div className="border-b border-gray-200 pb-3 flex items-center justify-between gap-2">
+              <span className="text-ui font-semibold text-gray-900 flex items-center gap-2">
+                <Building2 className="size-4.5 text-entity-text" />
                 {t("Customer Profile", "Profil zákazníka", "Ügyfél profil")}
               </span>
 
               {/* Customer Type Selector */}
-              <div className="flex bg-slate-100 p-1 rounded-xl">
+              <div className="flex bg-gray-100 border border-gray-200 p-0.5 rounded-md">
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, customerType: "client" })}
-                  className={`px-3 py-1 rounded-lg text-micro font-bold transition-all ${
+                  className={`px-3 py-1 rounded text-micro font-semibold transition-all cursor-pointer ${
                     formData.customerType === "client"
-                      ? "bg-white text-indigo-600 shadow-xs"
-                      : "text-slate-600 hover:text-slate-900"
+                      ? "bg-white text-entity-text shadow-2xs"
+                      : "text-gray-600 hover:text-gray-900"
                   }`}
                 >
                   {t(`${PRODUCT_NAME} Client`, `${PRODUCT_NAME} Klient`, `${PRODUCT_NAME} Ügyfél`)}
@@ -678,10 +675,10 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, customerType: "guest" })}
-                  className={`px-3 py-1 rounded-lg text-micro font-bold transition-all ${
+                  className={`px-3 py-1 rounded text-micro font-semibold transition-all cursor-pointer ${
                     formData.customerType === "guest"
-                      ? "bg-white text-amber-700 shadow-xs"
-                      : "text-slate-600 hover:text-slate-900"
+                      ? "bg-white text-amber-700 shadow-2xs"
+                      : "text-gray-600 hover:text-gray-900"
                   }`}
                 >
                   {t("Guest Checkout", "Hosť", "Vendég")}
@@ -694,11 +691,11 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
               <div className="space-y-4">
                 {/* Searchable Client Picker */}
                 <div className="relative" ref={clientDropdownRef}>
-                  <label className="type-overline text-slate-500 block mb-1.5">
+                  <label className="type-overline text-gray-500 block mb-1.5">
                     {t("Select Registered Client", "Vybrať registrovaného klienta", "Regisztrált ügyfél kiválasztása")}
                   </label>
                   <div className="relative">
-                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
                     <input
                       type="text"
                       value={clientSearchQuery}
@@ -712,7 +709,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                           ? selectedClient.name
                           : t("Search client by name, company, email, IČO…", "Hľadať klienta podľa mena, firmy, IČO…", "Ügyfél keresése név, cég, adószám alapján…")
                       }
-                      className="w-full pl-10 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
+                      className="w-full pl-10 pr-9 py-2 bg-white border border-gray-300 rounded-md text-ui text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity-solid transition-all font-medium"
                     />
                     {clientSearchQuery ? (
                       <button
@@ -721,7 +718,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                           setClientSearchQuery("");
                           setIsClientSearchOpen(false);
                         }}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
                       >
                         <X className="size-3.5" />
                       </button>
@@ -729,49 +726,47 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                       <button
                         type="button"
                         onClick={handleClearClient}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-600 cursor-pointer p-0.5 rounded transition-colors"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-rose-600 cursor-pointer p-0.5 rounded transition-colors"
                         title={t("Detach client", "Odpojiť klienta", "Ügyfél leválasztása")}
                       >
                         <X className="size-3.5" />
                       </button>
                     ) : (
-                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 size-3.5 text-slate-400 pointer-events-none" />
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 size-3.5 text-gray-400 pointer-events-none" />
                     )}
                   </div>
 
                   {/* Client Dropdown Results */}
                   {isClientSearchOpen && (
-                    <div className="absolute left-0 right-0 mt-2 bg-white rounded-2xl border border-slate-200 shadow-xl z-50 overflow-hidden max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-150">
+                    <div className="absolute left-0 right-0 mt-1.5 bg-white rounded-lg border border-gray-200 shadow-xl z-50 overflow-hidden max-h-60 overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-150">
                       {filteredClients.length > 0 ? (
                         filteredClients.map(c => (
                           <button
                             key={c.id}
                             type="button"
                             onClick={() => handleSelectClient(c)}
-                            className="w-full text-left px-4 py-2.5 hover:bg-indigo-50/70 border-b border-slate-100 last:border-b-0 flex items-center justify-between gap-3 transition-colors cursor-pointer"
+                            className="w-full text-left px-4 py-2.5 hover:bg-entity-subtle border-b border-gray-100 last:border-b-0 flex items-center justify-between gap-3 transition-colors cursor-pointer"
                           >
                             <div className="min-w-0">
-                              <p className="text-ui font-bold text-slate-800 truncate flex items-center gap-2">
+                              <p className="text-ui font-semibold text-gray-900 truncate flex items-center gap-2">
                                 <span className="truncate">{c.name}</span>
                                 {!isClientRecord(c) && (
-                                  <span className="shrink-0 px-1.5 py-px rounded-full text-micro font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                    {t("Lead", "Lead", "Lead")}
-                                  </span>
+                                  <EntityBadge entity="leads" label={t("Lead", "Lead", "Lead")} size="sm" />
                                 )}
                               </p>
-                              <p className="text-micro text-slate-500 truncate">
+                              <p className="text-micro text-gray-500 truncate">
                                 {c.contactPerson && `${c.contactPerson} • `}
                                 {c.city && `${c.city} • `}
                                 {c.companyId && `IČO: ${c.companyId}`}
                               </p>
                             </div>
                             {formData.clientId === c.id && (
-                              <Check className="size-4 text-indigo-600 shrink-0" />
+                              <Check className="size-4 text-entity-text shrink-0" />
                             )}
                           </button>
                         ))
                       ) : (
-                        <div className="p-4 text-center text-ui text-slate-400 italic">
+                        <div className="p-4 text-center text-ui text-gray-400 italic">
                           {t("No clients found.", "Nenašli sa žiadni klienti.", "Nem található ügyfél.")}
                         </div>
                       )}
@@ -779,14 +774,17 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                   )}
                 </div>
 
-                {/* Synced Client Relationship Profile Card (Directly matching Leads style) */}
+                {/* Synced Client Relationship Profile Card */}
                 {selectedClient ? (
-                  <div className={selectedIsLead ? "p-5 rounded-2xl border-2 border-indigo-300 bg-indigo-50/70 text-indigo-950 space-y-3.5 shadow-xs" : "p-5 rounded-2xl border-2 border-emerald-300 bg-emerald-50/70 text-emerald-950 space-y-3.5 shadow-xs"}>
-                    <div className={selectedIsLead ? "border-b border-indigo-200/60 pb-2.5 flex items-center justify-between gap-2" : "border-b border-emerald-200/60 pb-2.5 flex items-center justify-between gap-2"}>
-                      <span className={selectedIsLead ? "text-micro font-bold text-indigo-800 flex items-center gap-1.5 uppercase tracking-wider" : "text-micro font-bold text-emerald-800 flex items-center gap-1.5 uppercase tracking-wider"}>
+                  <div
+                    style={entityAccentStyle(selectedIsLead ? "leads" : "clients")}
+                    className="p-4 rounded-lg border border-entity-border border-t-2 border-t-entity-solid bg-entity-subtle/40 text-gray-900 space-y-3.5 shadow-2xs"
+                  >
+                    <div className="border-b border-entity-border pb-2.5 flex items-center justify-between gap-2">
+                      <span className="text-micro font-semibold text-entity-text flex items-center gap-1.5 uppercase tracking-wider">
                         {selectedIsLead
-                          ? <User className="size-3.5 text-indigo-600" />
-                          : <UserCheck className="size-3.5 text-emerald-600" />}
+                          ? <User className="size-3.5 text-entity-text" />
+                          : <UserCheck className="size-3.5 text-entity-text" />}
                         {selectedIsLead
                           ? t("Lead (no client profile)", "Lead (bez profilu klienta)", "Lead (nincs ügyfélprofil)")
                           : t(`Synced ${PRODUCT_NAME} Client`, "Zosynchronizovaný klient", "Szinkronizált ügyfél")}
@@ -796,7 +794,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                           <button
                             type="button"
                             onClick={() => onOpenClient(selectedClient.id)}
-                            className={selectedIsLead ? "text-micro font-bold text-indigo-700 hover:text-indigo-900 flex items-center gap-1 hover:underline cursor-pointer" : "text-micro font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 hover:underline cursor-pointer"}
+                            className="text-micro font-semibold text-entity-text flex items-center gap-1 hover:underline cursor-pointer"
                           >
                             {t("Open Profile", "Otvoriť profil", "Profil megnyitása")}
                             <ExternalLink className="size-3" />
@@ -805,7 +803,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                         <button
                           type="button"
                           onClick={handleClearClient}
-                          className="text-micro font-bold text-rose-600 hover:text-rose-800 flex items-center gap-1 hover:underline cursor-pointer"
+                          className="text-micro font-semibold text-rose-600 hover:text-rose-800 flex items-center gap-1 hover:underline cursor-pointer"
                         >
                           <X className="size-3" />
                           {t("Change / Detach", "Zmeniť / Odpojiť", "Módosítás / Leválasztás")}
@@ -814,49 +812,49 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <div className={selectedIsLead ? "size-10 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white flex items-center justify-center font-bold text-ui shadow-xs shrink-0" : "size-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white flex items-center justify-center font-bold text-ui shadow-xs shrink-0"}>
+                      <div className="size-10 rounded-md bg-entity-solid text-white flex items-center justify-center font-semibold text-ui shadow-xs shrink-0">
                         {getInitials(selectedClient.name)}
                       </div>
                       <div className="min-w-0">
-                        <h4 className="text-body font-bold text-slate-900 truncate">
+                        <h4 className="text-body font-semibold text-gray-900 truncate">
                           {selectedClient.name}
                         </h4>
                         {selectedClient.contactPerson && (
-                          <p className={selectedIsLead ? "text-micro font-semibold text-indigo-800" : "text-micro font-semibold text-emerald-800"}>
+                          <p className="text-micro font-medium text-entity-text">
                             {selectedClient.contactPerson}
                           </p>
                         )}
                       </div>
                     </div>
 
-                    <div className={selectedIsLead ? "grid grid-cols-2 gap-2 text-micro font-medium pt-1 border-t border-indigo-200/50" : "grid grid-cols-2 gap-2 text-micro font-medium pt-1 border-t border-emerald-200/50"}>
+                    <div className="grid grid-cols-2 gap-2 text-micro font-medium pt-2 border-t border-entity-border text-gray-700">
                       {selectedClient.email && (
-                        <div className={selectedIsLead ? "flex items-center gap-1.5 text-indigo-900 truncate" : "flex items-center gap-1.5 text-emerald-900 truncate"}>
-                          <Mail className={selectedIsLead ? "size-3 text-indigo-600 shrink-0" : "size-3 text-emerald-600 shrink-0"} />
+                        <div className="flex items-center gap-1.5 truncate">
+                          <Mail className="size-3 text-entity-text shrink-0" />
                           <span className="truncate">{selectedClient.email}</span>
                         </div>
                       )}
                       {selectedClient.phone && (
-                        <div className={selectedIsLead ? "flex items-center gap-1.5 text-indigo-900 truncate" : "flex items-center gap-1.5 text-emerald-900 truncate"}>
-                          <Phone className={selectedIsLead ? "size-3 text-indigo-600 shrink-0" : "size-3 text-emerald-600 shrink-0"} />
+                        <div className="flex items-center gap-1.5 truncate">
+                          <Phone className="size-3 text-entity-text shrink-0" />
                           <span>{selectedClient.phone}</span>
                         </div>
                       )}
                       {selectedClient.companyId && (
-                        <div className={selectedIsLead ? "text-indigo-800" : "text-emerald-800"}>
-                          <span className={selectedIsLead ? "text-indigo-600 font-bold" : "text-emerald-600 font-bold"}>IČO:</span> {selectedClient.companyId}
+                        <div>
+                          <span className="text-entity-text font-semibold">IČO:</span> {selectedClient.companyId}
                         </div>
                       )}
                       {selectedClient.city && (
-                        <div className={selectedIsLead ? "flex items-center gap-1 text-indigo-800 truncate" : "flex items-center gap-1 text-emerald-800 truncate"}>
-                          <MapPin className={selectedIsLead ? "size-3 text-indigo-600 shrink-0" : "size-3 text-emerald-600 shrink-0"} />
+                        <div className="flex items-center gap-1 truncate">
+                          <MapPin className="size-3 text-entity-text shrink-0" />
                           <span>{selectedClient.city}</span>
                         </div>
                       )}
                     </div>
 
                     {selectedIsLead && (
-                      <p className="text-micro text-indigo-800/80 leading-snug">
+                      <p className="text-micro text-gray-600 leading-snug">
                         {t(
                           "This order is attached to a lead. Create a client profile from the lead to turn it into a registered client.",
                           "Objednávka je priradená k leadu. Z leadu môžete vytvoriť profil klienta, aby sa z neho stal registrovaný klient.",
@@ -865,11 +863,11 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                       </p>
                     )}
 
-                    <div className="pt-2 flex items-center justify-between">
+                    <div className="pt-1 flex items-center justify-between">
                       <button
                         type="button"
                         onClick={() => handleSelectClient(selectedClient)}
-                        className={selectedIsLead ? "text-micro font-bold text-indigo-700 hover:text-indigo-900 flex items-center gap-1 cursor-pointer" : "text-micro font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 cursor-pointer"}
+                        className="text-micro font-semibold text-entity-text flex items-center gap-1 hover:underline cursor-pointer"
                       >
                         <RotateCcw className="size-3" />
                         {t("Re-sync addresses", "Znovu zosúladiť adresy", "Címek újraszinkronizálása")}
@@ -877,15 +875,15 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="p-5 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/70 text-center space-y-2">
-                    <div className="size-10 rounded-xl bg-slate-100 text-slate-400 mx-auto flex items-center justify-center">
-                      <User className="size-5 text-slate-400" />
+                  <div className="p-5 rounded-lg border border-dashed border-gray-300 bg-gray-50 text-center space-y-2">
+                    <div className="size-10 rounded-md bg-gray-100 text-gray-400 mx-auto flex items-center justify-center">
+                      <User className="size-5 text-gray-400" />
                     </div>
                     <div>
-                      <h4 className="text-ui font-bold text-slate-700">
+                      <h4 className="text-ui font-semibold text-gray-700">
                         {t("No client selected", "Nie je vybraný žiadny klient", "Nincs kiválasztva ügyfél")}
                       </h4>
-                      <p className="text-micro text-slate-400 max-w-sm mx-auto mt-0.5">
+                      <p className="text-micro text-gray-400 max-w-sm mx-auto mt-0.5">
                         {t(
                           `Search and select an existing ${PRODUCT_NAME} client above to link this order, or switch to Guest Checkout.`,
                           "Hore vyhľadajte a vyberte existujúceho klienta pre prepojenie s objednávkou, alebo prepnite na Nákup bez registrácie.",
@@ -898,17 +896,18 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
               </div>
             ) : (
               /* GUEST CHECKOUT MODE */
-              <div className="p-5 rounded-2xl border-2 border-amber-300 bg-amber-50/70 text-amber-950 space-y-4 shadow-xs">
+              <div className="p-4 rounded-lg border border-amber-300 bg-amber-50/70 text-amber-950 space-y-4 shadow-2xs">
                 <div className="border-b border-amber-200/60 pb-2.5 flex items-center justify-between gap-2">
-                  <span className="text-micro font-bold text-amber-800 flex items-center gap-1.5 uppercase tracking-wider">
+                  <span className="text-micro font-semibold text-amber-800 flex items-center gap-1.5 uppercase tracking-wider">
                     <User className="size-3.5 text-amber-600" />
                     {t("Guest Customer Form", "Neregistrovaný nákup (Hosť)", "Vendég vásárló adatai")}
                   </span>
                   {!isNew && onConvertGuest && (
                     <button
                       type="button"
+                      style={entityAccentStyle("clients")}
                       onClick={() => onConvertGuest(formData)}
-                      className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-micro font-bold transition-all shadow-xs"
+                      className="px-2.5 py-1 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-micro font-semibold transition-all shadow-2xs cursor-pointer"
                     >
                       {t(`Convert to ${PRODUCT_NAME} Client`, `Vytvoriť klienta v ${PRODUCT_NAME}`, "Ügyfél létrehozása")}
                     </button>
@@ -928,7 +927,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                         guest: { ...formData.guest, name: e.target.value }
                       })}
                       placeholder="Ján Novák"
-                      className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-ui text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                      className="w-full px-3 py-2 bg-white border border-amber-300 rounded-md text-ui text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                     />
                   </div>
 
@@ -944,7 +943,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                         guest: { ...formData.guest, company: e.target.value }
                       })}
                       placeholder="Firma s.r.o."
-                      className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-ui text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                      className="w-full px-3 py-2 bg-white border border-amber-300 rounded-md text-ui text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                     />
                   </div>
 
@@ -960,7 +959,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                         guest: { ...formData.guest, email: e.target.value }
                       })}
                       placeholder="jan.novak@example.sk"
-                      className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-ui text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                      className="w-full px-3 py-2 bg-white border border-amber-300 rounded-md text-ui text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                     />
                   </div>
 
@@ -976,7 +975,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                         guest: { ...formData.guest, phone: e.target.value }
                       })}
                       placeholder="+421 900 123 456"
-                      className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-ui text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                      className="w-full px-3 py-2 bg-white border border-amber-300 rounded-md text-ui text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                     />
                   </div>
 
@@ -990,7 +989,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                         guest: { ...formData.guest, ico: e.target.value }
                       })}
                       placeholder="12345678"
-                      className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-ui text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                      className="w-full px-3 py-2 bg-white border border-amber-300 rounded-md text-ui text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                     />
                   </div>
 
@@ -1004,7 +1003,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                         guest: { ...formData.guest, dic: e.target.value }
                       })}
                       placeholder="SK2020123456"
-                      className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-ui text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                      className="w-full px-3 py-2 bg-white border border-amber-300 rounded-md text-ui text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                     />
                   </div>
                 </div>
@@ -1013,16 +1012,16 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
           </div>
 
           {/* 2. Delivery Address & Shipping Card */}
-          <div className="bg-white border border-slate-200 rounded-[28px] p-6 shadow-sm space-y-4">
-            <div className="border-b border-slate-100 pb-3 flex items-center justify-between gap-2">
-              <span className="text-ui font-bold text-slate-900 flex items-center gap-2">
-                <Truck className="size-4.5 text-blue-600" />
+          <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-xs space-y-4">
+            <div className="border-b border-gray-200 pb-3 flex items-center justify-between gap-2">
+              <span className="text-ui font-semibold text-gray-900 flex items-center gap-2">
+                <Truck className="size-4 text-entity-text" />
                 {t("Delivery Address & Carrier", "Dodacia adresa & Preprava", "Szállítási cím és futár")}
               </span>
               <button
                 type="button"
                 onClick={handleCopyBillingToDelivery}
-                className="text-micro font-bold text-indigo-600 hover:text-indigo-800"
+                className="text-micro font-semibold text-entity-text hover:underline cursor-pointer"
               >
                 {t("Copy from billing", "Kopírovať z fakturačnej", "Másolás számlázási címből")}
               </button>
@@ -1030,7 +1029,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
 
             <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
               <div className="ws-sm:col-span-2 space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t("Recipient Name", "Príjemca (Meno / Firma)", "Címzett neve")}
                 </label>
                 <input
@@ -1041,12 +1040,12 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     delivery: { ...formData.delivery, recipient: e.target.value }
                   })}
                   placeholder={t("e.g. Peter Novák", "napr. Peter Novák", "pl. Kovács Péter")}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t("Street & Number", "Ulica a súpisné číslo", "Utca és házszám")}
                 </label>
                 <input
@@ -1057,12 +1056,12 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     delivery: { ...formData.delivery, street: e.target.value }
                   })}
                   placeholder="Hlavná 123"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t("City", "Mesto", "Város")}
                 </label>
                 <input
@@ -1073,12 +1072,12 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     delivery: { ...formData.delivery, city: e.target.value }
                   })}
                   placeholder="Bratislava"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t("Postal Code (ZIP)", "PSČ", "Irányítószám")}
                 </label>
                 <input
@@ -1089,12 +1088,12 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     delivery: { ...formData.delivery, zip: e.target.value }
                   })}
                   placeholder="811 01"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t("Country", "Štát", "Ország")}
                 </label>
                 <select
@@ -1103,7 +1102,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     ...formData,
                     delivery: { ...formData.delivery, country: e.target.value }
                   })}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                 >
                   <option value="SK">Slovensko</option>
                   <option value="CZ">Česká republika</option>
@@ -1115,7 +1114,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
               </div>
 
               <div className="ws-sm:col-span-2 space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t("Recipient Contact Phone", "Telefón príjemcu pre kuriéra", "Telefonszám a futárhoz")}
                 </label>
                 <input
@@ -1126,15 +1125,15 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     delivery: { ...formData.delivery, phone: e.target.value }
                   })}
                   placeholder="+421 900 123 456"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                 />
               </div>
             </div>
 
             {/* Carrier Method & Tracking */}
-            <div className="pt-3 border-t border-slate-100 space-y-3">
+            <div className="pt-3 border-t border-gray-200 space-y-3">
               <div className="space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t("Shipping Carrier / Method", "Spôsob dopravy", "Szállítási mód")}
                 </label>
                 <div className="grid grid-cols-2 ws-sm:grid-cols-3 gap-2">
@@ -1148,10 +1147,10 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                           shippingMethod: formData.shippingMethod === m ? "" : m
                         })
                       }
-                      className={`px-3 py-2 rounded-xl text-micro font-bold border transition-all text-center ${
+                      className={`px-3 py-2 rounded-md text-micro font-semibold border transition-colors text-center cursor-pointer ${
                         formData.shippingMethod === m
-                          ? "bg-blue-50 border-blue-400 text-blue-800 shadow-xs"
-                          : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 cursor-pointer"
+                          ? "bg-entity-subtle border-entity-border text-entity-text shadow-2xs"
+                          : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
                       }`}
                     >
                       {m}
@@ -1161,7 +1160,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
               </div>
 
               <div className="space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t("Tracking Number", "Sledovacie číslo zásielky", "Csomagkövetési szám")}
                 </label>
                 <div className="relative flex items-center">
@@ -1170,14 +1169,14 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     value={formData.shippingTrackingNumber || ""}
                     onChange={e => setFormData({ ...formData, shippingTrackingNumber: e.target.value })}
                     placeholder="napr. 0123456789"
-                    className="w-full pl-3.5 pr-20 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-mono font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    className="w-full pl-3 pr-20 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-mono font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                   />
                   {formData.shippingTrackingNumber && (
                     <div className="absolute right-1.5 flex items-center gap-1">
                       <button
                         type="button"
                         onClick={handleCopyTrackingNumber}
-                        className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
+                        className="p-1.5 text-gray-400 hover:text-gray-700 rounded-md hover:bg-gray-100 transition-colors cursor-pointer"
                         title={t("Copy Tracking Number", "Kopírovať číslo", "Szám másolása")}
                       >
                         {copiedTracking ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
@@ -1187,7 +1186,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                           href={formatCarrierTrackingUrl(formData.shippingMethod || undefined, formData.shippingTrackingNumber || undefined) || "#"}
                           target="_blank"
                           rel="noreferrer"
-                          className="p-1.5 text-blue-600 hover:text-blue-800 rounded-lg hover:bg-blue-50 transition-colors"
+                          className="p-1.5 text-entity-text hover:bg-entity-subtle rounded-md transition-colors"
                           title={t("Open Carrier Tracking", "Sledovať zásielku online", "Nyomkövetés megnyitása")}
                         >
                           <ExternalLink className="size-3.5" />
@@ -1201,16 +1200,16 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
           </div>
 
           {/* 3. Billing Address Card */}
-          <div className="bg-white border border-slate-200 rounded-[28px] p-6 shadow-sm space-y-4">
-            <div className="border-b border-slate-100 pb-3 flex items-center justify-between gap-2">
-              <span className="text-ui font-bold text-slate-900 flex items-center gap-2">
-                <FileText className="size-4.5 text-purple-600" />
+          <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-xs space-y-4">
+            <div className="border-b border-gray-200 pb-3 flex items-center justify-between gap-2">
+              <span className="text-ui font-semibold text-gray-900 flex items-center gap-2">
+                <FileText className="size-4 text-entity-text" />
                 {t("Billing Information", "Fakturačné údaje", "Számlázási adatok")}
               </span>
               <button
                 type="button"
                 onClick={handleCopyDeliveryToBilling}
-                className="text-micro font-bold text-indigo-600 hover:text-indigo-800"
+                className="text-micro font-semibold text-entity-text hover:underline cursor-pointer"
               >
                 {t("Same as delivery", "Zhodná s dodacou", "Megegyezik a szállítással")}
               </button>
@@ -1218,7 +1217,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
 
             <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
               <div className="ws-sm:col-span-2 space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t("Billing Name / Company", "Fakturačný názov / Firma", "Számlázási név / Cég")}
                 </label>
                 <input
@@ -1229,12 +1228,12 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     billing: { ...formData.billing, name: e.target.value }
                   })}
                   placeholder="Firma s.r.o. / Meno a priezvisko"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t("Street & Number", "Ulica a číslo", "Utca és házszám")}
                 </label>
                 <input
@@ -1245,12 +1244,12 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     billing: { ...formData.billing, street: e.target.value }
                   })}
                   placeholder="Obchodná 1"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t("City", "Mesto", "Város")}
                 </label>
                 <input
@@ -1261,12 +1260,12 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     billing: { ...formData.billing, city: e.target.value }
                   })}
                   placeholder="Bratislava"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t("Postal Code (ZIP)", "PSČ", "Irányítószám")}
                 </label>
                 <input
@@ -1277,12 +1276,12 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     billing: { ...formData.billing, zip: e.target.value }
                   })}
                   placeholder="811 01"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t("Country", "Štát", "Ország")}
                 </label>
                 <select
@@ -1291,7 +1290,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     ...formData,
                     billing: { ...formData.billing, country: e.target.value }
                   })}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                 >
                   <option value="SK">Slovensko</option>
                   <option value="CZ">Česká republika</option>
@@ -1303,7 +1302,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
               </div>
 
               <div className="space-y-1">
-                <label className="type-overline text-slate-500 block">IČO</label>
+                <label className="type-overline text-gray-500 block">IČO</label>
                 <input
                   type="text"
                   value={formData.billing?.ico || ""}
@@ -1312,12 +1311,12 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     billing: { ...formData.billing, ico: e.target.value }
                   })}
                   placeholder="12345678"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-mono font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-mono font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="type-overline text-slate-500 block">DIČ / IČ DPH</label>
+                <label className="type-overline text-gray-500 block">DIČ / IČ DPH</label>
                 <input
                   type="text"
                   value={formData.billing?.dic || ""}
@@ -1326,30 +1325,30 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     billing: { ...formData.billing, dic: e.target.value }
                   })}
                   placeholder="SK2020123456"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-mono font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-mono font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                 />
               </div>
             </div>
           </div>
 
           {/* 4. Order Lifecycle, Payments & Operational Notes */}
-          <div className="bg-white border border-slate-200 rounded-[28px] p-6 shadow-sm space-y-4">
-            <div className="border-b border-slate-100 pb-3 flex items-center justify-between gap-2">
-              <span className="text-ui font-bold text-slate-900 flex items-center gap-2">
-                <Clock className="size-4.5 text-slate-600" />
+          <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-xs space-y-4">
+            <div className="border-b border-gray-200 pb-3 flex items-center justify-between gap-2">
+              <span className="text-ui font-semibold text-gray-900 flex items-center gap-2">
+                <Clock className="size-4 text-entity-text" />
                 {t("Payment, Schedule & Notes", "Platba, termíny a poznámky", "Fizetés, határidők és megjegyzések")}
               </span>
             </div>
 
             <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t("Payment Method", "Spôsob platby", "Fizetési mód")}
                 </label>
                 <select
                   value={formData.paymentMethod || defaultPaymentMethod}
                   onChange={e => setFormData({ ...formData, paymentMethod: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity cursor-pointer"
                 >
                   {displayedPaymentMethods.map(m => (
                     <option key={m} value={m}>
@@ -1360,13 +1359,13 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
               </div>
 
               <div className="space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t("Payment Status", "Stav úhrady", "Fizetési állapot")}
                 </label>
                 <select
                   value={formData.paymentStatus}
                   onChange={e => setFormData({ ...formData, paymentStatus: e.target.value as OrderPaymentStatus })}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                 >
                   <option value="unpaid">{t("Unpaid", "Neuhradené", "Fizetetlen")}</option>
                   <option value="paid">{t("Paid", "Zaplatené", "Fizetve")}</option>
@@ -1376,38 +1375,38 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
               </div>
 
               <div className="space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t("Order Date", "Dátum objednávky", "Rendelés dátuma")}
                 </label>
                 <input
                   type="date"
                   value={formData.orderDate}
                   onChange={e => setFormData({ ...formData, orderDate: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t("Requested Delivery Date", "Požadovaný termín dodania", "Kért szállítási határidő")}
                 </label>
                 <input
                   type="date"
                   value={formData.requestedDeliveryDate || ""}
                   onChange={e => setFormData({ ...formData, requestedDeliveryDate: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                 />
               </div>
 
               {warehouses.length > 0 && (
                 <div className="ws-sm:col-span-2 space-y-1">
-                  <label className="type-overline text-slate-500 block">
-                    {t("Fulfillment Warehouse", "Sklad pre expedíciu", "Kiadási raktár")}
+                  <label className="type-overline text-gray-500 flex items-center gap-1.5">
+                    <span>{t("Fulfillment Warehouse", "Sklad pre expedíciu", "Kiadási raktár")}</span>
                   </label>
                   <select
                     value={formData.warehouseId || warehouses[0]?.id || ""}
                     onChange={e => setFormData({ ...formData, warehouseId: e.target.value })}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                   >
                     {warehouses.map(w => (
                       <option key={w.id} value={w.id}>
@@ -1418,40 +1417,41 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                 </div>
               )}
 
-              {/* Invoice status sub-card */}
-              <div className="ws-sm:col-span-2 p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">
+              {/* Invoice status sub-card (scoped to invoices foreign entity) */}
+              <div
+                style={entityAccentStyle("invoices") as React.CSSProperties}
+                className="ws-sm:col-span-2 p-4 rounded-lg bg-gray-50 border border-gray-200 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3"
+              >
                 <div className="flex items-center gap-3">
                   <div
-                    className={`p-2 rounded-xl shrink-0 ${
+                    className={`p-2 rounded-md shrink-0 ${
                       formData.invoiceNumber
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-slate-200 text-slate-500"
+                        ? "bg-entity-subtle text-entity-text border border-entity-border"
+                        : "bg-gray-200 text-gray-600"
                     }`}
                   >
                     {formData.invoiceNumber ? (
-                      <FileCheck className="size-4.5" />
+                      <FileCheck className="size-4" />
                     ) : (
-                      <FileText className="size-4.5" />
+                      <FileText className="size-4" />
                     )}
                   </div>
                   <div>
-                    <div className="text-caption font-bold text-slate-900 flex items-center gap-2">
+                    <div className="text-caption font-semibold text-gray-900 flex items-center gap-2">
                       <span>{t("Invoice", "Faktúra", "Számla")}</span>
                       {formData.invoiceNumber ? (
-                        <span className="font-mono text-emerald-700 font-bold">
-                          {formData.invoiceNumber}
-                        </span>
+                        <EntityBadge entity="invoices" label={formData.invoiceNumber} size="sm" />
                       ) : (
-                        <span className="text-micro px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 font-medium">
+                        <span className="text-micro px-2 py-0.5 rounded-md bg-gray-200 text-gray-700 font-medium">
                           {t("Not created", "Nevystavená", "Nincs kiállítva")}
                         </span>
                       )}
                     </div>
-                    <div className="text-micro text-slate-500 mt-0.5">
+                    <div className="text-micro text-gray-500 mt-0.5">
                       {formData.invoiceNumber ? (
                         <>
                           {t("Issued", "Vystavená", "Kiállítva")}:{" "}
-                          <span className="font-mono text-slate-700 font-medium">
+                          <span className="font-mono text-gray-700 font-medium">
                             {formatDateLocalized(
                               formData.invoiceIssuedAt || formData.orderDate,
                               userLanguage
@@ -1473,15 +1473,15 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                   <button
                     type="button"
                     onClick={() => onCreateInvoice(formData)}
-                    className={`px-3.5 py-1.5 rounded-xl text-caption font-bold transition-all shadow-xs flex items-center gap-1.5 self-start ws-sm:self-auto cursor-pointer ${
+                    className={`px-3.5 py-1.5 rounded-md text-caption font-semibold transition-colors shadow-2xs flex items-center gap-1.5 self-start ws-sm:self-auto cursor-pointer ${
                       formData.invoiceNumber
-                        ? "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-emerald-700"
-                        : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                        ? "bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-entity-text"
+                        : "bg-entity-solid hover:bg-entity-solid-hover text-white"
                     }`}
                   >
                     {formData.invoiceNumber ? (
                       <>
-                        <FileCheck className="size-3.5 text-emerald-600" />
+                        <FileCheck className="size-3.5 text-entity-text" />
                         <span>
                           {t(
                             "Re-issue / Create New",
@@ -1501,7 +1501,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
               </div>
 
               <div className="ws-sm:col-span-2 space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t("Customer Remark / Notes", "Poznámka od zákazníka", "Vásárlói megjegyzés")}
                 </label>
                 <textarea
@@ -1509,12 +1509,12 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                   value={formData.notes || ""}
                   onChange={e => setFormData({ ...formData, notes: e.target.value })}
                   placeholder={t("Customer delivery instruction or note…", "Pokyn pre doručenie alebo poznámka…", "Szállítási utasítás vagy megjegyzés…")}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity font-medium"
                 />
               </div>
 
               <div className="ws-sm:col-span-2 space-y-1">
-                <label className="type-overline text-slate-500 block">
+                <label className="type-overline text-gray-500 block">
                   {t(`Internal Note (${PRODUCT_NAME})`, `Interná poznámka (${PRODUCT_NAME})`, `Belső megjegyzés (${PRODUCT_NAME})`)}
                 </label>
                 <textarea
@@ -1522,7 +1522,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                   value={formData.notes || ""}
                   onChange={e => setFormData({ ...formData, notes: e.target.value })}
                   placeholder={t("Private internal notes for team…", "Interné informácie pre tím…", "Belső feljegyzés a csapatnak…")}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium"
+                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity font-medium"
                 />
               </div>
             </div>
@@ -1536,27 +1536,27 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
         <div className="ws-lg:col-span-7 space-y-6">
 
           {/* 1. Order Items Card */}
-          <div className="bg-white border border-slate-200 rounded-[28px] p-6 shadow-sm space-y-5">
-            <div className="border-b border-slate-100 pb-3 flex items-center justify-between gap-2">
+          <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-xs space-y-5">
+            <div className="border-b border-gray-200 pb-3 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <ShoppingBag className="size-5 text-indigo-600" />
-                <h3 className="text-title font-heading font-bold text-slate-900">
+                <ShoppingBag className="size-5 text-entity-text" />
+                <h3 className="text-title font-heading font-semibold text-gray-900">
                   {t("Order Items", "Položky objednávky", "Rendelési tételek")}
                 </h3>
-                <span className="px-2.5 py-0.5 rounded-full text-micro font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                <span className="px-2 py-0.5 rounded-md text-micro font-semibold bg-entity-subtle text-entity-text border border-entity-border tabular-nums">
                   {(formData.items || []).length}
                 </span>
               </div>
               <div className="text-right">
-                <span className="type-overline text-slate-400 block">{t("Subtotal", "Medzisúčet", "Részösszeg")}</span>
-                <span className="text-body font-bold text-slate-900">{money(formData.totalGrossAmount)}</span>
+                <span className="type-overline text-gray-500 block">{t("Subtotal", "Medzisúčet", "Részösszeg")}</span>
+                <span className="text-body font-bold text-gray-900 tabular-nums">{money(formData.totalGrossAmount)}</span>
               </div>
             </div>
 
             {/* SEARCHABLE DROPDOWN FOR ADDING ITEMS */}
             <div className="relative" ref={itemDropdownRef}>
               <div className="relative flex items-center">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4.5 text-slate-400" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
                 <input
                   ref={itemInputRef}
                   type="text"
@@ -1571,7 +1571,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     "Hľadať a pridať tovar zo skladu alebo službu podľa názvu, SKU…",
                     "Termék vagy szolgáltatás keresése és hozzáadása név, SKU alapján…"
                   )}
-                  className="w-full pl-11 pr-28 py-3 bg-indigo-50/40 border border-indigo-200/80 rounded-2xl text-ui font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all shadow-xs"
+                  className="w-full pl-10 pr-28 py-2.5 bg-white border border-gray-200 rounded-md text-ui font-medium text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity transition-colors shadow-2xs"
                 />
                 {itemSearchQuery ? (
                   <button
@@ -1580,7 +1580,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                       setItemSearchQuery("");
                       itemInputRef.current?.focus();
                     }}
-                    className="absolute right-12 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 rounded-md"
+                    className="absolute right-24 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-700 rounded-md cursor-pointer"
                   >
                     <X className="size-4" />
                   </button>
@@ -1588,7 +1588,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsItemSearchOpen(!isItemSearchOpen)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-micro font-bold flex items-center gap-1 transition-colors shadow-2xs"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-700 rounded-md text-micro font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                 >
                   <span>{t("Browse", "Prehľad", "Tallózás")}</span>
                   <ChevronDown className="size-3" />
@@ -1597,24 +1597,24 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
 
               {/* SEARCH DROPDOWN POPOVER */}
               {isItemSearchOpen && (
-                <div className="absolute left-0 right-0 mt-2 bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden max-h-96 flex flex-col animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="absolute left-0 right-0 mt-1.5 bg-white rounded-lg border border-gray-200 shadow-lg z-50 overflow-hidden max-h-96 flex flex-col">
                   {/* Header / Filter Category bar */}
-                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-micro text-slate-500 font-bold uppercase tracking-wider">
+                  <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between text-micro text-gray-500 font-semibold uppercase tracking-wider">
                     <span>
                       {t("Warehouse Products & Services", "Skladový tovar & Služby", "Raktári termékek & Szolgáltatások")}
                     </span>
-                    <span>
+                    <span className="tabular-nums">
                       {filteredSearchItems.products.length + filteredSearchItems.services.length} {t("results", "výsledkov", "találat")}
                     </span>
                   </div>
 
                   {/* Scrollable List */}
-                  <div className="overflow-y-auto divide-y divide-slate-100 max-h-72">
-                    {/* Warehouse Products Group */}
+                  <div className="overflow-y-auto divide-y divide-gray-200 max-h-72">
+                    {/* Warehouse Products Group (scoped to warehouse foreign entity) */}
                     {filteredSearchItems.products.length > 0 && (
-                      <div>
-                        <div className="px-4 py-1.5 bg-slate-100/60 text-micro font-bold text-slate-500 uppercase tracking-wider">
-                          {t("Physical Warehouse Goods", "Fyzický tovar na sklade", "Raktári fizikai termékek")}
+                      <div style={entityAccentStyle("warehouse") as React.CSSProperties}>
+                        <div className="px-4 py-1.5 bg-gray-50 text-micro font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                          <span>{t("Physical Warehouse Goods", "Fyzický tovar na sklade", "Raktári fizikai termékek")}</span>
                         </div>
                         {filteredSearchItems.products.map(wh => (
                           <button
@@ -1631,18 +1631,18 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                                 taxRate: resolveItemVatRate(wh, companyBillingSettings)
                               });
                             }}
-                            className="w-full px-4 py-2.5 hover:bg-indigo-50/70 flex items-center justify-between gap-3 text-left transition-colors cursor-pointer group"
+                            className="w-full px-4 py-2.5 hover:bg-entity-subtle flex items-center justify-between gap-3 text-left transition-colors cursor-pointer group"
                           >
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="px-1.5 py-0.5 rounded text-micro font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
+                                <span className="px-1.5 py-0.5 rounded-md text-micro font-mono font-semibold bg-entity-subtle text-entity-text border border-entity-border shrink-0">
                                   {wh.sku}
                                 </span>
-                                <p className="text-ui font-bold text-slate-800 group-hover:text-indigo-600 truncate">
+                                <p className="text-ui font-semibold text-gray-900 group-hover:text-entity-text truncate">
                                   {wh.name}
                                 </p>
                               </div>
-                              <p className="text-micro text-slate-400 mt-0.5 truncate">
+                              <p className="text-micro text-gray-500 mt-0.5 truncate">
                                 {wh.category && `${wh.category} • `}
                                 {t("Unit", "Jedn.", "Egység")}: {wh.unit || "ks"}
                                 {packHint(wh, t("pack", "bal", "csomag")) && ` • ${packHint(wh, t("pack", "bal", "csomag"))}`}
@@ -1650,12 +1650,12 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                             </div>
                             <div className="text-right shrink-0">
                               <span
-                                className="text-ui font-mono font-bold text-slate-900 group-hover:text-indigo-600"
+                                className="text-ui font-mono font-semibold text-gray-900 group-hover:text-entity-text tabular-nums"
                                 title={appliedPriceLevel(wh, customerPriceLevelId, priceLevels)?.name}
                               >
                                 {money(resolveSellPrice(wh, customerPriceLevelId, priceLevels))}
                               </span>
-                              <span className="block text-micro text-slate-400">/{wh.unit || "ks"}</span>
+                              <span className="block text-micro text-gray-500">/{wh.unit || "ks"}</span>
                             </div>
                           </button>
                         ))}
@@ -1665,7 +1665,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                     {/* Predefined Services Group */}
                     {filteredSearchItems.services.length > 0 && (
                       <div>
-                        <div className="px-4 py-1.5 bg-slate-100/60 text-micro font-bold text-slate-500 uppercase tracking-wider">
+                        <div className="px-4 py-1.5 bg-gray-50 text-micro font-semibold text-gray-500 uppercase tracking-wider">
                           {t("Shipping, Delivery & Services", "Doprava, platby a služby", "Szállítás, fizetés és szolgáltatások")}
                         </div>
                         {filteredSearchItems.services.map((srv, idx) => (
@@ -1681,20 +1681,20 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                                 taxRate: defaultVatRate
                               });
                             }}
-                            className="w-full px-4 py-2.5 hover:bg-purple-50/70 flex items-center justify-between gap-3 text-left transition-colors cursor-pointer group"
+                            className="w-full px-4 py-2.5 hover:bg-entity-subtle flex items-center justify-between gap-3 text-left transition-colors cursor-pointer group"
                           >
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="px-1.5 py-0.5 rounded text-micro font-bold bg-purple-100 text-purple-700 border border-purple-200 shrink-0">
+                                <span className="px-1.5 py-0.5 rounded-md text-micro font-semibold bg-entity-subtle text-entity-text border border-entity-border shrink-0">
                                   {srv.category}
                                 </span>
-                                <p className="text-ui font-bold text-slate-800 group-hover:text-purple-600 truncate">
+                                <p className="text-ui font-semibold text-gray-900 group-hover:text-entity-text truncate">
                                   {srv.name}
                                 </p>
                               </div>
                             </div>
                             <div className="text-right shrink-0">
-                              <span className="text-ui font-mono font-bold text-slate-900 group-hover:text-purple-600">
+                              <span className="text-ui font-mono font-semibold text-gray-900 group-hover:text-entity-text tabular-nums">
                                 {money(srv.unitPrice)}
                               </span>
                             </div>
@@ -1705,30 +1705,30 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
 
                     {/* No matches */}
                     {filteredSearchItems.products.length === 0 && filteredSearchItems.services.length === 0 && (
-                      <div className="p-6 text-center text-slate-400 text-ui">
-                        <AlertCircle className="size-6 mx-auto mb-2 text-slate-300" />
+                      <div className="p-6 text-center text-gray-500 text-ui">
+                        <AlertCircle className="size-6 mx-auto mb-2 text-gray-300" />
                         <p>{t("No items matching search query.", "Žiadny tovar ani služba nezodpovedá hľadaniu.", "Nincs találat a keresésre.")}</p>
                       </div>
                     )}
                   </div>
 
                   {/* Dropdown Footer Actions */}
-                  <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <div className="p-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between gap-2">
                     <button
                       type="button"
                       onClick={() => handleAddItem("product")}
-                      className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:border-indigo-400 text-slate-700 hover:text-indigo-600 text-micro font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                      className="px-3 py-1.5 rounded-md bg-white border border-gray-200 hover:border-entity-border text-gray-700 hover:text-entity-text text-micro font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                     >
-                      <Plus className="size-3.5 text-indigo-600" />
+                      <Plus className="size-3.5 text-entity-text" />
                       {t("+ Custom Product", "+ Vlastný tovar", "+ Egyedi termék")}
                     </button>
 
                     <button
                       type="button"
                       onClick={() => handleAddItem("service")}
-                      className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:border-purple-400 text-slate-700 hover:text-purple-600 text-micro font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                      className="px-3 py-1.5 rounded-md bg-white border border-gray-200 hover:border-entity-border text-gray-700 hover:text-entity-text text-micro font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
                     >
-                      <Plus className="size-3.5 text-purple-600" />
+                      <Plus className="size-3.5 text-entity-text" />
                       {t("+ Custom Service / Fee", "+ Vlastná služba", "+ Egyedi szolgáltatás")}
                     </button>
                   </div>
@@ -1738,7 +1738,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
 
             {/* Quick Service Chips */}
             <div className="flex flex-wrap items-center gap-2 pt-1">
-              <span className="type-overline text-slate-400 text-micro">{t("Quick add:", "Rýchle pridanie:", "Gyors hozzáadás:")}</span>
+              <span className="type-overline text-gray-500 text-micro">{t("Quick add:", "Rýchle pridanie:", "Gyors hozzáadás:")}</span>
               {predefinedServices.slice(0, 4).map(srv => (
                 <button
                   key={srv.serviceCode}
@@ -1752,11 +1752,11 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                       taxRate: defaultVatRate
                     });
                   }}
-                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 text-micro font-semibold text-slate-700 hover:text-indigo-700 transition-colors flex items-center gap-1"
+                  className="px-2.5 py-1 rounded-md bg-white hover:bg-entity-subtle border border-gray-200 hover:border-entity-border text-micro font-semibold text-gray-700 hover:text-entity-text transition-colors flex items-center gap-1 cursor-pointer"
                 >
-                  <Plus className="size-3 text-slate-400" />
+                  <Plus className="size-3 text-gray-400" />
                   <span>{srv.name}</span>
-                  <span className="text-slate-400 font-mono">({money(srv.unitPrice)})</span>
+                  <span className="text-gray-500 font-mono tabular-nums">({money(srv.unitPrice)})</span>
                 </button>
               ))}
             </div>
@@ -1764,15 +1764,15 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
             {/* ITEMS TABLE / LIST */}
             <div className="space-y-3 pt-2">
               {(formData.items || []).length === 0 ? (
-                <div className="p-10 rounded-2xl border-2 border-dashed border-slate-200 text-center space-y-3 bg-slate-50/50">
-                  <div className="size-12 rounded-2xl bg-indigo-50 text-indigo-500 mx-auto flex items-center justify-center">
+                <div className="p-10 rounded-lg border border-dashed border-gray-200 text-center space-y-3 bg-gray-50">
+                  <div className="size-12 rounded-lg bg-entity-subtle text-entity-text mx-auto flex items-center justify-center">
                     <ShoppingBag className="size-6" />
                   </div>
                   <div>
-                    <h4 className="text-body font-bold text-slate-800">
+                    <h4 className="text-body font-semibold text-gray-900">
                       {t("No order items added yet", "Zatiaľ žiadne položky v objednávke", "Még nincsenek tételek")}
                     </h4>
-                    <p className="text-ui text-slate-500 max-w-md mx-auto mt-1">
+                    <p className="text-ui text-gray-500 max-w-md mx-auto mt-1">
                       {t(
                         "Use the search box above to pick products from your warehouse catalog or add services and delivery fees.",
                         "Použite vyhľadávacie pole vyššie na výber tovaru zo skladu alebo pridajte služby a dopravu.",
@@ -1782,9 +1782,9 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs divide-y divide-slate-100">
+                <div className="border border-gray-200 rounded-lg overflow-hidden shadow-2xs divide-y divide-gray-200">
                   {/* Table Header */}
-                  <div className="px-4 py-2.5 bg-slate-50 text-micro font-bold text-slate-500 uppercase tracking-wider grid grid-cols-12 gap-2 items-center">
+                  <div className="px-4 py-2.5 bg-gray-50 text-micro font-semibold text-gray-500 uppercase tracking-wider grid grid-cols-12 gap-2 items-center">
                     <div className="col-span-5">{t("Item Description", "Položka / Názov", "Megnevezés")}</div>
                     <div className="col-span-2 text-center">{t("Qty", "Počet", "Menny.")}</div>
                     <div className="col-span-2 text-right">{t("Price / Unit", "Cena / ks", "Egységár")}</div>
@@ -1794,21 +1794,24 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
 
                   {/* Rows */}
                   {(formData.items || []).map((item, idx) => (
-                    <div key={item.id || idx} className="p-3.5 hover:bg-slate-50/80 transition-colors grid grid-cols-12 gap-2 items-center">
+                    <div key={item.id || idx} className="p-3.5 hover:bg-gray-50 transition-colors grid grid-cols-12 gap-2 items-center bg-white">
                       {/* Name & Type */}
                       <div className="col-span-5 space-y-1">
                         <div className="flex items-center gap-1.5">
-                          <span
-                            className={`px-1.5 py-0.5 rounded text-micro font-bold shrink-0 ${
-                              item.itemType === "product"
-                                ? "bg-blue-100 text-blue-700 border border-blue-200"
-                                : "bg-purple-100 text-purple-700 border border-purple-200"
-                            }`}
-                          >
-                            {item.itemType === "product" ? t("Product", "Tovar", "Termék") : t("Service", "Služba", "Szolgáltatás")}
-                          </span>
+                          {item.itemType === "product" ? (
+                            <EntityBadge
+                              entity="warehouse"
+                              label={t("Product", "Tovar", "Termék")}
+                              size="sm"
+                              showIcon={false}
+                            />
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded-md text-micro font-semibold shrink-0 bg-entity-subtle text-entity-text border border-entity-border">
+                              {t("Service", "Služba", "Szolgáltatás")}
+                            </span>
+                          )}
                           {item.sku && (
-                            <span className="font-mono text-micro text-slate-400 shrink-0">
+                            <span className="font-mono text-micro text-gray-500 shrink-0">
                               {item.sku}
                             </span>
                           )}
@@ -1817,7 +1820,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                           type="text"
                           value={item.name}
                           onChange={e => handleItemChange(idx, { name: e.target.value })}
-                          className="w-full px-2 py-1 bg-transparent hover:bg-white border border-transparent hover:border-slate-200 rounded-lg text-ui font-bold text-slate-800 focus:bg-white focus:border-indigo-500 focus:outline-none"
+                          className="w-full px-2 py-1 bg-transparent hover:bg-white border border-transparent hover:border-gray-200 rounded-md text-ui font-semibold text-gray-900 focus:bg-white focus:border-entity focus:ring-2 focus:ring-entity-ring focus:outline-none"
                         />
                       </div>
 
@@ -1829,9 +1832,9 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                           step="any"
                           value={item.quantity}
                           onChange={e => handleItemChange(idx, { quantity: parseFloat(e.target.value) || 0 })}
-                          className="w-16 px-2 py-1 text-center bg-slate-50 hover:bg-white border border-slate-200 rounded-lg text-ui font-mono font-bold text-slate-800 focus:bg-white focus:border-indigo-500 focus:outline-none"
+                          className="w-16 px-2 py-1 text-center bg-white border border-gray-200 rounded-md text-ui font-mono font-semibold text-gray-900 tabular-nums focus:border-entity focus:ring-2 focus:ring-entity-ring focus:outline-none"
                         />
-                        <span className="text-micro text-slate-500 font-semibold">{item.unit || "ks"}</span>
+                        <span className="text-micro text-gray-500 font-semibold">{item.unit || "ks"}</span>
                       </div>
 
                       {/* Unit Price & Tax */}
@@ -1842,14 +1845,14 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                           step="0.01"
                           value={item.unitPrice}
                           onChange={e => handleItemChange(idx, { unitPrice: parseFloat(e.target.value) || 0 })}
-                          className="w-20 px-2 py-1 text-right bg-slate-50 hover:bg-white border border-slate-200 rounded-lg text-ui font-mono font-bold text-slate-800 focus:bg-white focus:border-indigo-500 focus:outline-none ml-auto"
+                          className="w-20 px-2 py-1 text-right bg-white border border-gray-200 rounded-md text-ui font-mono font-semibold text-gray-900 tabular-nums focus:border-entity focus:ring-2 focus:ring-entity-ring focus:outline-none ml-auto"
                         />
-                        <div className="flex items-center justify-end gap-1 text-micro text-slate-400">
+                        <div className="flex items-center justify-end gap-1 text-micro text-gray-500">
                           <span>DPH:</span>
                           <select
                             value={item.taxRate}
                             onChange={e => handleItemChange(idx, { taxRate: parseFloat(e.target.value) || 0 })}
-                            className="bg-transparent text-micro font-semibold text-slate-600 focus:outline-none cursor-pointer"
+                            className="bg-transparent text-micro font-semibold text-gray-700 focus:outline-none cursor-pointer"
                           >
                             {!availableVatRates.includes(item.taxRate) && (
                               <option key={item.taxRate} value={item.taxRate}>{item.taxRate}%</option>
@@ -1863,10 +1866,10 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
 
                       {/* Total Gross */}
                       <div className="col-span-2 text-right">
-                        <span className="text-body font-mono font-bold text-slate-900 block">
+                        <span className="text-body font-mono font-semibold text-gray-900 tabular-nums block">
                           {money(item.totalGrossAmount)}
                         </span>
-                        <span className="text-micro font-mono text-slate-400 block">
+                        <span className="text-micro font-mono text-gray-500 tabular-nums block">
                           {t("net", "bez DPH", "nettó")}: {money(item.totalNetAmount)}
                         </span>
                       </div>
@@ -1876,7 +1879,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                         <button
                           type="button"
                           onClick={() => handleRemoveItem(idx)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          className="p-1.5 rounded-md text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                           title={t("Remove item", "Odstrániť položku", "Tétel eltávolítása")}
                         >
                           <Trash2 className="size-4" />
@@ -1890,45 +1893,45 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
           </div>
 
           {/* 2. Financial Summary Card */}
-          <div className="bg-slate-50 border border-slate-200 rounded-[28px] p-6 shadow-sm space-y-4">
-            <div className="border-b border-slate-200/80 pb-3 flex items-center justify-between">
-              <span className="text-ui font-bold text-slate-900 flex items-center gap-2">
-                <Coins className="size-4.5 text-indigo-600" />
+          <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-xs space-y-4">
+            <div className="border-b border-gray-200 pb-3 flex items-center justify-between">
+              <span className="text-ui font-semibold text-gray-900 flex items-center gap-2">
+                <Coins className="size-4 text-entity-text" />
                 {t("Financial Breakdown", "Finančné vyčíslenie objednávky", "Pénzügyi összesítés")}
               </span>
-              <span className="text-micro font-mono font-bold text-slate-500 uppercase tracking-wider">
+              <span className="text-micro font-mono font-semibold text-gray-500 uppercase tracking-wider">
                 {formData.currency || systemCurrency}
               </span>
             </div>
 
-            <div className="space-y-2 text-ui font-medium text-slate-600">
+            <div className="space-y-2 text-ui font-medium text-gray-600">
               <div className="flex items-center justify-between">
                 <span>{t("Physical Goods Subtotal (Net)", "Tovar celkom (bez DPH)", "Termékek összesen (nettó)")}:</span>
-                <span className="font-mono font-bold text-slate-800">{money(formData.itemsNetAmount)}</span>
+                <span className="font-mono font-semibold text-gray-900 tabular-nums">{money(formData.itemsNetAmount)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span>{t("Shipping & Services Subtotal (Net)", "Doprava a služby (bez DPH)", "Szállítás és szolgáltatások (nettó)")}:</span>
-                <span className="font-mono font-bold text-slate-800">{money(formData.servicesNetAmount)}</span>
+                <span className="font-mono font-semibold text-gray-900 tabular-nums">{money(formData.servicesNetAmount)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span>{t("Tax Base Subtotal (Net)", "Základ dane celkom", "Adóalap összesen")}:</span>
-                <span className="font-mono font-bold text-slate-800">{money(formData.totalNetAmount)}</span>
+                <span className="font-mono font-semibold text-gray-900 tabular-nums">{money(formData.totalNetAmount)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span>{t("Total VAT", "DPH celkom", "ÁFA összesen")}:</span>
-                <span className="font-mono font-bold text-slate-800">{money(formData.totalTaxAmount)}</span>
+                <span className="font-mono font-semibold text-gray-900 tabular-nums">{money(formData.totalTaxAmount)}</span>
               </div>
 
-              <div className="pt-3 border-t-2 border-slate-200 flex items-baseline justify-between text-slate-900">
+              <div className="pt-3 border-t border-gray-200 flex items-baseline justify-between text-gray-900">
                 <div>
-                  <span className="text-title font-heading font-black block">
+                  <span className="text-title font-heading font-semibold block">
                     {t("Total to Pay (Gross)", "Celková suma k úhrade", "Fizetendő végösszeg")}
                   </span>
-                  <span className="text-micro text-slate-500">
+                  <span className="text-micro text-gray-500">
                     {t("Including VAT & all delivery fees", "Vrátane DPH a všetkých poplatkov", "ÁFÁ-val és díjakkal")}
                   </span>
                 </div>
-                <span className="text-display font-mono font-black text-indigo-700">
+                <span className="text-metric font-mono font-bold text-entity-text tabular-nums">
                   {money(formData.totalGrossAmount)}
                 </span>
               </div>
@@ -1941,9 +1944,9 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                   type="button"
                   onClick={() => handleSave()}
                   disabled={isSaving}
-                  className="w-full py-3.5 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] transition-all text-white font-bold text-ui flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 cursor-pointer disabled:opacity-50"
+                  className="w-full py-3 px-5 rounded-md bg-entity-solid hover:bg-entity-solid-hover active:scale-[0.99] transition-colors text-white font-semibold text-ui flex items-center justify-center gap-2 shadow-xs cursor-pointer disabled:opacity-50"
                 >
-                  <Save className="size-5" />
+                  <Save className="size-4.5" />
                   <span>{isSaving ? t("Saving Order…", "Ukladá sa objednávka…", "Rendelés mentése…") : t("Save Order & Confirm", "Uložiť a potvrdiť objednávku", "Rendelés mentése és jóváhagyása")}</span>
                 </button>
               </div>
