@@ -3509,6 +3509,11 @@ ${log.payload || ''}
     }
   }, [activeTab]);
 
+  const activeEntityHex = useMemo(
+    () => resolveRouteEntityHex(activeTab, customDashboards, unifiedEntries),
+    [activeTab, customDashboards, unifiedEntries]
+  );
+
   // Badge on the installed app's icon: missed + today tasks of the signed-in user.
   // Recomputed every minute because a task turns "missed" when its time passes.
   const [badgeCount, setBadgeCount] = useState<number | null>(null);
@@ -4877,11 +4882,6 @@ ${log.payload || ''}
     salaries: employeeSalaries,
     canSalaryReport: access.can("time_tracking_salary_report"),
   } : null;
-
-  const activeEntityHex = useMemo(
-    () => resolveRouteEntityHex(activeTab, customDashboards, unifiedEntries),
-    [activeTab, customDashboards, unifiedEntries]
-  );
 
   return (
     <UserPrefsContext.Provider value={userPrefsApi}>
