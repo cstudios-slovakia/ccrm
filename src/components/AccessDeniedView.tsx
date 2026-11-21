@@ -56,12 +56,12 @@ export const AccessDeniedView: React.FC<AccessDeniedViewProps> = ({
 
   return (
     <div className="flex-1 min-h-[60vh] flex items-center justify-center animate-in fade-in duration-300">
-      <div className="glass-panel w-full max-w-lg rounded-3xl border border-white/60 bg-white/95 shadow-glass p-10 flex flex-col items-center text-center select-none">
-        <div className="h-16 w-16 rounded-2xl bg-rose-50 border border-rose-100 text-rose-500 flex items-center justify-center mb-6 shadow-sm">
-          <ShieldOff className="h-8 w-8" />
+      <div className="w-full max-w-lg rounded-lg border border-gray-200 bg-white shadow-sm p-8 flex flex-col items-center text-center select-none">
+        <div className="h-14 w-14 rounded-lg bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mb-5 shadow-2xs">
+          <ShieldOff className="h-7 w-7" />
         </div>
 
-        <h2 className="text-title font-heading font-bold text-slate-800">
+        <h2 className="text-title font-heading font-bold text-gray-900">
           {t("No access to this section", "K tejto sekcii nemáte prístup", "Nincs hozzáférése ehhez a szakaszhoz")}
         </h2>
 

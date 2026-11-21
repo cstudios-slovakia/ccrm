@@ -692,12 +692,12 @@ const WizardDialog: React.FC<WizardDialogProps> = ({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 24, scale: 0.98 }}
           transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-          className="relative flex min-h-0 w-full max-w-360 flex-col overflow-hidden border-slate-200 bg-white shadow-2xl focus:outline-none sm:rounded-3xl sm:border"
+          className="relative flex min-h-0 w-full max-w-360 flex-col overflow-hidden border-gray-200 bg-white shadow-2xl focus:outline-none sm:rounded-lg sm:border"
         >
           {/* Header — a flex child, not an overlay, so it can never cover content. */}
-          <header className="shrink-0 border-b border-slate-100 bg-white px-4 py-4 sm:px-6 sm:py-5">
+          <header className="shrink-0 border-b border-gray-200 bg-white px-4 py-4 sm:px-6 sm:py-5">
             <div className="flex flex-wrap items-start gap-x-4 gap-y-4">
-              <div className="shrink-0 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-700 p-3 text-white shadow-lg shadow-indigo-500/25">
+              <div className="shrink-0 rounded-lg bg-indigo-600 p-3 text-white shadow-2xs">
                 <WandSparkles className="h-6 w-6" />
               </div>
               <div className="min-w-0 flex-1">

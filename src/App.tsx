@@ -78,6 +78,8 @@ import FilePreviewPane from "./components/FilePreviewPane";
 import { FloatingCopilotOrb, type CopilotCorner } from "./components/executive/FloatingCopilotOrb";
 import { CopilotSidebar } from "./components/executive/CopilotSidebar";
 import { AuroraBackground } from "./components/ui/AuroraBackground";
+import { EntityScope } from "./components/tremor/EntityScope";
+import { resolveRouteEntityHex } from "./utils/entityAccent";
 import { useCurrentScreenContext } from "./hooks/useCurrentScreenContext";
 import { RefreshCw, AlertOctagon, Trash2, Copy, Brain, Mail, Bell, X, Plus, ArrowUpRight } from "lucide-react";
 import { FeralGradientBackground } from "./components/FeralGradientBackground";
@@ -4876,6 +4878,11 @@ ${log.payload || ''}
     canSalaryReport: access.can("time_tracking_salary_report"),
   } : null;
 
+  const activeEntityHex = useMemo(
+    () => resolveRouteEntityHex(activeTab, customDashboards, unifiedEntries),
+    [activeTab, customDashboards, unifiedEntries]
+  );
+
   return (
     <UserPrefsContext.Provider value={userPrefsApi}>
     <ReadScopeContext.Provider value={readScope}>
@@ -4905,21 +4912,21 @@ ${log.payload || ''}
       {/* Blurred application background layout if not logged in */}
       <div className={`flex flex-1 overflow-hidden transition-all duration-500 relative z-10 ${!currentUser ? "filter blur-md pointer-events-none select-none" : ""}`}>
         {isEmbeddedTasks ? (
-          <div className="flex-1 flex flex-col min-w-0 h-full bg-slate-50/60 overflow-hidden">
+          <EntityScope color={activeEntityHex} className="flex-1 flex flex-col min-w-0 h-full bg-gray-50/40 overflow-hidden">
             {/* Minimal extension header bar */}
-            <header className="h-10 px-3 bg-white/95 backdrop-blur-md border-b border-slate-200/80 flex items-center justify-between shrink-0 select-none z-20">
+            <header className="h-10 px-3 bg-white/95 backdrop-blur-md border-b border-gray-200 flex items-center justify-between shrink-0 select-none z-20">
               <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse" />
-                <span className="font-heading font-extrabold text-body text-slate-900 tracking-tight flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-entity-solid animate-pulse" />
+                <span className="font-heading font-extrabold text-body text-gray-900 tracking-tight flex items-center gap-1.5">
                   <span>{systemName}</span>
-                  <span className="text-micro font-bold uppercase px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                  <span className="text-micro font-bold uppercase px-1.5 py-0.5 rounded-md bg-entity-subtle text-entity-text border border-entity-border">
                     Tasks
                   </span>
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 {currentUser && (
-                  <span className="text-caption font-semibold text-slate-600 flex items-center gap-1">
+                  <span className="text-caption font-semibold text-gray-600 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     {currentUser.name}
                   </span>
@@ -4928,7 +4935,7 @@ ${log.payload || ''}
                   <button
                     type="button"
                     onClick={(e) => openQuickTask(e)}
-                    className="px-2 py-0.5 rounded-lg text-micro font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors flex items-center gap-1 shadow-2xs cursor-pointer"
+                    className="px-2.5 py-1 rounded-md text-micro font-semibold bg-entity-solid text-white hover:bg-entity-solid-hover transition-colors flex items-center gap-1 shadow-2xs cursor-pointer"
                   >
                     <Plus className="w-3 h-3" />
                     <span>{t("New Task", "Nová úloha", "Új feladat")}</span>
@@ -4938,7 +4945,7 @@ ${log.payload || ''}
                   href="/#tasks"
                   target="_blank"
                   rel="noreferrer"
-                  className="px-2 py-0.5 rounded-lg text-micro font-bold text-slate-600 hover:text-indigo-600 hover:bg-slate-100 transition-colors flex items-center gap-1 border border-slate-200"
+                  className="px-2.5 py-1 rounded-md text-micro font-semibold text-gray-700 hover:text-entity-text hover:bg-gray-50 transition-colors flex items-center gap-1 border border-gray-300 bg-white shadow-2xs"
                   title={t(`Open full ${systemName}`, `Otvoriť plné ${systemName}`, `Teljes ${systemName} megnyitása`)}
                 >
                   <ArrowUpRight className="w-3 h-3" />
@@ -4970,12 +4977,12 @@ ${log.payload || ''}
             {/* Embedded Workspace main */}
             <main className="workspace flex-1 overflow-y-auto [scrollbar-gutter:stable] relative flex flex-col p-2 ws-sm:p-3">
               <ErrorBoundary contained resetKey="embedded-tasks">
-                <Suspense fallback={<div className="w-full flex items-center justify-center py-24"><RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" /></div>}>
+                <Suspense fallback={<div className="w-full flex items-center justify-center py-24"><RefreshCw className="w-6 h-6 text-entity-text animate-spin" /></div>}>
                   {renderWorkspaceView()}
                 </Suspense>
               </ErrorBoundary>
             </main>
-          </div>
+          </EntityScope>
         ) : (
           <>
             {/* Sidebar navigation with role-gated settings visibility */}
@@ -5010,7 +5017,7 @@ ${log.payload || ''}
             />
         
         {/* Workspace Area - Add pb-20 on mobile viewports so that the bottom navigation bar never overlaps content */}
-        <div className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-0">
+        <EntityScope color={activeEntityHex} className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-0">
           <Header
             activeTab={activeTab}
             systemName={systemName}
@@ -5075,16 +5082,16 @@ ${log.payload || ''}
             <div className="shrink-0 w-full">
               {currentUser && <PwaInstallBanner language={userLanguage} userKey={currentUser.email || currentUser.name || "anon"} />}
               {showNotifBanner && currentUser && getBrowserNotificationPermission() === "default" && (
-                <div className="mb-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-3 rounded-2xl flex items-center justify-between shadow-md animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="mb-4 rounded-lg border border-entity-border bg-white px-4 py-3 flex items-center justify-between gap-3 shadow-xs animate-in fade-in slide-in-from-top-2 duration-200">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-white/20 rounded-xl shrink-0">
-                      <Bell className="h-5 w-5 text-white animate-pulse" />
+                    <div className="p-2 bg-entity-subtle text-entity-text border border-entity-border rounded-md shrink-0">
+                      <Bell className="h-4.5 w-4.5" />
                     </div>
                     <div>
-                      <p className="text-ui font-bold">
+                      <p className="text-ui font-bold text-gray-900">
                         {t("Enable Desktop Notifications", "Zapnúť upozornenia na ploche", "Asztali értesítések engedélyezése")}
                       </p>
-                      <p className="text-caption text-blue-100 font-medium">
+                      <p className="text-caption text-gray-500 font-medium">
                         {t(
                           "Get instant alerts when tasks are assigned to you or marked as completed.",
                           "Dostávajte okamžité hlásenia pri priradení novej úlohy alebo jej dokončení.",
@@ -5107,7 +5114,7 @@ ${log.payload || ''}
                           });
                         }
                       }}
-                      className="px-3.5 py-1.5 bg-white text-blue-700 hover:bg-blue-50 text-ui font-bold rounded-xl shadow-sm transition active:scale-95"
+                      className="px-3.5 py-1.5 bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-semibold rounded-md shadow-2xs transition active:scale-95 cursor-pointer"
                     >
                       {t("Enable", "Povoliť", "Engedélyezés")}
                     </button>
@@ -5117,7 +5124,7 @@ ${log.payload || ''}
                         setShowNotifBanner(false);
                         sessionStorage.setItem("ccrm_notif_banner_dismissed", "1");
                       }}
-                      className="p-1.5 hover:bg-white/10 rounded-xl text-white/80 hover:text-white transition"
+                      className="p-1.5 hover:bg-gray-100 rounded-md text-gray-400 hover:text-gray-700 transition cursor-pointer"
                       title={t("Dismiss", "Zavrieť", "Bezárás")}
                     >
                       <X className="h-4 w-4" />
@@ -5161,14 +5168,14 @@ ${log.payload || ''}
               </ErrorBoundary>
             </div>
             {whatsappHost}
-            <footer className={`mt-12 pt-4 border-t border-slate-200/50 flex justify-end items-center type-overline text-slate-400 select-none${whatsappActive ? " hidden" : ""}`}>
+            <footer className={`mt-12 pt-4 border-t border-gray-200/70 flex justify-end items-center type-overline text-gray-400 select-none${whatsappActive ? " hidden" : ""}`}>
               <span>
                 v{VERSION}
                 {cerpVersion ? ` with ${cerpVersion.startsWith("v") ? cerpVersion : `v${cerpVersion}`}` : ""}
               </span>
             </footer>
           </main>
-        </div>
+        </EntityScope>
         </>
         )}
 
@@ -5263,8 +5270,8 @@ ${log.payload || ''}
         <PasskeySetupOffer systemLanguage={userLanguage} loginMethod={loginMethod} />
         {toast && (
           <div role="status" aria-live="polite" className="pointer-events-auto animate-in slide-in-from-bottom duration-300">
-            <div className={`bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 text-ui font-bold border ${
-              toast.variant === "error" ? "border-rose-500/70" : toast.variant === "warning" ? "border-amber-500/70" : "border-slate-800"
+            <div className={`bg-gray-900 text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-4 text-ui font-semibold border ${
+              toast.variant === "error" ? "border-rose-500/70" : toast.variant === "warning" ? "border-amber-500/70" : "border-gray-800"
             }`}>
               <span>{toast.message}</span>
               {toast.action && (
@@ -5273,14 +5280,14 @@ ${log.payload || ''}
                     toast.action?.onClick();
                     setToast(null);
                   }}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold cursor-pointer transition-all active:scale-95 text-micro"
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md font-semibold cursor-pointer transition-all active:scale-95 text-micro"
                 >
                   {toast.action.label}
                 </button>
               )}
               <button
                 onClick={() => setToast(null)}
-                className="text-slate-400 hover:text-white font-bold ml-2 cursor-pointer"
+                className="text-gray-400 hover:text-white font-bold ml-2 cursor-pointer"
               >
                 ✕
               </button>
@@ -5290,17 +5297,17 @@ ${log.payload || ''}
       </div>
       {/* Global File Preview Modal overlay */}
       {previewFile && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
           <div 
             className="fixed inset-0" 
             onClick={() => setPreviewFile(null)} 
           />
-          <div className="w-full max-w-5xl h-[85vh] bg-white rounded-t-[32px] rounded-b-[32px] border border-slate-200/80 shadow-2xl p-6 flex flex-col justify-between text-left relative z-10 animate-in zoom-in-95 duration-300">
+          <div className="w-full max-w-5xl h-[85vh] bg-white rounded-lg border border-gray-200 shadow-2xl p-5 flex flex-col justify-between text-left relative z-10 animate-in zoom-in-95 duration-200">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
+            <div className="flex items-center justify-between border-b border-gray-200 pb-3 shrink-0">
               <div className="min-w-0 pr-4">
                 <span className="type-overline text-amber-700">{t("File Preview", "Náhľad súboru", "Fájl előnézet")}</span>
-                <h3 className="text-body font-heading font-bold truncate">{previewFile.name}</h3>
+                <h3 className="text-body font-heading font-bold text-gray-900 truncate">{previewFile.name}</h3>
               </div>
               <div className="flex items-center gap-2">
                 {/* The browser's own viewer reports why a document failed to open,
@@ -5309,21 +5316,21 @@ ${log.payload || ''}
                   href={previewFile.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 type-overline flex items-center gap-1 transition-all"
+                  className="px-3 py-1.5 rounded-md bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 type-overline flex items-center gap-1 transition-all shadow-2xs"
                 >
                   {t("Open in a new tab", "Otvoriť na novej karte", "Megnyitás új lapon")}
                 </a>
                 <a
                   href={previewFile.url}
                   download={previewFile.name}
-                  className="px-3 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white type-overline flex items-center gap-1 transition-all"
+                  className="px-3 py-1.5 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white type-overline flex items-center gap-1 transition-all shadow-2xs"
                 >
                   {t("Download", "Stiahnuť", "Letöltés")}
                 </a>
                 <button
                   type="button"
                   onClick={() => setPreviewFile(null)}
-                  className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                  className="text-gray-400 hover:text-gray-700 p-1.5 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
                 >
                   ✕
                 </button>
@@ -5331,7 +5338,7 @@ ${log.payload || ''}
             </div>
 
             {/* Content preview pane */}
-            <div className="flex-1 mt-4 border border-slate-200 rounded-2xl overflow-hidden bg-slate-50 flex items-center justify-center">
+            <div className="flex-1 mt-4 border border-gray-200 rounded-md overflow-hidden bg-gray-50 flex items-center justify-center">
               <FilePreviewPane
                 key={previewFile.url}
                 url={previewFile.url}

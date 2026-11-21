@@ -87,19 +87,19 @@ export const PwaInstallBanner: React.FC<PwaInstallBannerProps> = ({ language, us
           role="region"
           aria-label={t(`Install ${brand} app`, `Inštalácia aplikácie ${brand}`, `${brand} alkalmazás telepítése`)}
           data-testid="pwa-install-banner"
-          className={`mb-4 bg-white border border-indigo-200 px-4 py-3 rounded-2xl flex items-center justify-between gap-3 shadow-sm transition-transform motion-reduce:transition-none ${
+          className={`mb-4 bg-white border border-entity-border px-4 py-3 rounded-lg flex items-center justify-between gap-3 shadow-xs transition-transform motion-reduce:transition-none ${
             open ? "translate-y-0 duration-300 ease-out" : "-translate-y-2 duration-150 ease-in"
           }`}
         >
           <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2 bg-indigo-50 rounded-xl shrink-0">
-              <Download className="h-5 w-5 text-indigo-600" />
+            <div className="p-2 bg-entity-subtle border border-entity-border rounded-md shrink-0">
+              <Download className="h-4.5 w-4.5 text-entity-text" />
             </div>
             <div className="min-w-0">
-              <p className="text-ui font-bold text-slate-800">
+              <p className="text-ui font-bold text-gray-900">
                 {t(`Install ${brand} as an app`, `Nainštalujte ${brand} ako aplikáciu`, `Telepítse a ${brand}-et alkalmazásként`)}
               </p>
-              <p className="text-caption text-slate-500 font-medium">
+              <p className="text-caption text-gray-500 font-medium">
                 {t(
                   "Open it from your taskbar or dock, see today's tasks on its icon and keep a small tasks window on top.",
                   "Otvárajte ho z panela úloh alebo docku, dnešné úlohy uvidíte na jeho ikone a malé okno s úlohami zostane navrchu.",
@@ -114,7 +114,7 @@ export const PwaInstallBanner: React.FC<PwaInstallBannerProps> = ({ language, us
               onClick={install}
               disabled={busy}
               data-testid="pwa-banner-install"
-              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-ui font-bold rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer transition-all duration-150 ease-out hover:-translate-y-px hover:shadow-md active:translate-y-0 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-wait"
+              className="px-3.5 py-1.5 bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-semibold rounded-md shadow-2xs flex items-center gap-1.5 cursor-pointer transition-all duration-150 ease-out active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-entity-ring focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-wait"
             >
               {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               {t("Install", "Nainštalovať", "Telepítés")}
@@ -123,7 +123,7 @@ export const PwaInstallBanner: React.FC<PwaInstallBannerProps> = ({ language, us
               type="button"
               onClick={notNow}
               data-testid="pwa-banner-dismiss"
-              className="px-2.5 py-1.5 text-ui font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl cursor-pointer transition-all duration-150 ease-out active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 hidden ws-sm:block"
+              className="px-2.5 py-1.5 text-ui font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md cursor-pointer transition-all duration-150 ease-out active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-entity-ring hidden ws-sm:block"
             >
               {t("Not now", "Teraz nie", "Most nem")}
             </button>
@@ -132,7 +132,7 @@ export const PwaInstallBanner: React.FC<PwaInstallBannerProps> = ({ language, us
               onClick={notNow}
               aria-label={t("Dismiss", "Zavrieť", "Bezárás")}
               title={t("Dismiss", "Zavrieť", "Bezárás")}
-              className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 cursor-pointer transition-all duration-150 ease-out active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+              className="p-1.5 hover:bg-gray-100 rounded-md text-gray-400 hover:text-gray-700 cursor-pointer transition-all duration-150 ease-out active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-entity-ring"
             >
               <X className="h-4 w-4" />
             </button>

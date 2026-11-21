@@ -85,7 +85,7 @@ ${this.state.errorInfo?.componentStack || "No Stack Trace"}
       // app down to the full-page fallback and only a reload got it back.
       return (
         <div className="w-full py-16 flex items-center justify-center font-sans">
-          <div className="w-full max-w-2xl bg-white rounded-[28px] border border-rose-100 shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="w-full max-w-2xl bg-white rounded-lg border border-rose-200 shadow-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="bg-gradient-to-r from-rose-500 to-red-600 p-6 text-white flex items-center gap-3.5">
               <span className="text-display select-none">⚠️</span>
               <div>

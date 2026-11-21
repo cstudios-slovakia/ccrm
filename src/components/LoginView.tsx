@@ -290,7 +290,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
     <div
       className={
         isModal
-          ? "w-full flex items-center justify-center bg-white border border-slate-200/50 rounded-[32px] shadow-2xl p-6 md:p-12 relative overflow-hidden select-none font-sans"
+          ? "w-full flex items-center justify-center bg-white border border-gray-200 rounded-xl shadow-2xl p-6 md:p-12 relative overflow-hidden select-none font-sans"
           : "min-h-screen w-full flex items-center justify-center lg:justify-end p-6 md:p-12 lg:pr-24 xl:pr-32 relative overflow-hidden select-none font-sans bg-[#f5f0e6]"
       }
     >
@@ -314,7 +314,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         }
       >
         <div
-          className={`w-full bg-white/94 border border-white/40 rounded-[32px] shadow-2xl p-6 sm:p-8 md:p-10 transition-all duration-500 ${activeTheme.cardGlowClass}`}
+          className={`w-full bg-white/95 border border-gray-200 rounded-xl shadow-2xl p-6 sm:p-8 md:p-10 transition-all duration-500 ${activeTheme.cardGlowClass}`}
         >
           {/* Mobile-Only Time Greeting Header */}
           {!isModal && (
@@ -401,25 +401,25 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder={tr("e.g. name@company.com", "napr. meno@firma.sk", "pl. nev@cegnev.hu")}
-                  className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white border border-slate-200 text-ui text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-semibold"
+                  className="w-full pl-11 pr-4 py-2.5 rounded-md bg-white border border-gray-300 shadow-2xs text-ui text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 transition-all font-medium"
                 />
               </div>
             </div>
 
             {/* Password Input */}
             <div className="space-y-1.5">
-              <label className="type-overline text-slate-500 block pl-0.5">
+              <label className="type-overline text-gray-600 block pl-0.5">
                 {getTranslation(systemLanguage, "login.password")}
               </label>
               <div className="relative">
-                <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 z-10" />
+                <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 z-10" />
                 <PasswordInput
                   required
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-11 pr-11 py-3 rounded-2xl bg-white border border-slate-200 text-ui text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-semibold"
+                  className="w-full pl-11 pr-11 py-2.5 rounded-md bg-white border border-gray-300 shadow-2xs text-ui text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 transition-all font-medium"
                 />
               </div>
             </div>
@@ -458,9 +458,9 @@ export const LoginView: React.FC<LoginViewProps> = ({
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed text-white rounded-2xl text-ui font-bold transition-all duration-150 flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 hover:scale-[1.01] active:scale-[0.99]"
+              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed text-white rounded-md text-ui font-semibold transition-all duration-150 flex items-center justify-center gap-2 shadow-2xs active:scale-[0.99] cursor-pointer"
             >
-              <LogIn className="h-4 w-4 stroke-[2.5]" /> {getTranslation(systemLanguage, "login.authenticate")}
+              <LogIn className="h-4 w-4 stroke-[2.2]" /> {getTranslation(systemLanguage, "login.authenticate")}
             </button>
           </form>
 

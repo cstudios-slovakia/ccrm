@@ -1,4 +1,6 @@
 import { PRODUCT_NAME } from "../utils/brand";
+import { EntityBadge } from "./tremor/EntityBadge";
+import { entityAccentStyle } from "../utils/entityAccent";
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -505,29 +507,8 @@ export const Header: React.FC<HeaderProps> = ({
         }
     };
 
-    const getSearchTypeBadgeColor = (type: string) => {
-        switch (type) {
-            case "client":
-                return "bg-emerald-50 text-emerald-700 border-emerald-200";
-            case "lead":
-                return "bg-indigo-50 text-indigo-700 border-indigo-200";
-            case "product":
-                return "bg-blue-50 text-blue-900 border-blue-200";
-            case "email":
-                return "bg-pink-50 text-pink-700 border-pink-200";
-            case "meeting":
-                return "bg-amber-50 text-amber-700 border-amber-200";
-            case "unified_entry":
-                return "bg-purple-50 text-purple-700 border-purple-200";
-            case "agency_worker":
-                return "bg-amber-50 text-amber-800 border-amber-200";
-            default:
-                return "bg-slate-50 text-slate-700 border-slate-200";
-        }
-    };
-
     return (
-        <header className="h-20 border-b border-white/40 bg-white/25 backdrop-blur-md px-2.5 sm:px-4 md:px-6 flex items-center justify-between sticky top-0 z-50 select-none">
+        <header className="h-20 border-b border-gray-200 bg-white/90 backdrop-blur-md px-2.5 sm:px-4 md:px-6 flex items-center justify-between sticky top-0 z-50 select-none">
             <style>{`
         @keyframes slideInRight {
           from { transform: translateX(100%); }
@@ -567,7 +548,7 @@ export const Header: React.FC<HeaderProps> = ({
                                       ? "Keresés..."
                                       : "Search..."
                             }
-                            className="w-full pl-9 pr-8 py-2 text-ui font-semibold rounded-xl bg-white/90 border border-slate-200 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-slate-800"
+                            className="w-full pl-9 pr-8 py-2 text-ui font-medium rounded-md bg-white border border-gray-300 shadow-2xs focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring transition-all text-gray-900 placeholder:text-gray-400"
                         />
                         {searchQuery && (
                             <button
@@ -594,9 +575,9 @@ export const Header: React.FC<HeaderProps> = ({
 
                     {/* Dropdown Suggestions */}
                     {showSearchDropdown && (
-                        <div className="absolute left-2 right-2 top-full mt-1 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl max-h-95 overflow-y-auto z-[999] p-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="absolute left-2 right-2 top-full mt-1.5 bg-white rounded-lg border border-gray-200 shadow-xl max-h-95 overflow-y-auto z-[999] p-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
                             {searchResults.length === 0 ? (
-                                <div className="py-6 text-center text-ui text-slate-400 font-semibold">
+                                <div className="py-6 text-center text-ui text-gray-400 font-medium">
                                     {systemLanguage === "sk"
                                         ? 'Žiadne výsledky pre "' + searchQuery + '"'
                                         : systemLanguage === "hu"
@@ -615,33 +596,37 @@ export const Header: React.FC<HeaderProps> = ({
                                                     setIsMobileSearchOpen(false);
                                                 }}
                                                 onMouseEnter={() => setSelectedIndex(idx)}
-                                                className={`px-3 py-2.5 rounded-xl cursor-pointer transition-all flex items-start gap-3 border ${
+                                                className={`px-3 py-2 rounded-md cursor-pointer transition-all flex items-start gap-3 border ${
                                                     isSelected
-                                                        ? "bg-slate-50/90 border-slate-200 text-slate-900 shadow-xs"
-                                                        : "bg-transparent border-transparent text-slate-700 hover:bg-slate-50/50"
+                                                        ? "bg-entity-subtle border-entity-border text-gray-900"
+                                                        : "bg-transparent border-transparent text-gray-700 hover:bg-gray-50"
                                                 }`}
                                             >
-                                                <div className="mt-0.5 shrink-0 bg-slate-100 p-1.5 rounded-lg border border-slate-200/50">
+                                                <div
+                                                  style={entityAccentStyle(item.type) as React.CSSProperties}
+                                                  className="mt-0.5 shrink-0 bg-entity-subtle text-entity-text p-1.5 rounded-md border border-entity-border"
+                                                >
                                                     {getSearchIcon(item.type)}
                                                 </div>
                                                 <div className="flex-1 min-w-0 text-left">
                                                     <div className="flex items-center justify-between gap-2">
-                                                        <span className="font-bold text-ui truncate text-slate-800">
+                                                        <span className="font-semibold text-ui truncate text-gray-900">
                                                             {item.title}
                                                         </span>
-                                                        <span
-                                                            className={`type-overline px-1.5 py-0.5 rounded-md border shrink-0 ${getSearchTypeBadgeColor(item.type)}`}
-                                                        >
-                                                            {getSearchTypeLabel(item.type)}
-                                                        </span>
+                                                        <EntityBadge
+                                                            entity={item.type || "dashboard"}
+                                                            label={getSearchTypeLabel(item.type)}
+                                                            showIcon={false}
+                                                            size="sm"
+                                                        />
                                                     </div>
                                                     {item.subtitle && (
-                                                        <div className="text-micro text-slate-400 font-bold mt-0.5 truncate">
+                                                        <div className="text-micro text-gray-400 font-medium mt-0.5 truncate">
                                                             {item.subtitle}
                                                         </div>
                                                     )}
                                                     {item.excerpt && (
-                                                        <div className="text-micro text-slate-500 font-semibold mt-1 leading-relaxed border-l-2 border-slate-200 pl-2 italic truncate">
+                                                        <div className="text-micro text-gray-500 mt-1 leading-relaxed border-l-2 border-gray-200 pl-2 italic truncate">
                                                             {item.excerpt}
                                                         </div>
                                                     )}
@@ -697,7 +682,7 @@ export const Header: React.FC<HeaderProps> = ({
                                           ? "Keresés... (Cmd + K)"
                                           : "Search... (Cmd + K)"
                                 }
-                                className="w-full h-9 sm:h-10 pl-7 sm:pl-9 pr-6 sm:pr-10 py-1.5 sm:py-2 text-caption font-semibold rounded-xl bg-white/70 border border-slate-200 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-slate-800"
+                                className="w-full h-9 sm:h-10 pl-7 sm:pl-9 pr-6 sm:pr-10 py-1.5 sm:py-2 text-caption font-medium rounded-md bg-white border border-gray-300 shadow-2xs focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring transition-all text-gray-900 placeholder:text-gray-400"
                             />
                             {searchQuery && (
                                 <button
@@ -715,9 +700,9 @@ export const Header: React.FC<HeaderProps> = ({
 
                         {/* Dropdown Suggestions */}
                         {showSearchDropdown && (
-                            <div className="absolute left-0 right-0 top-full mt-1 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl max-h-95 overflow-y-auto z-[999] p-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-lg border border-gray-200 shadow-xl max-h-95 overflow-y-auto z-[999] p-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
                                 {searchResults.length === 0 ? (
-                                    <div className="py-6 text-center text-ui text-slate-400 font-semibold">
+                                    <div className="py-6 text-center text-ui text-gray-400 font-medium">
                                         {systemLanguage === "sk"
                                             ? 'Žiadne výsledky pre "' + searchQuery + '"'
                                             : systemLanguage === "hu"
@@ -733,33 +718,37 @@ export const Header: React.FC<HeaderProps> = ({
                                                     key={item.id || idx}
                                                     onClick={() => handleSelectSearchResult(item)}
                                                     onMouseEnter={() => setSelectedIndex(idx)}
-                                                    className={`px-3 py-2.5 rounded-xl cursor-pointer transition-all flex items-start gap-3 border ${
+                                                    className={`px-3 py-2 rounded-md cursor-pointer transition-all flex items-start gap-3 border ${
                                                         isSelected
-                                                            ? "bg-slate-50/90 border-slate-200 text-slate-900 shadow-xs"
-                                                            : "bg-transparent border-transparent text-slate-700 hover:bg-slate-50/50"
+                                                            ? "bg-entity-subtle border-entity-border text-gray-900"
+                                                            : "bg-transparent border-transparent text-gray-700 hover:bg-gray-50"
                                                     }`}
                                                 >
-                                                    <div className="mt-0.5 shrink-0 bg-slate-100 p-1.5 rounded-lg border border-slate-200/50">
+                                                    <div
+                                                      style={entityAccentStyle(item.type) as React.CSSProperties}
+                                                      className="mt-0.5 shrink-0 bg-entity-subtle text-entity-text p-1.5 rounded-md border border-entity-border"
+                                                    >
                                                         {getSearchIcon(item.type)}
                                                     </div>
                                                     <div className="flex-1 min-w-0 text-left">
                                                         <div className="flex items-center justify-between gap-2">
-                                                            <span className="font-bold text-ui truncate text-slate-800">
+                                                            <span className="font-semibold text-ui truncate text-gray-900">
                                                                 {item.title}
                                                             </span>
-                                                            <span
-                                                                className={`type-overline px-1.5 py-0.5 rounded-md border shrink-0 ${getSearchTypeBadgeColor(item.type)}`}
-                                                            >
-                                                                {getSearchTypeLabel(item.type)}
-                                                            </span>
+                                                            <EntityBadge
+                                                                entity={item.type || "dashboard"}
+                                                                label={getSearchTypeLabel(item.type)}
+                                                                showIcon={false}
+                                                                size="sm"
+                                                            />
                                                         </div>
                                                         {item.subtitle && (
-                                                            <div className="text-micro text-slate-400 font-bold mt-0.5 truncate">
+                                                            <div className="text-micro text-gray-400 font-medium mt-0.5 truncate">
                                                                 {item.subtitle}
                                                             </div>
                                                         )}
                                                         {item.excerpt && (
-                                                            <div className="text-micro text-slate-500 font-semibold mt-1 leading-relaxed border-l-2 border-slate-200 pl-2 italic truncate">
+                                                            <div className="text-micro text-gray-500 mt-1 leading-relaxed border-l-2 border-gray-200 pl-2 italic truncate">
                                                                 {item.excerpt}
                                                             </div>
                                                         )}
@@ -780,10 +769,10 @@ export const Header: React.FC<HeaderProps> = ({
                                 onClick={() => setIsFavoritesOpen(!isFavoritesOpen)}
                                 aria-expanded={isFavoritesOpen}
                                 aria-label={t("Favorites", "Obľúbené položky", "Kedvencek")}
-                                className={`h-9 sm:h-10 w-9 sm:w-10 rounded-xl border flex items-center justify-center transition-all shadow-sm cursor-pointer relative ${
+                                className={`h-9 sm:h-10 w-9 sm:w-10 rounded-md border flex items-center justify-center transition-all shadow-2xs cursor-pointer relative ${
                                     isFavoritesOpen
-                                        ? "bg-[#0b1329] border-[#0b1329] text-rose-500 shadow-inner"
-                                        : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-rose-300 hover:bg-rose-50/50"
+                                        ? "bg-gray-900 border-gray-900 text-rose-500 shadow-inner"
+                                        : "bg-white border-gray-300 text-gray-700 hover:border-rose-300 hover:bg-rose-50"
                                 }`}
                                 title={t("Favorites", "Obľúbené položky", "Kedvencek")}
                             >
@@ -1465,7 +1454,7 @@ export const Header: React.FC<HeaderProps> = ({
                             ),
                             createPortal(
                                 <div
-                                    className={`fixed top-20 right-0 bottom-0 w-full max-w-85 sm:max-w-md md:w-105 bg-white/95 backdrop-blur-lg border-l border-slate-200/80 shadow-2xl flex flex-col justify-between overflow-y-auto p-0 z-50 ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
+                                    className={`fixed top-20 right-0 bottom-0 w-full max-w-85 sm:max-w-md md:w-105 bg-white border-l border-gray-200 shadow-2xl flex flex-col justify-between overflow-y-auto p-0 z-50 ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
                                     onClick={(e) => e.stopPropagation()}
                                     key="drawer-panel"
                                 >

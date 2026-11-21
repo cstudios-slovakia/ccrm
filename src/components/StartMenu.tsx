@@ -826,7 +826,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         data-start-menu="true"
         onTouchStart={handleModalTouchStart}
         onTouchEnd={handleModalTouchEnd}
-        className={`relative z-10 w-full max-w-6xl bg-white backdrop-blur-2xl border-t sm:border border-slate-200/90 rounded-t-3xl sm:rounded-3xl shadow-[0_-15px_50px_rgba(0,0,0,0.3)] sm:shadow-[0_25px_70px_rgba(0,0,0,0.25)] overflow-hidden flex flex-col h-[90vh] sm:h-auto sm:max-h-[92vh] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] transform ${
+        className={`relative z-10 w-full max-w-6xl bg-white border-t sm:border border-gray-200 rounded-t-xl sm:rounded-lg shadow-2xl overflow-hidden flex flex-col h-[90vh] sm:h-auto sm:max-h-[92vh] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] transform ${
           isVisible
             ? "scale-100 opacity-100 translate-y-0"
             : "scale-95 sm:scale-95 opacity-0 translate-y-12 sm:translate-y-0 pointer-events-none"
@@ -842,10 +842,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         </div>
 
         {/* Top Header & Search Bar & Edit Button */}
-        <div className="p-4 sm:p-6 border-b border-slate-100 bg-gradient-to-b from-slate-50/80 to-transparent flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+        <div className="p-4 sm:p-6 border-b border-gray-200 bg-gray-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
           <div className="flex items-center justify-between sm:justify-start gap-3 w-full sm:w-auto">
             <div className="flex items-center gap-3">
-              <div className="flex flex-col items-center justify-center gap-1 p-2 rounded-2xl bg-white shadow-sm border border-slate-200/80">
+              <div className="flex flex-col items-center justify-center gap-1 p-2 rounded-lg bg-white shadow-2xs border border-gray-200">
                 <div className="flex items-center justify-center gap-1.5">
                   <span className="h-2.5 w-2.5 rounded-full bg-orange-500 shadow-xs animate-pulse" />
                   <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-xs" />
@@ -893,7 +893,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t("Search modules... (ESC)", "Hľadať v moduloch... (ESC)", "Keresés a modulok között...")}
-                className="w-full pl-10 pr-9 py-2.5 bg-white border border-slate-200 rounded-2xl text-ui text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs transition-all"
+                className="w-full pl-10 pr-9 py-2 bg-white border border-gray-300 rounded-md text-ui text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 shadow-2xs transition-all"
               />
               {searchQuery && (
                 <button

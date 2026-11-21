@@ -366,10 +366,10 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
               {/* Option B: Fresh Install */}
               <button
                 onClick={() => setInstallType("fresh")}
-                className={`w-full p-5 rounded-[24px] border text-left transition-all relative overflow-hidden group cursor-pointer ${
+                className={`w-full p-5 rounded-lg border text-left transition-all relative overflow-hidden group cursor-pointer ${
                   installType === "fresh"
-                    ? "bg-indigo-50/70 border-indigo-500 shadow-lg shadow-indigo-100/40"
-                    : "bg-white/60 border-slate-200 hover:border-slate-300"
+                    ? "bg-indigo-50/70 border-indigo-600 shadow-xs"
+                    : "bg-white border-gray-200 hover:border-gray-300"
                 }`}
               >
                 <div className="flex items-start gap-4">
@@ -391,16 +391,16 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
 
 
               {/* Regional choices: demo language + currency (demo) or currency only (fresh) */}
-              <div data-testid="installer-regional" className="p-5 rounded-[24px] border border-slate-200 bg-slate-50/50 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div data-testid="installer-regional" className="p-5 rounded-lg border border-gray-200 bg-gray-50 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {installType === "demo" && (
                     <label className="space-y-1.5 text-left block">
-                      <span className="type-overline text-slate-500 block pl-0.5">{t[lang].demo_language}</span>
+                      <span className="type-overline text-gray-600 block pl-0.5">{t[lang].demo_language}</span>
                       <select
                         data-testid="installer-demo-language"
                         value={demoLanguage}
                         onChange={(e) => setDemoLanguageChoice(e.target.value as "en" | "sk" | "hu")}
-                        className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-ui text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
+                        className="w-full px-3.5 py-2.5 rounded-md bg-white border border-gray-300 shadow-2xs text-ui text-gray-900 focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 transition-all font-medium"
                       >
                         <option value="sk">Slovenčina</option>
                         <option value="hu">Magyar</option>
@@ -409,12 +409,12 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                     </label>
                   )}
                   <label className="space-y-1.5 text-left block">
-                    <span className="type-overline text-slate-500 block pl-0.5">{t[lang].currency}</span>
+                    <span className="type-overline text-gray-600 block pl-0.5">{t[lang].currency}</span>
                     <select
                       data-testid="installer-currency"
                       value={currency}
                       onChange={(e) => setCurrencyChoice(e.target.value)}
-                      className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-ui text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
+                      className="w-full px-3.5 py-2.5 rounded-md bg-white border border-gray-300 shadow-2xs text-ui text-gray-900 focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 transition-all font-medium"
                     >
                       {CURRENCY_OPTIONS.map((c) => (
                         <option key={c.code} value={c.code}>{c.label}</option>
