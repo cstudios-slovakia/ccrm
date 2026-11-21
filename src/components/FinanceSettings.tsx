@@ -6,6 +6,7 @@ import { FinancialCategoriesManager } from "./FinancialCategoriesManager";
 import { CURRENCY_OPTIONS, currencyForRegion } from "../utils/currency";
 import { getTranslation, type Language } from "../utils/translations";
 import { useUserPref } from "../utils/userPrefs";
+import { entityAccentStyle } from "../utils/entityAccent";
 
 interface FinanceSettingsProps {
   userLanguage: Language;
@@ -53,7 +54,7 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
   const [inlineEdit, setInlineEdit] = useUserPref("financialInlineEdit");
 
   return (
-    <div className="space-y-6">
+    <div style={entityAccentStyle("financial") as React.CSSProperties} className="space-y-6">
       {part !== "categories" && (<>
       {/* Financial Operating Mode */}
       <SectionCard
@@ -70,25 +71,25 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
             type="button"
             disabled={!canEdit}
             onClick={() => setFinancialMode?.("connected")}
-            className={`text-left p-4 rounded-2xl border transition-all duration-150 ease-out flex flex-col justify-between gap-3 ${
+            className={`text-left p-4 rounded-lg border transition-colors flex flex-col justify-between gap-3 ${
               financialMode === "connected"
-                ? "bg-indigo-50/70 border-indigo-300 ring-2 ring-indigo-500/15"
-                : "bg-white border-slate-200 hover:border-slate-300 hover:-translate-y-px"
+                ? "bg-entity-subtle border-entity-border ring-2 ring-entity-ring"
+                : "bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50"
             } ${canEdit ? "cursor-pointer" : "opacity-60 cursor-not-allowed"}`}
           >
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-2 text-ui font-bold text-slate-900">
-                  <Link2 className={`h-4 w-4 ${financialMode === "connected" ? "text-indigo-600" : "text-slate-400"}`} />
+                <span className="flex items-center gap-2 text-ui font-semibold text-gray-900">
+                  <Link2 className={`h-4 w-4 ${financialMode === "connected" ? "text-entity-text" : "text-gray-400"}`} />
                   {t("Connected mode (Default)", "Prepojený režim (Predvolený)", "Kapcsolt mód (Alapértelmezett)")}
                 </span>
                 {financialMode === "connected" && (
-                  <span className="px-2 py-0.5 rounded-full text-micro font-bold bg-indigo-100 text-indigo-700">
+                  <span className="px-2 py-0.5 rounded-md text-micro font-semibold bg-entity-subtle text-entity-text border border-entity-border">
                     {t("Active", "Aktívny", "Aktív")}
                   </span>
                 )}
               </div>
-              <p className="text-caption text-slate-600 leading-snug">
+              <p className="text-caption text-gray-600 leading-snug">
                 {t(
                   "The overview table and cash flow graphs are dynamically calculated from real movements, invoices, and recurring expense rules.",
                   "Prehľadová tabuľka a grafy cash flow sa dynamicky počítajú zo skutočných platieb, faktúr a pravidiel opakovaných výdavkov.",
@@ -96,7 +97,7 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
                 )}
               </p>
             </div>
-            <span className="text-micro text-slate-400">
+            <span className="text-micro text-gray-500">
               {t("Automatic ledger calculation", "Automatický výpočet z pohybov", "Automatikus számítás a mozgásokból")}
             </span>
           </button>
@@ -106,25 +107,25 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
             type="button"
             disabled={!canEdit}
             onClick={() => setFinancialMode?.("simplified")}
-            className={`text-left p-4 rounded-2xl border transition-all duration-150 ease-out flex flex-col justify-between gap-3 ${
+            className={`text-left p-4 rounded-lg border transition-colors flex flex-col justify-between gap-3 ${
               financialMode === "simplified"
-                ? "bg-emerald-50/70 border-emerald-300 ring-2 ring-emerald-500/15"
-                : "bg-white border-slate-200 hover:border-slate-300 hover:-translate-y-px"
+                ? "bg-entity-subtle border-entity-border ring-2 ring-entity-ring"
+                : "bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50"
             } ${canEdit ? "cursor-pointer" : "opacity-60 cursor-not-allowed"}`}
           >
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-2">
-                <span className="flex items-center gap-2 text-ui font-bold text-slate-900">
-                  <FileSpreadsheet className={`h-4 w-4 ${financialMode === "simplified" ? "text-emerald-600" : "text-slate-400"}`} />
+                <span className="flex items-center gap-2 text-ui font-semibold text-gray-900">
+                  <FileSpreadsheet className={`h-4 w-4 ${financialMode === "simplified" ? "text-entity-text" : "text-gray-400"}`} />
                   {t("Simplified mode", "Zjednodušený režim", "Egyszerűsített mód")}
                 </span>
                 {financialMode === "simplified" && (
-                  <span className="px-2 py-0.5 rounded-full text-micro font-bold bg-emerald-100 text-emerald-700">
+                  <span className="px-2 py-0.5 rounded-md text-micro font-semibold bg-entity-subtle text-entity-text border border-entity-border">
                     {t("Active", "Aktívny", "Aktív")}
                   </span>
                 )}
               </div>
-              <p className="text-caption text-slate-600 leading-snug">
+              <p className="text-caption text-gray-600 leading-snug">
                 {t(
                   "The overview table behaves like a standalone Excel spreadsheet. Click any cell to directly type numbers or arithmetic equations (e.g. 1200 + 450). Graphs reflect these table totals.",
                   "Prehľadová tabuľka funguje ako samostatný Excel. Kliknutím na bunku priamo vpíšete hodnotu alebo matematický vzorec (napr. 1200 + 450). Grafy automaticky čerpajú z týchto hodnôt.",
@@ -132,7 +133,7 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
                 )}
               </p>
             </div>
-            <span className="text-micro text-slate-400">
+            <span className="text-micro text-gray-500">
               {t("Direct manual cells & equations", "Priame zadávanie hodnôt a vzorcov", "Közvetlen értékek és képletek")}
             </span>
           </button>
@@ -145,17 +146,17 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
       >
         <label className="flex items-center justify-between gap-4 cursor-pointer">
           <span className="min-w-0">
-            <span className="block text-ui font-bold text-slate-800">
+            <span className="block text-ui font-semibold text-gray-900">
               {t("Inline editing", "Úpravy priamo v riadku", "Szerkesztés közvetlenül a sorban")}
             </span>
-            <span className="block text-caption text-slate-500 mt-0.5">
+            <span className="block text-caption text-gray-500 mt-0.5">
               {t(
                 "Change a payment's status straight from its row in the Movements table. When off, the status is a plain badge and every change goes through the edit panel.",
                 "Stav úhrady meníte priamo v riadku tabuľky Pohyby. Keď je vypnuté, stav je len štítok a každá zmena sa robí v paneli úprav.",
                 "A fizetés állapotát közvetlenül a Mozgások táblázat soraiban módosíthatja. Kikapcsolva az állapot csak címke, és minden módosítás a szerkesztő panelen keresztül történik."
               )}
             </span>
-            <span className="block text-micro text-slate-400 mt-1">
+            <span className="block text-micro text-gray-500 mt-1">
               {t("Applies to your account only.", "Platí iba pre váš účet.", "Csak az Ön fiókjára vonatkozik.")}
             </span>
           </span>
@@ -166,7 +167,7 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
               onChange={(e) => setInlineEdit(e.target.checked)}
               className="sr-only peer"
             />
-            <span className="w-9 h-5 bg-slate-300 rounded-full peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-500/40 peer-checked:bg-indigo-600 transition-colors duration-200 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-transform after:duration-200 peer-checked:after:translate-x-4 peer-checked:after:border-white" />
+            <span className="w-9 h-5 bg-gray-300 rounded-full peer-focus-visible:ring-2 peer-focus-visible:ring-entity-ring peer-checked:bg-entity-solid transition-colors duration-200 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-transform after:duration-200 peer-checked:after:translate-x-4 peer-checked:after:border-white" />
           </span>
         </label>
       </SectionCard>
@@ -178,7 +179,7 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
         <div className="flex flex-wrap items-center gap-3">
           <span
             data-testid="finance-currency-readonly"
-            className="inline-flex min-h-11 items-center rounded-2xl border border-slate-200 bg-slate-50 px-4 text-body font-bold text-slate-800"
+            className="inline-flex min-h-10 items-center rounded-md border border-gray-200 bg-gray-50 px-3.5 text-body font-semibold text-gray-900"
           >
             {systemCurrency
               ? CURRENCY_OPTIONS.find((c) => c.code === systemCurrency)?.label ?? systemCurrency
@@ -187,13 +188,13 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
           <a
             href="#settings/company/regional"
             data-testid="finance-currency-link"
-            className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-ui font-semibold text-indigo-700 no-underline transition-colors hover:bg-indigo-50"
+            className="inline-flex min-h-10 items-center gap-2 rounded-md border border-gray-200 bg-white px-3.5 text-ui font-semibold text-entity-text no-underline transition-colors hover:bg-entity-subtle shadow-2xs"
           >
             {getTranslation(userLanguage, "settings.nav.ui.currency_readonly_btn")}
             <ArrowRight className="size-4" aria-hidden="true" />
           </a>
         </div>
-        <p className="text-micro text-slate-500">
+        <p className="text-micro text-gray-500">
           {getTranslation(userLanguage, "settings.nav.ui.currency_readonly_body")}
         </p>
       </SectionCard>
