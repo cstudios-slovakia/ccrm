@@ -26,8 +26,8 @@ const VIEW_SIZE_BLOCKING = process.env.VIEW_SIZE_BLOCKING === '1';
 const SCREENS = [
   { label: '390 phone', width: 390, height: 844, size: 'compact', floor: 10 },
   { label: '1440 laptop', width: 1440, height: 900, size: 'compact', floor: 10 },
-  { label: '1920 Full HD', width: 1920, height: 1080, size: 'normal', floor: 12 },
-  { label: '2560 2K', width: 2560, height: 1440, size: 'big', floor: 13 },
+  { label: '1920 Full HD', width: 1920, height: 1080, size: 'normal', floor: 10 },
+  { label: '2560 2K', width: 2560, height: 1440, size: 'big', floor: 12 },
 ] as const;
 
 const MODULES = [

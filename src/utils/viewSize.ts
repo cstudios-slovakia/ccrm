@@ -31,7 +31,7 @@ export const AUTO_BIG_MIN = 2200;
 /** Must equal VS_DEFAULT in index.html (unit-tested). */
 export const DEFAULT_VIEW_SIZE_MODE: ViewSizeMode = VIEW_SIZE_ENABLED ? "auto" : "compact";
 
-const SCALES: Record<ViewSize, number> = { compact: 1, normal: 1.125, big: 1.25 };
+const SCALES: Record<ViewSize, number> = { compact: 0.8, normal: 1, big: 1.125 };
 
 export const isViewSizeMode = (v: unknown): v is ViewSizeMode =>
   v === "auto" || v === "compact" || v === "normal" || v === "big";
@@ -118,9 +118,9 @@ export const startViewSizeWatcher = (): (() => void) => {
 
 /** The resolved size currently painted, straight from <html>. */
 export const currentViewSize = (): ViewSize => {
-  if (typeof document === "undefined") return "compact";
+  if (typeof document === "undefined") return "normal";
   const v = document.documentElement.getAttribute("data-view-size");
-  return v === "normal" || v === "big" ? v : "compact";
+  return v === "compact" || v === "normal" || v === "big" ? v : "normal";
 };
 
 const currentMode = (): ViewSizeMode => {
@@ -129,7 +129,7 @@ const currentMode = (): ViewSizeMode => {
   return isViewSizeMode(v) ? v : DEFAULT_VIEW_SIZE_MODE;
 };
 
-/** 1 · 1.125 · 1.25 — the --vs-scale of the resolved size. */
+/** 0.8 · 1 · 1.125 — the --vs-scale of the resolved size. */
 export const viewSizeScale = (size: ViewSize = currentViewSize()): number => SCALES[size];
 
 /** Re-renders on change. MutationObserver on <html>, exactly like useAppearance(). */
