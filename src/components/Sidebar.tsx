@@ -947,7 +947,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           - If Unpinned: Matches the collapsed width, allowing sidebar to float over content on hover. */}
       <div
         className={cn(
-          "h-screen shrink-0 select-none hidden lg:block transition-all duration-300",
+          "view-size-fixed h-screen shrink-0 select-none hidden lg:block transition-all duration-300",
           isPinned && !isPinnedRail ? widthClasses.expanded : widthClasses.collapsed
         )}
       />

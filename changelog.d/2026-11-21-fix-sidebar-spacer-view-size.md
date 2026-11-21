@@ -1,0 +1,1 @@
+- **Fix sidebar spacer width in Compact view size** (`src/components/Sidebar.tsx`): added `view-size-fixed` to the desktop viewport spacer `<div>` so it matches `<aside>`'s `--spacing: 0.25rem` width and never lets the fixed sidebar overlap `<header>` or `<main>` in Compact/Big modes.
