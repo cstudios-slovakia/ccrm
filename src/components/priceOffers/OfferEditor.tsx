@@ -31,6 +31,7 @@ import {
 } from "../../utils/offerDraft";
 import type { AssembleOptions } from "../../utils/offerDraft";
 import { PRODUCT_NAME } from "../../utils/brand";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
 const newLineId = () => "ioi-" + Math.random().toString(36).slice(2, 11);
 const newDocumentId = () => "io-" + Math.random().toString(36).slice(2, 11);
@@ -375,10 +376,11 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
       )}
       <button
         type="button"
+        style={entityAccentStyle("clients")}
         onClick={() => setNewClientOpen(true)}
         title={t("Register a new client", "Registrovať nového klienta", "Új ügyfél regisztrálása")}
         className={cn(
-          "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-indigo-100 bg-indigo-50 px-2 py-1 font-bold text-indigo-600 hover:bg-indigo-100 hover:text-indigo-700 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]",
+          "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-entity-border bg-entity-subtle px-2 py-1 font-semibold text-entity-text hover:bg-entity-muted transition-all cursor-pointer",
           variant === "app" && "text-caption"
         )}
       >
@@ -495,8 +497,8 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
       aria-selected={view === value}
       onClick={() => setView(value)}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-ui font-semibold transition-all cursor-pointer",
-        view === value ? "bg-white text-indigo-700 shadow-sm" : "text-slate-500 hover:text-slate-800"
+        "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-ui font-semibold transition-all cursor-pointer",
+        view === value ? "bg-white text-entity-text shadow-2xs ring-1 ring-entity-border" : "text-gray-600 hover:text-gray-900"
       )}
     >
       {icon}
@@ -546,16 +548,16 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
       className="space-y-3 animate-fade-in scroll-mt-2"
     >
       {/* Toolbar — sticks to the top of the workspace while the document scrolls */}
-      <div className="sticky top-[calc(var(--gutter)*-1)] z-30 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-md backdrop-blur">
+      <div className="sticky top-[calc(var(--gutter)*-1)] z-30 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-gray-200 border-t-2 border-t-entity-solid bg-white px-4 py-3 shadow-xs">
         <div className="mr-auto flex min-w-0 items-center gap-2.5">
           {modeIcon}
           <div className="min-w-0">
-            <h3 className="type-card-title text-slate-900 truncate">
+            <h3 className="type-card-title text-gray-900 truncate">
               {isEdit
                 ? t("Edit price offer", "Úprava cenovej ponuky", "Árajánlat szerkesztése")
                 : t("New price offer", "Nová cenová ponuka", "Új árajánlat")}
             </h3>
-            <p className="type-meta text-slate-500 truncate">
+            <p className="type-meta text-gray-500 truncate">
               {modeLabel} · {draft.documentNumber}
               {mode === "custom" && activeTemplate ? ` · ${activeTemplate.name}` : ""}
             </p>
@@ -593,7 +595,7 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
           <div
             role="tablist"
             aria-label={t("Edit or preview", "Úprava alebo náhľad", "Szerkesztés vagy előnézet")}
-            className="inline-flex rounded-xl bg-slate-100 p-1"
+            className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1"
           >
             {segment("edit", t("Edit", "Úprava", "Szerkesztés"), <Pencil className="size-3.5" />)}
             {segment("preview", t("Preview", "Náhľad", "Előnézet"), <Eye className="size-3.5" />)}
@@ -605,7 +607,7 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
             <button
               type="button"
               onClick={handlePrint}
-              className="flex items-center gap-1.5 rounded-xl bg-slate-200 px-4 py-2 text-ui font-bold text-slate-800 transition-all hover:bg-slate-300 cursor-pointer active:scale-[0.98]"
+              className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-4 py-2 text-ui font-semibold text-gray-700 shadow-2xs transition-all hover:bg-gray-50 cursor-pointer"
             >
               <Printer className="size-4" />
               {t("Print / PDF", "Tlač / PDF", "Nyomtatás / PDF")}
@@ -615,7 +617,7 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
             type="button"
             disabled={saving}
             onClick={handleIssue}
-            className="flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2 text-ui font-bold text-white shadow-md shadow-emerald-600/20 transition-all cursor-pointer hover:scale-[1.02] hover:bg-emerald-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+            className="flex items-center gap-2 rounded-md bg-entity-solid px-5 py-2 text-ui font-semibold text-white shadow-xs transition-all cursor-pointer hover:bg-entity-solid-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving ? <RefreshCw className="size-4 animate-spin" /> : <Check className="size-4" />}
             {issueLabel}
@@ -623,7 +625,7 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
           <button
             type="button"
             onClick={onCancel}
-            className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-ui font-bold text-slate-600 transition-all hover:bg-slate-100 cursor-pointer active:scale-[0.98]"
+            className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 py-2 text-ui font-semibold text-gray-600 transition-all hover:bg-gray-50 cursor-pointer"
           >
             <X className="size-4" />
             {t("Cancel", "Zrušiť", "Mégse")}
@@ -632,7 +634,7 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
       </div>
 
       {saveError && (
-        <div className="flex flex-col gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-ui text-rose-800 ws-sm:flex-row ws-sm:items-center ws-sm:justify-between">
+        <div className="flex flex-col gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4 text-ui text-rose-800 ws-sm:flex-row ws-sm:items-center ws-sm:justify-between">
           <div className="flex items-start gap-2">
             <AlertCircle className="mt-0.5 size-4 shrink-0 text-rose-600" />
             <span className="font-semibold">{saveError}</span>
@@ -641,7 +643,7 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
             <button
               type="button"
               onClick={onOpenOfferSettings}
-              className="shrink-0 rounded-lg bg-rose-600 px-3 py-1.5 text-ui font-bold text-white transition-all hover:bg-rose-700 cursor-pointer active:scale-[0.98]"
+              className="shrink-0 rounded-md bg-rose-600 px-3 py-1.5 text-ui font-semibold text-white transition-all hover:bg-rose-700 cursor-pointer"
             >
               {t("Open settings", "Otvoriť nastavenia", "Beállítások")}
             </button>
@@ -650,7 +652,7 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
       )}
 
       {!isExternal && view === "preview" && !lead && (
-        <div className="flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-ui font-semibold text-amber-900">
+        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-ui font-semibold text-amber-900">
           <AlertCircle className="size-4 shrink-0 text-amber-600" />
           {t(
             "This is a sample preview — select a client in Edit before issuing.",
@@ -682,7 +684,7 @@ export const OfferEditor: React.FC<OfferEditorProps> = ({
             sectionAlert={sectionAlert}
           />
         ) : (
-          <div className="overflow-x-auto rounded-2xl bg-slate-100 p-3 ws-sm:p-4">
+          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-gray-100 p-3 ws-sm:p-4">
             {view === "edit" ? documentFor(editorOffer, true) : documentFor(previewOffer, false)}
           </div>
         )}

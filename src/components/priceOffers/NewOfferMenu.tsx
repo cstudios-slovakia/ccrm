@@ -5,6 +5,7 @@ import type { AiCustomTemplate, InvoiceOfferMode } from "../../types";
 import type { Language } from "../../utils/translations";
 import { formatDateLocalized } from "../../utils/localTime";
 import { cn } from "../../utils/cn";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
 export interface NewOfferChoice {
   mode: InvoiceOfferMode;
@@ -26,7 +27,7 @@ interface NewOfferMenuProps {
 const MENU_Z = 100001;
 
 const ITEM_BASE =
-  "w-full flex items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60";
+  "w-full flex items-start gap-3 rounded-md px-3 py-2.5 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-entity-ring";
 
 /**
  * "New price offer" — a button that opens a menu with one entry per template.
@@ -132,7 +133,7 @@ export const NewOfferMenu: React.FC<NewOfferMenuProps> = ({
       type="button"
       role="menuitem"
       onClick={openSettings}
-      className="ml-10 mb-1 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-caption font-semibold text-indigo-600 hover:bg-indigo-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 cursor-pointer"
+      className="ml-10 mb-1 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-caption font-semibold text-entity-text hover:bg-entity-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-entity-ring cursor-pointer"
     >
       <Settings className="size-3.5" />
       {t("Open offer settings", "Otvoriť nastavenia ponúk", "Ajánlat-beállítások megnyitása")}
@@ -181,8 +182,8 @@ export const NewOfferMenu: React.FC<NewOfferMenuProps> = ({
             role="menu"
             aria-label={t("New price offer", "Nová cenová ponuka", "Új árajánlat")}
             onKeyDown={onMenuKeyDown}
-            style={{ top: anchor.top, right: anchor.right, zIndex: MENU_Z }}
-            className="fixed w-(--drawer-sm) max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-8rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-2xl animate-fade-in"
+            style={{ ...entityAccentStyle("invoices"), top: anchor.top, right: anchor.right, zIndex: MENU_Z }}
+            className="fixed w-(--drawer-sm) max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-8rem)] overflow-y-auto rounded-lg border border-gray-200 bg-white p-1.5 shadow-2xl animate-fade-in"
           >
             <button
               type="button"
@@ -283,7 +284,7 @@ export const NewOfferMenu: React.FC<NewOfferMenuProps> = ({
             setOpen(true);
           }
         }}
-        className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-ui font-semibold rounded-2xl shadow-md shadow-indigo-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+        className="flex items-center gap-2 px-4 py-2 bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-semibold rounded-md shadow-xs transition-all cursor-pointer"
       >
         <Plus className="h-4 w-4" />
         <span>{t("New price offer", "Nová cenová ponuka", "Új árajánlat")}</span>

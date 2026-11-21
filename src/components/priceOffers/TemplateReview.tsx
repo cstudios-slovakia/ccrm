@@ -130,7 +130,7 @@ export const TemplateReview: React.FC<TemplateReviewProps> = ({
   };
 
   const rowClass = "flex flex-wrap items-center gap-2 py-1.5";
-  const placeClass = "rounded-lg border border-slate-300 px-2 py-1 text-ui font-semibold text-slate-700 hover:border-indigo-400 hover:text-indigo-700 cursor-pointer";
+  const placeClass = "rounded-md border border-gray-300 px-2 py-1 text-ui font-semibold text-gray-700 hover:border-entity-border hover:bg-entity-subtle hover:text-entity-text cursor-pointer transition-colors";
 
   return (
     <div data-testid="template-review" className="space-y-4">
@@ -147,13 +147,13 @@ export const TemplateReview: React.FC<TemplateReviewProps> = ({
             }
           }}
           aria-label={t("Template name", "Názov šablóny", "Sablon neve")}
-          className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-body font-semibold text-slate-900"
+          className="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-body font-semibold text-gray-900 focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring"
         />
         <button
           type="button"
           data-testid="template-review-original"
           onClick={() => setOriginal(v => !v)}
-          className="rounded-xl border border-slate-300 px-3 py-2 text-ui font-semibold text-slate-700 cursor-pointer"
+          className="rounded-md border border-gray-300 bg-white hover:bg-gray-50 px-3 py-2 text-ui font-semibold text-gray-700 cursor-pointer"
         >
           {t("Original", "Originál", "Eredeti")}
         </button>
@@ -162,14 +162,14 @@ export const TemplateReview: React.FC<TemplateReviewProps> = ({
           data-testid="template-review-save"
           disabled={!trimmed}
           onClick={save}
-          className="rounded-xl bg-indigo-600 px-4 py-2 text-ui font-bold text-white cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-md bg-entity-solid hover:bg-entity-solid-hover px-4 py-2 text-ui font-semibold text-white shadow-xs cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
         >
           {t("Save", "Uložiť", "Mentés")}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-xl bg-slate-200 px-4 py-2 text-ui font-bold text-slate-800 cursor-pointer"
+          className="rounded-md border border-gray-200 bg-white hover:bg-gray-50 px-4 py-2 text-ui font-semibold text-gray-700 cursor-pointer"
         >
           {t("Cancel", "Zrušiť", "Mégse")}
         </button>
@@ -187,7 +187,7 @@ export const TemplateReview: React.FC<TemplateReviewProps> = ({
       <div className="grid grid-cols-1 items-start gap-4 ws-lg:grid-cols-3">
         <div className="ws-lg:col-span-2 space-y-4">
           {original && pdfUrl && (
-            <object data={pdfUrl} type="application/pdf" className="h-96 w-full rounded-2xl border border-slate-200" aria-label={t("Original PDF", "Pôvodné PDF", "Eredeti PDF")}>
+            <object data={pdfUrl} type="application/pdf" className="h-96 w-full rounded-lg border border-gray-200" aria-label={t("Original PDF", "Pôvodné PDF", "Eredeti PDF")}>
               <iframe src={pdfUrl} title={t("Original PDF", "Pôvodné PDF", "Eredeti PDF")} className="h-96 w-full" />
             </object>
           )}
@@ -200,7 +200,7 @@ export const TemplateReview: React.FC<TemplateReviewProps> = ({
           />
         </div>
 
-        <aside className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
+        <aside className="space-y-4 rounded-lg border border-gray-200 bg-white p-4 shadow-xs">
           <section data-testid="template-review-missing">
             <h4 className="type-label text-slate-800">{t("Not on this document", "Nie je na dokumente", "Nincs a dokumentumon")}</h4>
             {diff.missing.includes("offer.items") && (

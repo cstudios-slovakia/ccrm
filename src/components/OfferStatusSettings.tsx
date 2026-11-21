@@ -291,15 +291,15 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
     : [];
 
   return (
-    <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass text-left" data-testid={`${tid}-settings`}>
-      <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-        <Tag className="h-4.5 w-4.5 text-indigo-500" />
+    <div className="p-5 rounded-lg space-y-5 border border-gray-200 border-t-2 border-t-entity-solid bg-white shadow-xs text-left" data-testid={`${tid}-settings`}>
+      <h3 className="text-body font-heading font-semibold text-gray-900 flex items-center gap-2 border-b border-gray-200 pb-3">
+        <Tag className="h-4.5 w-4.5 text-entity-text" />
         {isInvoice
           ? t("Invoice & proforma statuses", "Stavy faktúr a zálohových faktúr", "Számla- és díjbekérő-állapotok")
           : t("Offer statuses", "Stavy cenových ponúk", "Árajánlat-állapotok")}
       </h3>
 
-      <p className="type-overline text-slate-400">
+      <p className="type-overline text-gray-400">
         {isInvoice
           ? t(
               "One list for proformas and invoices. Drag statuses relative to the group dividers to reorder them and change their group; click the colour dot to recolour. The group decides the books: a Rejected or Cancelled invoice is no longer expected income in Finance.",
@@ -320,7 +320,7 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
             ? t("Move documents before deleting", "Presunúť doklady pred zmazaním", "Bizonylatok áthelyezése törlés előtt")
             : t("Move offers before deleting", "Presunúť ponuky pred zmazaním", "Ajánlatok áthelyezése törlés előtt")}
           data-testid={`${tid}-reassign`}
-          className="p-4 rounded-2xl border border-amber-200 bg-amber-50 space-y-3"
+          className="p-4 rounded-lg border border-amber-200 bg-amber-50 space-y-3"
         >
           <p className="text-ui text-amber-900 font-semibold">
             {isInvoice
@@ -346,14 +346,14 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
             <button
               type="button"
               onClick={() => removeStatus(removing.def, removing.target)}
-              className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-ui font-bold transition-all cursor-pointer active:scale-95"
+              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-md text-ui font-semibold shadow-xs transition-all cursor-pointer"
             >
               {t("Move and delete", "Presunúť a zmazať", "Áthelyezés és törlés")}
             </button>
             <button
               type="button"
               onClick={() => setRemoving(null)}
-              className="px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-ui font-bold transition-all cursor-pointer active:scale-95"
+              className="px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-md text-ui font-semibold transition-all cursor-pointer"
             >
               {t("Cancel", "Zrušiť", "Mégse")}
             </button>
@@ -361,16 +361,16 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
         </div>
       )}
 
-      <div className="border border-slate-200/80 rounded-2xl overflow-x-auto shadow-inner bg-white/50">
+      <div className="border border-gray-200 rounded-lg overflow-x-auto bg-white">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
-              <th className="py-3 px-4 type-overline text-slate-500 w-12 text-center">{t("Drag", "Ťahať", "Húzás")}</th>
-              <th className="py-3 px-4 type-overline text-slate-500 w-44">{t("Colour", "Farba", "Szín")}</th>
-              <th className="py-3 px-4 type-overline text-slate-500">{t("Status name", "Názov stavu", "Állapot neve")}</th>
-              <th className="py-3 px-4 type-overline text-slate-500 w-36">{t("Group", "Skupina", "Csoport")}</th>
-              <th className="py-3 px-4 type-overline text-slate-500 w-28 text-center">{isInvoice ? t("Documents", "Doklady", "Bizonylatok") : t("Offers", "Ponuky", "Ajánlatok")}</th>
-              <th className="py-3 px-4 type-overline text-slate-500 w-16 text-center">{t("Delete", "Zmazať", "Törlés")}</th>
+            <tr className="bg-gray-50 border-b border-gray-200 select-none">
+              <th className="py-3 px-4 type-overline text-gray-500 w-12 text-center">{t("Drag", "Ťahať", "Húzás")}</th>
+              <th className="py-3 px-4 type-overline text-gray-500 w-44">{t("Colour", "Farba", "Szín")}</th>
+              <th className="py-3 px-4 type-overline text-gray-500">{t("Status name", "Názov stavu", "Állapot neve")}</th>
+              <th className="py-3 px-4 type-overline text-gray-500 w-36">{t("Group", "Skupina", "Csoport")}</th>
+              <th className="py-3 px-4 type-overline text-gray-500 w-28 text-center">{isInvoice ? t("Documents", "Doklady", "Bizonylatok") : t("Offers", "Ponuky", "Ajánlatok")}</th>
+              <th className="py-3 px-4 type-overline text-gray-500 w-16 text-center">{t("Delete", "Zmazať", "Törlés")}</th>
             </tr>
           </thead>
           <tbody>
@@ -398,14 +398,14 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
                     onDragOver={onDragOver}
                     onDragLeave={() => setDragOverIndex(null)}
                     onDrop={onDrop}
-                    className={`transition-all border-b border-slate-200/60 duration-200 ${
-                      isDragOver ? "bg-indigo-50/60 scale-[0.99] border-2 border-dashed border-indigo-300" : "bg-slate-100/70"
+                    className={`transition-all border-b border-gray-200 duration-200 ${
+                      isDragOver ? "bg-entity-subtle border-2 border-dashed border-entity-border" : "bg-gray-100/80"
                     }`}
                   >
                     <td colSpan={6} className="py-3 px-4 select-none">
                       <div className="flex items-center gap-2">
-                        <span className="type-overline text-slate-900">{info.name}</span>
-                        <span className="text-micro text-slate-400 font-bold ml-1">{info.desc}</span>
+                        <span className="type-overline text-gray-900">{info.name}</span>
+                        <span className="text-micro text-gray-400 font-semibold ml-1">{info.desc}</span>
                       </div>
                     </td>
                   </tr>
@@ -429,15 +429,15 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
                   onDragOver={onDragOver}
                   onDragLeave={() => setDragOverIndex(null)}
                   onDrop={onDrop}
-                  className={`border-b border-slate-200/60 hover:bg-slate-50/50 transition-all duration-200 ${
-                    isDragOver ? "bg-indigo-50/55 scale-[0.99] border-y-2 border-dashed border-indigo-300" : ""
+                  className={`border-b border-gray-200 hover:bg-entity-subtle/40 transition-all duration-200 ${
+                    isDragOver ? "bg-entity-subtle border-y-2 border-dashed border-entity-border" : ""
                   }`}
                 >
                   <td className="py-3 px-4 text-center align-middle">
                     {canEdit ? (
-                      <GripVertical className="h-4 w-4 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing inline-block" />
+                      <GripVertical className="h-4 w-4 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing inline-block" />
                     ) : (
-                      <Lock className="h-3 w-3 text-slate-300 inline-block" />
+                      <Lock className="h-3 w-3 text-gray-300 inline-block" />
                     )}
                   </td>
 
@@ -451,9 +451,9 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
                           title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
                         />
                       ) : (
-                        <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: def.color }} />
+                        <span className="h-3 w-3 rounded-full border border-gray-200 inline-block" style={{ backgroundColor: def.color }} />
                       )}
-                      <span className="type-overline text-slate-400">{def.color}</span>
+                      <span className="type-overline text-gray-400">{def.color}</span>
                     </div>
                   </td>
 
@@ -465,7 +465,7 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
                       renameTitle={t("Rename", "Premenovať", "Átnevezés")}
                     >
                       <span
-                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-ui font-bold border"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-ui font-semibold border"
                         style={{ backgroundColor: `${def.color}12`, color: def.color, borderColor: `${def.color}35` }}
                       >
                         {label}
@@ -473,7 +473,7 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
                     </InlineRenameName>
                     {def.legacy && (
                       <span
-                        className="ml-2 type-overline text-slate-400"
+                        className="ml-2 type-overline text-gray-400"
                         title={t(
                           "Kept for documents that already carry it; not offered when picking a status",
                           "Ponechaný pre doklady, ktoré ho už majú; pri výbere stavu sa neponúka",
@@ -486,13 +486,13 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
                   </td>
 
                   <td className="py-3 px-4 align-middle select-none">
-                    <span className={`px-2.5 py-0.5 rounded-full type-overline border ${info.chip}`}>
+                    <span className={`px-2.5 py-0.5 rounded-md type-overline border ${info.chip}`}>
                       {info.name}
                     </span>
                   </td>
 
                   <td className="py-3 px-4 text-center align-middle select-none">
-                    <span className={`text-ui font-bold ${count ? "text-slate-700" : "text-slate-300"}`}>{count}</span>
+                    <span className={`text-ui font-bold tabular-nums ${count ? "text-gray-700" : "text-gray-300"}`}>{count}</span>
                   </td>
 
                   <td className="py-3 px-4 text-center align-middle">
@@ -502,13 +502,13 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
                         lang={userLanguage}
                         what={labelOf(def.key)}
                         onConfirm={() => handleRemove(def)}
-                        className="text-slate-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
+                        className="text-gray-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-md inline-block"
                         title={t("Remove status", "Odstrániť stav", "Állapot eltávolítása")}
                       >
                         <X className="h-3.5 w-3.5" />
                       </HoldToConfirmButton>
                     ) : (
-                      <span className="type-overline text-slate-300 block select-none">{t("Locked", "Zamknuté", "Zárolt")}</span>
+                      <span className="type-overline text-gray-300 block select-none">{t("Locked", "Zamknuté", "Zárolt")}</span>
                     )}
                   </td>
                 </tr>
@@ -529,7 +529,7 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
               ? t("Add new invoice status...", "Pridať nový stav faktúry...", "Új számla-állapot hozzáadása...")
               : t("Add new offer status...", "Pridať nový stav ponuky...", "Új ajánlat-állapot hozzáadása...")}
             aria-label={isInvoice ? t("New invoice status", "Nový stav faktúry", "Új számla-állapot") : t("New offer status", "Nový stav ponuky", "Új ajánlat-állapot")}
-            className="flex-1 min-w-37.5 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+            className="flex-1 min-w-37.5 px-3.5 py-2 rounded-md bg-white border border-gray-300 text-ui text-gray-900 font-semibold focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring"
           />
           <div className="w-40">
             <CustomSelect
@@ -540,7 +540,7 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
           </div>
           <button
             type="submit"
-            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 flex items-center gap-1 shrink-0 cursor-pointer active:scale-95"
+            className="px-4 py-2 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-semibold transition-all shadow-xs flex items-center gap-1 shrink-0 cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5" /> {t("Add status", "Pridať stav", "Állapot hozzáadása")}
           </button>

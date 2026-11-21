@@ -6,6 +6,7 @@ import { DefaultOfferTemplate } from "./pdf/DefaultOfferTemplate";
 import { CustomAiOfferTemplate } from "./pdf/CustomAiOfferTemplate";
 import { OfferBlockDocument } from "./pdf/OfferBlockDocument";
 import { normalizeOfferDocument } from "../utils/offerDocument";
+import { entityAccentStyle } from "../utils/entityAccent";
 
 interface DocumentPreviewModalProps {
   document: InvoiceOffer;
@@ -40,11 +41,11 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   const reconstructed = doc.mode === "custom" ? normalizeOfferDocument(template?.document) : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex justify-between items-center gap-3 bg-slate-50/70">
-          <div className="flex items-center gap-2 font-bold text-body text-slate-900 min-w-0">
-            <FileText className="h-4 w-4 text-indigo-600 shrink-0" />
+    <div style={entityAccentStyle("invoices")} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+      <div className="bg-white rounded-lg border border-gray-200 shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="p-4 border-b border-gray-200 flex justify-between items-center gap-3 bg-gray-50">
+          <div className="flex items-center gap-2 font-semibold text-body text-gray-900 min-w-0">
+            <FileText className="h-4 w-4 text-entity-text shrink-0" />
             <span className="truncate">
               {doc.documentNumber} — {doc.title}
             </span>
@@ -55,7 +56,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                 href={doc.externalPdfUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-ui font-bold hover:bg-blue-100 cursor-pointer transition-all"
+                className="flex items-center gap-1 px-3 py-1.5 bg-entity-subtle text-entity-text border border-entity-border rounded-md text-ui font-semibold hover:bg-entity-muted cursor-pointer transition-all"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
                 {t("Official PDF", "Oficiálne PDF", "Hivatalos PDF")}
@@ -64,7 +65,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
             {actions}
             <button
               onClick={() => window.print()}
-              className="flex items-center gap-1 px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-ui font-bold text-slate-800 cursor-pointer transition-all active:scale-[0.98]"
+              className="flex items-center gap-1 px-3 py-1.5 bg-entity-solid hover:bg-entity-solid-hover rounded-md text-ui font-semibold text-white shadow-xs cursor-pointer transition-all"
             >
               <Printer className="h-3.5 w-3.5" />
               {t("Print / PDF", "Tlač / PDF", "Nyomtatás")}
@@ -72,14 +73,14 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
             <button
               onClick={onClose}
               title={t("Close", "Zavrieť", "Bezárás")}
-              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer transition-all"
+              className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md cursor-pointer transition-all"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
         </div>
 
-        <div className="p-6 overflow-y-auto flex-1 bg-slate-100">
+        <div className="p-6 overflow-y-auto flex-1 bg-gray-100">
           {doc.mode === "custom" && reconstructed && template ? (
             <OfferBlockDocument
               offer={doc}

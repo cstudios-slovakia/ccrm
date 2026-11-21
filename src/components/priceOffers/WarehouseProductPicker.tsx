@@ -4,6 +4,7 @@ import type { WarehouseItem } from "../../types";
 import type { Language } from "../../utils/translations";
 import { cn } from "../../utils/cn";
 import { appliedPriceLevel, matchesItemQuery, packHint, resolveSellPrice, type PriceLevel } from "../../utils/priceLevels";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
 interface WarehouseProductPickerProps {
   lang: Language;
@@ -56,6 +57,7 @@ export const WarehouseProductPicker: React.FC<WarehouseProductPickerProps> = ({
   return (
     <div
       ref={rootRef}
+      style={entityAccentStyle("warehouse")}
       className="relative"
       onFocus={() => setFocused(true)}
       onBlur={e => {
@@ -63,7 +65,7 @@ export const WarehouseProductPicker: React.FC<WarehouseProductPickerProps> = ({
       }}
     >
       <div className="relative w-64 max-w-full">
-        <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
         <input
           type="text"
           value={query}
@@ -71,8 +73,8 @@ export const WarehouseProductPicker: React.FC<WarehouseProductPickerProps> = ({
           placeholder={t("Add a product from the warehouse…", "Pridať tovar zo skladu…", "Termék hozzáadása a raktárból…")}
           aria-label={t("Search warehouse product or SKU", "Hľadať tovar alebo SKU", "Termék vagy SKU keresése")}
           className={cn(
-            "w-full rounded-lg border border-slate-200 bg-white pl-8 pr-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 transition-all",
-            paper ? "py-1.5 text-slate-800 placeholder:text-slate-400" : "py-1.5 text-ui text-slate-800"
+            "w-full rounded-md border border-gray-300 bg-white pl-8 pr-2.5 focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity-solid transition-all",
+            paper ? "py-1.5 text-gray-900 placeholder:text-gray-400" : "py-1.5 text-ui text-gray-900"
           )}
         />
       </div>
@@ -80,7 +82,7 @@ export const WarehouseProductPicker: React.FC<WarehouseProductPickerProps> = ({
         <div
           role="listbox"
           aria-label={t("Warehouse products", "Produkty zo skladu", "Raktári termékek")}
-          className="absolute left-0 top-full mt-1 z-30 w-[min(28rem,calc(100vw-3rem))] max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl animate-fade-in"
+          className="absolute left-0 top-full mt-1 z-30 w-[min(28rem,calc(100vw-3rem))] max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white p-1 shadow-xl animate-fade-in"
         >
           {matches.length > 0 ? (
             matches.map(wh => (
@@ -91,15 +93,15 @@ export const WarehouseProductPicker: React.FC<WarehouseProductPickerProps> = ({
                 aria-selected={false}
                 onClick={() => onPick(wh)}
                 className={cn(
-                  "w-full flex items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60",
+                  "w-full flex items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-left font-medium text-gray-700 hover:bg-entity-subtle hover:text-entity-text transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-entity-ring",
                   paper ? "" : "text-ui"
                 )}
               >
                 <span className="flex items-center gap-1.5 min-w-0">
-                  <Package className="size-3.5 shrink-0 text-indigo-500" />
+                  <Package className="size-3.5 shrink-0 text-entity-text" />
                   <span className="truncate">{wh.name}</span>
                 </span>
-                <span className="shrink-0 text-right text-slate-400">
+                <span className="shrink-0 text-right text-gray-400">
                   <span title={appliedPriceLevel(wh, priceLevelId, priceLevels)?.name}>
                     {money(resolveSellPrice(wh, priceLevelId, priceLevels))}/{wh.unit}
                   </span>
@@ -110,7 +112,7 @@ export const WarehouseProductPicker: React.FC<WarehouseProductPickerProps> = ({
               </button>
             ))
           ) : (
-            <span className={cn("block px-2.5 py-1.5 italic text-slate-400", paper ? "" : "text-ui")}>
+            <span className={cn("block px-2.5 py-1.5 italic text-gray-400", paper ? "" : "text-ui")}>
               {t("No product matches.", "Žiadny tovar nezodpovedá hľadaniu.", "Nincs találat.")}
             </span>
           )}

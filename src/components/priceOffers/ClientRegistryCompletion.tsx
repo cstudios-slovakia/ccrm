@@ -7,6 +7,7 @@ import { applyCompanyDetailsToLead, registryCountryOf } from "../../utils/compan
 import type { CompanyLookupField, CompanySuggestion } from "../../utils/companyRegistry";
 import { isBlankText } from "../../utils/offerDraft";
 import { PRODUCT_NAME } from "../../utils/brand";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
 interface ClientRegistryCompletionProps {
   lang: Language;
@@ -68,7 +69,8 @@ export const ClientRegistryCompletion: React.FC<ClientRegistryCompletionProps> =
   return (
     <div
       data-offer-client-extras
-      className="mt-2 rounded-lg border border-dashed border-slate-300 bg-slate-50/60 p-2.5 text-slate-600 space-y-1.5"
+      style={entityAccentStyle("clients")}
+      className="mt-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-2.5 text-gray-600 space-y-1.5"
     >
       {missingDetails && (
         <p className="font-semibold text-amber-700">
@@ -81,7 +83,7 @@ export const ClientRegistryCompletion: React.FC<ClientRegistryCompletionProps> =
       )}
       {registryCountryOf(registryCountry) && (
         <div className="space-y-1">
-          <label className="block font-bold text-slate-700">
+          <label className="block font-semibold text-gray-700">
             {t("Complete from the business register", "Doplniť údaje z obchodného registra", "Kiegészítés a cégjegyzékből")}
           </label>
           <div className="relative">
@@ -99,7 +101,7 @@ export const ClientRegistryCompletion: React.FC<ClientRegistryCompletionProps> =
                   "Názov firmy, IČO, DIČ alebo IČ DPH…",
                   "Cégnév, adószám vagy közösségi adószám…"
                 )}
-                className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 pr-8 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400"
+                className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 pr-8 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity-solid"
               />
               <CompanyLookupSpinner visible={lookup.isLoading || lookup.isResolving} />
             </div>
@@ -111,7 +113,7 @@ export const ClientRegistryCompletion: React.FC<ClientRegistryCompletionProps> =
               systemLanguage={systemLanguage}
             />
           </div>
-          <p className="text-[0.85em] text-slate-400 font-medium">
+          <p className="text-[0.85em] text-gray-400 font-medium">
             {t(
               `Picking a match updates this client in ${PRODUCT_NAME}, not just this document.`,
               `Vybraná zhoda sa uloží ku klientovi v ${PRODUCT_NAME}, nielen do tohto dokladu.`,

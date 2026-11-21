@@ -12,6 +12,7 @@ import { cn } from "../../utils/cn";
 import { ContactNameFields } from "../ui/ContactNameFields";
 import { composeContactName, contactNameFieldsOf, contactNameShown } from "../../utils/contactName";
 import { inputClass, labelClass } from "./styles";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
 /**
  * The client the editor can register on the spot — a Lead in the making.
@@ -206,18 +207,18 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in">
+    <div style={entityAccentStyle("clients")} className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in">
       <form
         onSubmit={handleCreateClient}
-        className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
+        className="bg-white rounded-lg border border-gray-200 border-t-2 border-t-entity-solid shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
       >
-        <div className="p-5 border-b border-slate-100 flex justify-between items-start gap-4 bg-slate-50/70">
+        <div className="p-5 border-b border-gray-200 flex justify-between items-start gap-4 bg-gray-50">
           <div className="min-w-0">
-            <h3 className="text-title-sm font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-              <UserPlus className="h-4.5 w-4.5 text-indigo-600" />
+            <h3 className="text-title-sm font-heading font-semibold text-gray-900 tracking-tight flex items-center gap-2">
+              <UserPlus className="h-4.5 w-4.5 text-entity-text" />
               {t("Register a new client", "Registrovať nového klienta", "Új ügyfél regisztrálása")}
             </h3>
-            <p className="text-caption text-slate-500 font-medium mt-1">
+            <p className="text-caption text-gray-500 font-medium mt-1">
               {t(
                 "Saved to the client register, not to the lead pipeline, and linked to this document straight away.",
                 "Uloží sa do registra klientov, nie medzi leady, a hneď sa prepojí s týmto dokladom.",
@@ -229,7 +230,7 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
             type="button"
             onClick={close}
             title={t("Close", "Zavrieť", "Bezárás")}
-            className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 cursor-pointer transition-all shrink-0"
+            className="p-2 text-gray-400 hover:text-gray-700 rounded-md hover:bg-gray-100 cursor-pointer transition-all shrink-0"
           >
             <X className="h-5 w-5" />
           </button>
@@ -254,10 +255,10 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
                     if (opt.id === "person") newClientLookup.close();
                   }}
                   className={cn(
-                    "px-3 py-2 rounded-xl border-2 text-ui font-bold transition-all cursor-pointer hover:scale-[1.01] active:scale-[0.98]",
+                    "px-3 py-2 rounded-md border text-ui font-semibold transition-all cursor-pointer",
                     newClient.clientType === opt.id
-                      ? "border-indigo-500 bg-indigo-50/60 text-indigo-700 shadow-sm"
-                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                      ? "border-entity-solid bg-entity-subtle text-entity-text shadow-2xs"
+                      : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
                   )}
                 >
                   {opt.label}
@@ -429,18 +430,18 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
           </div>
         </div>
 
-        <div className="p-4 border-t border-slate-100 bg-slate-50/70 flex justify-end gap-2">
+        <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-2">
           <button
             type="button"
             onClick={close}
-            className="px-4 py-2.5 rounded-xl text-ui font-bold text-slate-600 hover:bg-slate-200/70 cursor-pointer transition-all active:scale-[0.98]"
+            className="px-4 py-2 rounded-md border border-gray-200 bg-white text-ui font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer transition-all"
           >
             {t("Cancel", "Zrušiť", "Mégse")}
           </button>
           <button
             type="submit"
             disabled={!newClient.name.trim() || newClientLookup.isResolving}
-            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-ui font-bold shadow-md shadow-indigo-600/20 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            className="flex items-center gap-2 px-5 py-2 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-semibold shadow-xs cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {newClientLookup.isResolving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             {t("Create & link client", "Vytvoriť a prepojiť klienta", "Ügyfél létrehozása és összekapcsolása")}

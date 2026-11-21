@@ -28,6 +28,8 @@ import { nextDocumentNumber as nextDocumentNumberShared } from "../utils/documen
 import { cn } from "../utils/cn";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
+import { EntityBadge } from "./tremor/EntityBadge";
+import { isClientRecord } from "../utils/clientRecord";
 import { PageHeader, StatGrid, StatTile } from "./layout";
 import { getAvailableVatRates } from "../utils/vat";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
@@ -367,13 +369,33 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
             </div>
           </td>
         );
-      case "client":
+      case "client": {
+        const matchedLead = offer.leadId ? leads.find(l => l.id === offer.leadId) : undefined;
+        const isClient = matchedLead ? isClientRecord(matchedLead) : true;
         return (
           <td key={key} className="p-4 align-top">
-            <div className="font-bold text-slate-900">{offer.clientName}</div>
-            {offer.location && <div className="text-caption text-slate-400">{offer.location}</div>}
+            {offer.clientName ? (
+              <EntityBadge
+                entity={isClient ? "clients" : "leads"}
+                label={offer.clientName}
+                showIcon
+                onClick={
+                  matchedLead
+                    ? () => {
+                        window.location.hash = isClient
+                          ? `client-${encodeURIComponent(matchedLead.name || offer.clientName)}`
+                          : `lead-${matchedLead.id}`;
+                      }
+                    : undefined
+                }
+              />
+            ) : (
+              <span className="text-gray-400">—</span>
+            )}
+            {offer.location && <div className="text-caption text-gray-500 mt-1">{offer.location}</div>}
           </td>
         );
+      }
       case "category": {
         const path = offerCategoryPath(offerCategories, offer.categoryId);
         const leaf = path[path.length - 1];
@@ -777,9 +799,9 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={() => setShowSettings(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-ui font-semibold rounded-2xl shadow-sm transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+              className="flex items-center gap-2 px-3.5 py-2 bg-white border border-gray-200 hover:border-entity-border text-gray-700 text-ui font-semibold rounded-md shadow-2xs transition-all cursor-pointer"
             >
-              <Settings className="h-4 w-4 text-indigo-500" />
+              <Settings className="h-4 w-4 text-entity-text" />
               <span>{t("Offer settings", "Nastavenia ponúk", "Ajánlat-beállítások")}</span>
             </button>
             {canEdit && (
@@ -798,7 +820,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
 
       {/* READ-ONLY NOTICE — the role can browse and print, but not issue or change offers */}
       {!canEdit && (
-        <div className="flex items-center gap-2.5 p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-ui text-amber-900">
+        <div className="flex items-center gap-2.5 p-3.5 bg-amber-50 border border-amber-200 rounded-lg text-ui text-amber-900">
           <Lock className="h-4 w-4 shrink-0 text-amber-600" />
           <span className="font-semibold">{t("Read-only access", "Iba na čítanie", "Csak olvasható")}</span>
           <span className="text-amber-800/80">
@@ -813,7 +835,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
 
       {/* 2. SETUP NOTICE — an offer issued before Settings are filled in carries no company identity */}
       {!billingConfigured && (
-        <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+        <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
           <div className="flex items-start gap-2.5 text-ui text-amber-900">
             <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
             <span className="font-semibold">
@@ -827,7 +849,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           {onOpenSettings && (
             <button
               onClick={onOpenSettings}
-              className="shrink-0 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-ui font-bold transition-all cursor-pointer active:scale-[0.98]"
+              className="shrink-0 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-ui font-semibold shadow-xs transition-all cursor-pointer"
             >
               {t("Open settings", "Otvoriť nastavenia", "Beállítások megnyitása")}
             </button>
@@ -862,7 +884,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           },
           {
             icon: <SectionIcon id="invoices" className="h-6 w-6" />,
-            tone: "bg-emerald-50 text-emerald-600",
+            tone: "bg-entity-subtle text-entity-text",
             label: t("Offers total", "Celkom ponúk", "Összes árajánlat"),
             value: String(metrics.totalCount)
           }
@@ -872,15 +894,15 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
       </StatGrid>
 
       {/* 4. SEARCH & FILTERS */}
-      <div className="bg-white p-3 ws-sm:p-4 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col ws-xl:flex-row gap-2.5 ws-sm:gap-3 ws-xl:items-center ws-xl:justify-between">
+      <div className="bg-white p-3 ws-sm:p-4 rounded-lg border border-gray-200 shadow-xs flex flex-col ws-xl:flex-row gap-2.5 ws-sm:gap-3 ws-xl:items-center ws-xl:justify-between">
         <div className="relative w-full ws-xl:w-80">
-          <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <input
             type="text"
             placeholder={t("Search offer, client or number…", "Hľadať ponuku, klienta alebo číslo…", "Ajánlat, ügyfél vagy szám keresése…")}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-ui text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 transition-all"
+            className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-md text-ui text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity-solid transition-all"
           />
         </div>
 
@@ -939,16 +961,16 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
       </div>
 
       {/* 5. DOCUMENTS TABLE */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-clip">
+      <div className="bg-white rounded-lg border border-gray-200 shadow-xs overflow-clip">
         <div ref={tableWrapRef} className="table-page-wrap">
           <table className="w-full text-left text-ui border-collapse min-w-195">
             <thead className="table-page-sticky-head">
-              <tr className="bg-slate-50 text-slate-500 type-overline border-b border-slate-200">
+              <tr className="bg-gray-50 text-gray-500 type-overline border-b border-gray-200">
                 {columns.map(col => (
                   <th
                     key={col.key}
                     className={cn(
-                      "sticky z-10 bg-slate-50 p-4",
+                      "sticky z-10 bg-gray-50 p-4",
                       col.key === "amount" && "text-right",
                       col.key === "status" && "text-center"
                     )}
@@ -956,10 +978,10 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                     {t(...OFFER_COLUMN_LABELS[col.key])}
                   </th>
                 ))}
-                <th className="sticky right-0 z-30 bg-slate-50 p-4 text-right border-l border-slate-200/60">{t("Actions", "Akcie", "Műveletek")}</th>
+                <th className="sticky right-0 z-30 bg-gray-50 p-4 text-right border-l border-gray-200">{t("Actions", "Akcie", "Műveletek")}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-gray-200">
               {sortedOffers.length > 0 ? (
                 sortedOffers.map(offer => (
                   <tr
@@ -970,15 +992,15 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                       if (canEdit) handleEditOffer(offer);
                       else setPreviewOffer(offer);
                     }}
-                    className="group hover:bg-slate-50/80 transition-colors cursor-pointer"
+                    className="group hover:bg-entity-subtle/40 transition-colors cursor-pointer"
                   >
                     {columns.map(col => renderCell(offer, col.key))}
-                    <td className="p-4 align-top text-right sticky right-0 z-10 bg-white shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-slate-100/80 transition-colors group-hover:bg-slate-50">
+                    <td className="p-4 align-top text-right sticky right-0 z-10 bg-white shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-gray-200 transition-colors group-hover:bg-entity-subtle/40">
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => setPreviewOffer(offer)}
                           title={t("Preview & print", "Náhľad a tlač", "Előnézet és nyomtatás")}
-                          className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer"
+                          className="p-2 text-gray-500 hover:text-entity-text hover:bg-entity-subtle rounded-md transition-all cursor-pointer"
                         >
                           <Eye className="h-4 w-4" />
                         </button>
@@ -986,7 +1008,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                           <button
                             onClick={() => handleDuplicateOffer(offer)}
                             title={t("Duplicate", "Duplikovať", "Másolás")}
-                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer"
+                            className="p-2 text-gray-500 hover:text-entity-text hover:bg-entity-subtle rounded-md transition-all cursor-pointer"
                           >
                             <Copy className="h-4 w-4" />
                           </button>
@@ -995,7 +1017,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                           <button
                             onClick={() => handleEditOffer(offer)}
                             title={t("Edit", "Upraviť", "Szerkesztés")}
-                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer"
+                            className="p-2 text-gray-500 hover:text-entity-text hover:bg-entity-subtle rounded-md transition-all cursor-pointer"
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
@@ -1007,7 +1029,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                               what={offer.documentNumber}
                               onConfirm={() => handleDelete(offer)}
                               title={t("Delete", "Odstrániť", "Törlés")}
-                              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                              className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-all"
                           >
                             <Trash2 className="h-4 w-4" />
                           </HoldToConfirmButton>
@@ -1020,7 +1042,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                 <tr>
                   <td colSpan={columns.length + 1} className="p-12 text-center">
                     <div className="max-w-sm mx-auto space-y-2.5">
-                      <div className="h-12 w-12 mx-auto rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center">
+                      <div className="h-12 w-12 mx-auto rounded-lg bg-entity-subtle text-entity-text border border-entity-border flex items-center justify-center">
                         <SectionIcon id="invoices" className="h-6 w-6" />
                       </div>
                       <div className="font-bold text-slate-700 text-body">
