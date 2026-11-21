@@ -569,7 +569,7 @@ export const ClientCategoryManager: React.FC<{
 
         <button
           type="submit"
-          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-ui font-semibold rounded-xl cursor-pointer shadow-sm transition-all duration-150"
+          className="px-4 py-2 bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-semibold rounded-md cursor-pointer shadow-xs transition-all duration-150"
         >
           {t("Add Category", "Pridať kategóriu", "Kategória hozzáadása")}
         </button>
@@ -577,7 +577,7 @@ export const ClientCategoryManager: React.FC<{
       )}
 
       {roots.length === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-slate-200 px-6 py-10 text-center text-ui font-semibold text-slate-400">
+        <div className="rounded-lg border border-dashed border-gray-300 px-6 py-10 text-center text-ui font-medium text-gray-500">
           {editable ? words.emptyEditable : words.empty}
         </div>
       ) : (
@@ -656,13 +656,13 @@ export const ClientCategoryManager: React.FC<{
   }
 
   return (
-    <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-6 space-y-6 animate-in fade-in duration-200">
-      <div className="border-b border-slate-100 pb-4">
-        <h3 className="text-body font-bold text-slate-900 flex items-center gap-2">
-          <Layers className="h-4 w-4 text-emerald-500" />
+    <div className="bg-white rounded-lg border border-gray-200 shadow-xs p-5 space-y-5 animate-in fade-in duration-200">
+      <div className="border-b border-gray-200 pb-3.5">
+        <h3 className="text-body font-semibold text-gray-900 flex items-center gap-2">
+          <Layers className="h-4 w-4 text-entity-text" />
           {words.title}
         </h3>
-        <p className="text-ui text-slate-400 mt-0.5">{words.description}</p>
+        <p className="text-ui text-gray-500 mt-0.5">{words.description}</p>
       </div>
       {body}
     </div>

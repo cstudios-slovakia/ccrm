@@ -3,6 +3,7 @@ import { Mail } from "lucide-react";
 import { newsletterApi } from "./newsletterApi";
 import { formatDate } from "./shared";
 import type { ContactStatus } from "./types";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
 type TFn = (en: string, sk: string, hu: string) => string;
 
@@ -52,12 +53,12 @@ export const ClientNewsletterStatus = ({
   if (unsubscribed.length === 0 && campaigns.length === 0) return null;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-2">
-      <div className="flex items-center gap-2 text-ui font-bold text-slate-700">
-        <Mail className="h-4 w-4" /> {t("Newsletter", "Newsletter", "Hírlevél")}
+    <div style={entityAccentStyle("newsletter")} className="rounded-lg border border-gray-200 border-t-2 border-t-entity-solid bg-white p-4 space-y-2 shadow-xs">
+      <div className="flex items-center gap-2 text-ui font-semibold text-gray-800">
+        <Mail className="h-4 w-4 text-entity-text" /> {t("Newsletter", "Newsletter", "Hírlevél")}
       </div>
       {unsubscribed.map((u) => (
-        <span key={u.address} className="inline-block rounded-full bg-rose-50 px-2 py-0.5 text-ui font-semibold text-rose-700">
+        <span key={u.address} className="inline-block rounded-md bg-rose-50 border border-rose-200 px-2 py-0.5 text-ui font-semibold text-rose-700">
           {t("Unsubscribed on", "Odhlásený dňa", "Leiratkozott:")} {formatDate(u.at, language)}
           {addresses.length > 1 ? ` · ${u.address}` : ""}
         </span>

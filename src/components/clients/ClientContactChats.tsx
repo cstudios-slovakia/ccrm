@@ -3,6 +3,7 @@ import { MessageCircle, ExternalLink, X } from "lucide-react";
 import type { Lead } from "../../types";
 import { PROVIDERS, ProviderLogo } from "../CompanyMailboxSettings";
 import type { ConnectorType, WhatsAppChatSummary } from "../../utils/companyMailboxes";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
 interface ClientContactChatsProps {
   activeClient: { name: string; phone: string; associatedLeads: Lead[] };
@@ -72,9 +73,9 @@ export const ClientContactChats: React.FC<ClientContactChatsProps> = ({
                 );
 
                 return (
-                  <div className="border-t-2 border-slate-100 pt-4 space-y-2.5" data-testid="client-contact-chats-section">
+                  <div style={entityAccentStyle("whatsapp")} className="border-t border-gray-200 pt-4 space-y-2.5" data-testid="client-contact-chats-section">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="type-overline text-emerald-600 flex items-center gap-1">
+                      <span className="type-overline text-entity-text flex items-center gap-1">
                         <MessageCircle className="h-3.5 w-3.5" />
                         {t("Chats & Instant Messaging", "Chaty a komunikátory", "Csevegések és üzenetküldők")}
                       </span>
@@ -87,7 +88,7 @@ export const ClientContactChats: React.FC<ClientContactChatsProps> = ({
                               updateChatClientLink(e.target.value, primaryLeadId);
                             }
                           }}
-                          className="px-2.5 py-1 rounded-xl border border-slate-200 bg-slate-50 hover:bg-white text-caption font-bold text-slate-700 focus:outline-none cursor-pointer max-w-52 truncate"
+                          className="px-2.5 py-1 rounded-md border border-gray-300 bg-white hover:bg-gray-50 text-caption font-semibold text-gray-700 focus:outline-none focus:border-entity-solid cursor-pointer max-w-52 truncate"
                         >
                           <option value="">
                             ➕ {t("Link existing chat...", "Prepojiť existujúci chat...", "Meglévő csevegés összekapcsolása...")}
@@ -102,7 +103,7 @@ export const ClientContactChats: React.FC<ClientContactChatsProps> = ({
                     </div>
 
                     {matchedChats.length === 0 ? (
-                      <div className="p-3 rounded-xl bg-slate-50/70 border border-slate-200/80 flex items-center justify-between gap-2 text-caption text-slate-500">
+                      <div className="p-3 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-between gap-2 text-caption text-gray-600">
                         <span>
                           {t(
                             "No linked chats yet. Select a chat above or start one from Communications.",
@@ -112,7 +113,7 @@ export const ClientContactChats: React.FC<ClientContactChatsProps> = ({
                         </span>
                         <a
                           href="#email"
-                          className="shrink-0 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold transition-colors"
+                          className="shrink-0 px-2.5 py-1 rounded-md bg-entity-subtle hover:bg-entity-muted text-entity-text border border-entity-border font-semibold transition-colors"
                         >
                           {t("Open Chats", "Otvoriť chaty", "Csevegések megnyitása")}
                         </a>
@@ -124,7 +125,7 @@ export const ClientContactChats: React.FC<ClientContactChatsProps> = ({
                           return (
                             <div
                               key={item.linkKey}
-                              className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50/80 border border-slate-200 hover:border-slate-300 transition-all"
+                              className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-gray-50 border border-gray-200 hover:border-entity-border transition-all"
                             >
                               <div className="flex items-center gap-2.5 min-w-0">
                                 <span

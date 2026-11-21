@@ -271,11 +271,11 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {parsedData.years.length > 0 && (
-        <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h4 className="type-overline text-slate-500">
+        <div className="p-4 rounded-lg bg-white border border-gray-200 shadow-xs space-y-3">
+          <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+            <h4 className="type-overline text-gray-500">
               {systemLanguage === 'sk' ? 'Graf vývoja hospodárenia' : systemLanguage === 'hu' ? 'Pénzügyi trend diagram' : 'Financial Trend Chart'}
             </h4>
           </div>
@@ -285,7 +285,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
         </div>
       )}
       
-      <div className="p-6 rounded-2xl bg-indigo-50/15 border-2 border-indigo-100/60 shadow-inner leading-relaxed text-ui">
+      <div className="p-5 rounded-lg bg-gray-50 border border-gray-200 leading-relaxed text-ui">
         {renderBeautifulReport(summary)}
       </div>
     </div>
