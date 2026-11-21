@@ -393,15 +393,15 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
             return (
               <>
                 {/* Messaging Chats, Groups & Contacts Column */}
-                <div className={`ws-lg:col-span-4 glass-panel rounded-3xl border ${adapterPalette.panelBorder} bg-white/95 shadow-glass flex flex-col h-full overflow-hidden text-left`}>
+                <div className={`ws-lg:col-span-4  rounded-lg border ${adapterPalette.panelBorder} bg-white shadow-xs flex flex-col h-full overflow-hidden text-left`}>
                   <div className={`p-4 border-b ${adapterPalette.headerGrad} space-y-3 shrink-0`}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className={`w-8 h-8 rounded-xl ${adapterMeta.iconBg} flex items-center justify-center shrink-0`}>
+                        <span className={`w-8 h-8 rounded-md ${adapterMeta.iconBg} flex items-center justify-center shrink-0`}>
                           <ProviderLogo type={selectedChannelType} className="w-4 h-4" />
                         </span>
                         <div className="min-w-0">
-                          <div className="text-ui font-bold text-slate-900 truncate">{selectedAccount?.name}</div>
+                          <div className="text-ui font-bold text-gray-900 truncate">{selectedAccount?.name}</div>
                           <div className="text-micro font-mono truncate flex items-center gap-1.5">
                             {waState?.status === "connected" ? (
                               <>
@@ -455,7 +455,7 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
 
                     {/* Inline QR Pairing Banner when requested or when session requires re-link */}
                     {(waInlineQrOpen || waState?.status === "pending_qr") && (
-                      <div className="p-3 rounded-2xl bg-amber-50/60 border border-emerald-300 shadow-xs space-y-2">
+                      <div className="p-3 rounded-lg bg-amber-50/60 border border-emerald-300 shadow-xs space-y-2">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-micro font-bold text-emerald-900">
                             {t(
@@ -468,7 +468,7 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                             <button
                               type="button"
                               onClick={() => setWaInlineQrOpen(false)}
-                              className="text-slate-400 hover:text-slate-600 text-micro font-bold cursor-pointer"
+                              className="text-gray-400 hover:text-gray-600 text-micro font-bold cursor-pointer"
                             >
                               ✕
                             </button>
@@ -479,10 +479,10 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                             <img
                               src={waInlineQrUrl || waState?.qr || ""}
                               alt="WhatsApp QR"
-                              className="w-44 h-44 rounded-xl bg-white p-1.5 border border-emerald-200 object-contain shadow-2xs"
+                              className="w-44 h-44 rounded-md bg-white p-1.5 border border-emerald-200 object-contain shadow-2xs"
                             />
                           ) : (
-                            <div className="w-44 h-44 rounded-xl bg-white border border-emerald-100 flex items-center justify-center text-micro text-slate-400">
+                            <div className="w-44 h-44 rounded-md bg-white border border-emerald-100 flex items-center justify-center text-micro text-gray-400">
                               <RefreshCw size={18} className="animate-spin text-emerald-600 mr-1.5" />
                               {t("Generating QR…", "Generujem QR…", "QR generálása…")}
                             </div>
@@ -492,7 +492,7 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                     )}
 
                     <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                       <input
                         type="text"
                         value={waSearchQuery}
@@ -502,7 +502,7 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                           `Hľadať ${channelDisplayName} chaty a skupiny...`,
                           `${channelDisplayName} beszélgetések és csoportok keresése...`,
                         )}
-                        className={`w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-200 text-caption text-slate-700 focus:outline-none ${adapterPalette.inputFocus}`}
+                        className={`w-full pl-9 pr-3 py-2 rounded-md bg-white border border-gray-200 text-caption text-gray-700 focus:outline-none ${adapterPalette.inputFocus}`}
                       />
                     </div>
 
@@ -531,7 +531,7 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                             className={`px-2.5 py-1 rounded-lg text-micro font-bold transition-colors cursor-pointer ${
                               waFilterType === tab.id
                                 ? adapterPalette.pillActive
-                                : `bg-white/80 text-slate-600 ${adapterPalette.pillInactiveHover} border border-slate-200/80`
+                                : `bg-white/80 text-gray-600 ${adapterPalette.pillInactiveHover} border border-gray-200/80`
                             }`}
                           >
                             {tab.label} ({tab.count})
@@ -541,9 +541,9 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+                  <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
                     {filteredWaChats.length === 0 ? (
-                      <div className="p-6 text-center text-caption text-slate-400 space-y-2">
+                      <div className="p-6 text-center text-caption text-gray-400 space-y-2">
                         <div>
                           {waLoading
                             ? t(
@@ -568,11 +568,11 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                             type="button"
                             onClick={() => setWaSelectedLeadId(chat.id)}
                             className={`w-full px-4 py-3 text-left flex items-center gap-3 transition-colors cursor-pointer ${
-                              active ? adapterPalette.activeRowBg : "hover:bg-slate-50"
+                              active ? adapterPalette.activeRowBg : "hover:bg-gray-50"
                             }`}
                           >
                             <span
-                              className={`h-9 w-9 rounded-xl text-caption font-bold flex items-center justify-center shrink-0 ${
+                              className={`h-9 w-9 rounded-md text-caption font-bold flex items-center justify-center shrink-0 ${
                                 chat.isGroup
                                   ? adapterPalette.groupAvatarBg
                                   : adapterPalette.avatarBg
@@ -582,7 +582,7 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                             </span>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center justify-between gap-2">
-                                <span className="text-ui font-bold text-slate-900 truncate flex items-center gap-1.5">
+                                <span className="text-ui font-bold text-gray-900 truncate flex items-center gap-1.5">
                                   <span className="truncate">{chat.name}</span>
                                   {chatTk.isAgentActive && (
                                     <span
@@ -603,19 +603,19 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                                         "Agent vypnutý pre túto reláciu",
                                         "Ügynök kikapcsolva erre a munkamenetre",
                                       )}
-                                      className="px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-500 border border-slate-200 text-micro font-semibold shrink-0"
+                                      className="px-1.5 py-0.2 rounded-md bg-gray-100 text-gray-500 border border-gray-200 text-micro font-semibold shrink-0"
                                     >
                                       ⏸ Off
                                     </span>
                                   )}
                                 </span>
                                 {chat.lastMessageAt && (
-                                  <span className="text-micro text-slate-400 shrink-0">
+                                  <span className="text-micro text-gray-400 shrink-0">
                                     {formatListDate(chat.lastMessageAt)}
                                   </span>
                                 )}
                               </div>
-                              <div className="text-micro text-slate-500 truncate mt-0.5">
+                              <div className="text-micro text-gray-500 truncate mt-0.5">
                                 {chat.lastMessageText ? (
                                   chat.lastMessageText
                                 ) : chat.isGroup ? (
@@ -635,7 +635,7 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                 </div>
 
                 {/* Messaging Conversation & Composer Column */}
-                <div className={`ws-lg:col-span-8 glass-panel rounded-3xl border ${adapterPalette.panelBorder} bg-white/95 shadow-glass flex flex-col h-full overflow-hidden text-left`}>
+                <div className={`ws-lg:col-span-8  rounded-lg border ${adapterPalette.panelBorder} bg-white shadow-xs flex flex-col h-full overflow-hidden text-left`}>
                   {!activeChat ? (
                     emptyPane(
                       t(
@@ -646,10 +646,10 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                     )
                   ) : (
                     <>
-                      <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3 shrink-0">
+                      <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-3 shrink-0">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <h3 className="text-title font-heading font-bold text-slate-900 truncate">
+                            <h3 className="text-title font-heading font-bold text-gray-900 truncate">
                               {activeChat.name}
                             </h3>
                             {activeChat.isGroup && (
@@ -669,7 +669,7 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                         </div>
                         <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                           <div
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-all ${
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border transition-all ${
                               activeChatTakeover.isAgentActive
                                 ? "bg-violet-600 text-white border-violet-700 shadow-xs"
                                 : activeChatTakeover.isPausedForSession
@@ -719,11 +719,11 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                                 }
                               }}
                               className={`bg-transparent text-caption font-bold focus:outline-none cursor-pointer pr-1 ${
-                                activeChatTakeover.isAgentActive ? "text-white" : "text-slate-800"
+                                activeChatTakeover.isAgentActive ? "text-white" : "text-gray-800"
                               }`}
                             >
                               {activeChatTakeover.isAutoTakenOver && (
-                                <option value="auto" className="text-slate-900 bg-white">
+                                <option value="auto" className="text-gray-900 bg-white">
                                   ⚡{" "}
                                   {t(
                                     `Auto (Visual Trigger · ${activeChatTakeover.agentName})`,
@@ -732,7 +732,7 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                                   )}
                                 </option>
                               )}
-                              <option value="off" className="text-slate-900 bg-white">
+                              <option value="off" className="text-gray-900 bg-white">
                                 🚫{" "}
                                 {activeChatTakeover.isPausedForSession
                                   ? t(
@@ -752,13 +752,13 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                                   <optgroup
                                     key={agAcc.id}
                                     label={`${agAcc.name} (${(agAcc.connectorType || "AI").toUpperCase()})`}
-                                    className="text-slate-900 bg-white"
+                                    className="text-gray-900 bg-white"
                                   >
-                                    <option value={`${agAcc.id}:main`} className="text-slate-900 bg-white">
+                                    <option value={`${agAcc.id}:main`} className="text-gray-900 bg-white">
                                       ✦ {agAcc.name} — {t("Main Agent", "Hlavný agent", "Fő ügynök")}
                                     </option>
                                     {subs.map((sub) => (
-                                      <option key={sub.id} value={`${agAcc.id}:${sub.id}`} className="text-slate-900 bg-white">
+                                      <option key={sub.id} value={`${agAcc.id}:${sub.id}`} className="text-gray-900 bg-white">
                                         🤖 {sub.name} ({sub.role})
                                       </option>
                                     ))}
@@ -771,14 +771,14 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                             type="button"
                             onClick={() => void handleResyncWhatsApp(activeChat.id)}
                             disabled={waLoading}
-                            className={`px-3 py-1.5 rounded-xl border text-caption font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${adapterPalette.softBtn}`}
+                            className={`px-3 py-1.5 rounded-md border text-caption font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${adapterPalette.softBtn}`}
                           >
                             <RefreshCw size={13} className={waLoading ? "animate-spin" : ""} />
                             {t("Sync latest", "Synchronizovať najnovšie", "Legfrissebbek szinkronizálása")}
                           </button>
                           {canEdit && (
-                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-slate-200 bg-white shadow-2xs">
-                              <Users size={13} className="text-slate-500 shrink-0" />
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-gray-200 bg-white shadow-2xs">
+                              <Users size={13} className="text-gray-500 shrink-0" />
                               <select
                                 data-testid="wa-client-select"
                                 value={matchedLead?.id || ""}
@@ -796,7 +796,7 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                                     saveChatClientLink(activeChatLinkKey, val);
                                   }
                                 }}
-                                className="bg-transparent text-caption font-bold text-slate-800 focus:outline-none cursor-pointer max-w-44 truncate"
+                                className="bg-transparent text-caption font-bold text-gray-800 focus:outline-none cursor-pointer max-w-44 truncate"
                               >
                                 <option value="">
                                   {t("🔗 Select or create client...", "🔗 Vybrať alebo vytvoriť klienta...", "🔗 Ügyfél kiválasztása vagy létrehozása...")}
@@ -832,7 +832,7 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                                 setClientFormType("person");
                                 setIsClientSlideoutOpen(true);
                               }}
-                              className={`px-3 py-1.5 rounded-xl border text-caption font-bold flex items-center gap-1.5 cursor-pointer ${adapterPalette.softBtn}`}
+                              className={`px-3 py-1.5 rounded-md border text-caption font-bold flex items-center gap-1.5 cursor-pointer ${adapterPalette.softBtn}`}
                             >
                               <UserPlus size={13} />
                               {t("Create Client", "Vytvoriť klienta", "Ügyfél létrehozása")}
@@ -871,7 +871,7 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                         className={`flex-1 overflow-y-auto p-6 space-y-3 ${adapterPalette.canvasTint}`}
                       >
                         {liveMessages.length === 0 && crmWaEvents.length === 0 ? (
-                          <div className="text-center py-12 text-slate-400 text-body">
+                          <div className="text-center py-12 text-gray-400 text-body">
                             {t(
                               `No messages in this ${activeChat.name} (${channelDisplayName}) conversation yet. Write a message below.`,
                               `V tejto konverzácii ${activeChat.name} (${channelDisplayName}) zatiaľ nie sú žiadne správy. Napíšte správu nižšie.`,
@@ -888,15 +888,15 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                               return (
                                 <div
                                   key={msg.id}
-                                  className={`max-w-xl p-3.5 rounded-2xl shadow-xs space-y-1.5 ${
+                                  className={`max-w-xl p-3.5 rounded-lg shadow-xs space-y-1.5 ${
                                     msg.fromMe
                                       ? `ml-auto ${adapterPalette.bubbleOut}`
-                                      : "mr-auto bg-white border border-slate-200 text-slate-800"
+                                      : "mr-auto bg-white border border-gray-200 text-gray-800"
                                   }`}
                                 >
                                   <div
                                     className={`text-micro flex items-center justify-between gap-3 ${
-                                      msg.fromMe ? adapterPalette.bubbleOutMeta : "text-slate-400"
+                                      msg.fromMe ? adapterPalette.bubbleOutMeta : "text-gray-400"
                                     }`}
                                   >
                                     <span
@@ -913,12 +913,12 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                                       href={msg.mediaUrl || imgSrc}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="block overflow-hidden rounded-xl border border-black/10"
+                                      className="block overflow-hidden rounded-md border border-black/10"
                                     >
                                       <img
                                         src={imgSrc}
                                         alt={msg.text || `${adapterLabel} media`}
-                                        className="max-h-72 w-full object-cover rounded-xl"
+                                        className="max-h-72 w-full object-cover rounded-md"
                                       />
                                     </a>
                                   )}
@@ -932,7 +932,7 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                               crmWaEvents.map((ev: any) => (
                                 <div
                                   key={ev.id}
-                                  className={`max-w-xl ml-auto p-3.5 rounded-2xl ${adapterPalette.bubbleOut} shadow-xs space-y-1`}
+                                  className={`max-w-xl ml-auto p-3.5 rounded-lg ${adapterPalette.bubbleOut} shadow-xs space-y-1`}
                                 >
                                   <div className="text-micro opacity-80 flex items-center justify-between gap-2">
                                     <span>{ev.author || currentUser?.name}</span>
@@ -945,7 +945,7 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                         )}
                       </div>
 
-                      <div className="p-4 border-t border-slate-100 flex items-center gap-2 shrink-0">
+                      <div className="p-4 border-t border-gray-100 flex items-center gap-2 shrink-0">
                         <input
                           type="text"
                           value={waDraftMessage}
@@ -961,13 +961,13 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                             `Napíšte ${channelDisplayName} správu pre ${activeChat.name}...`,
                             `Írjon ${channelDisplayName} üzenetet neki: ${activeChat.name}...`,
                           )}
-                          className={`flex-1 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-body text-slate-800 focus:outline-none focus:bg-white ${adapterPalette.inputFocus}`}
+                          className={`flex-1 px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-body text-gray-800 focus:outline-none focus:bg-white ${adapterPalette.inputFocus}`}
                         />
                         <button
                           type="button"
                           onClick={() => void handleSendWhatsAppMessage(activeChat, matchedLead)}
                           disabled={!waDraftMessage.trim() || !canEdit || waSending}
-                          className={`px-4 py-2.5 rounded-xl ${adapterPalette.sendBtn} text-body font-bold flex items-center gap-2 disabled:opacity-40 cursor-pointer`}
+                          className={`px-4 py-2.5 rounded-md ${adapterPalette.sendBtn} text-body font-bold flex items-center gap-2 disabled:opacity-40 cursor-pointer`}
                         >
                           <Send size={15} /> {t("Send", "Odoslať", "Küldés")}
                         </button>

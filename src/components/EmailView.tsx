@@ -2144,7 +2144,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   });
 
   return (
-    <div className="space-y-5 select-none animate-fade-in text-slate-800">
+    <div className="space-y-5 select-none animate-fade-in text-gray-800">
     {/* Module header (docs/VIEW-SIZE.md §6.2) */}
     <PageHeader
       icon={<SectionIcon id="email" />}
@@ -2161,7 +2161,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                 setSelectedThreadId(null);
               }}
               aria-label={t("Active mailbox", "Aktívna schránka", "Aktív postafiók")}
-              className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-body font-semibold text-slate-700 shadow-2xs cursor-pointer focus:outline-none focus:border-pink-300"
+              className="px-3.5 py-2 rounded-md bg-white border border-gray-200 text-body font-semibold text-gray-700 shadow-2xs cursor-pointer focus:outline-none focus:border-entity-border"
             >
               {availableAccounts.map((acc) => (
                 <option key={acc.id} value={acc.id}>
@@ -2172,15 +2172,15 @@ export const EmailView: React.FC<EmailViewProps> = ({
           )}
           {!canEdit && (
             <span
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-body font-bold shrink-0"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-body font-bold shrink-0"
               title={t(`Your role can read mail but not send it or write into ${PRODUCT_NAME} from here.`, `Vaša rola môže poštu čítať, ale nie odosielať ani odtiaľto zapisovať do ${PRODUCT_NAME}.`, `A szerepköre olvashatja a leveleket, de nem küldhet, és innen nem írhat a ${PRODUCT_NAME}-be.`)}
             >
               <Lock className="h-4 w-4" />
               {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
             </span>
           )}
-          <span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-body font-semibold text-slate-600 shadow-2xs">
-            <span className={`h-2 w-2 rounded-full shrink-0 ${isSyncingEmails ? "bg-pink-500 animate-pulse" : "bg-emerald-500"}`} />
+          <span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-md bg-white border border-gray-200 text-body font-semibold text-gray-600 shadow-2xs">
+            <span className={`h-2 w-2 rounded-full shrink-0 ${isSyncingEmails ? "bg-entity-solid animate-pulse" : "bg-emerald-500"}`} />
             {isSyncingEmails
               ? t("Syncing with mailbox...", "Synchronizuje sa so schránkou...", "Szinkronizálás a postafiókkal...")
               : lastSyncAt
@@ -2197,7 +2197,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                 : t("Sync now", "Synchronizovať teraz", "Szinkronizálás most")
             }
             aria-label={t("Sync now", "Synchronizovať teraz", "Szinkronizálás most")}
-            className="h-10 w-10 bg-white hover:bg-slate-50 active:scale-95 border border-slate-200 text-slate-600 hover:text-pink-600 rounded-xl transition-all flex items-center justify-center shadow-2xs shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
+            className="h-10 w-10 bg-white hover:bg-gray-50 active:scale-95 border border-gray-200 text-gray-600 hover:text-entity-text rounded-md transition-all flex items-center justify-center shadow-2xs shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
           >
             <RefreshCw size={16} className={isSyncingEmails ? "animate-spin" : ""} />
           </button>
@@ -2223,7 +2223,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       `}</style>
       {/* Notifications banner */}
       {notification && (
-        <div className={`fixed bottom-4 right-4 z-50 px-5 py-3.5 rounded-2xl flex items-center gap-3 border shadow-2xl ${
+        <div className={`fixed bottom-4 right-4 z-50 px-5 py-3.5 rounded-lg flex items-center gap-3 border shadow-xl ${
           notification.type === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-900" : "bg-rose-50 border-rose-200 text-rose-900"
         }`}>
           {notification.type === "success" ? <CheckCircle2 size={16} /> : <CircleAlert size={16} />}

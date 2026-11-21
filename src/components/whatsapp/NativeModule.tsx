@@ -59,7 +59,7 @@ function accountPill(accounts: MetaResponse["wa_accounts"], t: WaMessages, demo:
     case "authenticated":
       return { label: t.account.connecting, tone: "bg-amber-50 text-amber-700 border-amber-200" };
     default:
-      return { label: t.account.disconnected, tone: "bg-slate-100 text-slate-600 border-slate-200" };
+      return { label: t.account.disconnected, tone: "bg-gray-100 text-gray-600 border-gray-200" };
   }
 }
 

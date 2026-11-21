@@ -106,16 +106,16 @@ export function useEmailPresentation({
 
   const isClientLead = (lead: Lead) => lead.status === "accepted";
 
-  const iconButtonClass = "h-9 w-9 shrink-0 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95 cursor-pointer";
-  const secondaryButtonClass = "px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 hover:text-slate-900 rounded-xl text-body font-bold flex items-center gap-2 transition-all shadow-2xs active:scale-95 cursor-pointer";
-  const primaryButtonClass = "px-4 py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-body font-bold flex items-center gap-2 transition-all shadow active:scale-95 cursor-pointer";
+  const iconButtonClass = "h-9 w-9 shrink-0 rounded-md flex items-center justify-center text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-all active:scale-95 cursor-pointer";
+  const secondaryButtonClass = "px-4 py-2.5 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 hover:text-gray-900 rounded-md text-body font-bold flex items-center gap-2 transition-all shadow-2xs active:scale-95 cursor-pointer";
+  const primaryButtonClass = "px-4 py-2.5 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-body font-bold flex items-center gap-2 transition-all shadow active:scale-95 cursor-pointer";
 
   const renderLeadChip = (lead: Lead | null) =>
     lead ? (
       <span
         title={`${t(`${PRODUCT_NAME} Match:`, `Zhoda ${PRODUCT_NAME}:`, `${PRODUCT_NAME} egyezés:`)} ${lead.name}`}
         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold border ${
-          isClientLead(lead) ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-600 border-slate-200"
+          isClientLead(lead) ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-100 text-gray-600 border-gray-200"
         }`}
       >
         🤝 {isClientLead(lead) ? t("Client", "Klient", "Ügyfél") : t("Lead", "Záujemca", "Érdeklődő")}
@@ -165,21 +165,21 @@ export function useEmailPresentation({
   const renderPartyMeta = (email: any, lead: Lead | null) => {
     const party = counterpartOf(email);
     return (
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-body text-slate-500">
-        <span className="inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 font-bold max-w-full">
-          <span className="h-6 w-6 rounded-lg bg-white border border-slate-200 text-slate-600 text-caption font-bold flex items-center justify-center shrink-0">
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-body text-gray-500">
+        <span className="inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-md bg-gray-50 border border-gray-200 text-gray-800 font-bold max-w-full">
+          <span className="h-6 w-6 rounded-lg bg-white border border-gray-200 text-gray-600 text-caption font-bold flex items-center justify-center shrink-0">
             {initialsOf(party.name)}
           </span>
-          {email.isSent && <span className="text-slate-400 font-semibold">{t("To:", "Komu:", "Címzett:")}</span>}
+          {email.isSent && <span className="text-gray-400 font-semibold">{t("To:", "Komu:", "Címzett:")}</span>}
           <span className="truncate">{party.name}</span>
         </span>
         {party.address && party.address !== party.name && <span className="truncate">{party.address}</span>}
-        <span className="text-slate-300" aria-hidden>|</span>
+        <span className="text-gray-300" aria-hidden>|</span>
         <span>{formatFullDate(email.date)}</span>
         {lead ? (
           renderLeadChip(lead)
         ) : (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold border bg-white text-slate-500 border-slate-200">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold border bg-white text-gray-500 border-gray-200">
             👤 {t(`Not in ${PRODUCT_NAME}`, `Nie je v ${PRODUCT_NAME}`, `Nincs a ${PRODUCT_NAME}-ben`)}
           </span>
         )}
@@ -201,15 +201,15 @@ export function useEmailPresentation({
     const folder = email.isSent ? "Sent" : activeFolder;
     return (
       <div className="shrink-0">
-        <div className="text-ui font-bold text-slate-500 mb-2 flex items-center gap-1.5">
+        <div className="text-ui font-bold text-gray-500 mb-2 flex items-center gap-1.5">
           <Paperclip size={14} /> {t("Attachments", "Prílohy", "Mellékletek")} · {attachments.length}
         </div>
         <div className="flex flex-wrap gap-2.5">
           {attachments.map((att: any, attIdx: number) => {
             const { Icon, cls } = attachmentVisual(att.name || "");
             return (
-              <div key={attIdx} className="flex items-center gap-3 pl-2.5 pr-1.5 py-2 bg-white border border-slate-200 hover:border-slate-300 hover:shadow-sm rounded-2xl transition-all">
-                <span className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${cls}`}>
+              <div key={attIdx} className="flex items-center gap-3 pl-2.5 pr-1.5 py-2 bg-white border border-gray-200 hover:border-gray-300 hover:shadow-sm rounded-lg transition-all">
+                <span className={`h-10 w-10 rounded-md flex items-center justify-center shrink-0 ${cls}`}>
                   <Icon size={18} />
                 </span>
                 <button
@@ -218,14 +218,14 @@ export function useEmailPresentation({
                   className="min-w-0 text-left cursor-pointer"
                   title={t("Download", "Stiahnuť", "Letöltés")}
                 >
-                  <span className="block text-body font-bold text-slate-800 truncate max-w-50">{att.name}</span>
-                  <span className="block text-ui text-slate-500">{formatBytes(att.size)}</span>
+                  <span className="block text-body font-bold text-gray-800 truncate max-w-50">{att.name}</span>
+                  <span className="block text-ui text-gray-500">{formatBytes(att.size)}</span>
                 </button>
                 <div className="flex items-center">
                   <button
                     type="button"
                     onClick={() => handleDownloadAttachment(email.uid, folder, att)}
-                    className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-800 transition-all active:scale-95 cursor-pointer"
+                    className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-800 transition-all active:scale-95 cursor-pointer"
                     title={t("Download", "Stiahnuť", "Letöltés")}
                     aria-label={t("Download", "Stiahnuť", "Letöltés")}
                   >
@@ -235,7 +235,7 @@ export function useEmailPresentation({
                     <button
                       type="button"
                       onClick={() => handleAddAttachmentToDocs(email.uid, folder, att, lead)}
-                      className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-emerald-50 hover:text-emerald-700 transition-all active:scale-95 cursor-pointer"
+                      className="h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-emerald-50 hover:text-emerald-700 transition-all active:scale-95 cursor-pointer"
                       title={t("Add to Docs", "Pridať do dokumentov", "Hozzáadás a dokumentumokhoz")}
                       aria-label={t("Add to Docs", "Pridať do dokumentov", "Hozzáadás a dokumentumokhoz")}
                     >
@@ -334,7 +334,7 @@ export function useEmailPresentation({
         title={t("AI summary", "AI súhrn", "AI összefoglaló")}
         aria-label={t("AI summary", "AI súhrn", "AI összefoglaló")}
         aria-expanded={isActive}
-        className={`relative ${size === "sm" ? "h-8 w-8" : "h-9 w-9"} shrink-0 rounded-xl flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
+        className={`relative ${size === "sm" ? "h-8 w-8" : "h-9 w-9"} shrink-0 rounded-md flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
           isActive
             ? hasProblems
               ? "bg-rose-100 text-rose-700"
@@ -367,7 +367,7 @@ export function useEmailPresentation({
       return (
         <div
           data-testid="comm-ai-summary-banner"
-          className="mx-6 mt-3 flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-purple-50/50 border border-purple-100 text-caption font-medium italic text-purple-600 shrink-0"
+          className="mx-6 mt-3 flex items-center gap-2.5 px-4 py-2.5 rounded-md bg-purple-50/50 border border-purple-100 text-caption font-medium italic text-purple-600 shrink-0"
         >
           <Brain className="h-4 w-4 text-purple-400 shrink-0" />
           {t(
@@ -383,7 +383,7 @@ export function useEmailPresentation({
       return (
         <div
           data-testid="comm-ai-summary-banner"
-          className="mx-6 mt-3 flex items-center justify-between gap-2.5 px-4 py-2.5 rounded-xl bg-purple-50/50 border border-purple-200/70 text-purple-900 shrink-0"
+          className="mx-6 mt-3 flex items-center justify-between gap-2.5 px-4 py-2.5 rounded-md bg-purple-50/50 border border-purple-200/70 text-purple-900 shrink-0"
         >
           <div className="flex items-center gap-2 text-caption font-semibold">
             <Brain className="h-4 w-4 text-purple-600 shrink-0" />
@@ -414,7 +414,7 @@ export function useEmailPresentation({
     return (
       <div
         data-testid="comm-ai-summary-banner"
-        className={`mx-6 mt-3 px-4 py-3 rounded-2xl border transition-all animate-fade-in shrink-0 text-left space-y-2 ${
+        className={`mx-6 mt-3 px-4 py-3 rounded-lg border transition-all animate-fade-in shrink-0 text-left space-y-2 ${
           hasProblems
             ? "bg-rose-50/75 border-rose-200 text-rose-950"
             : "bg-purple-50/70 border-purple-200 text-purple-950"
@@ -455,7 +455,7 @@ export function useEmailPresentation({
               onClick={onRefresh}
               disabled={isLoading}
               title={t("Regenerate AI summary", "Prepočítať AI zhrnutie", "AI összefoglaló újragenerálása")}
-              className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-500 hover:bg-white/80 hover:text-slate-800 cursor-pointer shrink-0 disabled:opacity-40"
+              className="h-7 w-7 rounded-lg flex items-center justify-center text-gray-500 hover:bg-white/80 hover:text-gray-800 cursor-pointer shrink-0 disabled:opacity-40"
             >
               <RefreshCw size={13} className={isLoading ? "animate-spin" : ""} />
             </button>
@@ -492,7 +492,7 @@ export function useEmailPresentation({
               return (
                 <span
                   key={idx}
-                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-white/80 border border-purple-200 text-slate-800 text-micro font-semibold"
+                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-white/80 border border-purple-200 text-gray-800 text-micro font-semibold"
                 >
                   <span>{item}</span>
                   {matchingTask ? (
@@ -545,7 +545,7 @@ export function useEmailPresentation({
           style={position}
           onMouseEnter={clearDigestHide}
           onMouseLeave={() => { if (!pinned) scheduleDigestHide(); }}
-          className="fixed z-50 max-h-[min(440px,70vh)] overflow-y-auto bg-white border border-purple-200 rounded-2xl shadow-2xl p-4 text-left animate-fade-in select-text"
+          className="fixed z-50 max-h-[min(440px,70vh)] overflow-y-auto bg-white border border-purple-200 rounded-lg shadow-xl p-4 text-left animate-fade-in select-text"
         >
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -560,7 +560,7 @@ export function useEmailPresentation({
               <button
                 type="button"
                 onClick={closeDigest}
-                className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-all cursor-pointer"
+                className="h-7 w-7 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-all cursor-pointer"
                 aria-label={t("Close", "Zavrieť", "Bezárás")}
               >
                 <X size={15} />
@@ -577,9 +577,9 @@ export function useEmailPresentation({
                   : t("Analyzing email content...", "Analyzuje sa obsah e-mailu...", "E-mail tartalmának elemzése...")}
               </div>
             ) : summaries[key] ? (
-              <p className="text-body text-slate-700 leading-relaxed">{summaries[key]}</p>
+              <p className="text-body text-gray-700 leading-relaxed">{summaries[key]}</p>
             ) : (
-              <p className="text-body text-slate-400 italic">{t("No summary available.", "Súhrn nie je k dispozícii.", "Nincs elérhető összefoglaló.")}</p>
+              <p className="text-body text-gray-400 italic">{t("No summary available.", "Súhrn nie je k dispozícii.", "Nincs elérhető összefoglaló.")}</p>
             )}
           </div>
 
@@ -593,7 +593,7 @@ export function useEmailPresentation({
                 {problems.map((prob, idx) => (
                   <li
                     key={idx}
-                    className="rounded-xl bg-rose-50/80 border border-rose-200 px-3 py-1.5 text-caption font-bold text-rose-900"
+                    className="rounded-md bg-rose-50/80 border border-rose-200 px-3 py-1.5 text-caption font-bold text-rose-900"
                   >
                     ⚠️ {prob}
                   </li>
@@ -614,9 +614,9 @@ export function useEmailPresentation({
                   const assignedUser = matchingTask?.assignedUsers?.[0] || null;
                   const isAssigning = assigningActionItem?.item === item && assigningActionItem?.emailUid === key;
                   return (
-                    <li key={idx} className="rounded-xl bg-purple-50/60 border border-purple-100 px-3 py-2">
+                    <li key={idx} className="rounded-md bg-purple-50/60 border border-purple-100 px-3 py-2">
                       <div className="flex items-start justify-between gap-2">
-                        <span className="text-body text-slate-800">{item}</span>
+                        <span className="text-body text-gray-800">{item}</span>
                         {matchingTask ? (
                           <span className="shrink-0 text-ui font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg" title={assignedUser || undefined}>
                             {assignedUser ? `✓ ${assignedUser.substring(0, 2).toUpperCase()}` : "✓"}
@@ -644,7 +644,7 @@ export function useEmailPresentation({
                                 handleAddEmailActionItemAsTask(item, key, lead, u.name);
                                 setAssigningActionItem(null);
                               }}
-                              className="inline-flex items-center gap-1.5 pl-1 pr-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-ui font-bold text-slate-700 cursor-pointer transition-all"
+                              className="inline-flex items-center gap-1.5 pl-1 pr-2.5 py-1 bg-white hover:bg-gray-50 border border-gray-200 rounded-lg text-ui font-bold text-gray-700 cursor-pointer transition-all"
                             >
                               <span className="h-5 w-5 rounded-full bg-indigo-50 border border-indigo-200/40 text-indigo-600 flex items-center justify-center text-micro font-bold shrink-0">
                                 {u.name.substring(0, 2).toUpperCase()}
@@ -662,7 +662,7 @@ export function useEmailPresentation({
           )}
 
           {!pinned && (
-            <p className="mt-3 text-ui text-slate-400">{t("Click the icon to keep it open.", "Kliknutím na ikonu ho necháte otvorený.", "Kattintson az ikonra, hogy nyitva maradjon.")}</p>
+            <p className="mt-3 text-ui text-gray-400">{t("Click the icon to keep it open.", "Kliknutím na ikonu ho necháte otvorený.", "Kattintson az ikonra, hogy nyitva maradjon.")}</p>
           )}
         </div>
       </>
@@ -703,28 +703,28 @@ export function useEmailPresentation({
             opts.onOpen();
           }
         }}
-        className={`relative flex gap-3 px-4 py-3.5 border-b border-slate-100 text-left cursor-pointer transition-colors outline-none focus-visible:bg-slate-50 ${
-          opts.selected ? "bg-pink-50/40" : "hover:bg-slate-50/80"
+        className={`relative flex gap-3 px-4 py-3.5 border-b border-gray-100 text-left cursor-pointer transition-colors outline-none focus-visible:bg-gray-50 ${
+          opts.selected ? "bg-entity-subtle" : "hover:bg-gray-50/80"
         }`}
       >
-        {opts.selected && <span className="absolute left-0 top-0 bottom-0 w-0.75 bg-pink-600 rounded-r" aria-hidden />}
-        <span className="h-9 w-9 rounded-xl bg-slate-100 text-slate-600 text-ui font-bold flex items-center justify-center shrink-0">
+        {opts.selected && <span className="absolute left-0 top-0 bottom-0 w-0.75 bg-entity-solid rounded-r" aria-hidden />}
+        <span className="h-9 w-9 rounded-md bg-gray-100 text-gray-600 text-ui font-bold flex items-center justify-center shrink-0">
           {initialsOf(party.name)}
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <span className={`flex items-center min-w-0 text-ui font-medium ${opts.unread ? "text-slate-700" : "text-slate-500"}`}>
+            <span className={`flex items-center min-w-0 text-ui font-medium ${opts.unread ? "text-gray-700" : "text-gray-500"}`}>
               <GeometricIcon emailString={party.address} />
-              {opts.email.isSent && <span className="text-slate-400 font-semibold mr-1 shrink-0">{t("To:", "Komu:", "Címzett:")}</span>}
+              {opts.email.isSent && <span className="text-gray-400 font-semibold mr-1 shrink-0">{t("To:", "Komu:", "Címzett:")}</span>}
               <span className="truncate">{party.name}</span>
             </span>
-            <span className={`text-ui shrink-0 ${opts.unread ? "text-pink-600 font-bold" : "text-slate-500"}`}>{formatListDate(opts.email.date)}</span>
+            <span className={`text-ui shrink-0 ${opts.unread ? "text-entity-text font-bold" : "text-gray-500"}`}>{formatListDate(opts.email.date)}</span>
           </div>
-          <div className={`mt-0.5 text-title-sm font-bold truncate ${opts.unread ? "text-slate-900" : "text-slate-700"}`}>
+          <div className={`mt-0.5 text-title-sm font-bold truncate ${opts.unread ? "text-gray-900" : "text-gray-700"}`}>
             {opts.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)")}
           </div>
           {opts.email.preview && (
-            <p className="mt-0.5 text-body text-slate-500 line-clamp-2 break-words">{opts.email.preview}</p>
+            <p className="mt-0.5 text-body text-gray-500 line-clamp-2 break-words">{opts.email.preview}</p>
           )}
           <div className="mt-2 flex items-center gap-1.5 min-h-6">
             {opts.email.attachment_count > 0 && (
@@ -736,19 +736,19 @@ export function useEmailPresentation({
               </span>
             )}
             {opts.email.isSent ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold bg-slate-50 text-slate-500 border border-slate-200">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold bg-gray-50 text-gray-500 border border-gray-200">
                 <ArrowUpRight size={12} /> {t("Sent", "Odoslané", "Elküldve")}
               </span>
             ) : null}
             {opts.count !== undefined && opts.count > 1 && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold bg-pink-50 text-pink-700 border border-pink-100">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold bg-entity-subtle text-entity-text border border-pink-100">
                 <MessagesSquare size={12} /> {opts.count}
               </span>
             )}
             {renderLeadChip(lead)}
             <span className="flex-1" />
             {renderDigestButton(opts.digestKey, lead, "sm")}
-            {opts.unread && <span className="h-2 w-2 rounded-full bg-pink-600 shrink-0" aria-label={t("Unread", "Neprečítané", "Olvasatlan")} />}
+            {opts.unread && <span className="h-2 w-2 rounded-full bg-entity-solid shrink-0" aria-label={t("Unread", "Neprečítané", "Olvasatlan")} />}
           </div>
         </div>
       </div>
@@ -767,11 +767,11 @@ export function useEmailPresentation({
   };
 
   const emptyPane = (text: string) => (
-    <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3 px-6 text-center">
-      <span className="h-14 w-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center">
-        <Mail size={26} className="stroke-[1.5] text-slate-300" />
+    <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3 px-6 text-center">
+      <span className="h-14 w-14 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center">
+        <Mail size={26} className="stroke-[1.5] text-gray-300" />
       </span>
-      <span className="text-body font-semibold text-slate-500">{text}</span>
+      <span className="text-body font-semibold text-gray-500">{text}</span>
     </div>
   );
 

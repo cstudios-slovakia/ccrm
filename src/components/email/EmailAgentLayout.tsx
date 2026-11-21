@@ -198,12 +198,12 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                     /* VISUAL TRIGGER STUDIO (REACTIVE EVENT-DRIVEN WIRING CANVAS) */
                     <div
                       data-testid="visual-trigger-studio"
-                      className="glass-panel rounded-3xl border border-amber-300/80 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden"
+                      className=" rounded-lg border border-amber-300/80 bg-white shadow-xs flex flex-col h-full max-h-full overflow-hidden"
                     >
                       {/* Studio Header */}
                       <div className="px-5 py-3.5 border-b border-amber-200/70 bg-gradient-to-r from-amber-500/10 via-indigo-500/5 to-emerald-500/10 flex flex-wrap items-center justify-between gap-3 shrink-0">
                         <div className="flex items-center gap-3 min-w-0">
-                          <span className="w-9 h-9 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-xs shrink-0">
+                          <span className="w-9 h-9 rounded-lg bg-amber-500 text-white flex items-center justify-center shadow-xs shrink-0">
                             <Zap size={18} />
                           </span>
                           <div className="min-w-0">
@@ -218,7 +218,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                 📚 {t("Context: Last 50 msgs ∪ 5 days (16k cap)", "Kontext: Posledných 50 správ ∪ 5 dní (16k limit)", "Kontextus: Utolsó 50 üzenet ∪ 5 nap (16k limit)")}
                               </span>
                             </div>
-                            <h3 className="text-title-sm font-heading font-bold text-slate-900 truncate mt-0.5">
+                            <h3 className="text-title-sm font-heading font-bold text-gray-900 truncate mt-0.5">
                               {t(
                                 "Connect WhatsApp, Email & CRM Events to your AI Agents",
                                 "Prepojte WhatsApp, E-mail a CRM udalosti s vašimi AI agentmi",
@@ -232,7 +232,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                           <button
                             type="button"
                             onClick={() => setNewSubagentOpen(true)}
-                            className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-800 text-micro font-bold flex items-center gap-1.5 cursor-pointer"
+                            className="px-3 py-1.5 rounded-md bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-800 text-micro font-bold flex items-center gap-1.5 cursor-pointer"
                           >
                             <Bot size={13} /> + {t("Create Agent", "Vytvoriť agenta", "Ügynök létrehozása")}
                           </button>
@@ -240,7 +240,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                             type="button"
                             data-testid="new-visual-trigger-btn"
                             onClick={() => openNewTriggerModal()}
-                            className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                            className="px-3 py-1.5 rounded-md bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
                           >
                             <Plus size={13} /> {t("New Trigger Wire", "Nové prepojenie", "Új indító kapcsolat")}
                           </button>
@@ -249,7 +249,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                             onClick={() => {
                               setVisualTriggersOpen(false);
                             }}
-                            className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-micro font-bold cursor-pointer"
+                            className="px-3 py-1.5 rounded-md bg-white hover:bg-gray-100 border border-gray-200 text-gray-700 text-micro font-bold cursor-pointer"
                           >
                             ← {t("Back to Chat", "Späť na chat", "Vissza a csevegéshez")}
                           </button>
@@ -323,29 +323,29 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                   <div
                                     key={trig.id}
                                     data-testid={`trigger-wire-card-${trig.id}`}
-                                    className={`p-4 rounded-3xl border transition-all grid grid-cols-1 ws-lg:grid-cols-12 gap-4 items-center ${
+                                    className={`p-4 rounded-lg border transition-all grid grid-cols-1 ws-lg:grid-cols-12 gap-4 items-center ${
                                       trig.enabled
                                         ? "bg-white border-amber-300/80 shadow-xs"
-                                        : "bg-slate-50/80 border-slate-200 opacity-75"
+                                        : "bg-gray-50/80 border-gray-200 opacity-75"
                                     }`}
                                   >
                                     {/* LEFT (4 cols): SOURCE CONNECTION */}
                                     <div
                                       onClick={() => openEditTriggerModal(trig)}
-                                      className={`ws-lg:col-span-4 p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
+                                      className={`ws-lg:col-span-4 p-3.5 rounded-lg border text-left transition-all flex items-start gap-3 cursor-pointer ${
                                         trig.sourceType === "whatsapp"
                                           ? "bg-emerald-50/40 hover:bg-emerald-50/80 border-emerald-200/90"
                                           : trig.sourceType === "email"
-                                            ? "bg-pink-50/40 hover:bg-pink-50/80 border-pink-200/90"
+                                            ? "bg-entity-subtle hover:bg-entity-subtle border-entity-border"
                                             : "bg-indigo-50/40 hover:bg-indigo-50/80 border-indigo-200/90"
                                       }`}
                                     >
                                       <span
-                                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                                        className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 ${
                                           trig.sourceType === "whatsapp"
                                             ? "bg-emerald-500/15 text-emerald-700"
                                             : trig.sourceType === "email"
-                                              ? "bg-pink-500/15 text-pink-700"
+                                              ? "bg-entity-solid/15 text-entity-text"
                                               : "bg-indigo-500/15 text-indigo-700"
                                         }`}
                                       >
@@ -370,11 +370,11 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                           >
                                             {channelBadge}
                                           </span>
-                                          <span className="px-2 py-0.5 rounded-md bg-white/90 border border-slate-200 text-slate-700 text-micro font-mono truncate">
+                                          <span className="px-2 py-0.5 rounded-md bg-white/90 border border-gray-200 text-gray-700 text-micro font-mono truncate">
                                             {filterSummary}
                                           </span>
                                         </div>
-                                        <div className="text-caption font-bold text-slate-900 truncate mt-1">
+                                        <div className="text-caption font-bold text-gray-900 truncate mt-1">
                                           {sourceAcc?.name ||
                                             (trig.sourceType === "whatsapp"
                                               ? "WhatsApp / Messaging"
@@ -383,14 +383,14 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                                 : t("Leads, Projects & Tickets", "Príležitosti, Projekty a Tikety", "Érdeklődők, Projektek és Jegyek"))}
                                         </div>
                                         {sourceAcc?.address && (
-                                          <div className="text-micro text-slate-500 font-mono truncate">{sourceAcc.address}</div>
+                                          <div className="text-micro text-gray-500 font-mono truncate">{sourceAcc.address}</div>
                                         )}
                                       </div>
                                     </div>
 
                                     {/* MIDDLE (4 cols): SQUIGGLY LINE & WIRE CONTROLS */}
                                     <div className="ws-lg:col-span-4 flex flex-col items-center justify-center gap-2 px-2">
-                                      <div className="flex items-center flex-wrap justify-center gap-1.5 text-micro font-bold text-slate-700">
+                                      <div className="flex items-center flex-wrap justify-center gap-1.5 text-micro font-bold text-gray-700">
                                         <span>{trig.name}</span>
                                         {trig.autoReply && (
                                           <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-micro font-bold">
@@ -418,7 +418,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                       </svg>
 
                                       {trig.instructions && (
-                                        <div className="text-micro text-slate-500 line-clamp-1 max-w-full px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-100">
+                                        <div className="text-micro text-gray-500 line-clamp-1 max-w-full px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-100">
                                           {trig.instructions}
                                         </div>
                                       )}
@@ -442,7 +442,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                         <button
                                           type="button"
                                           onClick={() => openEditTriggerModal(trig)}
-                                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-micro font-bold cursor-pointer"
+                                          className="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-micro font-bold cursor-pointer"
                                         >
                                           {t("Edit", "Upraviť", "Szerk.")}
                                         </button>
@@ -452,7 +452,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                           className={`px-2.5 py-1 rounded-lg text-micro font-bold cursor-pointer ${
                                             trig.enabled
                                               ? "bg-emerald-600 text-white"
-                                              : "bg-slate-200 text-slate-600"
+                                              : "bg-gray-200 text-gray-600"
                                           }`}
                                         >
                                           {trig.enabled ? t("On", "Zap.", "Be") : t("Off", "Vyp.", "Ki")}
@@ -460,7 +460,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                         <button
                                           type="button"
                                           onClick={() => void handleDeleteTrigger(trig.id)}
-                                          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                                          className="p-1 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
                                         >
                                           <Trash2 size={13} />
                                         </button>
@@ -478,7 +478,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                             : t("events ran", "spustených udalostí", "lefutott esemény")}
                                         </span>
                                         {trig.lastTriggeredAt && (
-                                          <span className="text-micro text-slate-400 font-mono truncate">
+                                          <span className="text-micro text-gray-400 font-mono truncate">
                                             {trig.lastStatus || "ok"}
                                           </span>
                                         )}
@@ -489,11 +489,11 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                           setActiveChatSubagentId(targetSub ? targetSub.id : "");
                                           setVisualTriggersOpen(false);
                                         }}
-                                        className="p-3.5 rounded-2xl border border-indigo-200/90 bg-indigo-50/30 hover:bg-indigo-50/70 transition-all flex items-center justify-between gap-3 cursor-pointer"
+                                        className="p-3.5 rounded-lg border border-indigo-200/90 bg-indigo-50/30 hover:bg-indigo-50/70 transition-all flex items-center justify-between gap-3 cursor-pointer"
                                       >
                                         <div className="flex items-center gap-2.5 min-w-0">
                                           <span
-                                            className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                                            className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 ${
                                               targetSub
                                                 ? "bg-amber-500/15 text-amber-700"
                                                 : "bg-indigo-500/15 text-indigo-700"
@@ -502,17 +502,17 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                             {targetSub ? <Bot size={18} /> : <Sparkles size={18} />}
                                           </span>
                                           <div className="min-w-0">
-                                            <div className="text-caption font-bold text-slate-900 truncate">
+                                            <div className="text-caption font-bold text-gray-900 truncate">
                                               {targetSub
                                                 ? `🤖 ${targetSub.name}`
                                                 : `✦ ${selectedAccount?.name} (${t("Main Agent", "Hlavný agent", "Fő ügynök")})`}
                                             </div>
-                                            <div className="text-micro text-slate-500 truncate">
+                                            <div className="text-micro text-gray-500 truncate">
                                               {targetSub ? targetSub.role : meta.label}
                                             </div>
                                           </div>
                                         </div>
-                                        <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-slate-700 text-micro font-bold shrink-0">
+                                        <span className="px-2.5 py-1 rounded-md bg-white border border-gray-200 text-gray-700 text-micro font-bold shrink-0">
                                           💬 {t("Chat", "Chat", "Chat")}
                                         </span>
                                       </div>
@@ -525,14 +525,14 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                               {(unwiredAccounts.length > 0 || !hasCrmEventWire) && (
                                 <div className="pt-2 space-y-3">
                                   <div className="flex items-center justify-between px-1">
-                                    <span className="text-micro font-bold uppercase tracking-wider text-slate-400">
+                                    <span className="text-micro font-bold uppercase tracking-wider text-gray-400">
                                       {t(
                                         "Available Source Connections — Click to Wire to Agent",
                                         "Dostupné zdrojové spojenia — Kliknutím prepojte s agentom",
                                         "Elérhető forráskapcsolatok — Kattintson az ügynökhöz kötéshez",
                                       )}
                                     </span>
-                                    <span className="text-micro text-slate-400">
+                                    <span className="text-micro text-gray-400">
                                       {unwiredAccounts.length + (hasCrmEventWire ? 0 : 1)}{" "}
                                       {t("unwired sources", "neprepojené zdroje", "bekötetlen forrás")}
                                     </span>
@@ -547,7 +547,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                       <div
                                         key={`unwired-${acc.id}`}
                                         data-testid={`unwired-source-card-${acc.id}`}
-                                        className="p-4 rounded-3xl border border-dashed border-slate-200/90 bg-slate-50/50 hover:bg-white hover:border-amber-300/80 transition-all grid grid-cols-1 ws-lg:grid-cols-12 gap-4 items-center"
+                                        className="p-4 rounded-lg border border-dashed border-gray-200/90 bg-gray-50/50 hover:bg-white hover:border-amber-300/80 transition-all grid grid-cols-1 ws-lg:grid-cols-12 gap-4 items-center"
                                       >
                                         {/* LEFT (4 cols): SOURCE CONNECTION */}
                                         <div
@@ -557,17 +557,17 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                               sourceConnectorId: acc.id,
                                             })
                                           }
-                                          className={`ws-lg:col-span-4 p-3.5 rounded-2xl border text-left transition-all flex items-start gap-3 cursor-pointer ${
+                                          className={`ws-lg:col-span-4 p-3.5 rounded-lg border text-left transition-all flex items-start gap-3 cursor-pointer ${
                                             isMsg
                                               ? "bg-emerald-50/30 hover:bg-emerald-50/70 border-emerald-200/70"
-                                              : "bg-pink-50/30 hover:bg-pink-50/70 border-pink-200/70"
+                                              : "bg-entity-subtle hover:bg-entity-subtle border-entity-border"
                                           }`}
                                         >
                                           <span
-                                            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                                            className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 ${
                                               isMsg
                                                 ? "bg-emerald-500/15 text-emerald-700"
-                                                : "bg-pink-500/15 text-pink-700"
+                                                : "bg-entity-solid/15 text-entity-text"
                                             }`}
                                           >
                                             {isMsg ? <MessageCircle size={19} /> : <Mail size={19} />}
@@ -583,15 +583,15 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                               >
                                                 {badgeLabel}
                                               </span>
-                                              <span className="px-2 py-0.5 rounded-md bg-white/90 border border-slate-200 text-slate-500 text-micro font-mono">
+                                              <span className="px-2 py-0.5 rounded-md bg-white/90 border border-gray-200 text-gray-500 text-micro font-mono">
                                                 {t("Not wired yet", "Zatiaľ neprepojené", "Még nincs bekötve")}
                                               </span>
                                             </div>
-                                            <div className="text-caption font-bold text-slate-900 truncate mt-1">
+                                            <div className="text-caption font-bold text-gray-900 truncate mt-1">
                                               {acc.name}
                                             </div>
                                             {acc.address && (
-                                              <div className="text-micro text-slate-500 font-mono truncate">{acc.address}</div>
+                                              <div className="text-micro text-gray-500 font-mono truncate">{acc.address}</div>
                                             )}
                                           </div>
                                         </div>
@@ -617,7 +617,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                                 sourceConnectorId: acc.id,
                                               })
                                             }
-                                            className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                                            className="px-3 py-1.5 rounded-md bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
                                           >
                                             <Plus size={12} />
                                             {t("Connect to Agent", "Prepojiť s agentom", "Bekötés ügynökhöz")}
@@ -627,7 +627,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                         {/* RIGHT (4 cols): TARGET AGENT PREVIEW */}
                                         <div className="ws-lg:col-span-4 flex flex-col">
                                           <div className="flex items-center justify-between px-1 mb-1.5">
-                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200 text-micro font-semibold">
+                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200 text-micro font-semibold">
                                               ⚡ 0 {t("events ran", "spustených udalostí", "lefutott esemény")}
                                             </span>
                                           </div>
@@ -638,24 +638,24 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                                 sourceConnectorId: acc.id,
                                               })
                                             }
-                                            className="p-3.5 rounded-2xl border border-dashed border-indigo-200/80 bg-indigo-50/20 hover:bg-indigo-50/50 transition-all flex items-center justify-between gap-3 cursor-pointer"
+                                            className="p-3.5 rounded-lg border border-dashed border-indigo-200/80 bg-indigo-50/20 hover:bg-indigo-50/50 transition-all flex items-center justify-between gap-3 cursor-pointer"
                                           >
                                             <div className="flex items-center gap-2.5 min-w-0">
-                                              <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-indigo-500/10 text-indigo-600">
+                                              <span className="w-9 h-9 rounded-md flex items-center justify-center shrink-0 bg-indigo-500/10 text-indigo-600">
                                                 {defaultTargetSub ? <Bot size={18} /> : <Sparkles size={18} />}
                                               </span>
                                               <div className="min-w-0">
-                                                <div className="text-caption font-bold text-slate-800 truncate">
+                                                <div className="text-caption font-bold text-gray-800 truncate">
                                                   {defaultTargetSub
                                                     ? `🤖 ${defaultTargetSub.name}`
                                                     : `✦ ${selectedAccount?.name} (${t("Main Agent", "Hlavný agent", "Fő ügynök")})`}
                                                 </div>
-                                                <div className="text-micro text-slate-500 truncate">
+                                                <div className="text-micro text-gray-500 truncate">
                                                   {defaultTargetSub ? defaultTargetSub.role : meta.label}
                                                 </div>
                                               </div>
                                             </div>
-                                            <span className="px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-micro font-bold shrink-0">
+                                            <span className="px-2.5 py-1 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-micro font-bold shrink-0">
                                               + {t("Wire", "Prepojiť", "Bekötés")}
                                             </span>
                                           </div>
@@ -667,7 +667,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                   {!hasCrmEventWire && (
                                     <div
                                       data-testid="unwired-source-card-crm_event"
-                                      className="p-4 rounded-3xl border border-dashed border-slate-200/90 bg-slate-50/50 hover:bg-white hover:border-amber-300/80 transition-all grid grid-cols-1 ws-lg:grid-cols-12 gap-4 items-center"
+                                      className="p-4 rounded-lg border border-dashed border-gray-200/90 bg-gray-50/50 hover:bg-white hover:border-amber-300/80 transition-all grid grid-cols-1 ws-lg:grid-cols-12 gap-4 items-center"
                                     >
                                       {/* LEFT (4 cols): CRM EVENT SOURCE */}
                                       <div
@@ -677,9 +677,9 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                             sourceConnectorId: "",
                                           })
                                         }
-                                        className="ws-lg:col-span-4 p-3.5 rounded-2xl border bg-indigo-50/30 hover:bg-indigo-50/70 border-indigo-200/70 text-left transition-all flex items-start gap-3 cursor-pointer"
+                                        className="ws-lg:col-span-4 p-3.5 rounded-lg border bg-indigo-50/30 hover:bg-indigo-50/70 border-indigo-200/70 text-left transition-all flex items-start gap-3 cursor-pointer"
                                       >
-                                        <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 bg-indigo-500/15 text-indigo-700">
+                                        <span className="w-10 h-10 rounded-md flex items-center justify-center shrink-0 bg-indigo-500/15 text-indigo-700">
                                           <Activity size={19} />
                                         </span>
                                         <div className="min-w-0 flex-1">
@@ -687,14 +687,14 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                             <span className="px-1.5 py-0.5 rounded text-micro font-bold uppercase bg-indigo-100 text-indigo-800">
                                               CRM EVENT
                                             </span>
-                                            <span className="px-2 py-0.5 rounded-md bg-white/90 border border-slate-200 text-slate-500 text-micro font-mono">
+                                            <span className="px-2 py-0.5 rounded-md bg-white/90 border border-gray-200 text-gray-500 text-micro font-mono">
                                               {t("Not wired yet", "Zatiaľ neprepojené", "Még nincs bekötve")}
                                             </span>
                                           </div>
-                                          <div className="text-caption font-bold text-slate-900 truncate mt-1">
+                                          <div className="text-caption font-bold text-gray-900 truncate mt-1">
                                             {t("Leads, Projects & Tickets", "Príležitosti, Projekty a Tikety", "Érdeklődők, Projektek és Jegyek")}
                                           </div>
-                                          <div className="text-micro text-slate-500 font-mono truncate">
+                                          <div className="text-micro text-gray-500 font-mono truncate">
                                             lead_created · project_created · ticket_created
                                           </div>
                                         </div>
@@ -721,7 +721,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                               sourceConnectorId: "",
                                             })
                                           }
-                                          className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                                          className="px-3 py-1.5 rounded-md bg-amber-500 hover:bg-amber-600 text-white text-micro font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
                                         >
                                           <Plus size={12} />
                                           {t("Connect to Agent", "Prepojiť s agentom", "Bekötés ügynökhöz")}
@@ -731,7 +731,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                       {/* RIGHT (4 cols): TARGET AGENT PREVIEW */}
                                       <div className="ws-lg:col-span-4 flex flex-col">
                                         <div className="flex items-center justify-between px-1 mb-1.5">
-                                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200 text-micro font-semibold">
+                                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200 text-micro font-semibold">
                                             ⚡ 0 {t("events ran", "spustených udalostí", "lefutott esemény")}
                                           </span>
                                         </div>
@@ -742,24 +742,24 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                               sourceConnectorId: "",
                                             })
                                           }
-                                          className="p-3.5 rounded-2xl border border-dashed border-indigo-200/80 bg-indigo-50/20 hover:bg-indigo-50/50 transition-all flex items-center justify-between gap-3 cursor-pointer"
+                                          className="p-3.5 rounded-lg border border-dashed border-indigo-200/80 bg-indigo-50/20 hover:bg-indigo-50/50 transition-all flex items-center justify-between gap-3 cursor-pointer"
                                         >
                                           <div className="flex items-center gap-2.5 min-w-0">
-                                            <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-indigo-500/10 text-indigo-600">
+                                            <span className="w-9 h-9 rounded-md flex items-center justify-center shrink-0 bg-indigo-500/10 text-indigo-600">
                                               {defaultTargetSub ? <Bot size={18} /> : <Sparkles size={18} />}
                                             </span>
                                             <div className="min-w-0">
-                                              <div className="text-caption font-bold text-slate-800 truncate">
+                                              <div className="text-caption font-bold text-gray-800 truncate">
                                                 {defaultTargetSub
                                                   ? `🤖 ${defaultTargetSub.name}`
                                                   : `✦ ${selectedAccount?.name} (${t("Main Agent", "Hlavný agent", "Fő ügynök")})`}
                                               </div>
-                                              <div className="text-micro text-slate-500 truncate">
+                                              <div className="text-micro text-gray-500 truncate">
                                                 {defaultTargetSub ? defaultTargetSub.role : meta.label}
                                               </div>
                                             </div>
                                           </div>
-                                          <span className="px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-micro font-bold shrink-0">
+                                          <span className="px-2.5 py-1 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-micro font-bold shrink-0">
                                             + {t("Wire", "Prepojiť", "Bekötés")}
                                           </span>
                                         </div>
@@ -787,10 +787,10 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                     .map((fu) => (
                                       <div
                                         key={fu.id}
-                                        className="p-3 rounded-2xl border border-indigo-200 bg-indigo-50/40 flex flex-wrap items-center justify-between gap-3"
+                                        className="p-3 rounded-lg border border-indigo-200 bg-indigo-50/40 flex flex-wrap items-center justify-between gap-3"
                                       >
                                         <div className="min-w-0 flex-1">
-                                          <div className="flex items-center gap-2 text-caption font-bold text-slate-900">
+                                          <div className="flex items-center gap-2 text-caption font-bold text-gray-900">
                                             <span>{fu.targetName || fu.targetChat}</span>
                                             <span className="px-2 py-0.5 rounded-md bg-white border border-indigo-200 text-indigo-800 text-micro font-mono">
                                               {t("Due:", "Termín:", "Esedékes:")} {fu.dueAt}
@@ -801,14 +801,14 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                               </span>
                                             )}
                                           </div>
-                                          <div className="text-micro text-slate-600 truncate mt-0.5">
+                                          <div className="text-micro text-gray-600 truncate mt-0.5">
                                             {fu.instructions}
                                           </div>
                                         </div>
                                         <button
                                           type="button"
                                           onClick={() => void handleCancelFollowup(fu.id)}
-                                          className="px-2.5 py-1 rounded-xl bg-white hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-200 text-micro font-bold cursor-pointer"
+                                          className="px-2.5 py-1 rounded-md bg-white hover:bg-rose-50 text-gray-600 hover:text-rose-700 border border-gray-200 text-micro font-bold cursor-pointer"
                                         >
                                           {t("Cancel", "Zrušiť", "Törlés")}
                                         </button>
@@ -825,12 +825,12 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                   /* LEFT HALF (OR FULL WIDTH): AGENT CHAT CARD */
                   <div
                     data-testid="agent-chat-pane"
-                    className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden"
+                    className=" rounded-lg border border-gray-200 bg-white shadow-xs flex flex-col h-full max-h-full overflow-hidden"
                   >
                     {/* 1. AGENT HEADER */}
                     <div className={`px-5 py-3.5 flex flex-wrap items-center justify-between gap-2.5 shrink-0 ${meta.modalHeaderBg}`}>
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${meta.iconBg}`}>
+                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${meta.iconBg}`}>
                           <ProviderLogo type={selectedChannelType} className="w-4.5 h-4.5" />
                         </div>
                         <div className="min-w-0">
@@ -884,21 +884,21 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-bold border transition-colors cursor-pointer ${
                                 activeHeartbeatEnabled
                                   ? "bg-emerald-500/15 text-emerald-800 border-emerald-300"
-                                  : "bg-white/80 text-slate-600 border-slate-200 hover:bg-slate-100"
+                                  : "bg-white/80 text-gray-600 border-gray-200 hover:bg-gray-100"
                               }`}
                             >
                               💓 {activeHeartbeatEnabled ? `${activeHeartbeatInterval}m` : t("Heartbeat Off ($0)", "Heartbeat Vyp. ($0)", "Heartbeat Ki ($0)")}
                             </button>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5">
-                            <h3 className="text-title-sm font-heading font-bold text-slate-900 truncate">
+                            <h3 className="text-title-sm font-heading font-bold text-gray-900 truncate">
                               {activeSubagentObj ? `🤖 ${activeSubagentObj.name}` : selectedAccount?.name}
                             </h3>
                             <select
                               value={activeChatSubagentId}
                               onChange={(e) => setActiveChatSubagentId(e.target.value)}
                               aria-label={t("Active agent or subagent", "Aktívny agent alebo subagent", "Aktív ügynök vagy alügynök")}
-                              className="px-2 py-0.5 rounded-lg bg-white/90 border border-slate-200 text-micro font-bold text-slate-700 cursor-pointer"
+                              className="px-2 py-0.5 rounded-lg bg-white/90 border border-gray-200 text-micro font-bold text-gray-700 cursor-pointer"
                             >
                               <option value="">
                                 ✦ {t("Main Agent", "Hlavný agent", "Fő ügynök")} ({selectedAccount?.name})
@@ -938,7 +938,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                             type="button"
                             onClick={() => void handleSendAgentMessage(quickPrompt)}
                             disabled={isAgentRunning}
-                            className="px-2.5 py-1 rounded-xl bg-white/90 hover:bg-white border border-slate-200 text-micro font-semibold text-slate-700 shadow-2xs transition-colors cursor-pointer disabled:opacity-40"
+                            className="px-2.5 py-1 rounded-md bg-white/90 hover:bg-white border border-gray-200 text-micro font-semibold text-gray-700 shadow-2xs transition-colors cursor-pointer disabled:opacity-40"
                           >
                             <Sparkles size={11} className="inline mr-1 text-amber-500" />
                             {quickPrompt}
@@ -950,7 +950,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                             onClick={() => void handleClearAgentChat()}
                             disabled={isAgentRunning}
                             title={t("Clear chat history", "Vymazať históriu chatu", "Csevegési előzmények törlése")}
-                            className="px-2 py-1 rounded-xl bg-white/80 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-micro font-semibold text-slate-600 hover:text-rose-700 transition-colors cursor-pointer"
+                            className="px-2 py-1 rounded-md bg-white/80 hover:bg-rose-50 border border-gray-200 hover:border-rose-200 text-micro font-semibold text-gray-600 hover:text-rose-700 transition-colors cursor-pointer"
                           >
                             <Trash2 size={11} className="inline mr-1" />
                             {t("Clear", "Vymazať", "Törlés")}
@@ -965,14 +965,14 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                       className="flex-1 min-h-40 overflow-y-auto px-5 py-4 space-y-3"
                     >
                       {history.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto gap-2.5 text-slate-500 py-4">
-                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${meta.iconBg}`}>
+                        <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto gap-2.5 text-gray-500 py-4">
+                          <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${meta.iconBg}`}>
                             <Bot size={22} />
                           </div>
-                          <div className="text-title-sm font-bold text-slate-800">
+                          <div className="text-title-sm font-bold text-gray-800">
                             {selectedAccount?.name} · {t("Autonomous CCRM MCP Agent", "Autonómny CCRM MCP Agent", "Autonóm CCRM MCP Ügynök")}
                           </div>
-                          <p className="text-caption text-slate-500">
+                          <p className="text-caption text-gray-500">
                             {t(
                               "Instruct the agent in chat. Select memory.md or any artifact in the right sidebar to halve the chat and open the live content editor.",
                               "Zadajte agentovi pokyn v chate. Kliknutím na memory.md alebo artefakt v pravom paneli rozdelíte chat na polovicu a otvoríte editor obsahu.",
@@ -987,10 +987,10 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                             className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                           >
                             <div
-                              className={`max-w-xl p-3.5 rounded-2xl space-y-1.5 ${
+                              className={`max-w-xl p-3.5 rounded-lg space-y-1.5 ${
                                 msg.role === "user"
                                   ? `${meta.accentBtn} shadow-xs`
-                                  : "bg-slate-100 text-slate-800 border border-slate-200"
+                                  : "bg-gray-100 text-gray-800 border border-gray-200"
                               }`}
                             >
                               <div className="text-micro opacity-80 flex flex-wrap items-center justify-between gap-2">
@@ -1046,7 +1046,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                               ? "bg-emerald-50 text-emerald-800 border-emerald-200"
                                               : stItem.kind === "whatsapp"
                                                 ? "bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300"
-                                                : "bg-white text-slate-700 border-slate-200"
+                                                : "bg-white text-gray-700 border-gray-200"
                                       }`}
                                     >
                                       {stItem.kind === "memory"
@@ -1076,7 +1076,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                         ))
                       )}
                       {isAgentRunning && (
-                        <div className="flex items-center gap-2 text-caption text-slate-500 font-semibold">
+                        <div className="flex items-center gap-2 text-caption text-gray-500 font-semibold">
                           <Loader2 size={15} className="animate-spin text-indigo-600" />
                           {t(
                             "Agent is working autonomously via CCRM MCP...",
@@ -1088,7 +1088,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                     </div>
 
                     {/* 3. CHAT PROMPT INPUT BAR */}
-                    <div className="px-4 py-3 border-t border-slate-100 flex items-center gap-2 shrink-0 bg-white">
+                    <div className="px-4 py-3 border-t border-gray-100 flex items-center gap-2 shrink-0 bg-white">
                       <input
                         type="text"
                         value={agentPrompt}
@@ -1108,13 +1108,13 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                 "Utasítsa az ügynököt, mit tegyen, írjon a memory.md-be vagy hozzon létre artefaktumot...",
                               )
                         }
-                        className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-body text-slate-800 focus:outline-none focus:bg-white focus:border-indigo-500"
+                        className="flex-1 px-3.5 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-body text-gray-800 focus:outline-none focus:bg-white focus:border-indigo-500"
                       />
                       <button
                         type="button"
                         onClick={() => void handleSendAgentMessage()}
                         disabled={!agentPrompt.trim() || isAgentRunning}
-                        className={`px-4 py-2.5 rounded-xl text-body font-bold flex items-center gap-2 disabled:opacity-40 cursor-pointer ${meta.accentBtn}`}
+                        className={`px-4 py-2.5 rounded-md text-body font-bold flex items-center gap-2 disabled:opacity-40 cursor-pointer ${meta.accentBtn}`}
                       >
                         {isAgentRunning ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
                         {t("Send", "Odoslať", "Küldés")}
@@ -1127,10 +1127,10 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                   {isArtSelected && (
                     <div
                       data-testid="agent-artifact-editor-pane"
-                      className="glass-panel rounded-3xl border border-violet-200/80 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden"
+                      className=" rounded-lg border border-violet-200/80 bg-white shadow-xs flex flex-col h-full max-h-full overflow-hidden"
                     >
                       {/* Editor Header */}
-                      <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50/80 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                      <div className="px-5 py-3.5 border-b border-gray-100 bg-gray-50/80 flex flex-wrap items-center justify-between gap-2 shrink-0">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <span
@@ -1162,7 +1162,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                               </span>
                             )}
                           </div>
-                          <div className="text-title-sm font-heading font-bold text-slate-900 truncate mt-0.5">
+                          <div className="text-title-sm font-heading font-bold text-gray-900 truncate mt-0.5">
                             {selectedArtifactKey === "memory:main"
                               ? `${selectedAccount?.name} / memory.md`
                               : selectedArtifactKey === "cron:main"
@@ -1184,7 +1184,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                 type="button"
                                 onClick={() => void handleRunTaskNow("__autonomous__")}
                                 disabled={isAgentRunning}
-                                className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-micro font-bold cursor-pointer disabled:opacity-40"
+                                className="px-2.5 py-1.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-micro font-bold cursor-pointer disabled:opacity-40"
                               >
                                 ▶ {t("Trigger Cron Now", "Spustiť Cron teraz", "Cron indítása most")}
                               </button>
@@ -1196,7 +1196,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                   })
                                 }
                                 aria-label={t("Cron interval", "Interval cronu", "Cron időköz")}
-                                className="px-2 py-1.5 rounded-xl bg-white border border-slate-200 text-micro font-bold text-slate-700 cursor-pointer"
+                                className="px-2 py-1.5 rounded-md bg-white border border-gray-200 text-micro font-bold text-gray-700 cursor-pointer"
                               >
                                 <option value="1">1m</option>
                                 <option value="5">5m</option>
@@ -1211,7 +1211,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                     enabled: !Boolean(st?.autonomousMode?.enabled),
                                   })
                                 }
-                                className={`px-2.5 py-1.5 rounded-xl text-micro font-bold cursor-pointer ${
+                                className={`px-2.5 py-1.5 rounded-md text-micro font-bold cursor-pointer ${
                                   Boolean(st?.autonomousMode?.enabled)
                                     ? "bg-emerald-600 text-white"
                                     : "bg-amber-50 text-amber-700"
@@ -1227,7 +1227,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                             <button
                               type="button"
                               onClick={() => setActiveChatSubagentId(selectedSubObj.id)}
-                              className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-micro font-bold cursor-pointer"
+                              className="px-2.5 py-1.5 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-800 text-micro font-bold cursor-pointer"
                             >
                               💬 {t("Instruct", "Pokyn", "Utasítás")}
                             </button>
@@ -1238,16 +1238,16 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                 type="button"
                                 onClick={() => void handleRunTaskNow(selectedTaskObj.id)}
                                 disabled={isAgentRunning}
-                                className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-micro font-bold cursor-pointer disabled:opacity-40"
+                                className="px-2.5 py-1.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-micro font-bold cursor-pointer disabled:opacity-40"
                               >
                                 ▶ {t("Run now", "Spustiť", "Futtatás")}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => void handleToggleTask(selectedTaskObj)}
-                                className={`px-2.5 py-1.5 rounded-xl text-micro font-bold cursor-pointer ${
+                                className={`px-2.5 py-1.5 rounded-md text-micro font-bold cursor-pointer ${
                                   selectedTaskObj.enabled
-                                    ? "bg-slate-100 text-slate-700"
+                                    ? "bg-gray-100 text-gray-700"
                                     : "bg-amber-50 text-amber-700"
                                 }`}
                               >
@@ -1262,10 +1262,10 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                             onClick={() => void handleSaveSelectedArtifact()}
                             disabled={isSavingMemory || !canEdit}
                             data-testid="save-agent-memory-btn"
-                            className={`px-3 py-1.5 rounded-xl text-micro font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-40 ${
+                            className={`px-3 py-1.5 rounded-md text-micro font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-40 ${
                               isMemoryDirty
                                 ? "bg-violet-600 hover:bg-violet-500 text-white shadow-2xs"
-                                : "bg-white hover:bg-slate-100 text-slate-700 border border-slate-200"
+                                : "bg-white hover:bg-gray-100 text-gray-700 border border-gray-200"
                             }`}
                           >
                             {isSavingMemory ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
@@ -1276,7 +1276,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                               type="button"
                               onClick={() => void handleDeleteArtifact(selectedNamedArt.id)}
                               title={t("Delete artifact", "Odstrániť artefakt", "Artefaktum törlése")}
-                              className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                              className="p-1.5 rounded-md text-gray-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
                             >
                               <Trash2 size={14} />
                             </button>
@@ -1286,7 +1286,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                               type="button"
                               onClick={() => void handleDeleteSubagent(selectedSubObj.id)}
                               title={t("Delete subagent", "Odstrániť subagenta", "Alügynök törlése")}
-                              className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                              className="p-1.5 rounded-md text-gray-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
                             >
                               <Trash2 size={14} />
                             </button>
@@ -1296,7 +1296,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                               type="button"
                               onClick={() => void handleDeleteTask(selectedTaskObj.id)}
                               title={t("Delete task", "Odstrániť úlohu", "Feladat törlése")}
-                              className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                              className="p-1.5 rounded-md text-gray-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
                             >
                               <Trash2 size={14} />
                             </button>
@@ -1306,7 +1306,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                             onClick={() => handleSelectArtifact(null)}
                             data-testid="close-artifact-editor-btn"
                             title={t("Close editor", "Zavrieť editor", "Szerkesztő bezárása")}
-                            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-200/60 cursor-pointer"
+                            className="p-1.5 rounded-md text-gray-400 hover:text-gray-800 hover:bg-gray-200/60 cursor-pointer"
                           >
                             <X size={15} />
                           </button>
@@ -1315,7 +1315,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
 
                       {/* Optional Autonomous Cron Info Banner */}
                       {selectedArtifactKey === "cron:main" && (
-                        <div className="px-5 py-2.5 border-b border-slate-100 bg-emerald-50/50 space-y-1 shrink-0">
+                        <div className="px-5 py-2.5 border-b border-gray-100 bg-emerald-50/50 space-y-1 shrink-0">
                           <div className="flex flex-wrap items-center justify-between gap-2 text-micro text-emerald-900 font-semibold">
                             <span>
                               {t(
@@ -1344,7 +1344,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
 
                       {/* Optional Subagent System Prompt Field */}
                       {selectedSubObj && (
-                        <div className="px-5 py-2.5 border-b border-slate-100 bg-amber-50/40 space-y-1 shrink-0">
+                        <div className="px-5 py-2.5 border-b border-gray-100 bg-amber-50/40 space-y-1 shrink-0">
                           <label className="block text-micro font-bold text-amber-900">
                             {t("Subagent System Instructions", "Systémové pokyny subagenta", "Alügynök rendszerutasításai")} ({selectedSubObj.role})
                           </label>
@@ -1355,7 +1355,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                               setSubPromptDraft(e.target.value);
                               setIsMemoryDirty(true);
                             }}
-                            className="w-full px-3 py-1.5 rounded-xl bg-white border border-amber-200 text-caption text-slate-800 focus:outline-none focus:border-amber-500"
+                            className="w-full px-3 py-1.5 rounded-md bg-white border border-amber-200 text-caption text-gray-800 focus:outline-none focus:border-amber-500"
                           />
                         </div>
                       )}
@@ -1376,7 +1376,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                             }
                           }}
                           placeholder="# Markdown artifact content..."
-                          className="w-full flex-1 p-3.5 rounded-2xl bg-slate-50/70 focus:bg-white border border-slate-200 font-mono text-caption text-slate-800 focus:outline-none focus:border-violet-500 resize-none leading-relaxed overflow-y-auto"
+                          className="w-full flex-1 p-3.5 rounded-lg bg-gray-50/70 focus:bg-white border border-gray-200 font-mono text-caption text-gray-800 focus:outline-none focus:border-violet-500 resize-none leading-relaxed overflow-y-auto"
                         />
                       </div>
                     </div>
@@ -1386,12 +1386,12 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                 {/* RIGHT SIDEBAR: MEMORY & ARTIFACTS */}
                 <div
                   data-testid="agent-artifacts-sidebar"
-                  className="w-full ws-lg:w-64 shrink-0 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden"
+                  className="w-full ws-lg:w-64 shrink-0  rounded-lg border border-gray-200 bg-white shadow-xs flex flex-col h-full max-h-full overflow-hidden"
                 >
-                  <div className="px-4 py-3.5 border-b border-slate-100 flex items-center justify-between gap-2 shrink-0">
+                  <div className="px-4 py-3.5 border-b border-gray-100 flex items-center justify-between gap-2 shrink-0">
                     <div className="flex items-center gap-1.5">
                       <FileText size={14} className="text-violet-600" />
-                      <span className="text-caption font-bold text-slate-900">
+                      <span className="text-caption font-bold text-gray-900">
                         {t("Memory & Artifacts", "Pamäť a artefakty", "Memória és artefaktumok")}
                       </span>
                     </div>
@@ -1408,7 +1408,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                   <div className="flex-1 overflow-y-auto p-3 space-y-4">
                     {/* New Artifact Inline Form */}
                     {newArtifactOpen && (
-                      <div className="p-2.5 rounded-2xl bg-violet-50/60 border border-violet-200 space-y-2">
+                      <div className="p-2.5 rounded-lg bg-violet-50/60 border border-violet-200 space-y-2">
                         <input
                           type="text"
                           value={newArtifactName}
@@ -1420,13 +1420,13 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                             }
                           }}
                           placeholder={t("e.g. playbook.md", "napr. playbook.md", "pl. playbook.md")}
-                          className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-caption"
+                          className="w-full px-2.5 py-1.5 rounded-md bg-white border border-gray-200 text-caption"
                         />
                         <div className="flex justify-end gap-1.5">
                           <button
                             type="button"
                             onClick={() => setNewArtifactOpen(false)}
-                            className="px-2 py-0.5 rounded-lg text-micro font-semibold text-slate-500 cursor-pointer"
+                            className="px-2 py-0.5 rounded-lg text-micro font-semibold text-gray-500 cursor-pointer"
                           >
                             {t("Cancel", "Zrušiť", "Mégse")}
                           </button>
@@ -1443,7 +1443,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
 
                     {/* Section 1: Memory & Named Artifacts */}
                     <div className="space-y-1">
-                      <div className="px-1 text-micro font-bold uppercase tracking-wider text-slate-400">
+                      <div className="px-1 text-micro font-bold uppercase tracking-wider text-gray-400">
                         {t("Files & Memory", "Súbory a pamäť", "Fájlok és memória")}
                       </div>
 
@@ -1452,18 +1452,18 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                         type="button"
                         data-testid="sidebar-artifact-memory-main"
                         onClick={() => handleSelectArtifact("memory:main")}
-                        className={`w-full px-3 py-2 rounded-2xl text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
+                        className={`w-full px-3 py-2 rounded-lg text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
                           selectedArtifactKey === "memory:main"
                             ? "bg-violet-50/90 border-violet-300 text-violet-950 shadow-2xs"
-                            : "bg-white hover:bg-slate-50 border-slate-100 text-slate-700"
+                            : "bg-white hover:bg-gray-50 border-gray-100 text-gray-700"
                         }`}
                       >
-                        <span className="w-7 h-7 rounded-xl bg-violet-500/15 text-violet-700 flex items-center justify-center shrink-0">
+                        <span className="w-7 h-7 rounded-md bg-violet-500/15 text-violet-700 flex items-center justify-center shrink-0">
                           <FileText size={14} />
                         </span>
                         <div className="min-w-0 flex-1">
                           <div className="text-caption font-bold truncate">memory.md</div>
-                          <div className="text-micro text-slate-400 truncate">
+                          <div className="text-micro text-gray-400 truncate">
                             {t("Core agent memory", "Hlavná pamäť agenta", "Ügynök fő memóriája")}
                           </div>
                         </div>
@@ -1478,18 +1478,18 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                             key={art.id}
                             type="button"
                             onClick={() => handleSelectArtifact(key)}
-                            className={`w-full px-3 py-2 rounded-2xl text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
+                            className={`w-full px-3 py-2 rounded-lg text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
                               active
                                 ? "bg-indigo-50/90 border-indigo-300 text-indigo-950 shadow-2xs"
-                                : "bg-white hover:bg-slate-50 border-slate-100 text-slate-700"
+                                : "bg-white hover:bg-gray-50 border-gray-100 text-gray-700"
                             }`}
                           >
-                            <span className="w-7 h-7 rounded-xl bg-indigo-500/15 text-indigo-700 flex items-center justify-center shrink-0">
+                            <span className="w-7 h-7 rounded-md bg-indigo-500/15 text-indigo-700 flex items-center justify-center shrink-0">
                               <FileText size={14} />
                             </span>
                             <div className="min-w-0 flex-1">
                               <div className="text-caption font-bold truncate">{art.name}</div>
-                              <div className="text-micro text-slate-400 truncate">{art.title}</div>
+                              <div className="text-micro text-gray-400 truncate">{art.title}</div>
                             </div>
                           </button>
                         );
@@ -1497,9 +1497,9 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                     </div>
 
                     {/* Section 2: Subagents */}
-                    <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                    <div className="space-y-1.5 pt-2 border-t border-gray-100">
                       <div className="px-1 flex items-center justify-between">
-                        <span className="text-micro font-bold uppercase tracking-wider text-slate-400">
+                        <span className="text-micro font-bold uppercase tracking-wider text-gray-400">
                           {t("Subagents", "Subagenti", "Alügynökök")} ({subagents.length})
                         </span>
                         <button
@@ -1512,33 +1512,33 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                       </div>
 
                       {newSubagentOpen && (
-                        <div className="p-2.5 rounded-2xl bg-amber-50/60 border border-amber-200 space-y-1.5">
+                        <div className="p-2.5 rounded-lg bg-amber-50/60 border border-amber-200 space-y-1.5">
                           <input
                             type="text"
                             value={newSubName}
                             onChange={(e) => setNewSubName(e.target.value)}
                             placeholder={t("Name (e.g. Lead Qualifier)", "Názov", "Név")}
-                            className="w-full px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-caption"
+                            className="w-full px-2.5 py-1 rounded-md bg-white border border-gray-200 text-caption"
                           />
                           <input
                             type="text"
                             value={newSubRole}
                             onChange={(e) => setNewSubRole(e.target.value)}
                             placeholder={t("Role / Specialty", "Rola", "Szerepkör")}
-                            className="w-full px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-caption"
+                            className="w-full px-2.5 py-1 rounded-md bg-white border border-gray-200 text-caption"
                           />
                           <input
                             type="text"
                             value={newSubPrompt}
                             onChange={(e) => setNewSubPrompt(e.target.value)}
                             placeholder={t("System prompt...", "Systémový pokyn...", "Rendszerutasítás...")}
-                            className="w-full px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-caption"
+                            className="w-full px-2.5 py-1 rounded-md bg-white border border-gray-200 text-caption"
                           />
                           <div className="flex justify-end gap-1.5">
                             <button
                               type="button"
                               onClick={() => setNewSubagentOpen(false)}
-                              className="px-2 py-0.5 rounded-lg text-micro font-semibold text-slate-500 cursor-pointer"
+                              className="px-2 py-0.5 rounded-lg text-micro font-semibold text-gray-500 cursor-pointer"
                             >
                               {t("Cancel", "Zrušiť", "Mégse")}
                             </button>
@@ -1554,7 +1554,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                       )}
 
                       {subagents.length === 0 ? (
-                        <div className="px-2 py-2 text-micro text-slate-400">
+                        <div className="px-2 py-2 text-micro text-gray-400">
                           {t("No subagents yet.", "Zatiaľ žiadni subagenti.", "Még nincs alügynök.")}
                         </div>
                       ) : (
@@ -1566,13 +1566,13 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                               key={sub.id}
                               type="button"
                               onClick={() => handleSelectArtifact(key)}
-                              className={`w-full px-3 py-2 rounded-2xl text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
+                              className={`w-full px-3 py-2 rounded-lg text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
                                 active
                                   ? "bg-amber-50/90 border-amber-300 text-amber-950 shadow-2xs"
-                                  : "bg-white hover:bg-slate-50 border-slate-100 text-slate-700"
+                                  : "bg-white hover:bg-gray-50 border-gray-100 text-gray-700"
                               }`}
                             >
-                              <span className="w-7 h-7 rounded-xl bg-amber-500/15 text-amber-700 flex items-center justify-center shrink-0">
+                              <span className="w-7 h-7 rounded-md bg-amber-500/15 text-amber-700 flex items-center justify-center shrink-0">
                                 <Bot size={14} />
                               </span>
                               <div className="min-w-0 flex-1">
@@ -1586,9 +1586,9 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                     </div>
 
                     {/* Section 2b: Reactive Event Triggers */}
-                    <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                    <div className="space-y-1.5 pt-2 border-t border-gray-100">
                       <div className="px-1 flex items-center justify-between">
-                        <span className="text-micro font-bold uppercase tracking-wider text-slate-400">
+                        <span className="text-micro font-bold uppercase tracking-wider text-gray-400">
                           ⚡ {t("Reactive Triggers", "Reaktívne spúšťače", "Reaktív triggerek")} ({(st?.triggers || []).length})
                         </span>
                         <div className="flex items-center gap-1.5">
@@ -1623,7 +1623,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                               targetSubagentId: activeChatSubagentId,
                             })
                           }
-                          className="w-full px-3 py-2 rounded-2xl border border-dashed border-violet-200 bg-violet-50/30 hover:bg-violet-50/70 text-left text-micro text-violet-700 font-semibold cursor-pointer transition-all"
+                          className="w-full px-3 py-2 rounded-lg border border-dashed border-violet-200 bg-violet-50/30 hover:bg-violet-50/70 text-left text-micro text-violet-700 font-semibold cursor-pointer transition-all"
                         >
                           ⚡ {t("Connect WhatsApp, Email or CRM event ($0 idle cost)", "Prepojiť WhatsApp, e-mail alebo CRM udalosť ($0 nečinné náklady)", "WhatsApp, e-mail vagy CRM esemény bekötése ($0 üresjárati költség)")}
                         </button>
@@ -1633,13 +1633,13 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                             key={tr.id}
                             type="button"
                             onClick={() => openEditTriggerModal(tr)}
-                            className={`w-full px-3 py-2 rounded-2xl text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
+                            className={`w-full px-3 py-2 rounded-lg text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
                               tr.enabled
-                                ? "bg-violet-50/70 hover:bg-violet-50 border-violet-200 text-slate-800"
-                                : "bg-slate-50 border-slate-100 text-slate-400"
+                                ? "bg-violet-50/70 hover:bg-violet-50 border-violet-200 text-gray-800"
+                                : "bg-gray-50 border-gray-100 text-gray-400"
                             }`}
                           >
-                            <span className="w-7 h-7 rounded-xl bg-violet-500/15 text-violet-700 flex items-center justify-center shrink-0">
+                            <span className="w-7 h-7 rounded-md bg-violet-500/15 text-violet-700 flex items-center justify-center shrink-0">
                               <Zap size={13} />
                             </span>
                             <div className="min-w-0 flex-1">
@@ -1662,9 +1662,9 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                     </div>
 
                     {/* Section 3: Autonomous Loop (Cronjob) */}
-                    <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                    <div className="space-y-1.5 pt-2 border-t border-gray-100">
                       <div className="px-1 flex items-center justify-between">
-                        <span className="text-micro font-bold uppercase tracking-wider text-slate-400">
+                        <span className="text-micro font-bold uppercase tracking-wider text-gray-400">
                           💓 {t("Heartbeat Cron", "Heartbeat Cron", "Heartbeat Cron")}
                         </span>
                         <button
@@ -1681,13 +1681,13 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                         type="button"
                         data-testid="sidebar-artifact-cron-main"
                         onClick={() => handleSelectArtifact("cron:main")}
-                        className={`w-full px-3 py-2 rounded-2xl text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
+                        className={`w-full px-3 py-2 rounded-lg text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
                           selectedArtifactKey === "cron:main"
                             ? "bg-emerald-50/90 border-emerald-300 text-emerald-950 shadow-2xs"
-                            : "bg-white hover:bg-slate-50 border-slate-100 text-slate-700"
+                            : "bg-white hover:bg-gray-50 border-gray-100 text-gray-700"
                         }`}
                       >
-                        <span className="w-7 h-7 rounded-xl bg-emerald-500/15 text-emerald-700 flex items-center justify-center shrink-0">
+                        <span className="w-7 h-7 rounded-md bg-emerald-500/15 text-emerald-700 flex items-center justify-center shrink-0">
                           <Clock size={14} />
                         </span>
                         <div className="min-w-0 flex-1">
@@ -1704,13 +1704,13 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                       </button>
 
                       {newTaskOpen && (
-                        <div className="p-2.5 rounded-2xl bg-emerald-50/60 border border-emerald-200 space-y-1.5">
+                        <div className="p-2.5 rounded-lg bg-emerald-50/60 border border-emerald-200 space-y-1.5">
                           <input
                             type="text"
                             value={newTaskTitle}
                             onChange={(e) => setNewTaskTitle(e.target.value)}
                             placeholder={t("Task title", "Názov úlohy", "Feladat címe")}
-                            className="w-full px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-caption"
+                            className="w-full px-2.5 py-1 rounded-md bg-white border border-gray-200 text-caption"
                           />
                           <input
                             type="number"
@@ -1718,20 +1718,20 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                             value={newTaskInterval}
                             onChange={(e) => setNewTaskInterval(e.target.value)}
                             placeholder={t("Interval (min)", "Interval (min)", "Időköz (perc)")}
-                            className="w-full px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-caption"
+                            className="w-full px-2.5 py-1 rounded-md bg-white border border-gray-200 text-caption"
                           />
                           <input
                             type="text"
                             value={newTaskPrompt}
                             onChange={(e) => setNewTaskPrompt(e.target.value)}
                             placeholder={t("Instruction prompt...", "Pokyn...", "Utasítás...")}
-                            className="w-full px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-caption"
+                            className="w-full px-2.5 py-1 rounded-md bg-white border border-gray-200 text-caption"
                           />
                           <div className="flex justify-end gap-1.5">
                             <button
                               type="button"
                               onClick={() => setNewTaskOpen(false)}
-                              className="px-2 py-0.5 rounded-lg text-micro font-semibold text-slate-500 cursor-pointer"
+                              className="px-2 py-0.5 rounded-lg text-micro font-semibold text-gray-500 cursor-pointer"
                             >
                               {t("Cancel", "Zrušiť", "Mégse")}
                             </button>
@@ -1747,7 +1747,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                       )}
 
                       {autonomousTasks.length === 0 ? (
-                        <div className="px-2 py-2 text-micro text-slate-400">
+                        <div className="px-2 py-2 text-micro text-gray-400">
                           {t("No standing tasks.", "Žiadne trvalé úlohy.", "Nincs állandó feladat.")}
                         </div>
                       ) : (
@@ -1759,13 +1759,13 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                               key={tk.id}
                               type="button"
                               onClick={() => handleSelectArtifact(key)}
-                              className={`w-full px-3 py-2 rounded-2xl text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
+                              className={`w-full px-3 py-2 rounded-lg text-left flex items-center gap-2.5 transition-all cursor-pointer border ${
                                 active
                                   ? "bg-emerald-50/90 border-emerald-300 text-emerald-950 shadow-2xs"
-                                  : "bg-white hover:bg-slate-50 border-slate-100 text-slate-700"
+                                  : "bg-white hover:bg-gray-50 border-gray-100 text-gray-700"
                               }`}
                             >
-                              <span className="w-7 h-7 rounded-xl bg-emerald-500/15 text-emerald-700 flex items-center justify-center shrink-0">
+                              <span className="w-7 h-7 rounded-md bg-emerald-500/15 text-emerald-700 flex items-center justify-center shrink-0">
                                 <Clock size={14} />
                               </span>
                               <div className="min-w-0 flex-1">
@@ -1787,25 +1787,25 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                 {triggerModalOpen && (
                   <div
                     data-testid="agent-trigger-modal"
-                    className="fixed inset-0 z-50 bg-slate-900/45 backdrop-blur-xs flex items-center justify-center p-4"
+                    className="fixed inset-0 z-50 bg-gray-900/45  flex items-center justify-center p-4"
                     onClick={() => setTriggerModalOpen(false)}
                   >
                     <div
-                      className="w-full max-w-xl rounded-3xl bg-white border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+                      className="w-full max-w-xl rounded-lg bg-white border border-gray-200 shadow-xl overflow-hidden flex flex-col max-h-[90vh]"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-violet-50/80 via-indigo-50/50 to-white flex items-center justify-between gap-3">
+                      <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-violet-50/80 via-indigo-50/50 to-white flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2.5">
-                          <span className="w-9 h-9 rounded-2xl bg-violet-600 text-white flex items-center justify-center shadow-xs">
+                          <span className="w-9 h-9 rounded-lg bg-violet-600 text-white flex items-center justify-center shadow-xs">
                             <Zap size={17} />
                           </span>
                           <div>
-                            <div className="text-title-sm font-heading font-bold text-slate-900">
+                            <div className="text-title-sm font-heading font-bold text-gray-900">
                               {triggerDraftId
                                 ? t("Edit Reactive Event Trigger", "Upraviť reaktívny spúšťač", "Reaktív trigger szerkesztése")
                                 : t("New Reactive Event Trigger", "Nový reaktívny spúšťač", "Új reaktív esemény trigger")}
                             </div>
-                            <div className="text-micro text-slate-500">
+                            <div className="text-micro text-gray-500">
                               {t(
                                 "Runs the agent immediately when an event matches ($0 idle cost)",
                                 "Spustí agenta okamžite pri zhode udalosti ($0 pri nečinnosti)",
@@ -1817,7 +1817,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                         <button
                           type="button"
                           onClick={() => setTriggerModalOpen(false)}
-                          className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+                          className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 cursor-pointer"
                         >
                           <X size={16} />
                         </button>
@@ -1826,7 +1826,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                       <div className="p-6 overflow-y-auto space-y-4">
                         {/* Trigger Name */}
                         <div>
-                          <label className="block text-micro font-bold uppercase tracking-wider text-slate-500 mb-1">
+                          <label className="block text-micro font-bold uppercase tracking-wider text-gray-500 mb-1">
                             {t("Trigger Name", "Názov spúšťača", "Trigger neve")}
                           </label>
                           <input
@@ -1839,14 +1839,14 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                               "napr. Automatická odpoveď WhatsApp",
                               "pl. Managment Cstudios Haiku válaszoló",
                             )}
-                            className="w-full px-3.5 py-2 rounded-xl bg-slate-50 focus:bg-white border border-slate-200 text-body text-slate-800 focus:outline-none focus:border-violet-500"
+                            className="w-full px-3.5 py-2 rounded-md bg-gray-50 focus:bg-white border border-gray-200 text-body text-gray-800 focus:outline-none focus:border-violet-500"
                           />
                         </div>
 
                         {/* Source Connection & Target Agent */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-micro font-bold uppercase tracking-wider text-slate-500 mb-1">
+                            <label className="block text-micro font-bold uppercase tracking-wider text-gray-500 mb-1">
                               1. {t("Event Source Connection", "Zdrojové spojenie", "Esemény forráskapcsolata")}
                             </label>
                             <select
@@ -1881,7 +1881,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                   }
                                 }
                               }}
-                              className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-body font-semibold text-slate-800"
+                              className="w-full px-3 py-2 rounded-md bg-gray-50 border border-gray-200 text-body font-semibold text-gray-800"
                             >
                               <optgroup label={t("Messaging & BotMan Connections", "Messaging & BotMan spojenia", "Messaging és BotMan kapcsolatok")}>
                                 {availableAccounts
@@ -1916,14 +1916,14 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                           </div>
 
                           <div>
-                            <label className="block text-micro font-bold uppercase tracking-wider text-slate-500 mb-1">
+                            <label className="block text-micro font-bold uppercase tracking-wider text-gray-500 mb-1">
                               2. {t("Target Agent", "Cieľový agent", "Cél ügynök")}
                             </label>
                             <select
                               data-testid="trigger-target-agent-select"
                               value={triggerDraftTargetSubagentId}
                               onChange={(e) => setTriggerDraftTargetSubagentId(e.target.value)}
-                              className="w-full px-3 py-2 rounded-xl bg-violet-50/70 border border-violet-200 text-body font-bold text-violet-950"
+                              className="w-full px-3 py-2 rounded-md bg-violet-50/70 border border-violet-200 text-body font-bold text-violet-950"
                             >
                               <option value="">✦ {selectedAccount?.name} (Main Agent)</option>
                               {subagents.map((sub) => (
@@ -1937,7 +1937,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
 
                         {/* Source-Specific Filters */}
                         {triggerDraftSourceType === "whatsapp" && (
-                          <div className="p-3.5 rounded-2xl bg-emerald-50/50 border border-emerald-200/80 space-y-3">
+                          <div className="p-3.5 rounded-lg bg-emerald-50/50 border border-emerald-200/80 space-y-3">
                             {(() => {
                               const draftSourceAcc = availableAccounts.find(
                                 (a) => a.id === triggerDraftSourceConnectorId,
@@ -1968,7 +1968,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                         onChange={(e) => {
                                           if (e.target.value) setTriggerDraftChatMatch(e.target.value);
                                         }}
-                                        className="w-full px-3 py-1.5 rounded-xl bg-white border border-emerald-200 text-caption text-slate-800"
+                                        className="w-full px-3 py-1.5 rounded-md bg-white border border-emerald-200 text-caption text-gray-800"
                                       >
                                         <option value="">
                                           {t(
@@ -2001,7 +2001,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                   value={triggerDraftChatMatch}
                                   onChange={(e) => setTriggerDraftChatMatch(e.target.value)}
                                   placeholder={t("e.g. Managment Cstudios (blank = all)", "napr. Managment Cstudios", "pl. Managment Cstudios (üres = mind)")}
-                                  className="w-full px-3 py-1.5 rounded-xl bg-white border border-emerald-200 text-caption text-slate-800"
+                                  className="w-full px-3 py-1.5 rounded-md bg-white border border-emerald-200 text-caption text-gray-800"
                                 />
                               </div>
                               <div>
@@ -2013,7 +2013,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                   value={triggerDraftKeywordContains}
                                   onChange={(e) => setTriggerDraftKeywordContains(e.target.value)}
                                   placeholder={t("Any message if blank", "Akákoľvek správa ak prázdne", "Üresen minden üzenet")}
-                                  className="w-full px-3 py-1.5 rounded-xl bg-white border border-emerald-200 text-caption text-slate-800"
+                                  className="w-full px-3 py-1.5 rounded-md bg-white border border-emerald-200 text-caption text-gray-800"
                                 />
                               </div>
                             </div>
@@ -2046,7 +2046,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                         )}
 
                         {triggerDraftSourceType === "email" && (
-                          <div className="p-3.5 rounded-2xl bg-sky-50/60 border border-sky-200/80 space-y-2.5">
+                          <div className="p-3.5 rounded-lg bg-sky-50/60 border border-sky-200/80 space-y-2.5">
                             <div className="text-micro font-bold uppercase tracking-wider text-sky-800">
                               ✉️ {t("Incoming Email Filter", "Filter prichádzajúcich e-mailov", "Bejövő e-mail szűrő")}
                             </div>
@@ -2060,7 +2060,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                   value={triggerDraftFromContains}
                                   onChange={(e) => setTriggerDraftFromContains(e.target.value)}
                                   placeholder={t("e.g. @client.com (blank = all)", "napr. @klient.sk", "pl. @ugyfel.hu (üres = mind)")}
-                                  className="w-full px-3 py-1.5 rounded-xl bg-white border border-sky-200 text-caption text-slate-800"
+                                  className="w-full px-3 py-1.5 rounded-md bg-white border border-sky-200 text-caption text-gray-800"
                                 />
                               </div>
                               <div>
@@ -2072,7 +2072,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                   value={triggerDraftSubjectContains}
                                   onChange={(e) => setTriggerDraftSubjectContains(e.target.value)}
                                   placeholder={t("e.g. Quote / Urgent (blank = all)", "napr. Dopyt", "pl. Árajánlat (üres = mind)")}
-                                  className="w-full px-3 py-1.5 rounded-xl bg-white border border-sky-200 text-caption text-slate-800"
+                                  className="w-full px-3 py-1.5 rounded-md bg-white border border-sky-200 text-caption text-gray-800"
                                 />
                               </div>
                             </div>
@@ -2080,14 +2080,14 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                         )}
 
                         {triggerDraftSourceType === "crm_event" && (
-                          <div className="p-3.5 rounded-2xl bg-amber-50/60 border border-amber-200/80 space-y-2">
+                          <div className="p-3.5 rounded-lg bg-amber-50/60 border border-amber-200/80 space-y-2">
                             <label className="block text-micro font-bold uppercase tracking-wider text-amber-800">
                               🔔 {t("CRM Event Type", "Typ CRM udalosti", "CRM esemény típusa")}
                             </label>
                             <select
                               value={triggerDraftEventType}
                               onChange={(e) => setTriggerDraftEventType(e.target.value)}
-                              className="w-full px-3 py-1.5 rounded-xl bg-white border border-amber-200 text-caption font-semibold text-slate-800"
+                              className="w-full px-3 py-1.5 rounded-md bg-white border border-amber-200 text-caption font-semibold text-gray-800"
                             >
                               <option value="lead_created">✨ New Lead Created (lead_created)</option>
                               <option value="project_created">🚀 New Project Created (project_created)</option>
@@ -2098,7 +2098,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                         )}
 
                         {/* Full Conversation Context Window Badge */}
-                        <div className="px-3.5 py-2.5 rounded-2xl bg-indigo-50/70 border border-indigo-200/80 flex items-center justify-between gap-2 text-micro text-indigo-950">
+                        <div className="px-3.5 py-2.5 rounded-lg bg-indigo-50/70 border border-indigo-200/80 flex items-center justify-between gap-2 text-micro text-indigo-950">
                           <span className="font-semibold">
                             📚 {t(
                               "Full Conversation History: Agent automatically receives the last 50 messages AND at least the last 5 days of history (capped at 16,000 chars).",
@@ -2110,7 +2110,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
 
                         {/* Agent Instructions when Triggered */}
                         <div>
-                          <label className="block text-micro font-bold uppercase tracking-wider text-slate-500 mb-1">
+                          <label className="block text-micro font-bold uppercase tracking-wider text-gray-500 mb-1">
                             3. {t("Instructions for the Agent when Triggered", "Pokyny pre agenta pri spustení", "Utasítások az ügynök számára aktiváláskor")}
                           </label>
                           <textarea
@@ -2123,21 +2123,21 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                               "napr. Prečítaj si celú konverzáciu a odpovedz na najnovšiu správu.",
                               "pl. Olvasd el a teljes beszélgetést, és válaszolj magyar haikuban (5-7-5) a legújabb üzenetre.",
                             )}
-                            className="w-full p-3 rounded-2xl bg-slate-50 focus:bg-white border border-slate-200 text-caption text-slate-800 focus:outline-none focus:border-violet-500"
+                            className="w-full p-3 rounded-lg bg-gray-50 focus:bg-white border border-gray-200 text-caption text-gray-800 focus:outline-none focus:border-violet-500"
                           />
                         </div>
 
                         {/* Auto-Reply Toggle */}
-                        <label className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-violet-50/50 border border-violet-200/70 cursor-pointer">
+                        <label className="flex items-center justify-between gap-3 p-3 rounded-lg bg-violet-50/50 border border-violet-200/70 cursor-pointer">
                           <div>
-                            <div className="text-caption font-bold text-slate-900">
+                            <div className="text-caption font-bold text-gray-900">
                               {t(
                                 "Authorize Automatic Reply Tools (send_whatsapp_message / send_email_reply)",
                                 "Povoliť nástroje automatickej odpovede",
                                 "Automatikus válasz eszközök engedélyezése (send_whatsapp_message / send_email_reply)",
                               )}
                             </div>
-                            <div className="text-micro text-slate-500">
+                            <div className="text-micro text-gray-500">
                               {t(
                                 "Includes loop-protection so the agent never replies to its own messages.",
                                 "Zahŕňa ochranu proti slučkám, aby agent nikdy neodpovedal na vlastné správy.",
@@ -2155,7 +2155,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
 
                         {/* Proactive Conversation Re-Initiation ($0 Idle Cost) */}
                         {triggerDraftSourceType !== "crm_event" && (
-                          <div className="p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-200/80 space-y-3">
+                          <div className="p-3.5 rounded-lg bg-indigo-50/60 border border-indigo-200/80 space-y-3">
                             <label className="flex items-center justify-between gap-3 cursor-pointer">
                               <div>
                                 <div className="text-caption font-bold text-indigo-950 flex items-center gap-1.5">
@@ -2166,7 +2166,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                     "Proaktív beszélgetés-újraindítás ($0 üresjárati költség)",
                                   )}
                                 </div>
-                                <div className="text-micro text-slate-600">
+                                <div className="text-micro text-gray-600">
                                   {t(
                                     "Automatically re-initiate conversation if the contact stops replying after an agent message, or when the agent calls schedule_conversation_followup.",
                                     "Automaticky nadviaže kontakt, ak klient prestane odpovedať, alebo keď agent naplánuje follow-up.",
@@ -2204,7 +2204,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                           Math.max(5, Math.min(10080, Number(e.target.value) || 120)),
                                         )
                                       }
-                                      className="w-full px-3 py-1.5 rounded-xl bg-white border border-indigo-200 text-caption font-semibold text-slate-800"
+                                      className="w-full px-3 py-1.5 rounded-md bg-white border border-indigo-200 text-caption font-semibold text-gray-800"
                                     />
                                   </div>
                                   <div>
@@ -2218,7 +2218,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                     <select
                                       value={triggerDraftProactiveMaxAttempts}
                                       onChange={(e) => setTriggerDraftProactiveMaxAttempts(Number(e.target.value) || 1)}
-                                      className="w-full px-3 py-1.5 rounded-xl bg-white border border-indigo-200 text-caption font-semibold text-slate-800"
+                                      className="w-full px-3 py-1.5 rounded-md bg-white border border-indigo-200 text-caption font-semibold text-gray-800"
                                     >
                                       <option value={1}>1 {t("attempt (Recommended)", "pokus (Odporúčané)", "alkalom (Ajánlott)")}</option>
                                       <option value={2}>2 {t("attempts", "pokusy", "alkalom")}</option>
@@ -2243,7 +2243,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                                       "napr. Spýtaj sa, či ešte potrebujú pomoc s ponukou. Ak sa rozhovor prirodzene skončil, odpovedz [SKIP_FOLLOWUP].",
                                       "pl. Kérdezd meg udvariasan, tudunk-e még segíteni az ajánlattal kapcsolatban. Ha a beszélgetés természetesen lezárult, válaszolj [SKIP_FOLLOWUP]-pal.",
                                     )}
-                                    className="w-full p-2.5 rounded-xl bg-white border border-indigo-200 text-caption text-slate-800 focus:outline-none focus:border-indigo-500"
+                                    className="w-full p-2.5 rounded-md bg-white border border-indigo-200 text-caption text-gray-800 focus:outline-none focus:border-indigo-500"
                                   />
                                 </div>
                               </div>
@@ -2252,11 +2252,11 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                         )}
                       </div>
 
-                      <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/80 flex items-center justify-end gap-2">
+                      <div className="px-6 py-3.5 border-t border-gray-100 bg-gray-50/80 flex items-center justify-end gap-2">
                         <button
                           type="button"
                           onClick={() => setTriggerModalOpen(false)}
-                          className="px-4 py-2 rounded-xl text-caption font-semibold text-slate-600 hover:bg-slate-200/60 cursor-pointer"
+                          className="px-4 py-2 rounded-md text-caption font-semibold text-gray-600 hover:bg-gray-200/60 cursor-pointer"
                         >
                           {t("Cancel", "Zrušiť", "Mégse")}
                         </button>
@@ -2264,7 +2264,7 @@ export const EmailAgentLayout: React.FC<EmailAgentLayoutProps> = ({
                           type="button"
                           data-testid="save-agent-trigger-btn"
                           onClick={() => void handleSaveTriggerDraft()}
-                          className="px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-caption font-bold shadow-xs flex items-center gap-1.5 cursor-pointer"
+                          className="px-5 py-2 rounded-md bg-violet-600 hover:bg-violet-500 text-white text-caption font-bold shadow-xs flex items-center gap-1.5 cursor-pointer"
                         >
                           <Zap size={13} />
                           {triggerDraftId

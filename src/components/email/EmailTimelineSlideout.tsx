@@ -4,6 +4,7 @@ import { getTranslation } from "../../utils/translations";
 import { TimelineAuthorBadge } from "../TimelineAuthorBadge";
 import { formatTimestampLocalized } from "../../utils/localTime";
 import { TimelineCollapsible } from "../TimelineCollapsible";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
 interface EmailTimelineSlideoutProps {
   isClosingTimeline: boolean;
@@ -24,20 +25,20 @@ export const EmailTimelineSlideout: React.FC<EmailTimelineSlideoutProps> = ({
   currentUser, projectManagerColors, systemLanguage, expandedTimelineEventIds, toggleTimelineEventExpanded,
 }) => {
   return (
-        <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex justify-end ${isClosingTimeline ? "animate-fade-out" : "animate-fade-in"}`}>
+        <div style={entityAccentStyle("leads") as React.CSSProperties} className={`fixed inset-0 bg-gray-900/40 z-50 flex justify-end ${isClosingTimeline ? "animate-fade-out" : "animate-fade-in"}`}>
           {/* Backdrop click close */}
           <div className="flex-1" onClick={closeTimelineSlideout} />
           
-          <div className={`w-125 max-w-full bg-white h-full shadow-2xl flex flex-col relative ${isClosingTimeline ? "animate-slide-out-right" : "animate-slide-in-right"}`}>
+          <div className={`w-125 max-w-full bg-white h-full shadow-xl flex flex-col relative ${isClosingTimeline ? "animate-slide-out-right" : "animate-slide-in-right"}`}>
             {/* Header */}
-            <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0">
+            <div className="bg-gray-900 text-white p-4 flex items-center justify-between shrink-0">
               <div className="text-left">
-                <span className="type-overline text-pink-500">{t(`${PRODUCT_NAME} Detail Timeline`, `Detailná časová os ${PRODUCT_NAME}`, `Részletes ${PRODUCT_NAME} idővonal`)}</span>
+                <span className="type-overline text-entity-text">{t(`${PRODUCT_NAME} Detail Timeline`, `Detailná časová os ${PRODUCT_NAME}`, `Részletes ${PRODUCT_NAME} idővonal`)}</span>
                 <h3 className="text-body font-heading font-bold">{slideoutLead.name}</h3>
               </div>
               <button
                 onClick={closeTimelineSlideout}
-                className="text-slate-400 hover:text-white p-1 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                className="text-gray-400 hover:text-white p-1 hover:bg-gray-800 rounded-md transition-colors cursor-pointer"
               >
                 <X size={18} />
               </button>
@@ -46,22 +47,22 @@ export const EmailTimelineSlideout: React.FC<EmailTimelineSlideoutProps> = ({
             {/* Timeline List */}
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {isLoadingSlideoutEmails && (
-                <div className="flex flex-col items-center justify-center py-6 gap-2 text-slate-400">
-                  <Loader2 className="animate-spin text-pink-500" size={20} />
+                <div className="flex flex-col items-center justify-center py-6 gap-2 text-gray-400">
+                  <Loader2 className="animate-spin text-entity-text" size={20} />
                   <span className="type-overline">{t("Loading correspondences...", "Načítavanie korešpondencie...", "Levelezés betöltése...")}</span>
                 </div>
               )}
               {slideoutTimelineEvents.length === 0 ? (
-                <div className="text-center text-slate-400 py-12 text-ui font-semibold">
+                <div className="text-center text-gray-400 py-12 text-ui font-semibold">
                   {t("No activities or email records logged on timeline.", "Na časovej osi nie sú zaznamenané žiadne aktivity ani e-maily.", "Nincsenek tevékenységek vagy e-mail bejegyzések az idővonalon.")}
                 </div>
               ) : (
-                <div className="space-y-4 relative border-l-2 border-slate-100 pl-4 text-left">
+                <div className="space-y-4 relative border-l-2 border-gray-100 pl-4 text-left">
                   {slideoutTimelineEvents.map((event: any) => {
                     const pmName = event.author || slideoutLead.owner || currentUser?.name || "";
                     const pmColor = projectManagerColors[pmName] || "#6366f1";
                     let dotColor = "bg-blue-600 text-white border-blue-700";
-                    let cardBorder = "border-slate-200 bg-slate-50/50";
+                    let cardBorder = "border-gray-200 bg-gray-50/50";
                     let icon = <Clock size={12} />;
 
                     if (event.type === "phone") {
@@ -90,13 +91,13 @@ export const EmailTimelineSlideout: React.FC<EmailTimelineSlideoutProps> = ({
                           {icon}
                         </span>
                         
-                        <div className={`border p-3.5 rounded-2xl shadow-xs ${cardBorder}`}>
-                           <div className="flex justify-between items-center border-b border-slate-200/50 pb-1 mb-1.5 flex-wrap gap-2">
+                        <div className={`border p-3.5 rounded-lg shadow-xs ${cardBorder}`}>
+                           <div className="flex justify-between items-center border-b border-gray-200/50 pb-1 mb-1.5 flex-wrap gap-2">
                             <div className="flex items-center gap-1.5">
-                              <span className="type-overline text-slate-900">{event.title}</span>
+                              <span className="type-overline text-gray-900">{event.title}</span>
                               {event.type === "email" ? (
                                 <>
-                                  <span className="type-overline px-2 py-0.5 rounded-full border bg-slate-100 text-slate-700 flex items-center gap-1">
+                                  <span className="type-overline px-2 py-0.5 rounded-full border bg-gray-100 text-gray-700 flex items-center gap-1">
                                     {event.isOutgoing ? `📤 ${t("Outgoing", "Odchádzajúce", "Kimenő")}` : `📥 ${t("Incoming", "Prichádzajúce", "Bejövő")}`}
                                   </span>
                                   <span 
@@ -108,7 +109,7 @@ export const EmailTimelineSlideout: React.FC<EmailTimelineSlideoutProps> = ({
                                 </>
                               ) : (
                                 <>
-                                  <span className="type-overline px-2 py-0.5 rounded-full border bg-slate-100 text-slate-700">
+                                  <span className="type-overline px-2 py-0.5 rounded-full border bg-gray-100 text-gray-700">
                                     {event.type === "phone" ? t("Call Logs", "Záznam hovoru", "Hívásnapló")
                                       : event.type === "email" ? t("Email Sent", "E-mail odoslaný", "E-mail elküldve")
                                       : event.type === "note" ? t("Timeline Note", "Poznámka na časovej osi", "Idővonal jegyzet")
@@ -123,15 +124,15 @@ export const EmailTimelineSlideout: React.FC<EmailTimelineSlideoutProps> = ({
                                 </>
                               )}
                             </div>
-                            <span className="text-micro text-slate-400 font-extrabold">{formatTimestampLocalized(event.timestamp, systemLanguage)}</span>
+                            <span className="text-micro text-gray-400 font-extrabold">{formatTimestampLocalized(event.timestamp, systemLanguage)}</span>
                           </div>
                           <TimelineCollapsible
                             language={systemLanguage}
                             isExpanded={expandedTimelineEventIds.has(event.id)}
                             onToggle={() => toggleTimelineEventExpanded(event.id)}
-                            fadeClassName="from-slate-50 via-slate-50/70"
+                            fadeClassName="from-gray-50 via-gray-50/70"
                           >
-                            <p className="text-micro text-slate-600 leading-[1.35] font-bold select-text whitespace-pre-wrap">
+                            <p className="text-micro text-gray-600 leading-[1.35] font-bold select-text whitespace-pre-wrap">
                               {event.content}
                             </p>
                           </TimelineCollapsible>

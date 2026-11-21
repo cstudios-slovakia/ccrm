@@ -26,14 +26,14 @@ export const EmailAccountsSidebar: React.FC<EmailAccountsSidebarProps> = ({
   return (
       <aside
         data-testid="communication-accounts-sidebar"
-        className="w-full ws-lg:w-64 shrink-0 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-auto ws-lg:h-full max-h-full overflow-hidden text-left"
+        className="w-full ws-lg:w-64 shrink-0  rounded-lg border border-gray-200 bg-white shadow-xs flex flex-col h-auto ws-lg:h-full max-h-full overflow-hidden text-left"
       >
-        <div className="px-4 py-3.5 border-b border-slate-100 flex items-center justify-between gap-2 shrink-0">
+        <div className="px-4 py-3.5 border-b border-gray-100 flex items-center justify-between gap-2 shrink-0">
           <div>
-            <div className="type-overline text-slate-400">
+            <div className="type-overline text-gray-400">
               {t("Authorized Channels", "Autorizované kanály", "Engedélyezett csatornák")}
             </div>
-            <div className="text-ui font-bold text-slate-900">
+            <div className="text-ui font-bold text-gray-900">
               {t("Accounts", "Účty", "Fiókok")} ({availableAccounts.length})
             </div>
           </div>
@@ -43,7 +43,7 @@ export const EmailAccountsSidebar: React.FC<EmailAccountsSidebarProps> = ({
               window.location.hash = "settings/email/mailboxes";
             }}
             title={t("Manage External Connectors", "Spravovať externé konektory", "Külső konektorok kezelése")}
-            className="h-8 w-8 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 flex items-center justify-center transition-colors cursor-pointer"
+            className="h-8 w-8 rounded-md border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-600 flex items-center justify-center transition-colors cursor-pointer"
           >
             <Settings size={15} />
           </button>
@@ -51,14 +51,14 @@ export const EmailAccountsSidebar: React.FC<EmailAccountsSidebarProps> = ({
 
         <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5">
           {availableAccounts.length === 0 ? (
-            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/70 text-caption text-slate-500 space-y-2">
+            <div className="p-3 rounded-lg bg-gray-50 border border-gray-200/70 text-caption text-gray-500 space-y-2">
               <p>{t("No active channels assigned yet.", "Zatiaľ nie sú priradené žiadne kanály.", "Még nincs hozzárendelt csatorna.")}</p>
               <button
                 type="button"
                 onClick={() => {
                   window.location.hash = "settings/email/mailboxes";
                 }}
-                className="w-full px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-micro font-bold"
+                className="w-full px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-micro font-bold"
               >
                 + {t("Connect Channel", "Pripojiť kanál", "Csatorna csatlakoztatása")}
               </button>
@@ -86,13 +86,13 @@ export const EmailAccountsSidebar: React.FC<EmailAccountsSidebarProps> = ({
                         setSelectedThreadId(null);
                       }
                     }}
-                    className={`w-full p-2.5 rounded-2xl border text-left transition-all flex items-start gap-2.5 cursor-pointer ${meta.rowBorder} ${
+                    className={`w-full p-2.5 rounded-lg border text-left transition-all flex items-start gap-2.5 cursor-pointer ${meta.rowBorder} ${
                       isSelected
-                        ? `${meta.rowBg} ${meta.accentRing} border-slate-300 shadow-xs`
-                        : "bg-white hover:bg-slate-50/90 border-slate-200/70"
+                        ? `${meta.rowBg} ${meta.accentRing} border-gray-300 shadow-xs`
+                        : "bg-white hover:bg-gray-50/90 border-gray-200/70"
                     }`}
                   >
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${meta.iconBg}`}>
+                    <div className={`w-9 h-9 rounded-md flex items-center justify-center shrink-0 ${meta.iconBg}`}>
                       <ProviderLogo type={acc.connectorType} className="w-4 h-4" />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -133,14 +133,14 @@ export const EmailAccountsSidebar: React.FC<EmailAccountsSidebarProps> = ({
                           </div>
                         ) : (
                           acc.isPersonal && (
-                            <span className="text-micro font-semibold text-slate-400">
+                            <span className="text-micro font-semibold text-gray-400">
                               {t("Personal", "Osobný", "Személyes")}
                             </span>
                           )
                         )}
                       </div>
-                      <div className="text-ui font-bold text-slate-900 truncate mt-0.5">{acc.name}</div>
-                      <div className="text-micro text-slate-500 font-mono truncate">{acc.address}</div>
+                      <div className="text-ui font-bold text-gray-900 truncate mt-0.5">{acc.name}</div>
+                      <div className="text-micro text-gray-500 font-mono truncate">{acc.address}</div>
                     </div>
                   </button>
 
@@ -156,10 +156,10 @@ export const EmailAccountsSidebar: React.FC<EmailAccountsSidebarProps> = ({
                           setActiveChatSubagentId("");
                           setVisualTriggersOpen(false);
                         }}
-                        className={`w-full px-2.5 py-1.5 rounded-xl text-left flex items-center justify-between gap-1.5 transition-all cursor-pointer border ${
+                        className={`w-full px-2.5 py-1.5 rounded-md text-left flex items-center justify-between gap-1.5 transition-all cursor-pointer border ${
                           isSelected && activeChatSubagentId === "" && !visualTriggersOpen
                             ? "bg-indigo-50/90 border-indigo-300 text-indigo-950 font-bold shadow-2xs"
-                            : "bg-slate-50/70 hover:bg-slate-100/80 border-slate-200/60 text-slate-700"
+                            : "bg-gray-50/70 hover:bg-gray-100/80 border-gray-200/60 text-gray-700"
                         }`}
                       >
                         <span className="text-micro truncate flex items-center gap-1.5">
@@ -194,10 +194,10 @@ export const EmailAccountsSidebar: React.FC<EmailAccountsSidebarProps> = ({
                               setActiveChatSubagentId(sub.id);
                               setVisualTriggersOpen(false);
                             }}
-                            className={`w-full px-2.5 py-1.5 rounded-xl text-left flex items-center justify-between gap-1.5 transition-all cursor-pointer border ${
+                            className={`w-full px-2.5 py-1.5 rounded-md text-left flex items-center justify-between gap-1.5 transition-all cursor-pointer border ${
                               subActive
                                 ? "bg-amber-50/95 border-amber-300 text-amber-950 font-bold shadow-2xs"
-                                : "bg-white hover:bg-amber-50/40 border-slate-200/70 text-slate-700"
+                                : "bg-white hover:bg-amber-50/40 border-gray-200/70 text-gray-700"
                             }`}
                           >
                             <div className="min-w-0 flex-1">
@@ -205,7 +205,7 @@ export const EmailAccountsSidebar: React.FC<EmailAccountsSidebarProps> = ({
                                 <Bot size={11} className="text-amber-600 shrink-0" />
                                 <span className="truncate">{sub.name}</span>
                               </div>
-                              <div className="text-micro text-slate-400 truncate pl-4">{sub.role}</div>
+                              <div className="text-micro text-gray-400 truncate pl-4">{sub.role}</div>
                             </div>
                             <span className="flex items-center gap-1 shrink-0">
                               {subHasTrig && (
@@ -231,7 +231,7 @@ export const EmailAccountsSidebar: React.FC<EmailAccountsSidebarProps> = ({
                           setSelectedMailboxId(acc.id);
                           setVisualTriggersOpen(true);
                         }}
-                        className={`w-full px-2.5 py-1.5 rounded-xl text-left flex items-center justify-between gap-1.5 transition-all cursor-pointer border ${
+                        className={`w-full px-2.5 py-1.5 rounded-md text-left flex items-center justify-between gap-1.5 transition-all cursor-pointer border ${
                           isSelected && visualTriggersOpen
                             ? "bg-amber-500 text-white border-amber-600 font-bold shadow-2xs"
                             : "bg-amber-50/60 hover:bg-amber-100/70 border-amber-200/80 text-amber-900 font-semibold"

@@ -81,9 +81,9 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
           className="flex-1 min-w-0 grid grid-cols-1 ws-lg:grid-cols-12 gap-5 h-full max-h-full overflow-hidden"
         >
       {/* COLUMN 1: Conversation list */}
-      <div className="ws-lg:col-span-5 ws-xl:col-span-4 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden">
+      <div className="ws-lg:col-span-5 ws-xl:col-span-4  rounded-lg border border-gray-200 bg-white shadow-xs flex flex-col h-full max-h-full overflow-hidden">
         {mailboxNeedsReconnect && (
-          <div role="alert" data-testid="mailbox-reconnect" className="m-4 mb-0 p-3 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-ui font-semibold flex items-start gap-2 shrink-0">
+          <div role="alert" data-testid="mailbox-reconnect" className="m-4 mb-0 p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-ui font-semibold flex items-start gap-2 shrink-0">
             <CircleAlert size={16} className="mt-0.5 shrink-0" />
             <span>
               {t(
@@ -95,26 +95,26 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
           </div>
         )}
         {/* Search & filters */}
-        <div className="p-4 space-y-3 border-b border-slate-100 shrink-0">
+        <div className="p-4 space-y-3 border-b border-gray-100 shrink-0">
           <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text"
               placeholder={t("Search conversations...", "Hľadať konverzácie...", "Beszélgetések keresése...")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-body text-slate-700 focus:outline-none focus:bg-white focus:border-pink-300 transition-colors"
+              className="w-full pl-10 pr-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-body text-gray-700 focus:outline-none focus:bg-white focus:border-entity-border transition-colors"
             />
           </div>
 
           <div className="flex items-center justify-between gap-2">
-            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50" role="tablist" aria-label={t("Mailbox filter", "Filter schránky", "Postafiók szűrő")}>
+            <div className="flex bg-gray-100 p-1 rounded-md border border-gray-200/50" role="tablist" aria-label={t("Mailbox filter", "Filter schránky", "Postafiók szűrő")}>
               <button
                 type="button"
                 role="tab"
                 aria-selected={filter === "all"}
                 onClick={() => setFilter("all")}
-                className={`px-3.5 py-1.5 rounded-lg text-body font-bold transition-all cursor-pointer ${filter === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                className={`px-3.5 py-1.5 rounded-lg text-body font-bold transition-all cursor-pointer ${filter === "all" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
               >
                 {t("All", "Všetky", "Összes")}
               </button>
@@ -123,11 +123,11 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
                 role="tab"
                 aria-selected={filter === "unread"}
                 onClick={() => setFilter("unread")}
-                className={`px-3.5 py-1.5 rounded-lg text-body font-bold transition-all flex items-center gap-1.5 cursor-pointer ${filter === "unread" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                className={`px-3.5 py-1.5 rounded-lg text-body font-bold transition-all flex items-center gap-1.5 cursor-pointer ${filter === "unread" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
               >
                 {t("Unread", "Neprečítané", "Olvasatlan")}
                 {unreadCount > 0 && (
-                  <span className="min-w-5 h-5 px-1.5 rounded-full bg-pink-600 text-white text-ui font-bold flex items-center justify-center">
+                  <span className="min-w-5 h-5 px-1.5 rounded-full bg-entity-solid text-white text-ui font-bold flex items-center justify-center">
                     {unreadCount}
                   </span>
                 )}
@@ -143,8 +143,8 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
                   ? t("Font size: large (click for normal)", "Veľkosť písma: veľké (kliknite pre normálne)", "Betűméret: nagy (kattintson a normálhoz)")
                   : t("Font size: normal (click for large)", "Veľkosť písma: normálne (kliknite pre veľké)", "Betűméret: normál (kattintson a nagyhoz)")}
                 aria-label={t("Font size", "Veľkosť písma", "Betűméret")}
-                className={`h-9 w-9 rounded-xl border flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
-                  isLargeFont ? "bg-pink-50 border-pink-200 text-pink-700" : "bg-white border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                className={`h-9 w-9 rounded-md border flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
+                  isLargeFont ? "bg-entity-subtle border-entity-border text-entity-text" : "bg-white border-gray-200 text-gray-500 hover:text-gray-900 hover:bg-gray-50"
                 }`}
               >
                 <Type size={16} />
@@ -163,8 +163,8 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
                   ? t("Flow Mode: on — messages grouped into threads", "Režim toku: zapnutý — správy zoskupené do vlákien", "Folyam mód: be — üzenetek szálakba csoportosítva")
                   : t("Flow Mode: off — click to group messages into threads", "Režim toku: vypnutý — kliknite pre zoskupenie do vlákien", "Folyam mód: ki — kattintson a szálakba csoportosításhoz")}
                 aria-label={t("Flow Mode", "Režim toku", "Folyam mód")}
-                className={`h-9 w-9 rounded-xl border flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
-                  isThreadedMode ? "bg-pink-50 border-pink-200 text-pink-700" : "bg-white border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                className={`h-9 w-9 rounded-md border flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
+                  isThreadedMode ? "bg-entity-subtle border-entity-border text-entity-text" : "bg-white border-gray-200 text-gray-500 hover:text-gray-900 hover:bg-gray-50"
                 }`}
               >
                 <MessagesSquare size={16} />
@@ -176,12 +176,12 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
         {/* Conversation rows */}
         <div className="flex-1 overflow-y-auto" onScroll={onListScroll}>
           {isLoadingEmails ? (
-            <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400">
-              <Loader2 className="animate-spin text-pink-500" size={24} />
+            <div className="flex flex-col items-center justify-center py-12 gap-2 text-gray-400">
+              <Loader2 className="animate-spin text-entity-text" size={24} />
               <span className="text-body font-semibold">{t("Syncing Envelopes...", "Synchronizácia obálok...", "Borítékok szinkronizálása...")}</span>
             </div>
           ) : shownCount === 0 ? (
-            <div className="text-center py-12 px-4 text-slate-400 text-body font-semibold">
+            <div className="text-center py-12 px-4 text-gray-400 text-body font-semibold">
               {filter === "unread"
                 ? t("No unread messages.", "Žiadne neprečítané správy.", "Nincs olvasatlan üzenet.")
                 : isThreadedMode
@@ -222,7 +222,7 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
         </div>
 
         {/* List footer */}
-        <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-2 text-body text-slate-500 shrink-0">
+        <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between gap-2 text-body text-gray-500 shrink-0">
           <span>
             {isThreadedMode
               ? plural(shownCount, ["conversation", "conversations"], ["konverzácia", "konverzácie", "konverzácií"], "beszélgetés")
@@ -235,7 +235,7 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
       </div>
 
       {/* COLUMN 2: Mail detail / conversation flow */}
-      <div className="ws-lg:col-span-7 ws-xl:col-span-8 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden">
+      <div className="ws-lg:col-span-7 ws-xl:col-span-8  rounded-lg border border-gray-200 bg-white shadow-xs flex flex-col h-full max-h-full overflow-hidden">
         {isThreadedMode ? (
           activeThread ? (() => {
             const contact = threadContactOf(activeThread);
@@ -244,12 +244,12 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
             return (
               <div className="h-full flex flex-col overflow-hidden">
                 {/* Thread header */}
-                <div className="px-6 pt-5 pb-4 border-b border-slate-100 flex items-start justify-between gap-4 shrink-0 text-left">
+                <div className="px-6 pt-5 pb-4 border-b border-gray-100 flex items-start justify-between gap-4 shrink-0 text-left">
                   <div className="min-w-0">
-                    <h3 className="text-title font-heading font-extrabold text-slate-900 tracking-tight break-words">{activeThread.subject}</h3>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-body text-slate-500">
-                      <span className="inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 font-bold max-w-full">
-                        <span className="h-6 w-6 rounded-lg bg-white border border-slate-200 text-slate-600 text-caption font-bold flex items-center justify-center shrink-0">
+                    <h3 className="text-title font-heading font-extrabold text-gray-900 tracking-tight break-words">{activeThread.subject}</h3>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-body text-gray-500">
+                      <span className="inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-md bg-gray-50 border border-gray-200 text-gray-800 font-bold max-w-full">
+                        <span className="h-6 w-6 rounded-lg bg-white border border-gray-200 text-gray-600 text-caption font-bold flex items-center justify-center shrink-0">
                           {initialsOf(contact.name)}
                         </span>
                         <span className="truncate">{contact.name}</span>
@@ -259,7 +259,7 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
                         {plural(activeThread.emails.length, ["message", "messages"], ["správa", "správy", "správ"], "üzenet")}
                       </span>
                       {threadLead ? renderLeadChip(threadLead) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold border bg-white text-slate-500 border-slate-200">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold border bg-white text-gray-500 border-gray-200">
                           👤 {t(`Not in ${PRODUCT_NAME}`, `Nie je v ${PRODUCT_NAME}`, `Nincs a ${PRODUCT_NAME}-ben`)}
                         </span>
                       )}
@@ -299,28 +299,28 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
                     return (
                       <div
                         key={email.uid}
-                        className={`border rounded-2xl overflow-hidden transition-all duration-200 text-left ${
-                          isExpanded ? "border-slate-200 shadow-sm" : "border-slate-100 hover:border-slate-200 bg-white"
+                        className={`border rounded-lg overflow-hidden transition-all duration-200 text-left ${
+                          isExpanded ? "border-gray-200 shadow-sm" : "border-gray-100 hover:border-gray-200 bg-white"
                         }`}
                       >
                         {/* Message header line */}
                         <div
                           onClick={() => toggleEmailExpand(email)}
                           className={`px-4 py-3 flex items-center justify-between gap-3 cursor-pointer select-none ${
-                            isExpanded ? "bg-slate-50 border-b border-slate-200/80" : "bg-transparent"
+                            isExpanded ? "bg-gray-50 border-b border-gray-200/80" : "bg-transparent"
                           }`}
                         >
                           <div className="flex items-center gap-3 min-w-0">
-                            <span className={`h-8 w-8 rounded-xl flex items-center justify-center shrink-0 ${
-                              email.isSent ? "bg-pink-100 text-pink-700" : "bg-indigo-100 text-indigo-700"
+                            <span className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0 ${
+                              email.isSent ? "bg-pink-100 text-entity-text" : "bg-indigo-100 text-indigo-700"
                             }`}>
                               {email.isSent ? <ArrowUpRight size={16} /> : <ArrowDownLeft size={16} />}
                             </span>
                             <div className="min-w-0">
-                              <span className="text-body font-bold text-slate-800 truncate block">
+                              <span className="text-body font-bold text-gray-800 truncate block">
                                 {email.isSent ? `${t("To:", "Komu:", "Címzett:")} ${party.name}` : party.name}
                               </span>
-                              <span className="text-ui text-slate-500 block mt-0.5 truncate">
+                              <span className="text-ui text-gray-500 block mt-0.5 truncate">
                                 {formatFullDate(email.date)}
                               </span>
                             </div>
@@ -332,7 +332,7 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
                               <button
                                 type="button"
                                 onClick={() => openNewComposer(party.address, `Re: ${email.subject}`)}
-                                className="h-8 w-8 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95 cursor-pointer"
+                                className="h-8 w-8 rounded-md flex items-center justify-center text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-all active:scale-95 cursor-pointer"
                                 title={t("Reply", "Odpovedať", "Válasz")}
                                 aria-label={t("Reply", "Odpovedať", "Válasz")}
                               >
@@ -345,7 +345,7 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
                                   lang={systemLanguage}
                                   what={email.subject}
                                   onConfirm={() => handleDeleteEmail(email.uid)}
-                                  className="h-8 w-8 rounded-xl flex items-center justify-center text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-all active:scale-95"
+                                  className="h-8 w-8 rounded-md flex items-center justify-center text-gray-500 hover:bg-rose-50 hover:text-rose-600 transition-all active:scale-95"
                                   title={t("Delete Message", "Odstrániť správu", "Üzenet törlése")}
                               >
                                 <Trash2 size={15} />
@@ -354,7 +354,7 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
                             <button
                               type="button"
                               onClick={() => toggleEmailExpand(email)}
-                              className="h-8 w-8 rounded-xl flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-all cursor-pointer"
+                              className="h-8 w-8 rounded-md flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-all cursor-pointer"
                               aria-label={isExpanded ? t("Collapse", "Zbaliť", "Összecsukás") : t("Expand", "Rozbaliť", "Kibontás")}
                             >
                               {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -366,14 +366,14 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
                         {isExpanded && (
                           <div className="p-4 bg-white space-y-4">
                             {isLoadingDetail && !bodyObj ? (
-                              <div className="flex items-center justify-center py-6 gap-2 text-slate-400">
-                                <Loader2 className="animate-spin text-pink-500" size={16} />
+                              <div className="flex items-center justify-center py-6 gap-2 text-gray-400">
+                                <Loader2 className="animate-spin text-entity-text" size={16} />
                                 <span className="text-body font-semibold">{t("Decoding part...", "Dekódovanie časti...", "Rész dekódolása...")}</span>
                               </div>
                             ) : bodyObj ? (
                               renderMailFrame(bodyObj, `Thread body ${email.uid}`, "w-full min-h-55 max-h-105 border-0 bg-transparent")
                             ) : (
-                              <div className="text-center py-6 text-body font-semibold text-slate-400">
+                              <div className="text-center py-6 text-body font-semibold text-gray-400">
                                 {t("Content not found.", "Obsah sa nenašiel.", "A tartalom nem található.")}
                               </div>
                             )}
@@ -386,7 +386,7 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
                 </div>
 
                 {/* Thread footer */}
-                <div className="px-6 py-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="px-6 py-4 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
                   {canEdit ? (
                     <button
                       type="button"
@@ -403,8 +403,8 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
           })() : emptyPane(t("Select a threaded conversation flow", "Vyberte tok vlákna konverzácie", "Válasszon egy beszélgetésszálat"))
         ) : (
           isLoadingDetail ? (
-            <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-400">
-              <Loader2 className="animate-spin text-pink-500" size={32} />
+            <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-400">
+              <Loader2 className="animate-spin text-entity-text" size={32} />
               <span className="text-body font-semibold">{t("Decoding Message...", "Dekódovanie správy...", "Üzenet dekódolása...")}</span>
             </div>
           ) : selectedEmail ? (() => {
@@ -418,9 +418,9 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
             return (
               <div className="h-full flex flex-col overflow-hidden">
                 {/* Header */}
-                <div className="px-6 pt-5 pb-4 border-b border-slate-100 flex items-start justify-between gap-4 shrink-0 text-left">
+                <div className="px-6 pt-5 pb-4 border-b border-gray-100 flex items-start justify-between gap-4 shrink-0 text-left">
                   <div className="min-w-0">
-                    <h3 className="text-title font-heading font-extrabold text-slate-900 tracking-tight break-words">
+                    <h3 className="text-title font-heading font-extrabold text-gray-900 tracking-tight break-words">
                       {selectedEmail.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)")}
                     </h3>
                     {renderPartyMeta(selectedEmail, lead)}
@@ -434,7 +434,7 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
                           lang={systemLanguage}
                           what={selectedEmail.subject}
                           onConfirm={() => handleDeleteEmail(selectedEmail.uid)}
-                          className="h-9 w-9 shrink-0 rounded-xl flex items-center justify-center text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-all active:scale-95"
+                          className="h-9 w-9 shrink-0 rounded-md flex items-center justify-center text-gray-500 hover:bg-rose-50 hover:text-rose-600 transition-all active:scale-95"
                           title={t("Delete Message", "Odstrániť správu", "Üzenet törlése")}
                       >
                         <Trash2 size={17} />
@@ -460,7 +460,7 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
                   {bodyObj ? (
                     renderMailFrame(bodyObj, t("Parsed mail content", "Spracovaný obsah pošty", "Feldolgozott levéltartalom"), "w-full flex-1 min-h-50 border-0 bg-transparent")
                   ) : (
-                    <div className="flex-1 text-center text-slate-400 py-12 text-body font-semibold">
+                    <div className="flex-1 text-center text-gray-400 py-12 text-body font-semibold">
                       {t("No message content.", "Žiadny obsah správy.", "Nincs üzenettartalom.")}
                     </div>
                   )}
@@ -468,7 +468,7 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
                 </div>
 
                 {/* Footer actions */}
-                <div className="px-6 py-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="px-6 py-4 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
                   {canEdit ? (
                     <button
                       type="button"
