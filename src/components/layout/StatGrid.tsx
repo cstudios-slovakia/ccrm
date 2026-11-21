@@ -33,21 +33,23 @@ export const StatTile = ({
   className?: string;
 }) =>
   tone ? (
-    <div className={`flex items-center gap-4 rounded-3xl border border-slate-200/80 bg-white p-4 shadow-sm transition-all hover:shadow-md ${className}`}>
-      <div className={`shrink-0 rounded-2xl p-3 [&>svg]:size-6 ${tone}`}>{icon}</div>
+    <div className={`flex items-center gap-4 rounded-lg border border-gray-200 bg-white p-4 shadow-xs transition-all hover:shadow-sm ${className}`}>
+      <div className={`shrink-0 rounded-md p-2.5 [&>svg]:size-5 ${tone}`}>{icon}</div>
       <div className="min-w-0">
-        <div className="type-overline text-slate-500">{label}</div>
-        <div className="type-metric mt-0.5 truncate text-slate-900">{value}</div>
-        {delta && <div className="type-meta text-slate-500">{delta}</div>}
+        <div className="type-overline text-gray-500">{label}</div>
+        <div className="type-metric mt-0.5 truncate text-gray-900 tabular-nums">{value}</div>
+        {delta && <div className="type-meta text-gray-500">{delta}</div>}
       </div>
     </div>
   ) : (
-    <div className={`rounded-3xl border border-slate-200/80 bg-white p-4 shadow-sm ${className}`}>
+    <div className={`rounded-lg border border-gray-200 border-t-2 border-t-entity-solid bg-white p-4 shadow-xs ${className}`}>
       <div className="flex items-start justify-between gap-2">
-        <span className="type-overline text-slate-500">{label}</span>
-        {icon && <span className="text-slate-400 [&>svg]:size-5">{icon}</span>}
+        <span className="type-overline text-gray-500">{label}</span>
+        {icon && (
+          <span className="rounded-md bg-entity-subtle p-1.5 text-entity-text [&>svg]:size-4">{icon}</span>
+        )}
       </div>
-      <div className="type-metric mt-2 text-slate-900">{value}</div>
-      {delta && <div className="type-meta mt-1 text-slate-500">{delta}</div>}
+      <div className="type-metric mt-2 text-gray-900 tabular-nums">{value}</div>
+      {delta && <div className="type-meta mt-1 text-gray-500">{delta}</div>}
     </div>
   );

@@ -32,14 +32,14 @@ export const Field = ({
   children: ReactNode;
 }) => (
   <div className={`flex min-w-0 flex-col gap-1.5 ${span === "full" ? "ws-md:col-span-full" : ""}`}>
-    <label htmlFor={htmlFor} className="type-label text-slate-600">
+    <label htmlFor={htmlFor} className="type-label text-gray-700">
       {label}
     </label>
     {children}
     {error ? (
       <span className="type-meta text-rose-600">{error}</span>
     ) : hint ? (
-      <span className="type-meta text-slate-500">{hint}</span>
+      <span className="type-meta text-gray-500">{hint}</span>
     ) : null}
   </div>
 );

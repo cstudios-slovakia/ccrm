@@ -72,16 +72,15 @@ export const AiKeyBanner: React.FC<AiKeyBannerProps> = ({
 
   return (
     <div
-      // `bg-white` under the gradient keeps the panel opaque over the page.
-      className={`animate-fade-in relative overflow-hidden rounded-3xl border border-amber-200 bg-white bg-gradient-to-r from-amber-50 via-amber-50 to-amber-50/40 p-4 sm:p-5 shadow-sm transition-shadow duration-300 hover:shadow-md ${className}`}
+      className={`animate-fade-in relative overflow-hidden rounded-lg border border-amber-200 bg-amber-50/90 p-4 sm:p-5 shadow-xs ${className}`}
     >
       {/* Stacked rather than side-by-side: this banner is dropped into columns
           as narrow as a client detail panel, where a horizontal row squeezed the
           sentence into three cramped lines beside the buttons. */}
       <div className="flex flex-col gap-3">
         <div className="flex items-start gap-3 min-w-0">
-          <div className="shrink-0 h-10 w-10 rounded-2xl bg-amber-100 border border-amber-200 text-amber-700 flex items-center justify-center">
-            <BrainCircuit className="h-5 w-5 animate-pulse" />
+          <div className="shrink-0 h-9 w-9 rounded-md bg-amber-100 border border-amber-200 text-amber-700 flex items-center justify-center">
+            <BrainCircuit className="h-4.5 w-4.5" />
           </div>
           <div className="min-w-0 flex-1">
             <h4 className="type-overline text-amber-900">
@@ -93,7 +92,7 @@ export const AiKeyBanner: React.FC<AiKeyBannerProps> = ({
             type="button"
             onClick={dismissForSession}
             title={t(language, "Hide for now", "Skryť dočasne", "Elrejtés egyelőre")}
-            className="shrink-0 -mt-1 -mr-1 p-2 rounded-xl text-amber-900/50 hover:text-amber-900 hover:bg-white/70 transition-all duration-200 hover:rotate-90 active:scale-95 cursor-pointer"
+            className="shrink-0 -mt-1 -mr-1 p-1.5 rounded-md text-amber-900/50 hover:text-amber-900 hover:bg-white/70 transition-colors cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
@@ -103,7 +102,7 @@ export const AiKeyBanner: React.FC<AiKeyBannerProps> = ({
           <button
             type="button"
             onClick={openAiSettings}
-            className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white type-overline flex items-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all duration-200 hover:-translate-y-0.5 active:scale-95 cursor-pointer"
+            className="px-3 py-1.5 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white type-overline flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
           >
             <KeyRound className="h-3.5 w-3.5" />
             {t(language, "Add the key", "Doplniť kľúč", "Kulcs megadása")}
@@ -111,7 +110,7 @@ export const AiKeyBanner: React.FC<AiKeyBannerProps> = ({
           <button
             type="button"
             onClick={() => setDismissedForever(true)}
-            className="px-3 py-2 rounded-xl bg-white/70 hover:bg-white text-amber-900/70 hover:text-amber-900 border border-amber-200 type-overline transition-all duration-200 active:scale-95 cursor-pointer"
+            className="px-3 py-1.5 rounded-md bg-white hover:bg-amber-50 text-amber-900/80 hover:text-amber-900 border border-amber-200 type-overline transition-colors cursor-pointer"
           >
             {t(language, "Don't show again", "Už nezobrazovať", "Ne jelenjen meg többé")}
           </button>

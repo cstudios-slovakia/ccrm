@@ -16,7 +16,9 @@ export const Surface = ({
   className?: string;
 }) => {
   const base =
-    tone === "inset" ? "rounded-2xl bg-slate-50" : "rounded-3xl bg-white border border-slate-200/80 shadow-sm";
-  const pad = padding === "none" ? "" : tone === "inset" ? "p-3 ws-sm:p-4" : "p-4 ws-sm:p-6";
+    tone === "inset"
+      ? "rounded-md bg-gray-50 border border-gray-200/80"
+      : "rounded-lg bg-white border border-gray-200 shadow-xs overflow-clip";
+  const pad = padding === "none" ? "" : tone === "inset" ? "p-3 ws-sm:p-4" : "p-4 ws-sm:p-5";
   return <div className={`${base} ${pad} ${className}`}>{children}</div>;
 };

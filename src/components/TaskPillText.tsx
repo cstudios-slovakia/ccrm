@@ -9,6 +9,7 @@ import {
     Ticket as TicketIcon,
     CheckSquare,
 } from "lucide-react";
+import { entityAccentStyle } from "../utils/entityAccent";
 
 export type MentionEntityType =
     | "user"
@@ -220,14 +221,14 @@ export const TaskPillText: React.FC<TaskPillTextProps> = ({
                                 }
                             }}
                             style={{ boxDecorationBreak: "clone", WebkitBoxDecorationBreak: "clone" }}
-                            className={`inline px-1.5 py-0.5 rounded text-micro font-bold mx-0.5 select-none transition-all box-decoration-clone align-baseline ${
+                            className={`inline px-1.5 py-0.5 rounded-md text-micro font-semibold mx-0.5 select-none transition-all box-decoration-clone align-baseline border ${
                                 onTagClick
-                                    ? "bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-900 border border-indigo-200 shadow-2xs cursor-pointer"
-                                    : "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                                    ? "bg-entity-subtle hover:bg-entity-muted text-entity-text border-entity-border cursor-pointer"
+                                    : "bg-entity-subtle text-entity-text border-entity-border"
                             }`}
                             title={onTagClick ? `#${tag}` : undefined}
                         >
-                            <Hash className="inline h-2.5 w-2.5 mr-0.5 -mt-0.5 opacity-70" />
+                            <Hash className="inline h-2.5 w-2.5 mr-0.5 -mt-0.5 opacity-75" />
                             <span>{tag}</span>
                         </span>
                     );
@@ -237,22 +238,28 @@ export const TaskPillText: React.FC<TaskPillTextProps> = ({
                     const entityType: MentionEntityType = token.entity?.type || "user";
                     const style = MENTION_STYLE_MAP[entityType] || MENTION_STYLE_MAP.user;
                     const IconComponent = style.Icon;
+                    const mentionAccent = entityAccentStyle(entityType) as React.CSSProperties;
 
                     return (
                         <span
                             key={index}
+                            data-entity-ref={entityType}
                             onClick={(e) => {
                                 if (onMentionClick) {
                                     e.stopPropagation();
                                     onMentionClick(token.entity, token.mentionName);
                                 }
                             }}
-                            style={{ boxDecorationBreak: "clone", WebkitBoxDecorationBreak: "clone" }}
-                            className={`inline px-1.5 py-0.5 rounded text-micro font-bold mx-0.5 select-none border shadow-2xs box-decoration-clone align-baseline ${
-                                style.badgeClass
-                            } ${onMentionClick ? "cursor-pointer hover:brightness-95 transition-all" : ""}`}
+                            style={{
+                                ...mentionAccent,
+                                boxDecorationBreak: "clone",
+                                WebkitBoxDecorationBreak: "clone",
+                            }}
+                            className={`inline px-1.5 py-0.5 rounded-md text-micro font-semibold mx-0.5 select-none border bg-entity-subtle text-entity-text border-entity-border box-decoration-clone align-baseline ${
+                                onMentionClick ? "cursor-pointer hover:bg-entity-muted transition-all" : ""
+                            }`}
                         >
-                            <IconComponent className="inline h-2.5 w-2.5 mr-0.5 -mt-0.5 opacity-75" />
+                            <IconComponent className="inline h-2.5 w-2.5 mr-0.5 -mt-0.5 opacity-80" />
                             <span>{token.text}</span>
                         </span>
                     );

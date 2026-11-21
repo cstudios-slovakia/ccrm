@@ -14,6 +14,7 @@ import {
   MessageCircle,
   Package,
   PencilLine,
+  Send,
   Share2,
   Sparkles,
   TableProperties,
@@ -90,6 +91,7 @@ const ICONS: Record<SectionVisualId, IconType> = {
   email: Mail,
   social_media: Share2,
   whatsapp: MessageCircle,
+  newsletter: Send,
   files: FolderOpen,
   updates: Sparkles,
 };
@@ -128,6 +130,7 @@ export const SECTION_VISUALS: Record<SectionVisualId, SectionVisual> = {
   email: build("email"),
   social_media: build("social_media"),
   whatsapp: build("whatsapp"),
+  newsletter: build("newsletter"),
   files: build("files"),
   updates: build("updates"),
 };

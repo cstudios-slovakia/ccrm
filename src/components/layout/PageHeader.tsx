@@ -17,17 +17,23 @@ export interface PageHeaderProps {
 
 export const PageHeader = ({ icon, title, subtitle, badge, actions, className = "" }: PageHeaderProps) => (
   <div
-    className={`flex flex-col ws-md:flex-row ws-md:items-center ws-md:justify-between gap-4 border-b border-slate-100 pb-4 select-none ${className}`}
+    className={`flex flex-col ws-md:flex-row ws-md:items-center ws-md:justify-between gap-4 border-b border-gray-200 pb-4 select-none ${className}`}
   >
-    <div className="min-w-0 flex flex-col">
-      <h2 className="type-page-title text-slate-900 flex items-center gap-2 [&>svg]:size-6 [&>svg]:shrink-0">
-        {icon}
-        <span className="min-w-0">{title}</span>
-      </h2>
-      {subtitle && <p className="type-body text-slate-500 mt-1">{subtitle}</p>}
-      {badge}
+    <div className="min-w-0 flex items-center gap-3">
+      {icon && (
+        <div className="size-10 shrink-0 rounded-lg border border-entity-border bg-entity-subtle text-entity-text flex items-center justify-center [&>svg]:size-5 shadow-2xs">
+          {icon}
+        </div>
+      )}
+      <div className="min-w-0 flex flex-col">
+        <h2 className="type-page-title text-gray-900 flex items-center gap-2">
+          <span className="min-w-0">{title}</span>
+        </h2>
+        {subtitle && <p className="type-body text-gray-500 mt-0.5">{subtitle}</p>}
+        {badge}
+      </div>
     </div>
-    {actions && <div className="flex flex-wrap items-center gap-2.5">{actions}</div>}
+    {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
   </div>
 );
 
@@ -59,7 +65,7 @@ export const EntityHeader = ({
   actions,
   className = "",
 }: EntityHeaderProps) => (
-  <div className={`flex flex-col ws-md:flex-row ws-md:items-center gap-4 border-b border-slate-100 pb-4 ${className}`}>
+  <div className={`flex flex-col ws-md:flex-row ws-md:items-center gap-4 border-b border-gray-200 pb-4 ${className}`}>
     <div className="flex min-w-0 flex-1 items-center gap-3">
       {onBack && (
         <button
@@ -67,24 +73,24 @@ export const EntityHeader = ({
           onClick={onBack}
           title={backLabel}
           aria-label={backLabel}
-          className="size-9 shrink-0 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-slate-800 hover:border-slate-300 transition-all active:scale-95 cursor-pointer"
+          className="size-9 shrink-0 inline-flex items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 shadow-2xs hover:text-gray-900 hover:bg-gray-50 hover:border-gray-300 transition-all active:scale-95 cursor-pointer"
         >
           <ArrowLeft className="size-4" />
         </button>
       )}
       {avatar && <div className="shrink-0">{avatar}</div>}
       <div className="min-w-0">
-        <h2 className="type-entity-title text-slate-900 truncate">{title}</h2>
+        <h2 className="type-entity-title text-gray-900 truncate">{title}</h2>
         {(badges || meta) && (
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
             {badges}
-            {meta && <span className="type-meta text-slate-500">{meta}</span>}
+            {meta && <span className="type-meta text-gray-500">{meta}</span>}
           </div>
         )}
       </div>
     </div>
     {(primaryAction || actions) && (
-      <div className="flex flex-wrap items-center gap-2.5">
+      <div className="flex flex-wrap items-center gap-2">
         {actions}
         {primaryAction}
       </div>

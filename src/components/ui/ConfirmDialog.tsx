@@ -87,34 +87,34 @@ export function useConfirmDialog(): [
                   exit={{ opacity: 0, scale: 0.97, y: 8 }}
                   transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
                   onMouseDown={(e) => e.stopPropagation()}
-                  className="w-full max-w-sm overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
+                  className="w-full max-w-sm overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl"
                 >
                   <div className="flex items-start gap-3 p-5">
                     {options.danger && (
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-rose-50 text-rose-600 border border-rose-200">
                         <AlertTriangle className="h-4.5 w-4.5" />
                       </span>
                     )}
                     <div className="min-w-0 pt-0.5">
                       <h2
                         id="ccrm-confirm-title"
-                        className="font-heading text-body font-bold text-slate-800 break-words"
+                        className="font-heading text-body font-bold text-gray-900 break-words"
                       >
                         {options.title}
                       </h2>
                       {options.message && (
-                        <p className="mt-1.5 text-ui text-slate-500 break-words">
+                        <p className="mt-1.5 text-ui text-gray-500 break-words">
                           {options.message}
                         </p>
                       )}
                     </div>
                   </div>
-                  <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3">
+                  <div className="flex justify-end gap-2 border-t border-gray-200 bg-gray-50/80 px-5 py-3">
                     <button
                       type="button"
                       data-testid="confirm-dialog-cancel"
                       onClick={() => settle(false)}
-                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-ui font-bold text-slate-600 transition-all hover:bg-slate-50 hover:border-slate-300 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                      className="rounded-md border border-gray-300 bg-white px-3.5 py-2 text-ui font-medium text-gray-700 shadow-2xs transition-all hover:bg-gray-50 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-entity-ring cursor-pointer"
                     >
                       {options.cancelLabel}
                     </button>
@@ -123,10 +123,10 @@ export function useConfirmDialog(): [
                       type="button"
                       data-testid="confirm-dialog-confirm"
                       onClick={() => settle(true)}
-                      className={`rounded-xl px-4 py-2 text-ui font-bold text-white shadow-sm transition-all active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 ${
+                      className={`rounded-md px-3.5 py-2 text-ui font-medium text-white shadow-2xs transition-all active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 cursor-pointer ${
                         options.danger
-                          ? "bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-400"
-                          : "bg-accent hover:brightness-110 focus-visible:ring-accent"
+                          ? "bg-red-600 hover:bg-red-700 focus-visible:ring-red-400"
+                          : "bg-entity-solid hover:bg-entity-solid-hover focus-visible:ring-entity-ring"
                       }`}
                     >
                       {options.confirmLabel}

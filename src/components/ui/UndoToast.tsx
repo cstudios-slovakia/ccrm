@@ -59,13 +59,13 @@ export function UndoToast({ message, undoLabel, closeLabel, durationMs, onUndo, 
       onFocusCapture={() => { pausedRef.current = true; }}
       onBlurCapture={() => { pausedRef.current = false; }}
     >
-      <div className="relative overflow-hidden bg-slate-900 text-white pl-5 pr-4 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 text-ui font-bold border border-slate-800">
+      <div className="relative overflow-hidden bg-gray-900 text-white pl-4 pr-3.5 py-3 rounded-lg shadow-xl flex items-center gap-3 text-ui font-semibold border border-gray-800">
         <span className="min-w-0 break-words" data-testid="undo-toast-message">{message}</span>
         <button
           type="button"
           onClick={onUndo}
           data-testid="undo-toast-undo"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold cursor-pointer transition-all active:scale-95 text-micro shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md font-semibold cursor-pointer transition-all active:scale-95 text-caption shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
         >
           <Undo2 className="size-3.5" aria-hidden="true" />
           {undoLabel}

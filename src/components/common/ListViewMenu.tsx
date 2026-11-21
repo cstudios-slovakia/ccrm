@@ -143,10 +143,10 @@ export function ListViewMenu<K extends string, C extends ListViewColumn>({
         aria-expanded={open}
         aria-haspopup="dialog"
         className={cn(
-          "h-10 flex items-center gap-1.5 px-3 rounded-xl border text-ui font-bold transition-all duration-150 active:scale-95 cursor-pointer",
+          "h-9 flex items-center gap-1.5 px-3 rounded-md border text-ui font-semibold shadow-2xs transition-all duration-150 active:scale-95 cursor-pointer",
           open
-            ? "bg-slate-200 border-slate-300 text-slate-800"
-            : "bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-800"
+            ? "bg-entity-subtle border-entity-border text-entity-text"
+            : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-gray-900"
         )}
       >
         <SlidersHorizontal className="h-4 w-4 shrink-0" />
@@ -158,13 +158,13 @@ export function ListViewMenu<K extends string, C extends ListViewColumn>({
         <div
           role="dialog"
           aria-label={t("View settings", "Nastavenia pohľadu", "Nézet beállításai")}
-          className="absolute right-0 top-full mt-2 z-50 w-[min(26rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white shadow-xl ring-4 ring-slate-900/[0.03] overflow-hidden text-left animate-in fade-in zoom-in-95 slide-in-from-top-1 duration-150 origin-top-right"
+          className="absolute right-0 top-full mt-2 z-50 w-[min(26rem,calc(100vw-2rem))] rounded-lg border border-gray-200 bg-white shadow-xl overflow-hidden text-left animate-in fade-in zoom-in-95 slide-in-from-top-1 duration-150 origin-top-right"
         >
           {/* Sort */}
-          <div className="grid grid-cols-[6.5rem_1fr] items-center gap-3 px-4 py-3.5 border-b border-slate-200">
+          <div className="grid grid-cols-[6.5rem_1fr] items-center gap-3 px-4 py-3.5 border-b border-gray-200">
             <span className={rowLabel}>{t("Sort by", "Zoradiť podľa", "Rendezés")}</span>
             {sortNote ? (
-              <p className="text-caption font-semibold text-slate-400 leading-snug">{sortNote}</p>
+              <p className="text-caption font-semibold text-gray-400 leading-snug">{sortNote}</p>
             ) : (
               <div className="flex items-center gap-1.5 min-w-0">
                 <div className="flex-1 min-w-0">
@@ -176,7 +176,7 @@ export function ListViewMenu<K extends string, C extends ListViewColumn>({
                     options={sortOptions}
                   />
                 </div>
-                <div className="flex items-center shrink-0 rounded-xl border border-slate-200 overflow-hidden">
+                <div className="flex items-center shrink-0 rounded-md border border-gray-200 overflow-hidden">
                   {directions.map(({ dir, Icon, label }) => {
                     const active = sorted && sort.direction === dir;
                     return (
@@ -264,18 +264,18 @@ export function ListViewMenu<K extends string, C extends ListViewColumn>({
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-slate-200 bg-slate-50">
+          <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-gray-200 bg-gray-50">
             <button
               type="button"
               onClick={onReset}
-              className={cn("text-ui font-semibold text-slate-600 transition-colors duration-150 cursor-pointer", tone.resetHover)}
+              className={cn("text-ui font-semibold text-gray-600 transition-colors duration-150 cursor-pointer hover:text-entity-text", tone.resetHover)}
             >
               {t("Use default settings", "Použiť predvolené nastavenia", "Alapértelmezett beállítások")}
             </button>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="h-9 px-4 rounded-xl bg-slate-200 text-ui font-bold text-slate-700 hover:bg-slate-300 active:scale-95 transition-all duration-150 cursor-pointer"
+              className="h-8 px-3.5 rounded-md border border-gray-300 bg-white text-ui font-semibold text-gray-700 hover:bg-gray-50 shadow-2xs active:scale-95 transition-all duration-150 cursor-pointer"
             >
               {t("Close", "Zavrieť", "Bezárás")}
             </button>
