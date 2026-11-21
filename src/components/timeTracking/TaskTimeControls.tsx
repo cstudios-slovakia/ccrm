@@ -10,6 +10,7 @@ import { TimeApiError, timeErrorMessage, updateEntry } from "../../utils/timeTra
 import type { Lead, Project, Task } from "../../types";
 import { readTimeCreate, requestNewTimeEntry } from "./timeCreateBridge";
 import { CustomSelect } from "../ui/CustomSelect";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
 /**
  * ▶, the tracked-time chip and an optional Description, in the task drawer's Time tracking section.
@@ -109,7 +110,7 @@ export function TaskTimeControls({
       data-testid="task-time-start"
       title={runningHere ? t("Stop timer", "Zastaviť časovač", "Időzítő leállítása") : t("Start timer", "Spustiť časovač", "Időzítő indítása")}
       className={`inline-flex size-7 shrink-0 items-center justify-center rounded-lg transition-all cursor-pointer active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 ${
-        runningHere ? "bg-rose-600 text-white hover:bg-rose-700" : "bg-primary text-primary-foreground hover:opacity-90"
+        runningHere ? "bg-rose-600 text-white hover:bg-rose-700" : "bg-entity-solid text-white hover:opacity-90"
       }`}
     >
       {runningHere ? <Square className="size-3.5 fill-current" /> : <Play className="size-3.5 fill-current" />}
@@ -117,14 +118,14 @@ export function TaskTimeControls({
   );
 
   const chip = (
-    <span data-testid="task-time-chip" className="inline-flex items-center rounded-md bg-teal-50 px-1.5 py-0.5 type-overline tabular-nums text-teal-800">
+    <span data-testid="task-time-chip" className="inline-flex items-center rounded-md bg-entity-subtle px-1.5 py-0.5 type-overline tabular-nums text-entity-text">
       <ClockDigits value={formatDuration(tracked)} />
-      {task.estimateMinutes ? <span className="text-teal-600"> / {formatDuration(task.estimateMinutes * 60)}</span> : null}
+      {task.estimateMinutes ? <span className="text-entity-text"> / {formatDuration(task.estimateMinutes * 60)}</span> : null}
     </span>
   );
 
   return (
-    <span className="relative flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+    <span style={entityAccentStyle("time-tracking") as React.CSSProperties} className="relative flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
       {button}
       {chip}
       <input
@@ -141,18 +142,18 @@ export function TaskTimeControls({
         placeholder={t("Description (optional)", "Popis (voliteľné)", "Leírás (nem kötelező)")}
         aria-label={t("Description", "Popis", "Leírás")}
         data-testid="task-time-note"
-        className="h-9 min-w-40 flex-1 basis-full rounded-xl border border-slate-200 bg-white px-3 text-ui outline-none placeholder:text-slate-400 focus:border-primary"
+        className="h-9 min-w-40 flex-1 basis-full rounded-md border border-gray-200 bg-white px-3 text-ui outline-none placeholder:text-gray-400 focus:border-entity"
       />
       {ask && (
         <span
           role="dialog"
           data-testid="task-project-popover"
-          className="absolute left-0 top-full z-20 mt-1 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl"
+          className="absolute left-0 top-full z-20 mt-1 w-72 rounded-lg border border-gray-200 bg-white p-3 shadow-xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <span className="type-label block text-slate-800">{t("Which project is this for?", "Pre ktorý projekt to je?", "Melyik projekthez tartozik?")}</span>
+          <span className="type-label block text-gray-800">{t("Which project is this for?", "Pre ktorý projekt to je?", "Melyik projekthez tartozik?")}</span>
           {party && (
-            <span className="type-meta mt-1 block text-slate-500">
+            <span className="type-meta mt-1 block text-gray-500">
               {t(
                 `The task has no project, and ${party.name} has ${ask.length}. Pick one${onSaveProject ? " — it can also be saved on the task" : ""}.`,
                 `Úloha nemá projekt a ${party.name} ich má ${ask.length}. Vyberte jeden${onSaveProject ? " — možno ho uložiť aj na úlohu" : ""}.`,
@@ -167,7 +168,7 @@ export function TaskTimeControls({
                 type="button"
                 data-testid="task-project-option"
                 onClick={() => void begin(p.id, saveOnTask)}
-                className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-ui font-semibold text-slate-700 transition hover:bg-teal-50 cursor-pointer"
+                className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-ui font-semibold text-gray-700 transition hover:bg-entity-subtle cursor-pointer"
               >
                 <span className="min-w-0 truncate">{p.name || p.id}</span>
                 <span className="shrink-0 rounded-full px-2 py-0.5 text-micro font-semibold" style={{ color: projectStatusColor(p.status, statuses), backgroundColor: `${projectStatusColor(p.status, statuses)}1a` }}>
@@ -176,19 +177,20 @@ export function TaskTimeControls({
               </button>
             ))}
           </span>
-          <label className="mt-2 flex items-center gap-2 type-meta text-slate-600">
+          <label className="mt-2 flex items-center gap-2 type-meta text-gray-600">
             <input type="checkbox" checked={saveOnTask} onChange={(e) => setSaveOnTask(e.target.checked)} />
             {t("Save the project on the task", "Uložiť projekt na úlohu", "Projekt mentése a feladatra")}
           </label>
           {canCreate && party && !creating && (
             <button
               type="button"
+              style={entityAccentStyle("projects") as React.CSSProperties}
               data-testid="task-create-project"
               onClick={() => {
                 setCreating(true);
                 setNewType((id) => id || readTimeCreate().projectTypes[0]?.id || "");
               }}
-              className="mt-2 inline-flex items-center gap-1.5 text-left text-ui font-semibold text-primary hover:underline cursor-pointer"
+              className="mt-2 inline-flex items-center gap-1.5 text-left text-ui font-semibold text-entity-text hover:underline cursor-pointer"
             >
               <Plus className="size-4 shrink-0" />
               {t(`Create project for ${party.name}`, `Vytvoriť projekt pre ${party.name}`, `Projekt létrehozása: ${party.name}`)}
@@ -196,25 +198,26 @@ export function TaskTimeControls({
           )}
           {canCreate && party && creating && (
             <form
-              className="mt-2 grid gap-2 rounded-xl bg-slate-50 p-2.5"
+              style={entityAccentStyle("projects") as React.CSSProperties}
+              className="mt-2 grid gap-2 rounded-lg bg-gray-50 p-2.5"
               onSubmit={(e) => {
                 e.preventDefault();
                 createForClient();
               }}
             >
-              <span className="type-meta text-slate-600">{party.name}</span>
+              <span className="type-meta text-gray-600">{party.name}</span>
               <label className="grid gap-1">
-                <span className="type-overline text-slate-500">{t("Project name", "Názov projektu", "Projekt neve")}</span>
+                <span className="type-overline text-gray-500">{t("Project name", "Názov projektu", "Projekt neve")}</span>
                 <input
                   autoFocus
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   data-testid="task-create-project-name"
-                  className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-ui outline-none focus:border-primary"
+                  className="h-9 rounded-md border border-gray-200 bg-white px-2 text-ui outline-none focus:border-entity"
                 />
               </label>
               <label className="grid gap-1">
-                <span className="type-overline text-slate-500">{t("Project type", "Typ projektu", "Projekt típusa")}</span>
+                <span className="type-overline text-gray-500">{t("Project type", "Typ projektu", "Projekt típusa")}</span>
                 <CustomSelect
                   searchable
                   size="sm"
@@ -225,14 +228,14 @@ export function TaskTimeControls({
                 />
               </label>
               <span className="flex justify-end gap-2">
-                <button type="button" onClick={() => setCreating(false)} className="h-9 rounded-lg px-3 text-ui font-semibold text-slate-500 hover:bg-slate-100 cursor-pointer">
+                <button type="button" onClick={() => setCreating(false)} className="h-9 rounded-md px-3 text-ui font-semibold text-gray-500 hover:bg-gray-100 cursor-pointer">
                   {t("Cancel", "Zrušiť", "Mégse")}
                 </button>
                 <button
                   type="submit"
                   disabled={!newName.trim() || !newType}
                   data-testid="task-create-project-submit"
-                  className="h-9 rounded-lg bg-primary px-3 text-ui font-semibold text-primary-foreground disabled:opacity-50 cursor-pointer"
+                  className="h-9 rounded-md bg-entity-solid hover:bg-entity-solid-hover px-3 text-ui font-semibold text-white disabled:opacity-50 cursor-pointer"
                 >
                   {t("Create", "Vytvoriť", "Létrehozás")}
                 </button>
@@ -253,12 +256,13 @@ export function TaskAddTimeLink({ task, projects, leads }: { task: Task; project
   return (
     <button
       type="button"
+      style={entityAccentStyle("time-tracking") as React.CSSProperties}
       data-testid="task-add-time"
       onClick={() => {
         const resolved = resolveTaskProject(task, projects, leads, (p) => isClosedProjectStatus(p.status, statuses));
         requestNewTimeEntry({ taskId: task.id, projectId: resolved.projectId });
       }}
-      className="ml-auto inline-flex items-center gap-1 type-meta font-semibold text-primary hover:underline cursor-pointer"
+      className="ml-auto inline-flex items-center gap-1 type-meta font-semibold text-entity-text hover:underline cursor-pointer"
     >
       <Plus className="size-3.5 shrink-0" />
       {tt.t("Add time manually", "Pridať čas ručne", "Idő felvétele kézzel")}

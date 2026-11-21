@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Download, FileText } from "lucide-react";
 import { StatGrid, StatTile, Surface, Toolbar } from "../layout";
+import { BarList } from "../tremor/charts/BarList";
 import { CustomSelect } from "../ui/CustomSelect";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
@@ -195,8 +196,8 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
       <Toolbar
         filters={
           <>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label={t("From", "Od", "Ettől")} className="h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui" />
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label={t("To", "Do", "Eddig")} className="h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui" />
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label={t("From", "Od", "Ettől")} className="h-9 rounded-md border border-gray-200 bg-white px-2 text-ui" />
+            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label={t("To", "Do", "Eddig")} className="h-9 rounded-md border border-gray-200 bg-white px-2 text-ui" />
             {viewer.canTeam && (
               <CustomSelect
                 size="sm"
@@ -250,11 +251,11 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
         }
         primary={
           <span className="flex gap-2">
-            <button type="button" onClick={exportCsv} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-700 transition-all hover:bg-slate-50 active:scale-95 cursor-pointer">
+            <button type="button" onClick={exportCsv} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 text-ui font-semibold text-gray-700 transition-all hover:bg-gray-50 active:scale-95 cursor-pointer">
               <Download className="size-4" />
               CSV
             </button>
-            <button type="button" onClick={openPdf} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-teal-600 px-3 text-ui font-semibold text-white transition-all hover:bg-teal-700 active:scale-95 cursor-pointer">
+            <button type="button" onClick={openPdf} className="inline-flex h-9 items-center gap-1.5 rounded-md bg-entity-solid px-3 text-ui font-semibold text-white transition-all hover:bg-entity-solid-hover active:scale-95 cursor-pointer">
               <FileText className="size-4" />
               {t("Client PDF", "PDF pre klienta", "Ügyfél PDF")}
             </button>
@@ -263,7 +264,7 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
       />
 
       {loading && report.lines.length === 0 ? (
-        <p className="text-body text-slate-500">{t("Loading…", "Načítava sa…", "Betöltés…")}</p>
+        <p className="text-body text-gray-500">{t("Loading…", "Načítava sa…", "Betöltés…")}</p>
       ) : mode === "summary" ? (
         <>
           <StatGrid count={hasCost ? 4 : 3}>
@@ -287,58 +288,59 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
             )}
           </StatGrid>
           <Surface>
-            <h3 className="type-card-title text-slate-900">{t("Share by project", "Podiel podľa projektu", "Megoszlás projekt szerint")}</h3>
-            <ul className="mt-3 grid gap-2">
-              {report.shareByProject.length === 0 && <li className="text-ui text-slate-400">{t("Nothing in this period.", "V tomto období nič.", "Ebben az időszakban semmi.")}</li>}
-              {report.shareByProject.map((share) => (
-                <li key={share.projectId ?? "none"} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-                  <span className="min-w-0">
-                    <span className="block truncate text-ui text-slate-800">{projectName(share.projectId)}</span>
-                    <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-slate-100">
-                      <span className="block h-full rounded-full transition-[width] duration-500" style={{ width: `${Math.round(share.ratio * 100)}%`, backgroundColor: projectColor(share.projectId) }} />
-                    </span>
-                  </span>
-                  <span className="tabular-nums text-ui font-semibold text-teal-700">
-                    {formatDuration(share.seconds)}
-                    <span className="ml-2 font-normal text-slate-500">{Math.round(share.ratio * 100)} %</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <h3 className="type-card-title text-gray-900">{t("Share by project", "Podiel podľa projektu", "Megoszlás projekt szerint")}</h3>
+            {report.shareByProject.length === 0 ? (
+              <p className="mt-3 text-ui text-gray-400">{t("Nothing in this period.", "V tomto období nič.", "Ebben az időszakban semmi.")}</p>
+            ) : (
+              <BarList
+                className="mt-3"
+                sortOrder="none"
+                data={report.shareByProject.map((share) => ({
+                  key: share.projectId ?? "none",
+                  name: projectName(share.projectId),
+                  value: share.seconds,
+                  color: projectColor(share.projectId),
+                }))}
+                valueFormatter={(sec) => {
+                  const pct = report.totals.seconds > 0 ? Math.round((sec / report.totals.seconds) * 100) : 0;
+                  return `${formatDuration(sec)} · ${pct} %`;
+                }}
+              />
+            )}
           </Surface>
           <Surface padding="none" className="overflow-x-auto">
             <table className="w-full border-collapse text-ui">
               <thead>
-                <tr className="border-b border-slate-100 text-left">
-                  <th className="px-4 py-3 type-overline text-slate-500">{t("Group", "Skupina", "Csoport")}</th>
-                  <th className="px-4 py-3 type-overline text-slate-500">{t("Hours", "Hodiny", "Órák")}</th>
-                  <th className="px-4 py-3 type-overline text-slate-500">{t("Billable", "Fakturovateľné", "Számlázható")}</th>
-                  {hasCost && <th className="px-4 py-3 type-overline text-slate-500">{t("Cost", "Náklady", "Költség")}</th>}
+                <tr className="border-b border-gray-100 text-left">
+                  <th className="px-4 py-3 type-overline text-gray-500">{t("Group", "Skupina", "Csoport")}</th>
+                  <th className="px-4 py-3 type-overline text-gray-500">{t("Hours", "Hodiny", "Órák")}</th>
+                  <th className="px-4 py-3 type-overline text-gray-500">{t("Billable", "Fakturovateľné", "Számlázható")}</th>
+                  {hasCost && <th className="px-4 py-3 type-overline text-gray-500">{t("Cost", "Náklady", "Költség")}</th>}
                 </tr>
               </thead>
               <tbody>
                 {report.groups.map((g) => (
-                  <tr key={g.key || "empty"} className="border-b border-slate-100">
-                    <td className="px-4 py-2.5 font-semibold text-slate-900">
+                  <tr key={g.key || "empty"} className="border-b border-gray-100">
+                    <td className="px-4 py-2.5 font-semibold text-gray-900">
                       {groupBy === "project" && g.key ? (
                         <>
                           <ProjectLabel projectId={g.key} name={groupLabel(g.key)} compact />
-                          {clientOfProject(g.key) && <span className="block truncate type-meta font-normal text-slate-500">{clientOfProject(g.key)}</span>}
+                          {clientOfProject(g.key) && <span className="block truncate type-meta font-normal text-gray-500">{clientOfProject(g.key)}</span>}
                         </>
                       ) : (
                         groupLabel(g.key)
                       )}
                     </td>
-                    <td className="px-4 py-2.5 tabular-nums text-teal-700">{formatDuration(g.seconds)}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-entity-text">{formatDuration(g.seconds)}</td>
                     <td className="px-4 py-2.5 tabular-nums">{formatDuration(g.billableSeconds)}</td>
                     {hasCost && <td className="px-4 py-2.5"><MoneyText bag={g.cost} language={deps.language} /></td>}
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr className="bg-slate-50 font-semibold">
+                <tr className="bg-gray-50 font-semibold">
                   <td className="px-4 py-3">{t("Totals", "Spolu", "Összesen")}</td>
-                  <td className="px-4 py-3 tabular-nums text-teal-700">{formatDuration(report.totals.seconds)}</td>
+                  <td className="px-4 py-3 tabular-nums text-entity-text">{formatDuration(report.totals.seconds)}</td>
                   <td className="px-4 py-3 tabular-nums">{formatDuration(report.totals.billableSeconds)}</td>
                   {hasCost && <td className="px-4 py-3"><MoneyText bag={report.totals.cost} language={deps.language} /></td>}
                 </tr>
@@ -350,37 +352,37 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
         <Surface padding="none" className="overflow-x-auto">
           <table className="w-full border-collapse text-ui">
             <thead>
-              <tr className="border-b border-slate-100 text-left">
-                <th className="px-4 py-3 type-overline text-slate-500">{t("Date", "Dátum", "Dátum")}</th>
-                {viewer.canTeam && <th className="px-4 py-3 type-overline text-slate-500">{t("Person", "Osoba", "Személy")}</th>}
-                <th className="px-4 py-3 type-overline text-slate-500">{t("Project", "Projekt", "Projekt")}</th>
-                <th className="px-4 py-3 type-overline text-slate-500">{t("Title", "Názov", "Cím")}</th>
-                <th className="px-4 py-3 type-overline text-slate-500">{t("Hours", "Hodiny", "Órák")}</th>
-                {hasCost && <th className="px-4 py-3 type-overline text-slate-500">{t("Cost", "Náklady", "Költség")}</th>}
+              <tr className="border-b border-gray-100 text-left">
+                <th className="px-4 py-3 type-overline text-gray-500">{t("Date", "Dátum", "Dátum")}</th>
+                {viewer.canTeam && <th className="px-4 py-3 type-overline text-gray-500">{t("Person", "Osoba", "Személy")}</th>}
+                <th className="px-4 py-3 type-overline text-gray-500">{t("Project", "Projekt", "Projekt")}</th>
+                <th className="px-4 py-3 type-overline text-gray-500">{t("Title", "Názov", "Cím")}</th>
+                <th className="px-4 py-3 type-overline text-gray-500">{t("Hours", "Hodiny", "Órák")}</th>
+                {hasCost && <th className="px-4 py-3 type-overline text-gray-500">{t("Cost", "Náklady", "Költség")}</th>}
               </tr>
             </thead>
             <tbody>
               {report.lines.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-6 text-body text-slate-500">{t("Nothing in this period.", "V tomto období nič.", "Ebben az időszakban semmi.")}</td></tr>
+                <tr><td colSpan={6} className="px-4 py-6 text-body text-gray-500">{t("Nothing in this period.", "V tomto období nič.", "Ebben az időszakban semmi.")}</td></tr>
               )}
               {report.lines.map((line) => (
-                <tr key={line.id} className="border-b border-slate-100">
-                  <td className="px-4 py-2.5 tabular-nums text-slate-600">{line.entryDate}</td>
+                <tr key={line.id} className="border-b border-gray-100">
+                  <td className="px-4 py-2.5 tabular-nums text-gray-600">{line.entryDate}</td>
                   {viewer.canTeam && <td className="px-4 py-2.5">{personName(line.userId)}</td>}
                   <td className="px-4 py-2.5">{projectName(line.projectId)}</td>
-                  <td className="px-4 py-2.5 font-semibold text-slate-900">{line.title || t("(no title)", "(bez názvu)", "(nincs cím)")}</td>
-                  <td className="px-4 py-2.5 tabular-nums text-teal-700">{formatDuration(line.seconds)}</td>
+                  <td className="px-4 py-2.5 font-semibold text-gray-900">{line.title || t("(no title)", "(bez názvu)", "(nincs cím)")}</td>
+                  <td className="px-4 py-2.5 tabular-nums text-entity-text">{formatDuration(line.seconds)}</td>
                   {hasCost && <td className="px-4 py-2.5"><MoneyText bag={line.cost} language={deps.language} /></td>}
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="bg-slate-50 font-semibold">
+              <tr className="bg-gray-50 font-semibold">
                 <td className="px-4 py-3">{t("Totals", "Spolu", "Összesen")}</td>
                 {viewer.canTeam && <td />}
                 <td />
                 <td />
-                <td className="px-4 py-3 tabular-nums text-teal-700">{formatDuration(report.totals.seconds)}</td>
+                <td className="px-4 py-3 tabular-nums text-entity-text">{formatDuration(report.totals.seconds)}</td>
                 {hasCost && <td className="px-4 py-3"><MoneyText bag={report.totals.cost} language={deps.language} /></td>}
               </tr>
             </tfoot>
@@ -398,13 +400,13 @@ function ModeSwitch({ mode, setMode, salary, t }: { mode: Mode; setMode: (m: Mod
       type="button"
       onClick={() => setMode(id)}
       aria-pressed={mode === id}
-      className={`h-8 rounded-lg px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${mode === id ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+      className={`h-8 rounded-lg px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${mode === id ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}
     >
       {label}
     </button>
   );
   return (
-    <div className="inline-flex w-fit flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
+    <div className="inline-flex w-fit flex-wrap gap-1 rounded-md bg-gray-100 p-1">
       {item("summary", t("Summary", "Súhrn", "Összegzés"))}
       {item("detailed", t("Detailed", "Podrobné", "Részletes"))}
       {salary && item("salary", t("Salary allocation", "Rozdelenie mzdy", "Bérfelosztás"))}

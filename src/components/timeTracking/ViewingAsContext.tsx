@@ -114,7 +114,7 @@ export function EntriesFocusBanner({ users }: { users: { id?: string; name: stri
   if (!current) return null;
   const name = users.find((u) => u.id === current.userId)?.name || current.userId;
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl bg-teal-50 px-3 py-2 text-ui text-teal-900" data-testid="entries-focus">
+    <div className="flex flex-wrap items-center gap-2 rounded-md bg-entity-subtle px-3 py-2 text-ui text-entity-text" data-testid="entries-focus">
       <span>
         {t("Showing entries for", "Záznamy pre", "Bejegyzések:")} <b>{name}</b>
       </span>
@@ -125,7 +125,7 @@ export function EntriesFocusBanner({ users }: { users: { id?: string; name: stri
           provided?.setUserId(null);
           clearEntriesFocus();
         }}
-        className="ml-auto h-8 rounded-lg px-2 font-semibold text-teal-800 transition-all hover:bg-teal-100 active:scale-95 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
+        className="ml-auto h-8 rounded-lg px-2 font-semibold text-entity-text transition-all hover:bg-entity-subtle active:scale-95 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-entity"
       >
         {t("Clear", "Zrušiť", "Törlés")}
       </button>

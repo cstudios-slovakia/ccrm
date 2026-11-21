@@ -148,7 +148,7 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
     <div className="grid gap-4" data-testid="time-day">
       {/* Day strip */}
       <Surface padding="none" className="flex w-full min-w-0 items-stretch gap-1 overflow-x-auto p-2" >
-        <button type="button" onClick={() => setStripEnd(addDays(stripEnd, -STRIP_DAYS))} aria-label={t("Earlier", "Skôr", "Korábbi")} className="inline-flex w-8 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 cursor-pointer">
+        <button type="button" onClick={() => setStripEnd(addDays(stripEnd, -STRIP_DAYS))} aria-label={t("Earlier", "Skôr", "Korábbi")} className="inline-flex w-8 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 cursor-pointer">
           <ChevronLeft className="size-4" />
         </button>
         {strip.map((d) => {
@@ -168,40 +168,40 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
               data-off={off ? "1" : "0"}
               data-holiday={h ? "1" : "0"}
               title={h ? holidayName(h, tt.workCountry, deps.language) : undefined}
-              className={`flex w-16 shrink-0 flex-col items-center gap-0.5 rounded-xl px-1 py-2 transition-all cursor-pointer ${
-                d === selected ? "bg-teal-600 text-white shadow" : off ? "text-slate-400 hover:bg-slate-100" : "text-slate-700 hover:bg-slate-100"
-              } ${d === today && d !== selected ? "ring-2 ring-teal-500/50" : ""}`}
+              className={`flex w-16 shrink-0 flex-col items-center gap-0.5 rounded-md px-1 py-2 transition-all cursor-pointer ${
+                d === selected ? "bg-entity-solid text-white shadow" : off ? "text-gray-400 hover:bg-gray-100" : "text-gray-700 hover:bg-gray-100"
+              } ${d === today && d !== selected ? "ring-2 ring-entity-ring" : ""}`}
             >
               <span className="text-micro font-semibold uppercase">{dt.toLocaleDateString(locale, { weekday: "short" })}</span>
               <span className="text-ui font-bold tabular-nums">{dt.getDate()}</span>
-              <span className={`size-2 rounded-full ${d === selected ? "bg-white" : dot === "met" ? "bg-emerald-500" : dot === "short" ? "bg-amber-500" : "bg-slate-300"}`} data-dot={dot} />
+              <span className={`size-2 rounded-full ${d === selected ? "bg-white" : dot === "met" ? "bg-emerald-500" : dot === "short" ? "bg-amber-500" : "bg-gray-300"}`} data-dot={dot} />
               <span className="type-meta tabular-nums">{sec > 0 ? formatDuration(sec) : "–"}</span>
             </button>
           );
         })}
-        <button type="button" onClick={() => setStripEnd(addDays(stripEnd, STRIP_DAYS))} aria-label={t("Later", "Neskôr", "Későbbi")} className="inline-flex w-8 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 cursor-pointer">
+        <button type="button" onClick={() => setStripEnd(addDays(stripEnd, STRIP_DAYS))} aria-label={t("Later", "Neskôr", "Későbbi")} className="inline-flex w-8 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 cursor-pointer">
           <ChevronRight className="size-4" />
         </button>
       </Surface>
-      <p className="flex flex-wrap items-center gap-x-4 gap-y-1 type-meta text-slate-500" data-testid="day-strip-legend">
+      <p className="flex flex-wrap items-center gap-x-4 gap-y-1 type-meta text-gray-500" data-testid="day-strip-legend">
         <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-emerald-500" />{t("full day", "plný deň", "teljes nap")}</span>
         <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-500" />{t("under target", "pod cieľom", "cél alatt")}</span>
-        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-slate-300" />{t("nothing logged", "nič nezaznamenané", "nincs rögzítve")}</span>
+        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-gray-300" />{t("nothing logged", "nič nezaznamenané", "nincs rögzítve")}</span>
       </p>
 
       {/* Day header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h3 className="type-panel-title capitalize text-slate-900" data-testid="day-heading">
+          <h3 className="type-panel-title capitalize text-gray-900" data-testid="day-heading">
             {new Date(`${selected}T12:00:00`).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
           </h3>
-          <p className="type-meta text-slate-500">
+          <p className="type-meta text-gray-500">
             {wholeTeam && <>{t("Team logged", "Tím zaznamenal", "A csapat rögzített")} <ClockDigits value={formatDuration(teamTotal, true)} className="font-bold" /> · </>}
             {t("you", "vy", "Ön")} <ClockDigits value={formatDuration(myTotal, true)} className="font-bold" data-testid="day-mine" /> {t("of", "z", "ennyiből:")} {formatDuration(perDayTarget(selected) / (wholeTeam ? people : 1))}
-            {holiday && <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-micro font-semibold text-slate-600" data-testid="holiday-chip">{t("State holiday", "Štátny sviatok", "Állami ünnep")} · {holidayName(holiday, tt.workCountry, deps.language)}</span>}
+            {holiday && <span className="ml-2 rounded-full bg-gray-200 px-2 py-0.5 text-micro font-semibold text-gray-600" data-testid="holiday-chip">{t("State holiday", "Štátny sviatok", "Állami ünnep")} · {holidayName(holiday, tt.workCountry, deps.language)}</span>}
           </p>
         </div>
-        <button type="button" onClick={() => setAdding(true)} data-testid="day-add-row" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-ui font-semibold text-primary-foreground transition-all active:scale-95 cursor-pointer">
+        <button type="button" onClick={() => setAdding(true)} data-testid="day-add-row" className="inline-flex h-10 items-center gap-1.5 rounded-md bg-entity-solid px-4 text-ui font-semibold text-white transition-all active:scale-95 cursor-pointer">
           <Plus className="size-4" />
           {t("Add row", "Pridať riadok", "Sor hozzáadása")}
         </button>
@@ -224,9 +224,9 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
             />
             <div className="relative min-w-40 flex-1">
               {rowTask ? (
-                <div className="flex h-9 items-center justify-between gap-2 rounded-xl bg-teal-50 px-3 text-ui font-semibold text-teal-800">
+                <div className="flex h-9 items-center justify-between gap-2 rounded-md bg-entity-subtle px-3 text-ui font-semibold text-entity-text">
                   <span className="truncate">{rowTask.title}</span>
-                  <button type="button" onClick={() => setRowTask(null)} className="text-teal-600 cursor-pointer" aria-label={t("Unlink task", "Odpojiť úlohu", "Feladat leválasztása")}>×</button>
+                  <button type="button" onClick={() => setRowTask(null)} className="text-entity-text cursor-pointer" aria-label={t("Unlink task", "Odpojiť úlohu", "Feladat leválasztása")}>×</button>
                 </div>
               ) : (
                 <>
@@ -236,12 +236,12 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
                     onKeyDown={(e) => { if (e.key === "Enter") void saveRow(); }}
                     placeholder={t("Notes, or type to find a task", "Poznámky alebo hľadajte úlohu", "Jegyzet, vagy írjon a feladat kereséséhez")}
                     data-testid="day-row-notes"
-                    className="h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-ui outline-none focus:border-primary"
+                    className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-ui outline-none focus:border-entity"
                   />
                   {suggestions.length > 0 && (
-                    <div className="absolute left-0 right-0 z-10 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                    <div className="absolute left-0 right-0 z-10 mt-1 overflow-hidden rounded-md border border-gray-200 bg-white shadow-xl">
                       {suggestions.map((s) => (
-                        <button key={s.id} type="button" onClick={() => chooseTask(s)} data-testid="day-row-task-option" className="block w-full truncate px-3 py-2 text-left text-ui font-semibold hover:bg-slate-50 cursor-pointer">{s.title}</button>
+                        <button key={s.id} type="button" onClick={() => chooseTask(s)} data-testid="day-row-task-option" className="block w-full truncate px-3 py-2 text-left text-ui font-semibold hover:bg-gray-50 cursor-pointer">{s.title}</button>
                       ))}
                     </div>
                   )}
@@ -254,16 +254,16 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
               onKeyDown={(e) => { if (e.key === "Enter") void saveRow(); }}
               placeholder="1:30"
               data-testid="day-row-hours"
-              className="h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-center text-ui tabular-nums outline-none focus:border-primary ws-sm:w-24"
+              className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-center text-ui tabular-nums outline-none focus:border-entity ws-sm:w-24"
             />
-            <label className="flex h-9 cursor-pointer items-center gap-1.5 text-ui text-slate-600">
+            <label className="flex h-9 cursor-pointer items-center gap-1.5 text-ui text-gray-600">
               <input type="checkbox" checked={rowBillable} onChange={(e) => setRowBillable(e.target.checked)} className="size-4 accent-emerald-600" />
               {t("Billable", "Fakturovateľné", "Számlázható")}
             </label>
-            <button type="button" onClick={() => void saveRow()} disabled={busy} data-testid="day-row-save" className="h-9 rounded-xl bg-primary px-4 text-ui font-semibold text-primary-foreground disabled:opacity-60 cursor-pointer">{t("Save", "Uložiť", "Mentés")}</button>
-            <button type="button" onClick={() => setAdding(false)} className="h-9 rounded-xl px-3 text-ui font-semibold text-slate-500 hover:bg-slate-100 cursor-pointer">{t("Close", "Zavrieť", "Bezárás")}</button>
+            <button type="button" onClick={() => void saveRow()} disabled={busy} data-testid="day-row-save" className="h-9 rounded-md bg-entity-solid px-4 text-ui font-semibold text-white disabled:opacity-60 cursor-pointer">{t("Save", "Uložiť", "Mentés")}</button>
+            <button type="button" onClick={() => setAdding(false)} className="h-9 rounded-md px-3 text-ui font-semibold text-gray-500 hover:bg-gray-100 cursor-pointer">{t("Close", "Zavrieť", "Bezárás")}</button>
           </div>
-          <p className="type-meta text-slate-500" data-testid="day-add-hint">
+          <p className="type-meta text-gray-500" data-testid="day-add-hint">
             {t("Hours only — no start or end time needed. Type 1:30 or 90m. Add a time range from the drawer if you want it on the calendar grid.", "Len hodiny — začiatok ani koniec netreba. Napíšte 1:30 alebo 90m. Časový rozsah doplníte v paneli, ak ho chcete v kalendári.", "Csak órák — kezdés és befejezés nem kell. Írja be: 1:30 vagy 90m. Időtartományt a panelben adhat hozzá, ha a naptárban is látni szeretné.")}
           </p>
         </Surface>
@@ -271,7 +271,7 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
 
       {/* Saved logs, grouped by person */}
       {groups.length === 0 ? (
-        <Surface><p className="text-body text-slate-500" data-testid="day-empty">{t("Nothing logged on this day yet.", "V tento deň zatiaľ nič nie je zaznamenané.", "Ezen a napon még nincs rögzített idő.")}</p></Surface>
+        <Surface><p className="text-body text-gray-500" data-testid="day-empty">{t("Nothing logged on this day yet.", "V tento deň zatiaľ nič nie je zaznamenané.", "Ezen a napon még nincs rögzített idő.")}</p></Surface>
       ) : (
         groups.map(([userId, list]) => {
           const u = lookups.userById.get(userId);
@@ -282,9 +282,9 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
           const employee = deps.employees.find((e) => e.userId === userId);
           return (
             <Surface key={userId} padding="none" className="overflow-hidden">
-              <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3" data-testid="day-user-header">
+              <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3" data-testid="day-user-header">
                 <span className="inline-flex size-8 items-center justify-center rounded-full text-micro font-bold text-white" style={{ backgroundColor: u?.color || "#64748b" }}>{initials(u?.name || "?")}</span>
-                <span className="type-card-title text-slate-900">{u?.name ?? t("Unknown user", "Neznámy používateľ", "Ismeretlen felhasználó")}</span>
+                <span className="type-card-title text-gray-900">{u?.name ?? t("Unknown user", "Neznámy používateľ", "Ismeretlen felhasználó")}</span>
                 {/* PHASE4-VIEWING-AS */}
                 {wholeTeam && <RoleBadge badge={teamRoleBadge(u?.role, employee?.kind)} t={t} />}
                 {/* END-PHASE4-VIEWING-AS */}
@@ -297,10 +297,10 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
                 )}
                 <span className="ml-auto flex items-center gap-4">
                   {cost !== null && <span className="tabular-nums text-violet-700">{money(cost)}</span>}
-                  <ClockDigits value={formatDuration(totalSeconds(list, nowMs), true)} className="font-semibold text-slate-900" />
+                  <ClockDigits value={formatDuration(totalSeconds(list, nowMs), true)} className="font-semibold text-gray-900" />
                 </span>
               </div>
-              <div role="table" className="divide-y divide-slate-100">
+              <div role="table" className="divide-y divide-gray-100">
                 {list.map((e) => (
                   <EntryRow key={e.id} entry={withoutHiddenCost(e, tt.userId || "", tt.viewer.canCosts)} deps={deps} onOpen={onOpen} />
                 ))}

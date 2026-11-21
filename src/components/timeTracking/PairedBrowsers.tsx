@@ -76,15 +76,15 @@ export function PairedBrowsers({ t, language }: { t: TFn; language: Language }) 
           onClick={() => void freshCode()}
           disabled={busy}
           data-testid="tt-new-pairing-code"
-          className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-ui font-semibold text-white transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-60 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+          className="inline-flex h-9 items-center gap-1.5 rounded-md bg-gray-900 px-3 text-ui font-semibold text-white transition-all hover:bg-gray-800 active:scale-95 disabled:opacity-60 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900"
         >
           <RefreshCw className="size-4" />
           {t("New code", "Nový kód", "Új kód")}
         </button>
         {code && (
           <div className="grid gap-0.5">
-            <span className="type-panel-title tracking-widest text-slate-900 tabular-nums" data-testid="tt-pairing-code">{code}</span>
-            <span className="type-meta text-slate-500">
+            <span className="type-panel-title tracking-widest text-gray-900 tabular-nums" data-testid="tt-pairing-code">{code}</span>
+            <span className="type-meta text-gray-500">
               {t("Valid for 10 minutes, once.", "Platí 10 minút, raz.", "10 percig érvényes, egyszer.")}
               {expiresAt ? ` · ${when(expiresAt)}` : ""}
             </span>
@@ -95,7 +95,7 @@ export function PairedBrowsers({ t, language }: { t: TFn; language: Language }) 
             type="button"
             onClick={() => void copyCode()}
             data-testid="tt-copy-pairing-code"
-            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-ui font-semibold text-slate-700 transition-all hover:bg-slate-50 active:scale-95 cursor-pointer"
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-200 px-3 text-ui font-semibold text-gray-700 transition-all hover:bg-gray-50 active:scale-95 cursor-pointer"
           >
             {copied ? <Check className="size-4 text-emerald-600" /> : <Copy className="size-4" />}
             {copied ? t("Copied", "Skopírované", "Másolva") : t("Copy", "Kopírovať", "Másolás")}
@@ -103,23 +103,23 @@ export function PairedBrowsers({ t, language }: { t: TFn; language: Language }) 
         )}
       </div>
       {devices.length === 0 ? (
-        <p className="text-body text-slate-500">{t("No browsers paired yet.", "Zatiaľ nie je spárovaný žiadny prehliadač.", "Még nincs párosított böngésző.")}</p>
+        <p className="text-body text-gray-500">{t("No browsers paired yet.", "Zatiaľ nie je spárovaný žiadny prehliadač.", "Még nincs párosított böngésző.")}</p>
       ) : (
         <ul className="grid gap-2">
           {devices.map((device) => (
-            <li key={device.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2" data-testid="paired-device">
-              <MonitorSmartphone className="size-4 shrink-0 text-slate-400" />
+            <li key={device.id} className="flex flex-wrap items-center gap-3 rounded-md border border-gray-200 bg-white px-3 py-2" data-testid="paired-device">
+              <MonitorSmartphone className="size-4 shrink-0 text-gray-400" />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-ui font-semibold text-slate-900">{device.name}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-micro font-semibold ${device.state === "active" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                  <span className="text-ui font-semibold text-gray-900">{device.name}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-micro font-semibold ${device.state === "active" ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500"}`}>
                     {device.state === "active" ? t("Active", "Aktívny", "Aktív") : t("Idle", "Nečinný", "Tétlen")}
                   </span>
                   {device.updateAvailable && (
                     <span className="rounded-full bg-amber-50 px-2 py-0.5 text-micro font-semibold text-amber-800">{t("Update available", "Dostupná aktualizácia", "Frissítés érhető el")}</span>
                   )}
                 </div>
-                <p className="type-meta text-slate-500">
+                <p className="type-meta text-gray-500">
                   {[device.os, device.browser].filter(Boolean).join(" · ") || t("Browser", "Prehliadač", "Böngésző")}
                   {" · "}
                   {t("Paired", "Spárované", "Párosítva")} {when(device.createdAt)}

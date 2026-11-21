@@ -152,8 +152,8 @@ export function ProjectPicker({
       disabled={disabled}
       onClick={toggle}
       data-testid="project-picker-trigger"
-      className={`inline-flex h-9 max-w-full items-center gap-2 rounded-xl border px-3 text-ui font-semibold transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
-        selected ? "border-slate-200 bg-white text-slate-800 hover:border-slate-300" : "border-dashed border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100"
+      className={`inline-flex h-9 max-w-full items-center gap-2 rounded-md border px-3 text-ui font-semibold transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
+        selected ? "border-gray-200 bg-white text-gray-800 hover:border-gray-300" : "border-dashed border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100"
       }`}
     >
       {selected ? (
@@ -164,40 +164,40 @@ export function ProjectPicker({
           <span className="truncate">{label}</span>
         </>
       )}
-      <ChevronDown className="size-3.5 shrink-0 text-slate-400" />
+      <ChevronDown className="size-3.5 shrink-0 text-gray-400" />
     </button>
   );
 
   const panel = (
     <div
       data-testid="project-picker-panel"
-      className={`${inline ? "" : `absolute z-[960] mt-2 w-80 max-w-[calc(100vw-2rem)] ${align === "right" ? "right-0" : "left-0"} shadow-xl`} flex max-h-96 flex-col rounded-2xl border border-slate-200 bg-white`}
+      className={`${inline ? "" : `absolute z-[960] mt-2 w-80 max-w-[calc(100vw-2rem)] ${align === "right" ? "right-0" : "left-0"} shadow-xl`} flex max-h-96 flex-col rounded-lg border border-gray-200 bg-white`}
     >
-      <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
-        <Search className="size-4 shrink-0 text-slate-400" />
+      <div className="flex items-center gap-2 border-b border-gray-100 px-3 py-2">
+        <Search className="size-4 shrink-0 text-gray-400" />
         <input
           autoFocus
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("Search project or client…", "Hľadať projekt alebo klienta…", "Projekt vagy ügyfél keresése…")}
-          className="min-w-0 flex-1 bg-transparent text-ui outline-none placeholder:text-slate-400"
+          className="min-w-0 flex-1 bg-transparent text-ui outline-none placeholder:text-gray-400"
         />
         {query && (
-          <button type="button" onClick={() => setQuery("")} aria-label={t("Clear", "Vymazať", "Törlés")} className="text-slate-400 hover:text-slate-700 cursor-pointer">
+          <button type="button" onClick={() => setQuery("")} aria-label={t("Clear", "Vymazať", "Törlés")} className="text-gray-400 hover:text-gray-700 cursor-pointer">
             <X className="size-4" />
           </button>
         )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
         {value && (
-          <button type="button" onClick={() => choose(null)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-ui text-slate-500 hover:bg-slate-50 cursor-pointer">
+          <button type="button" onClick={() => choose(null)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-ui text-gray-500 hover:bg-gray-50 cursor-pointer">
             <X className="size-3.5" />
             {t("No project", "Bez projektu", "Projekt nélkül")}
           </button>
         )}
         {groups.map((g) => (
           <div key={g.key}>
-            <div className="type-overline px-3 pb-1 pt-2 text-slate-400">{g.label}</div>
+            <div className="type-overline px-3 pb-1 pt-2 text-gray-400">{g.label}</div>
             {g.items.map((p) => {
               const sec = secondsByProject[p.id];
               return (
@@ -207,39 +207,39 @@ export function ProjectPicker({
                   onClick={() => choose(p.id)}
                   data-testid="project-option"
                   aria-current={p.id === value ? "true" : undefined}
-                  className={`flex w-full items-center gap-2.5 px-3 py-2 text-left cursor-pointer ${p.id === value ? "bg-primary/10 hover:bg-primary/15" : "hover:bg-slate-50"}`}
+                  className={`flex w-full items-center gap-2.5 px-3 py-2 text-left cursor-pointer ${p.id === value ? "bg-entity-subtle hover:bg-entity-subtle" : "hover:bg-gray-50"}`}
                 >
                   <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: projectColor(p.id) }} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-ui font-semibold text-slate-800">{nameOf(p)}</span>
-                    {sec ? <span className="type-meta tabular-nums text-slate-500">{formatDuration(sec)} h</span> : null}
+                    <span className="block truncate text-ui font-semibold text-gray-800">{nameOf(p)}</span>
+                    {sec ? <span className="type-meta tabular-nums text-gray-500">{formatDuration(sec)} h</span> : null}
                   </span>
                   <span className="shrink-0 rounded-full px-2 py-0.5 text-micro font-semibold" style={{ color: projectStatusColor(p.status, statuses), backgroundColor: `${projectStatusColor(p.status, statuses)}1a` }}>
                     {projectStatusLabel(p.status, t, statuses)}
                   </span>
-                  {p.id === value && <Check className="size-4 shrink-0 text-primary" aria-hidden />}
+                  {p.id === value && <Check className="size-4 shrink-0 text-entity-text" aria-hidden />}
                 </button>
               );
             })}
           </div>
         ))}
-        {groups.length === 0 && <div className="px-3 py-4 text-ui text-slate-500">{t("No project matches.", "Žiadny projekt nevyhovuje.", "Nincs találat.")}</div>}
+        {groups.length === 0 && <div className="px-3 py-4 text-ui text-gray-500">{t("No project matches.", "Žiadny projekt nevyhovuje.", "Nincs találat.")}</div>}
       </div>
-      <div className="max-h-64 shrink-0 overflow-y-auto border-t border-slate-100 px-3 py-2">
+      <div className="max-h-64 shrink-0 overflow-y-auto border-t border-gray-100 px-3 py-2">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <label className="flex cursor-pointer items-center gap-2 text-ui text-slate-600">
-          <input type="checkbox" checked={showFinished} onChange={(e) => setShowFinished(e.target.checked)} className="size-4 accent-teal-600" />
+        <label className="flex cursor-pointer items-center gap-2 text-ui text-gray-600">
+          <input type="checkbox" checked={showFinished} onChange={(e) => setShowFinished(e.target.checked)} className="size-4 accent-[var(--entity-accent-solid)]" />
           {t("Show finished", "Zobraziť dokončené", "Befejezettek mutatása")}
         </label>
         {onCreateProject && query.trim() && !creating && (
-          <button type="button" onClick={() => setCreating(true)} data-testid="project-create-open" className="inline-flex items-center gap-1.5 text-ui font-semibold text-primary hover:underline cursor-pointer">
+          <button type="button" onClick={() => setCreating(true)} data-testid="project-create-open" className="inline-flex items-center gap-1.5 text-ui font-semibold text-entity-text hover:underline cursor-pointer">
             <Plus className="size-4" />
             {t(`Create project "${query.trim()}"`, `Vytvoriť projekt „${query.trim()}“`, `Projekt létrehozása: „${query.trim()}”`)}
           </button>
         )}
         </div>
         {onCreateProject && creating && (
-          <div className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-2 rounded-xl bg-slate-50 p-2.5">
+          <div className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-2 rounded-md bg-gray-50 p-2.5">
             <ClientSelect
               leads={leads}
               value={newClient}
@@ -259,8 +259,8 @@ export function ProjectPicker({
               options={projectTypes.map((pt) => ({ value: pt.id, label: pt.name }))}
             />
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setCreating(false)} className="h-9 rounded-lg px-3 text-ui font-semibold text-slate-500 hover:bg-slate-100 cursor-pointer">{t("Cancel", "Zrušiť", "Mégse")}</button>
-              <button type="button" onClick={create} disabled={!newType} data-testid="project-create-submit" className="h-9 rounded-lg bg-primary px-3 text-ui font-semibold text-primary-foreground disabled:opacity-50 cursor-pointer">{t("Create", "Vytvoriť", "Létrehozás")}</button>
+              <button type="button" onClick={() => setCreating(false)} className="h-9 rounded-lg px-3 text-ui font-semibold text-gray-500 hover:bg-gray-100 cursor-pointer">{t("Cancel", "Zrušiť", "Mégse")}</button>
+              <button type="button" onClick={create} disabled={!newType} data-testid="project-create-submit" className="h-9 rounded-lg bg-entity-solid px-3 text-ui font-semibold text-white disabled:opacity-50 cursor-pointer">{t("Create", "Vytvoriť", "Létrehozás")}</button>
             </div>
           </div>
         )}

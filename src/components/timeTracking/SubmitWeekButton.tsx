@@ -45,7 +45,7 @@ export function SubmitWeekButton({ weekStart, entries, userId }: Props) {
       onClick={() => void submit()}
       disabled={busy || approved || !state.canSubmit}
       data-testid="submit-week"
-      className="inline-flex h-10 items-center rounded-xl bg-teal-600 px-4 text-ui font-semibold text-white transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+      className="inline-flex h-10 items-center rounded-md bg-entity-solid px-4 text-ui font-semibold text-white transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
     >
       {approved
         ? tt.t("Week submitted", "Týždeň odoslaný", "Hét beküldve")

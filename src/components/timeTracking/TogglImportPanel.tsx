@@ -285,12 +285,12 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
 
   const stepLabel =step && step.total > 1 ? ` ${step.done + 1} / ${step.total}` : "";
 
-  const field = "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-ui outline-none focus:border-primary disabled:bg-slate-50";
+  const field = "h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-ui outline-none focus:border-entity disabled:bg-gray-50";
 
   return (
     <Surface className="space-y-4" data-testid="toggl-import">
-      <h3 className="type-card-title text-slate-900">{t("Map projects and import from Toggl", "Mapovať projekty a importovať z Toggl", "Projektek hozzárendelése és importálás Togglból")}</h3>
-      <p className="text-body text-slate-500">
+      <h3 className="type-card-title text-gray-900">{t("Map projects and import from Toggl", "Mapovať projekty a importovať z Toggl", "Projektek hozzárendelése és importálás Togglból")}</h3>
+      <p className="text-body text-gray-500">
         {t(
           `One-way import into ${brand}. Toggl hours on the employee summary stay where they are. Clockify is not imported. The same Toggl entry is never imported twice; an entry imported without a project gets one when you pair its Toggl project and import again.`,
           `Jednosmerný import do ${brand}. Hodiny z Toggl v súhrne zamestnanca zostávajú. Clockify sa neimportuje. Ten istý záznam z Toggl sa nikdy neimportuje dvakrát; záznam importovaný bez projektu ho dostane, keď jeho projekt v Toggl priradíte a importujete znova.`,
@@ -300,11 +300,11 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
       {error && <p className="text-ui text-rose-700">{error}</p>}
       {canEdit && (
         <div className="flex flex-wrap items-center gap-3">
-          <button type="button" disabled={loading} onClick={() => void load()} data-testid="toggl-import-reload" className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 px-3 text-ui font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 cursor-pointer">
+          <button type="button" disabled={loading} onClick={() => void load()} data-testid="toggl-import-reload" className="inline-flex h-9 items-center gap-2 rounded-md border border-gray-200 px-3 text-ui font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50 cursor-pointer">
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} aria-hidden />
             {t("Reload from Toggl", "Načítať znova z Toggl", "Újratöltés a Togglból")}
           </button>
-          <span className="text-caption text-slate-500">
+          <span className="text-caption text-gray-500">
             {t(
               "Projects and users are read from Toggl when this section opens. Reload to see ones added since.",
               "Projekty a používatelia sa načítajú z Toggl pri otvorení tejto sekcie. Nové, pridané medzitým, zobrazíte opätovným načítaním.",
@@ -320,7 +320,7 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
             <p
               data-testid="toggl-import-map-status"
               aria-live="polite"
-              className={`text-caption font-medium ${saveState === "error" ? "text-rose-700" : saveState === "saved" ? "text-emerald-700" : "text-slate-500"}`}
+              className={`text-caption font-medium ${saveState === "error" ? "text-rose-700" : saveState === "saved" ? "text-emerald-700" : "text-gray-500"}`}
             >
               {saveState === "saving"
                 ? t("Saving the mapping…", "Ukladá sa priradenie…", "Hozzárendelés mentése…")
@@ -386,15 +386,15 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
         </div>
       )}
 
-      <div className="grid gap-3 border-t border-slate-100 pt-4">
-        <h4 className="type-label text-slate-600">{t("Period to import", "Obdobie na import", "Importálandó időszak")}</h4>
+      <div className="grid gap-3 border-t border-gray-100 pt-4">
+        <h4 className="type-label text-gray-600">{t("Period to import", "Obdobie na import", "Importálandó időszak")}</h4>
         <div className="grid gap-3 ws-sm:grid-cols-2">
           <label className="grid gap-1">
-            <span className="type-label text-slate-600">{t("From", "Od", "Ettől")}</span>
+            <span className="type-label text-gray-600">{t("From", "Od", "Ettől")}</span>
             <input type="date" disabled={!canEdit} value={from} onChange={(e) => setFrom(e.target.value)} className={field} data-testid="toggl-import-from" />
           </label>
           <label className="grid gap-1">
-            <span className="type-label text-slate-600">{t("To", "Do", "Eddig")}</span>
+            <span className="type-label text-gray-600">{t("To", "Do", "Eddig")}</span>
             <input type="date" disabled={!canEdit} value={to} onChange={(e) => setTo(e.target.value)} className={field} data-testid="toggl-import-to" />
           </label>
         </div>
@@ -408,14 +408,14 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
               setOnlyMe(e.target.checked);
               setPreview(null);
             }}
-            className="mt-0.5 size-4 accent-teal-600"
+            className="mt-0.5 size-4 accent-[var(--entity-accent-solid)]"
             data-testid="toggl-import-only-me"
           />
           <span className="grid gap-0.5">
-            <span className="text-ui text-slate-800">
+            <span className="text-ui text-gray-800">
               {t("Import only one Toggl user's entries, to me", "Importovať iba záznamy jedného používateľa Toggl, a to mne", "Csak egy Toggl-felhasználó bejegyzéseinek importálása, hozzám")}
             </span>
-            <span className="text-caption text-slate-500">
+            <span className="text-caption text-gray-500">
               {t(
                 "Pick yourself in Toggl below. Those entries are imported to you; users do not have to be mapped and everyone else's entries are left out.",
                 "Nižšie vyberte seba v Toggl. Tieto záznamy sa importujú vám; používateľov netreba priraďovať a záznamy ostatných sa vynechajú.",
@@ -451,12 +451,12 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
               setSkipUnpaired(e.target.checked);
               setPreview(null);
             }}
-            className="mt-0.5 size-4 accent-teal-600"
+            className="mt-0.5 size-4 accent-[var(--entity-accent-solid)]"
             data-testid="toggl-import-skip-unpaired"
           />
           <span className="grid gap-0.5">
-            <span className="text-ui text-slate-800">{t("Skip entries from Toggl projects that are not paired", "Preskočiť záznamy z nepriradených projektov Toggl", "A hozzá nem rendelt Toggl-projektek bejegyzéseinek kihagyása")}</span>
-            <span className="text-caption text-slate-500">
+            <span className="text-ui text-gray-800">{t("Skip entries from Toggl projects that are not paired", "Preskočiť záznamy z nepriradených projektov Toggl", "A hozzá nem rendelt Toggl-projektek bejegyzéseinek kihagyása")}</span>
+            <span className="text-caption text-gray-500">
               {t(
                 "They stay in Toggl and come in with their project once you pair it. Turn this off to import them without a project.",
                 "Zostanú v Toggl a prenesú sa aj s projektom, keď ho priradíte. Ak to vypnete, importujú sa bez projektu.",
@@ -474,12 +474,12 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
               setRepair(e.target.checked);
               setPreview(null);
             }}
-            className="mt-0.5 size-4 accent-teal-600"
+            className="mt-0.5 size-4 accent-[var(--entity-accent-solid)]"
             data-testid="toggl-import-repair"
           />
           <span className="grid gap-0.5">
-            <span className="text-ui text-slate-800">{t("Repair entries imported earlier so they match Toggl", "Opraviť skôr importované záznamy, aby zodpovedali Toggl", "A korábban importált bejegyzések javítása a Toggl szerint")}</span>
-            <span className="text-caption text-slate-500">
+            <span className="text-ui text-gray-800">{t("Repair entries imported earlier so they match Toggl", "Opraviť skôr importované záznamy, aby zodpovedali Toggl", "A korábban importált bejegyzések javítása a Toggl szerint")}</span>
+            <span className="text-caption text-gray-500">
               {t(
                 "Entries already imported get the project their Toggl project is paired with now, and Toggl's start, end and duration. This overwrites a project changed by hand. An entry whose Toggl project is not paired keeps its project. Use Preview first.",
                 "Už importované záznamy dostanú projekt, ku ktorému je ich projekt Toggl priradený teraz, a začiatok, koniec a trvanie z Toggl. Prepíše to aj ručne zmenený projekt. Záznam, ktorého projekt Toggl nie je priradený, si projekt ponechá. Najprv použite Náhľad.",
@@ -491,7 +491,7 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <button type="button" disabled={!canEdit || loading} onClick={() => void run("preview")} data-testid="toggl-import-preview" className="inline-flex h-10 items-center rounded-xl border border-slate-200 px-4 text-ui font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50 cursor-pointer">
+        <button type="button" disabled={!canEdit || loading} onClick={() => void run("preview")} data-testid="toggl-import-preview" className="inline-flex h-10 items-center rounded-md border border-gray-200 px-4 text-ui font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50 cursor-pointer">
           {loading && step?.mode !== "commit" ? `${t("Loading", "Načítava sa", "Betöltés")}${stepLabel}…` : t("Preview", "Náhľad", "Előnézet")}
         </button>
         {canEdit && (
@@ -500,7 +500,7 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
             disabled={loading}
             lang={language}
             what={`${from} – ${to}`}
-            className="inline-flex h-10 items-center rounded-xl bg-primary px-4 text-ui font-semibold text-primary-foreground disabled:opacity-50 cursor-pointer"
+            className="inline-flex h-10 items-center rounded-md bg-entity-solid px-4 text-ui font-semibold text-white disabled:opacity-50 cursor-pointer"
           >
             {step?.mode === "commit"
               ? `${t("Importing", "Importuje sa", "Importálás")}${stepLabel}…`
@@ -510,7 +510,7 @@ export function TogglImportPanel({ language, t, canEdit }: { language: Language;
       </div>
 
       {preview && (
-        <p className="text-ui text-slate-700" data-testid="toggl-import-result">
+        <p className="text-ui text-gray-700" data-testid="toggl-import-result">
           {t(
             `${preview.alreadyImported} entries already imported. ${preview.preview ? preview.ready : preview.imported} ${preview.preview ? "ready to import" : "imported"} of ${preview.total}.`,
             `${preview.alreadyImported} záznamov už bolo importovaných. ${preview.preview ? preview.ready : preview.imported} ${preview.preview ? "pripravených na import" : "importovaných"} z ${preview.total}.`,
@@ -596,19 +596,19 @@ function MappingList({
   const first = current * MAPPING_PAGE_SIZE;
   const visible = filtered.slice(first, first + MAPPING_PAGE_SIZE);
   const mappedCount = rows.filter((row) => (value[row.id] ?? "") !== "").length;
-  const pagerBtn = "inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer";
+  const pagerBtn = "inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer";
 
   return (
     <div className="grid gap-2" data-testid={testId}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="type-label text-slate-600">
+        <h4 className="type-label text-gray-600">
           {title}{" "}
-          <span className="font-normal text-slate-400">
+          <span className="font-normal text-gray-400">
             · {t(`${mappedCount} of ${rows.length} mapped`, `priradené ${mappedCount} z ${rows.length}`, `${mappedCount} / ${rows.length} hozzárendelve`)}
           </span>
         </h4>
         <label className="relative w-full ws-sm:w-64">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" aria-hidden />
           <input
             type="search"
             value={query}
@@ -618,21 +618,21 @@ function MappingList({
             }}
             placeholder={t("Search…", "Hľadať…", "Keresés…")}
             aria-label={`${title}: ${t("search", "hľadať", "keresés")}`}
-            className="h-9 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-ui outline-none focus:border-primary"
+            className="h-9 w-full rounded-md border border-gray-200 bg-white pl-9 pr-3 text-ui outline-none focus:border-entity"
             data-testid={`${testId}-search`}
           />
         </label>
       </div>
       {visible.length === 0 ? (
-        <p className="py-3 text-ui text-slate-500">{t("Nothing matches the search.", "Hľadaniu nič nezodpovedá.", "Nincs találat.")}</p>
+        <p className="py-3 text-ui text-gray-500">{t("Nothing matches the search.", "Hľadaniu nič nezodpovedá.", "Nincs találat.")}</p>
       ) : (
         <ul className="grid gap-2">
           {visible.map((row) => (
             <li key={row.id} className="grid items-center gap-2 ws-sm:grid-cols-2">
-              <span className="flex min-w-0 items-center gap-2 text-ui text-slate-800">
+              <span className="flex min-w-0 items-center gap-2 text-ui text-gray-800">
                 <span className="truncate">{row.name || row.id}</span>
                 {row.archived && (
-                  <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-caption text-slate-500" data-testid={`${testId}-archived`}>
+                  <span className="shrink-0 rounded-md bg-gray-100 px-1.5 py-0.5 text-caption text-gray-500" data-testid={`${testId}-archived`}>
                     {t("archived", "archivovaný", "archivált")}
                   </span>
                 )}
@@ -649,7 +649,7 @@ function MappingList({
         </ul>
       )}
       {filtered.length > MAPPING_PAGE_SIZE && (
-        <div className="flex items-center justify-end gap-2 text-caption text-slate-500">
+        <div className="flex items-center justify-end gap-2 text-caption text-gray-500">
           <span data-testid={`${testId}-range`}>
             {first + 1}–{Math.min(first + MAPPING_PAGE_SIZE, filtered.length)} {t("of", "z", "/")} {filtered.length}
           </span>

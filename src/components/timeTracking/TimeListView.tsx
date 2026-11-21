@@ -130,7 +130,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
           delta={target !== null ? <span data-testid="stat-target">{t("of", "z", "ennyiből:")} {formatDuration(target)} {t("target", "cieľ", "cél")}</span> : undefined}
         />
         <StatTile label={t("Billable", "Fakturovateľné", "Számlázható")} value={<span className="tabular-nums">{billable === null ? "—" : `${billable} %`}</span>} />
-        {weekCost !== null && <StatTile label={t("Labour cost this week", "Náklady na prácu za týždeň", "Heti munkaköltség")} value={<span className="tabular-nums text-slate-900" data-testid="stat-cost">{money(weekCost)}</span>} />}
+        {weekCost !== null && <StatTile label={t("Labour cost this week", "Náklady na prácu za týždeň", "Heti munkaköltség")} value={<span className="tabular-nums text-gray-900" data-testid="stat-cost">{money(weekCost)}</span>} />}
       </StatGrid>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -148,7 +148,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
         {viewScope === "me" && <UnsortedListChip />}
         {/* END-PHASE5-UNSORTED */}
         {selected.size > 0 && (
-          <div className="ml-auto flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-1.5 text-ui font-semibold text-white" data-testid="bulk-bar">
+          <div className="ml-auto flex items-center gap-2 rounded-md bg-gray-900 px-3 py-1.5 text-ui font-semibold text-white" data-testid="bulk-bar">
             {selected.size} {t("selected", "vybraných", "kijelölve")}
             <HoldToConfirmButton onConfirm={() => void remove([...selected])} what={`${selected.size}`} lang={deps.language} icon={<Trash2 className="size-4" />} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-rose-300 hover:bg-white/10 cursor-pointer">
               {t("Hold to delete", "Podržte pre odstránenie", "Tartsa a törléshez")}
@@ -162,7 +162,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
 
       {cards.length === 0 && !loading && (
         <Surface>
-          <p className="text-body text-slate-500" data-testid="time-empty">{t("No time tracked this week. Start the timer above, or add time manually.", "Tento týždeň nie je zaznamenaný žiadny čas. Spustite časovač vyššie alebo pridajte čas ručne.", "Ezen a héten nincs rögzített idő. Indítsa el az időzítőt, vagy adjon hozzá kézzel.")}</p>
+          <p className="text-body text-gray-500" data-testid="time-empty">{t("No time tracked this week. Start the timer above, or add time manually.", "Tento týždeň nie je zaznamenaný žiadny čas. Spustite časovač vyššie alebo pridajte čas ručne.", "Ezen a héten nincs rögzített idő. Indítsa el az időzítőt, vagy adjon hozzá kézzel.")}</p>
         </Surface>
       )}
 
@@ -172,18 +172,18 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
         const holiday = holidayLabel(date);
         return (
           <Surface key={date} padding="none" className="overflow-hidden" >
-            <div className={`flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 ${calendar.isOffDay(date) ? "bg-slate-50" : ""}`} data-testid="day-card-header" data-date={date}>
+            <div className={`flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-4 py-3 ${calendar.isOffDay(date) ? "bg-gray-50" : ""}`} data-testid="day-card-header" data-date={date}>
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`type-card-title capitalize ${date === today ? "text-teal-700" : "text-slate-900"}`}>{longDate(date)}</span>
+                <span className={`type-card-title capitalize ${date === today ? "text-entity-text" : "text-gray-900"}`}>{longDate(date)}</span>
                 {holiday && (
-                  <span className="rounded-full bg-slate-200 px-2 py-0.5 text-micro font-semibold text-slate-600" data-testid="holiday-chip" title={holiday}>
+                  <span className="rounded-full bg-gray-200 px-2 py-0.5 text-micro font-semibold text-gray-600" data-testid="holiday-chip" title={holiday}>
                     {t("State holiday", "Štátny sviatok", "Állami ünnep")} · {holiday}
                   </span>
                 )}
               </div>
-              <ClockDigits value={formatDuration(totalSeconds(list, nowMs), true)} className="font-semibold text-slate-900" />
+              <ClockDigits value={formatDuration(totalSeconds(list, nowMs), true)} className="font-semibold text-gray-900" />
             </div>
-            <div role="table" className="divide-y divide-slate-100">
+            <div role="table" className="divide-y divide-gray-100">
               {rows.map(({ entry, members }) => {
                 const visible = members.map((m) => withoutHiddenCost(m, tt.userId || "", tt.viewer.canCosts));
                 const isOpen = members.length > 1 && expanded.has(entry.id);

@@ -55,30 +55,30 @@ export function TaskTimeBreakdown({ taskId, users }: { taskId?: string; users: U
     <div data-testid="task-time-breakdown" className="mt-3 grid gap-2">
       {figure.total !== null && (
         <div className="flex items-baseline justify-between gap-3">
-          <span className="type-overline text-slate-500">{t("Cost", "Náklad", "Költség")}</span>
-          <span className="text-ui font-semibold tabular-nums text-slate-900" data-testid="task-time-cost">{money(figure.total)}</span>
+          <span className="type-overline text-gray-500">{t("Cost", "Náklad", "Költség")}</span>
+          <span className="text-ui font-semibold tabular-nums text-gray-900" data-testid="task-time-cost">{money(figure.total)}</span>
         </div>
       )}
       {figure.total === null && figure.own !== null && others && (
         <div className="flex items-baseline justify-between gap-3">
-          <span className="type-overline text-slate-500">{t("Your cost", "Váš náklad", "Az Ön költsége")}</span>
-          <span className="text-ui font-semibold tabular-nums text-slate-900" data-testid="task-time-own-cost">{money(figure.own)}</span>
+          <span className="type-overline text-gray-500">{t("Your cost", "Váš náklad", "Az Ön költsége")}</span>
+          <span className="text-ui font-semibold tabular-nums text-gray-900" data-testid="task-time-own-cost">{money(figure.own)}</span>
         </div>
       )}
       {figure.total === null && figure.own === null && figure.ownUnrated && (
         <p className="type-meta text-amber-700">{noRate}</p>
       )}
-      <div className="type-overline text-slate-500">{t("By person", "Podľa osoby", "Személyenként")}</div>
+      <div className="type-overline text-gray-500">{t("By person", "Podľa osoby", "Személyenként")}</div>
       <ul className="grid gap-1">
         {rows.map((p) => (
-          <li key={p.userId} data-testid="task-time-person" className="flex items-center justify-between gap-3 type-meta text-slate-700">
+          <li key={p.userId} data-testid="task-time-person" className="flex items-center justify-between gap-3 type-meta text-gray-700">
             <span className="min-w-0 truncate">{nameOf(p.userId)}</span>
             <span className="flex shrink-0 items-center gap-3 tabular-nums">
-              <span className="text-slate-600">{formatDuration(p.seconds)}</span>
+              <span className="text-gray-600">{formatDuration(p.seconds)}</span>
               {"cost" in p && p.cost === null ? (
                 <span className="text-amber-700" title={noRate}>—</span>
               ) : typeof p.cost === "number" ? (
-                <span className="text-slate-500">{money(p.cost)}</span>
+                <span className="text-gray-500">{money(p.cost)}</span>
               ) : null}
             </span>
           </li>

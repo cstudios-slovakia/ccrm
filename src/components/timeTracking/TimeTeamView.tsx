@@ -28,6 +28,7 @@ import { MoneyText } from "./MoneyText";
 import { RoleBadge } from "./RoleBadge";
 import { requestOpenList } from "./ViewingAsContext";
 import { initials, useTimeLookups, type TimeDeps } from "./shared";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
 const sourceLabel = (source: CostRateSource, t: TFn): string => {
   switch (source) {
@@ -168,7 +169,7 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
   if (!viewer.canTeam) {
     return (
       <Surface>
-        <p className="text-body text-slate-500">{t("The team matrix needs the team permission.", "Matica tímu vyžaduje oprávnenie na tím.", "A csapatmátrixhoz csapatjogosultság kell.")}</p>
+        <p className="text-body text-gray-500">{t("The team matrix needs the team permission.", "Matica tímu vyžaduje oprávnenie na tím.", "A csapatmátrixhoz csapatjogosultság kell.")}</p>
       </Surface>
     );
   }
@@ -200,7 +201,7 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
               type="button"
               aria-pressed={activeOnly}
               onClick={() => setActiveOnly(!activeOnly)}
-              className={`inline-flex h-9 items-center rounded-xl border px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${activeOnly ? "border-teal-600 bg-teal-600 text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
+              className={`inline-flex h-9 items-center rounded-md border px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${activeOnly ? "border-entity-border bg-entity-solid text-white" : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"}`}
             >
               {t("Active projects only", "Len aktívne projekty", "Csak aktív projektek")}
             </button>
@@ -208,10 +209,10 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
         }
         trailing={
           <div className="flex items-center gap-1">
-            <button type="button" onClick={() => setKind("week")} className={`h-9 rounded-xl px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${kind === "week" ? "bg-teal-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}>
+            <button type="button" onClick={() => setKind("week")} className={`h-9 rounded-md px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${kind === "week" ? "bg-entity-solid text-white" : "text-gray-600 hover:bg-gray-100"}`}>
               {t("Weekly", "Týždenne", "Hetente")}
             </button>
-            <button type="button" onClick={() => setKind("month")} className={`h-9 rounded-xl px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${kind === "month" ? "bg-teal-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}>
+            <button type="button" onClick={() => setKind("month")} className={`h-9 rounded-md px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${kind === "month" ? "bg-entity-solid text-white" : "text-gray-600 hover:bg-gray-100"}`}>
               {t("Monthly", "Mesačne", "Havonta")}
             </button>
           </div>
@@ -236,7 +237,7 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
                 ),
               )
             }
-            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-700 transition-all hover:bg-slate-50 active:scale-95 cursor-pointer"
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 text-ui font-semibold text-gray-700 transition-all hover:bg-gray-50 active:scale-95 cursor-pointer"
           >
             <Download className="size-4" />
             CSV
@@ -249,18 +250,18 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
           type="button"
           aria-label={t("Previous", "Predchádzajúce", "Előző")}
           onClick={() => (kind === "week" ? setWeekAnchor(shiftWeekAnchor(weekAnchor, -1)) : setMonthAnchor(shiftMonthAnchor(monthAnchor, -1)))}
-          className="inline-flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-all hover:text-slate-900 active:scale-95 cursor-pointer"
+          className="inline-flex size-9 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 transition-all hover:text-gray-900 active:scale-95 cursor-pointer"
         >
           <ChevronLeft className="size-4" />
         </button>
-        <span className="min-w-40 text-center text-ui font-semibold text-slate-800">
+        <span className="min-w-40 text-center text-ui font-semibold text-gray-800">
           {kind === "week" ? `${weekLabel(isoWeekNumber(from))} – ${weekLabel(isoWeekNumber(buckets[buckets.length - 1].from))}` : `${monthName(buckets[0].id)} – ${monthName(buckets[buckets.length - 1].id)}`}
         </span>
         <button
           type="button"
           aria-label={t("Next", "Nasledujúce", "Következő")}
           onClick={() => (kind === "week" ? setWeekAnchor(shiftWeekAnchor(weekAnchor, 1)) : setMonthAnchor(shiftMonthAnchor(monthAnchor, 1)))}
-          className="inline-flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-all hover:text-slate-900 active:scale-95 cursor-pointer"
+          className="inline-flex size-9 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 transition-all hover:text-gray-900 active:scale-95 cursor-pointer"
         >
           <ChevronRight className="size-4" />
         </button>
@@ -270,7 +271,7 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
             setWeekAnchor(weekStart(today));
             setMonthAnchor(today.slice(0, 7));
           }}
-          className="h-9 rounded-xl px-3 text-ui font-semibold text-primary transition-all hover:bg-slate-100 active:scale-95 cursor-pointer"
+          className="h-9 rounded-md px-3 text-ui font-semibold text-entity-text transition-all hover:bg-gray-100 active:scale-95 cursor-pointer"
         >
           {t("Current", "Aktuálne", "Aktuális")}
         </button>
@@ -278,16 +279,16 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
 
       <Surface padding="none" className="overflow-x-auto">
         {loading && matrix.rows.length === 0 ? (
-          <p className="p-4 text-body text-slate-500">{t("Loading…", "Načítava sa…", "Betöltés…")}</p>
+          <p className="p-4 text-body text-gray-500">{t("Loading…", "Načítava sa…", "Betöltés…")}</p>
         ) : (
           <table className="w-full border-collapse text-ui">
             <thead>
-              <tr className="border-b border-slate-100 text-left">
-                <th className="sticky left-0 z-10 bg-white px-4 py-3 type-overline text-slate-500">{t("Person", "Osoba", "Személy")}</th>
+              <tr className="border-b border-gray-100 text-left">
+                <th className="sticky left-0 z-10 bg-white px-4 py-3 type-overline text-gray-500">{t("Person", "Osoba", "Személy")}</th>
                 {matrix.buckets.map((b) => {
                   const current = today >= b.from && today <= b.to;
                   return (
-                    <th key={b.id} className={`min-w-24 px-3 py-3 type-overline ${current ? "bg-teal-50 text-teal-800" : "text-slate-500"}`}>
+                    <th key={b.id} className={`min-w-24 px-3 py-3 type-overline ${current ? "bg-entity-subtle text-entity-text" : "text-gray-500"}`}>
                       {kind === "week" ? (
                         <>
                           <span className="block">{weekLabel(isoWeekNumber(b.from))}</span>
@@ -297,19 +298,19 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
                     </th>
                   );
                 })}
-                <th className="min-w-24 px-3 py-3 type-overline text-slate-500">{t("Total", "Spolu", "Összesen")}</th>
+                <th className="min-w-24 px-3 py-3 type-overline text-gray-500">{t("Total", "Spolu", "Összesen")}</th>
               </tr>
             </thead>
             <tbody>
               {matrix.rows.map((row) => (
-                <tr key={row.userId} className="border-b border-slate-100 align-top">
+                <tr key={row.userId} className="border-b border-gray-100 align-top">
                   <th className="sticky left-0 z-10 bg-white px-4 py-3 text-left font-normal">
                     <div className="flex items-center gap-2">
                       <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-micro font-bold text-white" style={{ backgroundColor: row.color }}>
                         {initials(row.name) || "?"}
                       </span>
                       <span className="min-w-0">
-                        <span className="block truncate font-semibold text-slate-900">{row.name}</span>
+                        <span className="block truncate font-semibold text-gray-900">{row.name}</span>
                         <span className="mt-1 flex flex-wrap items-center gap-1.5">
                           <RoleBadge badge={row.badge} t={t} />
                           {row.showRate && row.rate?.rate != null && (
@@ -336,11 +337,11 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
                     const ratio = cell.basisSeconds > 0 ? cell.seconds / cell.basisSeconds : 0;
                     const tip = cell.rates.map((note) => rateTip(note.rate, note.month, note.country)).join(" · ");
                     return (
-                      <td key={cell.bucketId} className={`px-3 py-3 ${current ? "bg-teal-50/70" : ""}`}>
+                      <td key={cell.bucketId} className={`px-3 py-3 ${current ? "bg-entity-subtle" : ""}`}>
                         {cell.seconds === 0 && cell.vacation ? (
-                          <span className="text-micro font-semibold text-teal-700">{t("vacation", "dovolenka", "szabadság")}</span>
+                          <span className="text-micro font-semibold text-entity-text">{t("vacation", "dovolenka", "szabadság")}</span>
                         ) : cell.seconds === 0 ? (
-                          <span className="text-slate-300">—</span>
+                          <span className="text-gray-300">—</span>
                         ) : (
                           <button
                             type="button"
@@ -351,12 +352,12 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
                               const left = Math.max(8, Math.min(rect.left, window.innerWidth - panelWidth - 8));
                               setPop((prev) => (prev?.userId === row.userId && prev.bucketId === cell.bucketId ? null : { userId: row.userId, bucketId: cell.bucketId, top: rect.bottom + 6, left }));
                             }}
-                            className="block w-full rounded-lg text-left transition-colors hover:bg-white/80 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-600"
+                            className="block w-full rounded-lg text-left transition-colors hover:bg-white/80 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-entity"
                           >
-                            <span className="block font-bold tabular-nums text-teal-700">{formatDuration(cell.seconds)}</span>
+                            <span className="block font-bold tabular-nums text-entity-text">{formatDuration(cell.seconds)}</span>
                             {Object.keys(cell.cost).length > 0 && <MoneyText bag={cell.cost} language={deps.language} tone="cost" className="type-meta" />}
-                            <span className="mt-1 block h-1 overflow-hidden rounded-full bg-slate-200">
-                              <span className={`block h-full rounded-full transition-[width] duration-500 ${ratio < 0.75 ? "bg-amber-500" : "bg-teal-600"}`} style={{ width: `${Math.min(100, ratio * 100)}%` }} />
+                            <span className="mt-1 block h-1 overflow-hidden rounded-full bg-gray-200">
+                              <span className={`block h-full rounded-full transition-[width] duration-500 ${ratio < 0.75 ? "bg-amber-500" : "bg-entity-solid"}`} style={{ width: `${Math.min(100, ratio * 100)}%` }} />
                             </span>
                           </button>
                         )}
@@ -364,23 +365,23 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
                     );
                   })}
                   <td className="px-3 py-3">
-                    <span className="block font-bold tabular-nums text-teal-700">{formatDuration(row.totalSeconds)}</span>
+                    <span className="block font-bold tabular-nums text-entity-text">{formatDuration(row.totalSeconds)}</span>
                     <MoneyText bag={row.totalCost} language={deps.language} tone="cost" className="type-meta" />
                   </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="bg-slate-50 font-semibold" data-testid="team-totals">
-                <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-left">{t("Totals", "Súčet", "Végösszeg")}</th>
+              <tr className="bg-gray-50 font-semibold" data-testid="team-totals">
+                <th className="sticky left-0 z-10 bg-gray-50 px-4 py-3 text-left">{t("Totals", "Súčet", "Végösszeg")}</th>
                 {matrix.buckets.map((b, i) => (
                   <td key={b.id} className="px-3 py-3">
-                    <span className="block tabular-nums text-teal-700">{formatDuration(matrix.totals.seconds[i])}</span>
+                    <span className="block tabular-nums text-entity-text">{formatDuration(matrix.totals.seconds[i])}</span>
                     <MoneyText bag={matrix.totals.cost[i]} language={deps.language} tone="cost" className="type-meta" />
                   </td>
                 ))}
                 <td className="px-3 py-3">
-                  <span className="block tabular-nums text-teal-700">{formatDuration(matrix.totals.totalSeconds)}</span>
+                  <span className="block tabular-nums text-entity-text">{formatDuration(matrix.totals.totalSeconds)}</span>
                   <MoneyText bag={matrix.totals.totalCost} language={deps.language} tone="cost" className="type-meta" />
                 </td>
               </tr>
@@ -389,10 +390,10 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
         )}
       </Surface>
 
-      <div className="grid gap-1 type-meta text-slate-500" data-testid="team-legend">
+      <div className="grid gap-1 type-meta text-gray-500" data-testid="team-legend">
         <p className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-1 w-6 rounded-full bg-teal-600" />
+            <span className="h-1 w-6 rounded-full bg-entity-solid" />
             {t("bar = hours vs the working hours of that period", "pruh = hodiny voči pracovným hodinám obdobia", "sáv = órák és az időszak munkaóráinak aránya")}
           </span>
           <span className="inline-flex items-center gap-1.5">
@@ -407,25 +408,25 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
         createPortal(
           <div
             data-team-pop=""
-            className="fixed z-40 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl"
-            style={{ top: pop.top, left: pop.left }}
+            className="fixed z-40 w-72 rounded-lg border border-gray-200 bg-white p-3 shadow-lg"
+            style={{ top: pop.top, left: pop.left, ...(entityAccentStyle("time-tracking") as React.CSSProperties) }}
           >
-            <p className="type-card-title text-slate-900">{popRow.name}</p>
-            <p className="type-meta text-slate-500">{dayLabel(popCell.from)} – {dayLabel(popCell.to)}</p>
+            <p className="type-card-title text-gray-900">{popRow.name}</p>
+            <p className="type-meta text-gray-500">{dayLabel(popCell.from)} – {dayLabel(popCell.to)}</p>
             <ul className="mt-2 grid gap-1.5">
-              {popCell.projects.length === 0 && <li className="text-ui text-slate-400">—</li>}
+              {popCell.projects.length === 0 && <li className="text-ui text-gray-400">—</li>}
               {popCell.projects.map((slice) => (
                 <li key={slice.projectId ?? "none"} className="flex items-baseline justify-between gap-2 text-ui">
-                  <span className="truncate text-slate-700">{slice.projectId ? lookups.projectName(slice.projectId) : t("Unallocated", "Nepriradené", "Nincs projekt")}</span>
+                  <span className="truncate text-gray-700">{slice.projectId ? lookups.projectName(slice.projectId) : t("Unallocated", "Nepriradené", "Nincs projekt")}</span>
                   <span className="shrink-0 text-right">
-                    <span className="block tabular-nums font-semibold text-teal-700">{formatDuration(slice.seconds)}</span>
+                    <span className="block tabular-nums font-semibold text-entity-text">{formatDuration(slice.seconds)}</span>
                     <MoneyText bag={slice.cost} language={deps.language} tone="cost" className="type-meta" />
                   </span>
                 </li>
               ))}
             </ul>
             {popCell.basisSeconds > 0 && (
-              <p className="mt-2 border-t border-slate-100 pt-2 type-meta tabular-nums text-slate-500" data-testid="team-pop-basis">
+              <p className="mt-2 border-t border-gray-100 pt-2 type-meta tabular-nums text-gray-500" data-testid="team-pop-basis">
                 {formatDuration(popCell.seconds)} {t("of", "z", "ennyiből:")} {formatDuration(popCell.basisSeconds)} h · {Math.round((popCell.seconds / popCell.basisSeconds) * 100)} %
               </p>
             )}
@@ -436,7 +437,7 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
                 onNavigate("time-tracking");
                 setPop(null);
               }}
-              className="mt-3 text-ui font-semibold text-primary cursor-pointer hover:underline"
+              className="mt-3 text-ui font-semibold text-entity-text cursor-pointer hover:underline"
             >
               {t("Open entries →", "Otvoriť záznamy →", "Bejegyzések megnyitása →")}
             </button>

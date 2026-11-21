@@ -107,17 +107,17 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
   };
 
   if (!ready) {
-    return <Surface><p className="text-body text-slate-500">{enabled ? t("Loading…", "Načítava sa…", "Betöltés…") : t("You need access to the Time tracking module to change its settings.", "Na zmenu nastavení potrebujete prístup k modulu Evidencia času.", "A beállítások módosításához hozzáférés kell az Időkövetés modulhoz.")}</p></Surface>;
+    return <Surface><p className="text-body text-gray-500">{enabled ? t("Loading…", "Načítava sa…", "Betöltés…") : t("You need access to the Time tracking module to change its settings.", "Na zmenu nastavení potrebujete prístup k modulu Evidencia času.", "A beállítások módosításához hozzáférés kell az Időkövetés modulhoz.")}</p></Surface>;
   }
 
-  const field = "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-ui outline-none focus:border-primary disabled:bg-slate-50";
-  const label = "type-label text-slate-600";
+  const field = "h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-ui outline-none focus:border-entity disabled:bg-gray-50";
+  const label = "type-label text-gray-600";
   const toggle = (key: "requireProjectToStop" | "requireTask" | "billableByDefault" | "weeklyApproval", text: string, note: string) => (
-    <label className="flex cursor-pointer items-start gap-3 text-ui text-slate-800">
+    <label className="flex cursor-pointer items-start gap-3 text-ui text-gray-800">
       <Switch checked={draft[key]} disabled={!canEdit} onChange={(next) => set(key, next)} testId={`tt-${key}`} className="mt-0.5" />
       <span className="grid gap-0.5">
         {text}
-        <span className="type-meta text-slate-500">{note}</span>
+        <span className="type-meta text-gray-500">{note}</span>
       </span>
     </label>
   );
@@ -126,8 +126,8 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
     <div className="space-y-6" data-testid="tt-settings">
       {/* Cost */}
       <Surface className="space-y-4">
-        <h3 className="type-card-title text-slate-900">{t("Cost rate from salary", "Nákladová sadzba z mzdy", "Költségdíj a fizetésből")}</h3>
-        <p className="text-body text-slate-500">{t("Every entry is priced from the employee's salary when it is saved, and the rate is frozen on that entry. A monthly salary is divided by that month's real working days in the person's country.", "Každý záznam sa pri uložení ocení podľa mzdy zamestnanca a sadzba sa na ňom zafixuje. Mesačná mzda sa delí skutočným počtom pracovných dní mesiaca v krajine danej osoby.", "Minden bejegyzést mentéskor a munkatárs fizetéséből áraz a rendszer, és a díj rögzül a bejegyzésen. A havi fizetést az adott ország hónapjának valós munkanapjaival osztja.")}</p>
+        <h3 className="type-card-title text-gray-900">{t("Cost rate from salary", "Nákladová sadzba z mzdy", "Költségdíj a fizetésből")}</h3>
+        <p className="text-body text-gray-500">{t("Every entry is priced from the employee's salary when it is saved, and the rate is frozen on that entry. A monthly salary is divided by that month's real working days in the person's country.", "Každý záznam sa pri uložení ocení podľa mzdy zamestnanca a sadzba sa na ňom zafixuje. Mesačná mzda sa delí skutočným počtom pracovných dní mesiaca v krajine danej osoby.", "Minden bejegyzést mentéskor a munkatárs fizetéséből áraz a rendszer, és a díj rögzül a bejegyzésen. A havi fizetést az adott ország hónapjának valós munkanapjaival osztja.")}</p>
         <div className="grid gap-4 ws-sm:grid-cols-2 ws-md:grid-cols-3">
           <label className="grid gap-1">
             <span className={label}>{t("Monthly hours basis", "Základ mesačných hodín", "Havi óraalap")}</span>
@@ -157,10 +157,10 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
           <label className="grid gap-1">
             <span className={label}>{t("Employer contributions multiplier", "Násobok odvodov zamestnávateľa", "Munkáltatói járulék szorzó")}</span>
             <input disabled={!canEdit} type="number" min={0.5} max={5} step={0.001} value={draft.employerMultiplier} onChange={(e) => set("employerMultiplier", num(e.target.value, 1.352))} className={field} data-testid="tt-multiplier" />
-            <span className="type-meta text-slate-500">{t("Applies to employees, not to contractors.", "Platí pre zamestnancov, nie pre dodávateľov.", "Munkavállalókra vonatkozik, vállalkozókra nem.")}</span>
+            <span className="type-meta text-gray-500">{t("Applies to employees, not to contractors.", "Platí pre zamestnancov, nie pre dodávateľov.", "Munkavállalókra vonatkozik, vállalkozókra nem.")}</span>
           </label>
         </div>
-        <div className="rounded-2xl bg-slate-50 p-4 text-ui text-slate-700" data-testid="tt-example">
+        <div className="rounded-lg bg-gray-50 p-4 text-ui text-gray-700" data-testid="tt-example">
           {t("Example", "Príklad", "Példa")}: {money(3200)} / {t("month", "mesiac", "hó")}, {new Date(new Date().getFullYear(), exampleMonth - 1, 1).toLocaleDateString(locale, { month: "long" })} ({country}) →{" "}
           <b className="tabular-nums">{exampleDays} {t("working days", "pracovných dní", "munkanap")}</b> →{" "}
           <b className="tabular-nums text-violet-700">{example.rate !== null ? `${money(example.rate)}/h` : "—"}</b>
@@ -171,7 +171,7 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
       {/* Holidays */}
       <Surface className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="type-card-title text-slate-900">{t("Working days and public holidays", "Pracovné dni a štátne sviatky", "Munkanapok és állami ünnepek")}</h3>
+          <h3 className="type-card-title text-gray-900">{t("Working days and public holidays", "Pracovné dni a štátne sviatky", "Munkanapok és állami ünnepek")}</h3>
           <div className="flex items-center gap-2">
             <div data-testid="tt-holiday-country">
               <CustomSelect
@@ -191,7 +191,7 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
             />
           </div>
         </div>
-        <p className="text-body text-slate-500">
+        <p className="text-body text-gray-500">
           {t(
             "Holidays come from the public Nager.Date service, fetched by the server and cached. Which days count is decided by the person's work calendar (set per employee, otherwise the company's country), never by the language of the app.",
             "Sviatky pochádzajú z verejnej služby Nager.Date, ktorú načítava server a ukladá ich do cache. Ktoré dni sa rátajú, určuje pracovný kalendár osoby (nastavuje sa pri zamestnancovi, inak krajina firmy), nikdy jazyk aplikácie.",
@@ -199,12 +199,12 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
           )}
         </p>
         {tt.holidaysFallback && (
-          <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-ui font-semibold text-amber-900" data-testid="tt-holidays-fallback">
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-ui font-semibold text-amber-900" data-testid="tt-holidays-fallback">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
             {t("Holidays: built-in list, the API could not be reached.", "Sviatky: vstavaný zoznam, API sa nepodarilo kontaktovať.", "Ünnepnapok: beépített lista, az API nem érhető el.")}
           </div>
         )}
-        <ul className="divide-y divide-slate-100 rounded-2xl border border-slate-200" data-testid="tt-holiday-list">
+        <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200" data-testid="tt-holiday-list">
           {Array.from({ length: 366 }, (_, i) => {
             const d = new Date(Date.UTC(year, 0, 1 + i));
             return d.getUTCFullYear() === year ? isoDate(year, d.getUTCMonth() + 1, d.getUTCDate()) : null;
@@ -212,15 +212,15 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
             .filter((iso): iso is string => !!iso && !!calendar.holiday(iso))
             .map((iso) => (
               <li key={iso} className="flex items-center justify-between gap-3 px-3 py-2 text-ui">
-                <span className="font-semibold tabular-nums text-slate-700">{new Date(`${iso}T12:00:00`).toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "numeric" })}</span>
-                <span className="min-w-0 flex-1 truncate text-slate-800">{holidayName(calendar.holiday(iso)!, country, language)}</span>
+                <span className="font-semibold tabular-nums text-gray-700">{new Date(`${iso}T12:00:00`).toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "numeric" })}</span>
+                <span className="min-w-0 flex-1 truncate text-gray-800">{holidayName(calendar.holiday(iso)!, country, language)}</span>
               </li>
             ))}
         </ul>
 
-        <div className="rounded-2xl bg-slate-50 p-4">
-          <div className="type-overline text-slate-500">{t("Overrides", "Výnimky", "Eltérések")} · {country} {year}</div>
-          <p className="mt-1 type-meta text-slate-500">
+        <div className="rounded-lg bg-gray-50 p-4">
+          <div className="type-overline text-gray-500">{t("Overrides", "Výnimky", "Eltérések")} · {country} {year}</div>
+          <p className="mt-1 type-meta text-gray-500">
             {country === "HU"
               ? t(
                   "Hungary moves rest days and adds working Saturdays every year by decree (áthelyezett pihenőnap, ledolgozós szombat). No free machine-readable source exists, so enter them here from the official decree.",
@@ -228,20 +228,20 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
                   "Magyarország évente rendelettel áthelyezi a pihenőnapokat és ledolgozós szombatokat jelöl ki. Nincs ingyenes, gépileg olvasható forrás, ezért itt adja meg őket a hivatalos rendelet alapján.",
                 )
               : t("Add an extra day off or an extra working day (for example a company holiday).", "Pridajte ďalší voľný deň alebo ďalší pracovný deň (napríklad firemné voľno).", "Adjon hozzá extra szabadnapot vagy extra munkanapot (például céges szabadnapot).")}{" "}
-            <a href={OFFICIAL_SOURCE[country].href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold text-primary hover:underline">
+            <a href={OFFICIAL_SOURCE[country].href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold text-entity-text hover:underline">
               {OFFICIAL_SOURCE[country].label} <ExternalLink className="size-3" />
             </a>
           </p>
           <ul className="mt-3 grid gap-1.5" data-testid="tt-overrides">
             {overrides.map((o) => (
-              <li key={o.date} className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-ui">
+              <li key={o.date} className="flex items-center gap-2 rounded-md bg-white px-3 py-2 text-ui">
                 <span className="tabular-nums font-semibold">{o.date}</span>
-                <span className={`rounded-full px-2 py-0.5 text-micro font-semibold ${o.kind === "extraDayOff" ? "bg-slate-200 text-slate-700" : "bg-emerald-100 text-emerald-800"}`}>
+                <span className={`rounded-full px-2 py-0.5 text-micro font-semibold ${o.kind === "extraDayOff" ? "bg-gray-200 text-gray-700" : "bg-emerald-100 text-emerald-800"}`}>
                   {o.kind === "extraDayOff" ? t("Extra day off", "Extra voľný deň", "Extra szabadnap") : t("Extra working day", "Extra pracovný deň", "Extra munkanap")}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-slate-600">{o.name}</span>
+                <span className="min-w-0 flex-1 truncate text-gray-600">{o.name}</span>
                 {canEdit && (
-                  <button type="button" onClick={() => removeOverride(o.date)} aria-label={t("Remove", "Odstrániť", "Eltávolítás")} className="text-slate-400 hover:text-rose-600 cursor-pointer">
+                  <button type="button" onClick={() => removeOverride(o.date)} aria-label={t("Remove", "Odstrániť", "Eltávolítás")} className="text-gray-400 hover:text-rose-600 cursor-pointer">
                     <Trash2 className="size-4" />
                   </button>
                 )}
@@ -250,7 +250,7 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
           </ul>
           {canEdit && (
             <div className="mt-3 flex flex-wrap items-end gap-2">
-              <input type="date" value={ovDate} onChange={(e) => setOvDate(e.target.value)} min={`${year}-01-01`} max={`${year}-12-31`} className="h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui" data-testid="tt-override-date" />
+              <input type="date" value={ovDate} onChange={(e) => setOvDate(e.target.value)} min={`${year}-01-01`} max={`${year}-12-31`} className="h-9 rounded-md border border-gray-200 bg-white px-2 text-ui" data-testid="tt-override-date" />
               <div data-testid="tt-override-kind">
                 <CustomSelect
                   size="sm"
@@ -263,8 +263,8 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
                   ]}
                 />
               </div>
-              <input value={ovName} onChange={(e) => setOvName(e.target.value)} placeholder={t("Name", "Názov", "Név")} className="h-9 min-w-40 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-ui" data-testid="tt-override-name" />
-              <button type="button" onClick={addOverride} data-testid="tt-override-add" className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-ui font-semibold text-white cursor-pointer">
+              <input value={ovName} onChange={(e) => setOvName(e.target.value)} placeholder={t("Name", "Názov", "Név")} className="h-9 min-w-40 flex-1 rounded-md border border-gray-200 bg-white px-3 text-ui" data-testid="tt-override-name" />
+              <button type="button" onClick={addOverride} data-testid="tt-override-add" className="inline-flex h-9 items-center gap-1.5 rounded-md bg-gray-900 px-3 text-ui font-semibold text-white cursor-pointer">
                 <Plus className="size-4" />
                 {t("Add", "Pridať", "Hozzáad")}
               </button>
@@ -275,7 +275,7 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
 
       {/* Rules */}
       <Surface className="space-y-4">
-        <h3 className="type-card-title text-slate-900">{t("Rules", "Pravidlá", "Szabályok")}</h3>
+        <h3 className="type-card-title text-gray-900">{t("Rules", "Pravidlá", "Szabályok")}</h3>
         <div className="grid gap-3">
           {toggle("requireProjectToStop", t("Require a project before stopping the timer", "Vyžadovať projekt pred zastavením časovača", "Projekt megkövetelése az időzítő leállítása előtt"), t("For people who can pick a project, a timer cannot be stopped until one is chosen.", "Pre ľudí, ktorí môžu vybrať projekt, sa časovač nedá zastaviť, kým sa nevyberie projekt.", "Azoknál, akik projektet választhatnak, az időzítő nem állítható le, amíg nincs projekt kiválasztva."))}
           {toggle("requireTask", t("Require a task on every entry", "Vyžadovať úlohu pri každom zázname", "Feladat megkövetelése minden bejegyzésnél"), t("A timer cannot be stopped without a task.", "Časovač sa nedá zastaviť bez úlohy.", "Feladat nélkül az időzítő nem állítható le."))}
@@ -324,8 +324,8 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
 
       {/* PHASE6-SETTINGS */}
       <Surface className="space-y-4">
-        <h3 className="type-card-title text-slate-900">{t("Locking, approval and idle reminder", "Zamykanie, schvaľovanie a pripomenutie nečinnosti", "Zárolás, jóváhagyás és tétlenségi emlékeztető")}</h3>
-        <p className="text-body text-slate-500">{t(
+        <h3 className="type-card-title text-gray-900">{t("Locking, approval and idle reminder", "Zamykanie, schvaľovanie a pripomenutie nečinnosti", "Zárolás, jóváhagyás és tétlenségi emlékeztető")}</h3>
+        <p className="text-body text-gray-500">{t(
           "Entries older than the lock, in a paid payroll month, or in a submitted week can be changed only by an admin. That change is written to the audit log. Leave a field empty to turn that rule off. The idle reminder appears while a timer is running.",
           "Záznamy staršie ako zámok, v uhradenom mzdovom mesiaci alebo v odoslanom týždni môže zmeniť len administrátor. Zmena sa zapíše do auditu. Prázdne pole pravidlo vypne. Pripomenutie nečinnosti sa zobrazí, kým beží časovač.",
           "A zárolásnál régebbi, kifizetett bérhónapba eső vagy beküldött heti bejegyzést csak adminisztrátor módosíthatja. A módosítás az auditnaplóba kerül. Az üres mező kikapcsolja a szabályt. A tétlenségi emlékeztető futó időzítő mellett jelenik meg.",
@@ -344,8 +344,8 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
       </Surface>
       <TogglImportPanel language={language} t={t} canEdit={canEdit || isAdmin} />
       <Surface className="space-y-2">
-        <h3 className="type-card-title text-slate-900">{t("External time tracker", "Externý nástroj na evidenciu času", "Külső időkövető")}</h3>
-        <p className="text-body text-slate-500">{t(
+        <h3 className="type-card-title text-gray-900">{t("External time tracker", "Externý nástroj na evidenciu času", "Külső időkövető")}</h3>
+        <p className="text-body text-gray-500">{t(
           `Toggl connections stay where they are: Employees → Settings. The employee summary keeps its Toggl hours and can switch to ${brand} time tracking for that view only.`,
           `Pripojenia na Toggl zostávajú tam, kde sú: Zamestnanci → Nastavenia. Súhrn zamestnanca si ponecháva hodiny z Toggl a v tom zobrazení sa dá prepnúť na evidenciu času ${brand}.`,
           `A Toggl-kapcsolatok ott maradnak, ahol vannak: Munkatársak → Beállítások. A munkatárs összesítője megtartja a Toggl-órákat, és azon a nézeten átváltható ${brand} időkövetésre.`,
@@ -368,11 +368,11 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
 
       {isAdmin && (
         <Surface className="space-y-3">
-          <h3 className="type-card-title text-slate-900">{t("Re-price a period", "Prepočítať obdobie", "Időszak újraárazása")}</h3>
-          <p className="text-body text-slate-500">{t("Rates are frozen when an entry is saved. Re-pricing recomputes every entry of a month with the current salaries and calendar, and fills in entries that had no rate once an employee is linked.", "Sadzby sa pri uložení záznamu zafixujú. Prepočet znovu vypočíta všetky záznamy mesiaca podľa aktuálnych miezd a kalendára a doplní záznamy bez sadzby po pripojení zamestnanca.", "A díjak a bejegyzés mentésekor rögzülnek. Az újraárazás a hónap minden bejegyzését a jelenlegi fizetésekkel és naptárral számolja újra, és kitölti a díj nélküli bejegyzéseket, ha már van hozzárendelt munkatárs.")}</p>
+          <h3 className="type-card-title text-gray-900">{t("Re-price a period", "Prepočítať obdobie", "Időszak újraárazása")}</h3>
+          <p className="text-body text-gray-500">{t("Rates are frozen when an entry is saved. Re-pricing recomputes every entry of a month with the current salaries and calendar, and fills in entries that had no rate once an employee is linked.", "Sadzby sa pri uložení záznamu zafixujú. Prepočet znovu vypočíta všetky záznamy mesiaca podľa aktuálnych miezd a kalendára a doplní záznamy bez sadzby po pripojení zamestnanca.", "A díjak a bejegyzés mentésekor rögzülnek. Az újraárazás a hónap minden bejegyzését a jelenlegi fizetésekkel és naptárral számolja újra, és kitölti a díj nélküli bejegyzéseket, ha már van hozzárendelt munkatárs.")}</p>
           <div className="flex flex-wrap items-center gap-3">
-            <input type="month" value={repriceMonth} onChange={(e) => setRepriceMonth(e.target.value)} className="h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui" data-testid="tt-reprice-month" />
-            <HoldToConfirmButton onConfirm={() => void reprice()} tone="archive" lang={language} what={repriceMonth} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-ui font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer" icon={<span className="size-4" />}>
+            <input type="month" value={repriceMonth} onChange={(e) => setRepriceMonth(e.target.value)} className="h-9 rounded-md border border-gray-200 bg-white px-2 text-ui" data-testid="tt-reprice-month" />
+            <HoldToConfirmButton onConfirm={() => void reprice()} tone="archive" lang={language} what={repriceMonth} className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-200 px-3 text-ui font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer" icon={<span className="size-4" />}>
               {t("Hold to re-price", "Podržte pre prepočet", "Tartsa az újraárazáshoz")}
             </HoldToConfirmButton>
           </div>
@@ -381,7 +381,7 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
 
       {canEdit && (
         <div className="sticky bottom-4 flex justify-end">
-          <button type="button" onClick={save} disabled={!dirty || saving} data-testid="tt-save" className="h-10 rounded-xl bg-primary px-5 text-ui font-semibold text-primary-foreground shadow-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer">
+          <button type="button" onClick={save} disabled={!dirty || saving} data-testid="tt-save" className="h-10 rounded-md bg-entity-solid px-5 text-ui font-semibold text-white shadow-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer">
             {t("Save settings", "Uložiť nastavenia", "Beállítások mentése")}
           </button>
         </div>

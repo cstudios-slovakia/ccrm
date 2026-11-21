@@ -62,10 +62,10 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
       data-testid="time-entry-row"
       data-entry-id={entry.id}
       data-group-count={count > 1 ? count : undefined}
-      className={`group flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-ui hover:bg-slate-50 ws-sm:flex-nowrap ${entry.running ? "bg-rose-50/50" : nested ? "bg-slate-50/60 pl-10" : ""}`}
+      className={`group flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-ui hover:bg-gray-50 ws-sm:flex-nowrap ${entry.running ? "bg-rose-50/50" : nested ? "bg-gray-50/60 pl-10" : ""}`}
     >
       {onSelect && (
-        <input type="checkbox" checked={!!selected} onChange={(e) => onSelect(e.target.checked)} aria-label={t("Select", "Vybrať", "Kijelölés")} className="size-4 shrink-0 accent-teal-600" />
+        <input type="checkbox" checked={!!selected} onChange={(e) => onSelect(e.target.checked)} aria-label={t("Select", "Vybrať", "Kijelölés")} className="size-4 shrink-0 accent-[var(--entity-accent-solid)]" />
       )}
       {count > 1 && (
         <button
@@ -74,7 +74,7 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
           aria-expanded={!!expanded}
           title={expanded ? t("Hide the entries", "Skryť záznamy", "Bejegyzések elrejtése") : t(`Show the ${count} entries`, `Zobraziť záznamy (${count})`, `A(z) ${count} bejegyzés megjelenítése`)}
           data-testid="time-entry-group-toggle"
-          className={`inline-flex h-6 shrink-0 items-center gap-0.5 rounded-md border px-1 text-micro font-bold transition-colors cursor-pointer ${expanded ? "border-teal-300 bg-teal-50 text-teal-700" : "border-slate-200 bg-slate-100 text-slate-600 hover:border-slate-300"}`}
+          className={`inline-flex h-6 shrink-0 items-center gap-0.5 rounded-md border px-1 text-micro font-bold transition-colors cursor-pointer ${expanded ? "border-entity-border bg-entity-subtle text-entity-text" : "border-gray-200 bg-gray-100 text-gray-600 hover:border-gray-300"}`}
         >
           {count}
           <ChevronRight className={`size-3 transition-transform ${expanded ? "rotate-90" : ""}`} />
@@ -86,15 +86,15 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
         </span>
       )}
       <button type="button" onClick={() => onOpen(entry)} className="min-w-0 flex-1 basis-40 text-left cursor-pointer" data-testid="time-entry-title">
-        <span className={`flex items-center gap-1.5 font-semibold ${entry.titleDeleted ? "italic text-slate-400" : "text-slate-900"}`}>
-          {entry.titleSource !== "entry" && <Link2 className="size-3.5 shrink-0 text-teal-600" aria-label={t("Linked", "Prepojené", "Kapcsolt")} />}
+        <span className={`flex items-center gap-1.5 font-semibold ${entry.titleDeleted ? "italic text-gray-400" : "text-gray-900"}`}>
+          {entry.titleSource !== "entry" && <Link2 className="size-3.5 shrink-0 text-entity-text" aria-label={t("Linked", "Prepojené", "Kapcsolt")} />}
           <span className="truncate">{entry.title || t("(no title)", "(bez názvu)", "(nincs cím)")}</span>
           {entry.running && <RunningBadge />}
         </span>
-        {entry.note && <span className="block truncate type-meta text-slate-500" data-testid="time-entry-note">{entry.note}</span>}
-        {entry.legacyNote && <span className="block truncate type-meta text-slate-400">{entry.legacyNote}</span>}
+        {entry.note && <span className="block truncate type-meta text-gray-500" data-testid="time-entry-note">{entry.note}</span>}
+        {entry.legacyNote && <span className="block truncate type-meta text-gray-400">{entry.legacyNote}</span>}
         {entry.recordedByUserId !== entry.userId && (
-          <span className="block type-meta text-slate-400" data-testid="time-entry-recorded-by">
+          <span className="block type-meta text-gray-400" data-testid="time-entry-recorded-by">
             {importTool
               ? t(`Imported from ${importTool} by`, `Z ${importTool} importoval`, `${importTool}-importot végezte:`)
               : t("Recorded by", "Zaznamenal", "Rögzítette")}{" "}
@@ -108,25 +108,25 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
         <AssignProjectChip onClick={() => onOpen(entry)} />
       )}
       {entry.tags.slice(0, 2).map((tag) => (
-        <span key={tag} className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-micro font-semibold text-slate-600 ws-md:inline">
+        <span key={tag} className="hidden rounded-full bg-gray-100 px-2 py-0.5 text-micro font-semibold text-gray-600 ws-md:inline">
           {tag}
         </span>
       ))}
-      <Euro className={`size-4 shrink-0 ${entry.billable ? "text-emerald-600" : "text-slate-300"}`} aria-label={entry.billable ? t("Billable", "Fakturovateľné", "Számlázható") : t("Not billable", "Nefakturovateľné", "Nem számlázható")} />
-      <span className="w-28 shrink-0 text-right tabular-nums text-slate-500">{range}</span>
-      <ClockDigits value={formatDuration(sec, true)} className="w-18 shrink-0 justify-end font-semibold text-slate-900" data-testid="time-entry-duration" />
+      <Euro className={`size-4 shrink-0 ${entry.billable ? "text-emerald-600" : "text-gray-300"}`} aria-label={entry.billable ? t("Billable", "Fakturovateľné", "Számlázható") : t("Not billable", "Nefakturovateľné", "Nem számlázható")} />
+      <span className="w-28 shrink-0 text-right tabular-nums text-gray-500">{range}</span>
+      <ClockDigits value={formatDuration(sec, true)} className="w-18 shrink-0 justify-end font-semibold text-gray-900" data-testid="time-entry-duration" />
       {rate && (
-        <span className="hidden w-20 shrink-0 text-right tabular-nums text-slate-500 ws-lg:inline" data-testid="time-entry-cost">
+        <span className="hidden w-20 shrink-0 text-right tabular-nums text-gray-500 ws-lg:inline" data-testid="time-entry-cost">
           {cost !== null ? money(cost) : entry.costRate === null && !entry.running ? <span className="text-amber-600" title={t("No rate — no employee linked", "Bez sadzby — nie je pripojený zamestnanec", "Nincs díj — nincs munkatárs hozzárendelve")}>—</span> : ""}
         </span>
       )}
       <span className="flex shrink-0 justify-end gap-1 opacity-100 ws-sm:w-16 ws-sm:opacity-0 ws-sm:transition-opacity ws-sm:group-hover:opacity-100 ws-sm:focus-within:opacity-100">
         {onContinue && !entry.running && (
-          <button type="button" onClick={() => onContinue(entry)} title={t("Continue", "Pokračovať", "Folytatás")} aria-label={t("Continue", "Pokračovať", "Folytatás")} data-testid="time-entry-continue" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-primary hover:text-white cursor-pointer ws-sm:size-7 ws-sm:min-h-0 ws-sm:min-w-0">
+          <button type="button" onClick={() => onContinue(entry)} title={t("Continue", "Pokračovať", "Folytatás")} aria-label={t("Continue", "Pokračovať", "Folytatás")} data-testid="time-entry-continue" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-entity-solid hover:text-white cursor-pointer ws-sm:size-7 ws-sm:min-h-0 ws-sm:min-w-0">
             <Play className="size-3.5 fill-current" />
           </button>
         )}
-        <button type="button" onClick={() => onOpen(entry)} title={t("Open", "Otvoriť", "Megnyitás")} aria-label={t("Open", "Otvoriť", "Megnyitás")} className="inline-flex size-7 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-200 cursor-pointer">
+        <button type="button" onClick={() => onOpen(entry)} title={t("Open", "Otvoriť", "Megnyitás")} aria-label={t("Open", "Otvoriť", "Megnyitás")} className="inline-flex size-7 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-200 cursor-pointer">
           <MoreHorizontal className="size-4" />
         </button>
       </span>

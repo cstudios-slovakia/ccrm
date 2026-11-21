@@ -2,9 +2,9 @@ import type { TFn } from "../../utils/timeTracking.ts";
 import type { TeamRoleBadge } from "../../utils/timeTeam.ts";
 
 const TONE: Record<TeamRoleBadge, string> = {
-  admin: "bg-slate-900 text-white",
-  manager: "bg-teal-50 text-teal-800",
-  employee: "bg-slate-100 text-slate-600",
+  admin: "bg-gray-900 text-white",
+  manager: "bg-entity-subtle text-entity-text",
+  employee: "bg-gray-100 text-gray-600",
   contractor: "bg-amber-50 text-amber-800",
 };
 

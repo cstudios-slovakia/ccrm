@@ -30,7 +30,7 @@ export function ProjectLabel({
       <span className="truncate font-medium" style={{ color: text }}>
         {name}
       </span>
-      {!compact && client && <span className="truncate text-slate-400">· {client}</span>}
+      {!compact && client && <span className="truncate text-gray-400">· {client}</span>}
     </span>
   );
 }

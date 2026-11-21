@@ -229,16 +229,16 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject, footer }: P
         title={!rename.can ? t("You cannot edit this task, so you cannot rename it.", "Túto úlohu nemôžete upravovať, preto ju nemôžete premenovať.", "Ezt a feladatot nem szerkesztheti, ezért nem nevezheti át.") : undefined}
         placeholder={t("What are you working on?", "Na čom pracujete?", "min dolgozik?")}
         data-testid="timer-title"
-        className="h-10 w-full min-w-40 rounded-xl border border-transparent bg-transparent px-3 text-body font-semibold text-slate-900 outline-none placeholder:font-normal placeholder:text-slate-400 hover:border-slate-200 focus:border-primary focus:bg-white read-only:cursor-default"
+        className="h-10 w-full min-w-40 rounded-md border border-transparent bg-transparent px-3 text-body font-semibold text-gray-900 outline-none placeholder:font-normal placeholder:text-gray-400 hover:border-gray-200 focus:border-entity focus:bg-white read-only:cursor-default"
       />
-      {hint && rename.can && <div className="px-3 type-meta text-slate-400">{hint}</div>}
+      {hint && rename.can && <div className="px-3 type-meta text-gray-400">{hint}</div>}
     </div>
   ) : (
     <div ref={box} className="relative min-w-0 flex-1 basis-60">
       {task || ticket ? (
-        <div className="flex h-10 items-center gap-2 rounded-xl bg-teal-50 px-3 text-ui font-semibold text-teal-800" data-testid="timer-linked-task">
+        <div className="flex h-10 items-center gap-2 rounded-md bg-entity-subtle px-3 text-ui font-semibold text-entity-text" data-testid="timer-linked-task">
           <span className="truncate">{task?.title || ticket?.title || ticket?.subject}</span>
-          <button type="button" onClick={() => { setTask(null); setTicket(null); setProjectId(null); }} aria-label={t("Unlink", "Odpojiť", "Leválasztás")} className="text-teal-600 hover:text-teal-900 cursor-pointer">
+          <button type="button" onClick={() => { setTask(null); setTicket(null); setProjectId(null); }} aria-label={t("Unlink", "Odpojiť", "Leválasztás")} className="text-entity-text hover:text-entity-text cursor-pointer">
             <X className="size-4" />
           </button>
         </div>
@@ -250,22 +250,22 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject, footer }: P
           onKeyDown={(e) => { if (e.key === "Enter" && mode === "timer") void onStart(); }}
           placeholder={t("What are you working on?", "Na čom pracujete?", "min dolgozik?")}
           data-testid="timer-title"
-          className="h-10 w-full min-w-40 rounded-xl border border-transparent bg-transparent px-3 text-body outline-none placeholder:text-slate-400 hover:border-slate-200 focus:border-primary focus:bg-white"
+          className="h-10 w-full min-w-40 rounded-md border border-transparent bg-transparent px-3 text-body outline-none placeholder:text-gray-400 hover:border-gray-200 focus:border-entity focus:bg-white"
         />
       )}
       {suggestOpen && (suggestions.length > 0 || ticketSuggestions.length > 0) && (
-        <div className="absolute left-0 right-0 z-[960] mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl" data-testid="timer-suggestions">
-          {suggestions.length > 0 && <div className="type-overline px-3 pt-2 text-slate-400">{t("Open tasks", "Otvorené úlohy", "Nyitott feladatok")}</div>}
+        <div className="absolute left-0 right-0 z-[960] mt-1 overflow-hidden rounded-md border border-gray-200 bg-white shadow-xl" data-testid="timer-suggestions">
+          {suggestions.length > 0 && <div className="type-overline px-3 pt-2 text-gray-400">{t("Open tasks", "Otvorené úlohy", "Nyitott feladatok")}</div>}
           {suggestions.map((s) => (
-            <button key={s.id} type="button" onClick={() => pickTask(s)} data-testid="timer-suggestion" className="flex w-full items-center gap-2 px-3 py-2 text-left text-ui hover:bg-slate-50 cursor-pointer">
-              <span className="truncate font-semibold text-slate-800">{s.title}</span>
-              {s.relatedProjectId && <span className="shrink-0 type-meta text-slate-400">{lookups.projectName(s.relatedProjectId)}</span>}
+            <button key={s.id} type="button" onClick={() => pickTask(s)} data-testid="timer-suggestion" className="flex w-full items-center gap-2 px-3 py-2 text-left text-ui hover:bg-gray-50 cursor-pointer">
+              <span className="truncate font-semibold text-gray-800">{s.title}</span>
+              {s.relatedProjectId && <span className="shrink-0 type-meta text-gray-400">{lookups.projectName(s.relatedProjectId)}</span>}
             </button>
           ))}
-          {ticketSuggestions.length > 0 && <div className="type-overline px-3 pt-2 text-slate-400">{t("Open tickets", "Otvorené tikety", "Nyitott jegyek")}</div>}
+          {ticketSuggestions.length > 0 && <div className="type-overline px-3 pt-2 text-gray-400">{t("Open tickets", "Otvorené tikety", "Nyitott jegyek")}</div>}
           {ticketSuggestions.map((s) => (
-            <button key={s.id} type="button" onClick={() => pickTicket(s)} data-testid="timer-ticket-suggestion" className="flex w-full items-center gap-2 px-3 py-2 text-left text-ui hover:bg-slate-50 cursor-pointer">
-              <span className="truncate font-semibold text-slate-800">{s.title || s.subject}</span>
+            <button key={s.id} type="button" onClick={() => pickTicket(s)} data-testid="timer-ticket-suggestion" className="flex w-full items-center gap-2 px-3 py-2 text-left text-ui hover:bg-gray-50 cursor-pointer">
+              <span className="truncate font-semibold text-gray-800">{s.title || s.subject}</span>
             </button>
           ))}
         </div>
@@ -274,7 +274,7 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject, footer }: P
   );
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-3xl border border-slate-200/80 bg-white p-3 shadow-sm ws-sm:p-4" data-testid="timer-bar">
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200/80 bg-white p-3 shadow-sm ws-sm:p-4" data-testid="timer-bar">
       {titleField}
 
       <ProjectPicker
@@ -300,33 +300,33 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject, footer }: P
         aria-pressed={effectiveBillable}
         title={effectiveBillable ? t("Billable", "Fakturovateľné", "Számlázható") : t("Not billable", "Nefakturovateľné", "Nem számlázható")}
         data-testid="timer-billable"
-        className={`inline-flex size-9 items-center justify-center rounded-xl border transition-all cursor-pointer ${effectiveBillable ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-400 hover:text-slate-600"}`}
+        className={`inline-flex size-9 items-center justify-center rounded-md border transition-all cursor-pointer ${effectiveBillable ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-gray-200 bg-white text-gray-400 hover:text-gray-600"}`}
       >
         <Euro className="size-4" />
       </button>
 
       {mode === "manual" && !running ? (
         <>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui" aria-label={t("Date", "Dátum", "Dátum")} />
-          <input type="time" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 w-28 rounded-xl border border-slate-200 bg-white px-2 text-ui tabular-nums" aria-label={t("Start", "Začiatok", "Kezdet")} />
-          <span className="text-slate-400">–</span>
-          <input type="time" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 w-28 rounded-xl border border-slate-200 bg-white px-2 text-ui tabular-nums" aria-label={t("End", "Koniec", "Vég")} />
-          <input value={dur} onChange={(e) => setDur(e.target.value)} placeholder="1:30" className="h-9 w-20 rounded-xl border border-slate-200 bg-white px-2 text-center text-ui tabular-nums" aria-label={t("Duration", "Trvanie", "Időtartam")} data-testid="manual-duration" />
-          <button type="button" onClick={addManual} disabled={busy} data-testid="manual-add" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-ui font-semibold text-primary-foreground transition-all active:scale-95 disabled:opacity-60 cursor-pointer">
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9 rounded-md border border-gray-200 bg-white px-2 text-ui" aria-label={t("Date", "Dátum", "Dátum")} />
+          <input type="time" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 w-28 rounded-md border border-gray-200 bg-white px-2 text-ui tabular-nums" aria-label={t("Start", "Začiatok", "Kezdet")} />
+          <span className="text-gray-400">–</span>
+          <input type="time" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 w-28 rounded-md border border-gray-200 bg-white px-2 text-ui tabular-nums" aria-label={t("End", "Koniec", "Vég")} />
+          <input value={dur} onChange={(e) => setDur(e.target.value)} placeholder="1:30" className="h-9 w-20 rounded-md border border-gray-200 bg-white px-2 text-center text-ui tabular-nums" aria-label={t("Duration", "Trvanie", "Időtartam")} data-testid="manual-duration" />
+          <button type="button" onClick={addManual} disabled={busy} data-testid="manual-add" className="inline-flex h-10 items-center gap-1.5 rounded-md bg-entity-solid px-4 text-ui font-semibold text-white transition-all active:scale-95 disabled:opacity-60 cursor-pointer">
             <Plus className="size-4" />
             {t("Add", "Pridať", "Hozzáad")}
           </button>
         </>
       ) : (
         <>
-          <ClockDigits value={formatDuration(elapsed, true)} className="min-w-20 justify-center text-title font-bold text-slate-900" data-testid="timer-elapsed" />
+          <ClockDigits value={formatDuration(elapsed, true)} className="min-w-20 justify-center text-title font-bold text-gray-900" data-testid="timer-elapsed" />
           {running ? (
-            <button type="button" onClick={onStop} disabled={busy} data-testid="timer-stop" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-rose-600 px-4 text-ui font-semibold text-white transition-all hover:bg-rose-700 active:scale-95 disabled:opacity-60 cursor-pointer">
+            <button type="button" onClick={onStop} disabled={busy} data-testid="timer-stop" className="inline-flex h-10 items-center gap-1.5 rounded-md bg-rose-600 px-4 text-ui font-semibold text-white transition-all hover:bg-rose-700 active:scale-95 disabled:opacity-60 cursor-pointer">
               <Square className="size-4 fill-current" />
               {t("Stop", "Zastaviť", "Leállítás")}
             </button>
           ) : (
-            <button type="button" onClick={onStart} disabled={busy} data-testid="timer-start" className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-ui font-semibold text-primary-foreground transition-all hover:opacity-90 active:scale-95 disabled:opacity-60 cursor-pointer">
+            <button type="button" onClick={onStart} disabled={busy} data-testid="timer-start" className="inline-flex h-10 items-center gap-1.5 rounded-md bg-entity-solid px-4 text-ui font-semibold text-white transition-all hover:opacity-90 active:scale-95 disabled:opacity-60 cursor-pointer">
               <Play className="size-4 fill-current" />
               {t("Start", "Spustiť", "Indítás")}
             </button>
@@ -335,9 +335,9 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject, footer }: P
       )}
 
       {!running && (
-        <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-0.5" role="group">
+        <div className="flex rounded-md border border-gray-200 bg-gray-50 p-0.5" role="group">
           {(["timer", "manual"] as const).map((m) => (
-            <button key={m} type="button" onClick={() => setMode(m)} aria-pressed={mode === m} data-testid={`timer-mode-${m}`} className={`h-8 rounded-lg px-2.5 text-ui font-semibold cursor-pointer ${mode === m ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>
+            <button key={m} type="button" onClick={() => setMode(m)} aria-pressed={mode === m} data-testid={`timer-mode-${m}`} className={`h-8 rounded-lg px-2.5 text-ui font-semibold cursor-pointer ${mode === m ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}>
               {m === "timer" ? t("Timer", "Časovač", "Időzítő") : t("Manual", "Ručne", "Kézi")}
             </button>
           ))}
@@ -357,7 +357,7 @@ export function TimerBar({ deps, recentProjectIds, secondsByProject, footer }: P
         placeholder={t("Description (optional)", "Popis (voliteľné)", "Leírás (nem kötelező)")}
         aria-label={t("Description", "Popis", "Leírás")}
         data-testid="timer-note"
-        className="h-9 w-full basis-full rounded-xl border border-transparent bg-transparent px-3 text-ui text-slate-700 outline-none placeholder:text-slate-400 hover:border-slate-200 focus:border-primary focus:bg-white"
+        className="h-9 w-full basis-full rounded-md border border-transparent bg-transparent px-3 text-ui text-gray-700 outline-none placeholder:text-gray-400 hover:border-gray-200 focus:border-entity focus:bg-white"
       />
       {footer}
     </div>

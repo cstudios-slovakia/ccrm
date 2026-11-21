@@ -14,7 +14,7 @@ export function ViewingAsSelect({ users }: { users: { id?: string; name: string 
     .sort((a, b) => a.name.localeCompare(b.name));
   return (
     <div className="flex items-center gap-2" data-testid="viewing-as">
-      <span className="text-ui text-slate-600">{t("Viewing as", "Zobraziť ako", "Megtekintés mint")}</span>
+      <span className="text-ui text-gray-600">{t("Viewing as", "Zobraziť ako", "Megtekintés mint")}</span>
       <CustomSelect
         size="sm"
         fitLabel

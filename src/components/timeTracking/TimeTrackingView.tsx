@@ -83,7 +83,7 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
         title={t("Time tracking", "Evidencia času", "Időkövetés")}
         subtitle={t("Track what you work on — every hour is priced at its real cost.", "Zaznamenávajte, na čom pracujete — každá hodina má svoju skutočnú cenu.", "Rögzítse, min dolgozik — minden óra a valós költségén szerepel.")}
         actions={
-          <button type="button" onClick={() => onNavigate("settings/projects/time")} title={t("Time tracking settings", "Nastavenia evidencie času", "Időkövetés beállításai")} className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-ui font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-800 cursor-pointer">
+          <button type="button" onClick={() => onNavigate("settings/projects/time")} title={t("Time tracking settings", "Nastavenia evidencie času", "Időkövetés beállításai")} className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-ui font-semibold text-gray-500 hover:bg-gray-100 hover:text-gray-800 cursor-pointer">
             <SettingsIcon className="size-4" />
             <span className="hidden ws-sm:inline">{t("Settings", "Nastavenia", "Beállítások")}</span>
           </button>
@@ -111,7 +111,7 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
       </div>
 
       {!ready ? (
-        <p className="text-body text-slate-500">{t("Loading…", "Načítava sa…", "Betöltés…")}</p>
+        <p className="text-body text-gray-500">{t("Loading…", "Načítava sa…", "Betöltés…")}</p>
       ) : tab === "list" ? (
         <TimeListView deps={deps} scope={scope} onOpen={setOpen} />
       ) : tab === "day" ? (

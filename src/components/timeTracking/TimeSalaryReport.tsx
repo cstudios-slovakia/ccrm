@@ -80,9 +80,9 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
     const total = client + internal + unallocated;
     const w = (n: number) => (total > 0 ? (n / total) * 100 : 0);
     return (
-      <span className="flex h-2 w-full overflow-hidden rounded-full bg-slate-100">
-        <span className="h-full bg-primary transition-[width] duration-500" style={{ width: `${w(client)}%` }} />
-        <span className="h-full bg-slate-400 transition-[width] duration-500" style={{ width: `${w(internal)}%` }} />
+      <span className="flex h-2 w-full overflow-hidden rounded-full bg-gray-100">
+        <span className="h-full bg-entity-solid transition-[width] duration-500" style={{ width: `${w(client)}%` }} />
+        <span className="h-full bg-gray-400 transition-[width] duration-500" style={{ width: `${w(internal)}%` }} />
         <span className="h-full bg-amber-300 transition-[width] duration-500" style={{ width: `${w(unallocated)}%`, backgroundImage: HATCH }} />
       </span>
     );
@@ -101,15 +101,15 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
   return (
     <div className="grid gap-4" data-testid="salary-report">
       <div>
-        <h3 className="type-card-title text-slate-900">{t("Salary allocation", "Rozdelenie mzdy", "Bérfelosztás")} · <span className="capitalize">{monthLabel}</span></h3>
-        <p className="mt-1 type-meta text-slate-500" data-testid="salary-basis">{basisSentence}{own}</p>
+        <h3 className="type-card-title text-gray-900">{t("Salary allocation", "Rozdelenie mzdy", "Bérfelosztás")} · <span className="capitalize">{monthLabel}</span></h3>
+        <p className="mt-1 type-meta text-gray-500" data-testid="salary-basis">{basisSentence}{own}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" aria-label={t("Previous month", "Predchádzajúci mesiac", "Előző hónap")} onClick={() => setMonth(shiftMonthAnchor(month, -1, 1))} className="inline-flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-all hover:text-slate-900 active:scale-95 cursor-pointer">
+        <button type="button" aria-label={t("Previous month", "Predchádzajúci mesiac", "Előző hónap")} onClick={() => setMonth(shiftMonthAnchor(month, -1, 1))} className="inline-flex size-9 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 transition-all hover:text-gray-900 active:scale-95 cursor-pointer">
           <ChevronLeft className="size-4" />
         </button>
-        <span className="min-w-40 text-center text-ui font-semibold capitalize text-slate-800">{monthLabel}</span>
-        <button type="button" aria-label={t("Next month", "Nasledujúci mesiac", "Következő hónap")} disabled={month >= closed} onClick={() => setMonth(shiftMonthAnchor(month, 1, 1))} className="inline-flex size-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-all hover:text-slate-900 active:scale-95 cursor-pointer disabled:opacity-40">
+        <span className="min-w-40 text-center text-ui font-semibold capitalize text-gray-800">{monthLabel}</span>
+        <button type="button" aria-label={t("Next month", "Nasledujúci mesiac", "Következő hónap")} disabled={month >= closed} onClick={() => setMonth(shiftMonthAnchor(month, 1, 1))} className="inline-flex size-9 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 transition-all hover:text-gray-900 active:scale-95 cursor-pointer disabled:opacity-40">
           <ChevronRight className="size-4" />
         </button>
         <button
@@ -131,31 +131,31 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
               }),
             )
           }
-          className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-700 transition-all hover:bg-slate-50 active:scale-95 cursor-pointer"
+          className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 text-ui font-semibold text-gray-700 transition-all hover:bg-gray-50 active:scale-95 cursor-pointer"
         >
           <Download className="size-4" />
           CSV
         </button>
       </div>
-      <p className="type-meta text-slate-500">
+      <p className="type-meta text-gray-500">
         {t(
           "Salary is the employee's base pay for the month. Bonuses are not included.",
           "Mzda je základná mesačná mzda zamestnanca. Prémie sa nezapočítavajú.",
           "A bér a munkatárs havi alapbére. A prémium nincs benne.",
         )}
       </p>
-      <div className="flex flex-wrap gap-3 type-meta text-slate-500">
-        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-primary" />{t("Client", "Klient", "Ügyfél")}</span>
-        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-slate-400" />{t("Internal", "Interné", "Belső")}</span>
+      <div className="flex flex-wrap gap-3 type-meta text-gray-500">
+        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-entity-solid" />{t("Client", "Klient", "Ügyfél")}</span>
+        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-gray-400" />{t("Internal", "Interné", "Belső")}</span>
         <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-300" style={{ backgroundImage: HATCH }} />{t("Unallocated", "Nepriradené", "Nincs projekt")}</span>
       </div>
       <Surface padding="none" className="overflow-x-auto">
         {loading && report.rows.length === 0 ? (
-          <p className="p-4 text-body text-slate-500">{t("Loading…", "Načítava sa…", "Betöltés…")}</p>
+          <p className="p-4 text-body text-gray-500">{t("Loading…", "Načítava sa…", "Betöltés…")}</p>
         ) : (
           <table className="w-full border-collapse text-ui">
             <thead>
-              <tr className="border-b border-slate-100 text-left">
+              <tr className="border-b border-gray-100 text-left">
                 {[
                   t("Person", "Osoba", "Személy"),
                   t("Loaded salary", "Mzda s odvodmi", "Teljes bérköltség"),
@@ -167,7 +167,7 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
                   t("Unallocated", "Nepriradené", "Nincs projekt"),
                   t("Utilisation", "Využitie", "Kihasználtság"),
                 ].map((h) => (
-                  <th key={h} className="px-3 py-3 type-overline text-slate-500">{h}</th>
+                  <th key={h} className="px-3 py-3 type-overline text-gray-500">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -177,16 +177,16 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
                 const country = resolveWorkCountry(employee?.workCountry, tt.defaultCountry);
                 const util = row.utilisation == null ? null : Math.round(row.utilisation * 100);
                 return (
-                  <tr key={row.userId} className="border-b border-slate-100">
+                  <tr key={row.userId} className="border-b border-gray-100">
                     <td className="px-3 py-3">
-                      <span className="block font-semibold text-slate-900">{row.name}</span>
-                      {employee?.position && <span className="block type-meta text-slate-500">{employee.position}</span>}
+                      <span className="block font-semibold text-gray-900">{row.name}</span>
+                      {employee?.position && <span className="block type-meta text-gray-500">{employee.position}</span>}
                     </td>
                     <td className="px-3 py-3 tabular-nums">
                       {row.loadedSalary == null ? "—" : moneyStr(row.loadedSalary)}
                       {row.rateBasis === "contract" && row.loadedSalary != null && (
                         <span
-                          className="block type-meta text-slate-400"
+                          className="block type-meta text-gray-400"
                           title={t(
                             "No priced time entry this month, so this is today's contract salary, not necessarily the one valid that month.",
                             "Tento mesiac nie je žiadny ocenený záznam času, preto ide o dnešnú zmluvnú mzdu, nie nutne o tú, ktorá platila v danom mesiaci.",
@@ -200,22 +200,22 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
                     <td className="px-3 py-3 tabular-nums text-violet-700" title={costRateTooltip(row.rate, { t, money: moneyStr, monthLabel, country })}>
                       {row.rate.rate == null ? "—" : `${moneyStr(row.rate.rate)}/h`}
                     </td>
-                    <td className="px-3 py-3 tabular-nums text-teal-700">{formatDuration(row.trackedSeconds)}</td>
+                    <td className="px-3 py-3 tabular-nums text-entity-text">{formatDuration(row.trackedSeconds)}</td>
                     <td className="min-w-28 px-3 py-3">{bar(row.clientSeconds, row.internalSeconds, row.unallocatedSeconds)}</td>
                     <td className="px-3 py-3"><MoneyText bag={row.clientCost} language={deps.language} /></td>
                     <td className="px-3 py-3"><MoneyText bag={row.internalCost} language={deps.language} /></td>
                     <td className="px-3 py-3"><MoneyText bag={row.unallocatedCost} language={deps.language} /></td>
-                    <td className={`px-3 py-3 tabular-nums ${util != null && util < 75 ? "text-amber-700" : "text-slate-800"}`}>{util == null ? "—" : `${util} %`}</td>
+                    <td className={`px-3 py-3 tabular-nums ${util != null && util < 75 ? "text-amber-700" : "text-gray-800"}`}>{util == null ? "—" : `${util} %`}</td>
                   </tr>
                 );
               })}
             </tbody>
             <tfoot>
-              <tr className="bg-slate-50 font-semibold">
+              <tr className="bg-gray-50 font-semibold">
                 <td className="px-3 py-3">{t("Totals", "Spolu", "Összesen")}</td>
                 <td className="px-3 py-3"><MoneyText bag={report.totals.loadedSalary} language={deps.language} /></td>
                 <td />
-                <td className="px-3 py-3 tabular-nums text-teal-700">{formatDuration(report.totals.trackedSeconds)}</td>
+                <td className="px-3 py-3 tabular-nums text-entity-text">{formatDuration(report.totals.trackedSeconds)}</td>
                 <td />
                 <td className="px-3 py-3"><MoneyText bag={report.totals.clientCost} language={deps.language} /></td>
                 <td className="px-3 py-3"><MoneyText bag={report.totals.internalCost} language={deps.language} /></td>
@@ -228,16 +228,16 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
       </Surface>
 
       <Surface>
-        <h3 className="type-card-title text-slate-900">{t("Time without salary data", "Čas bez údajov o mzde", "Idő béradat nélkül")}</h3>
-        <p className="mt-1 type-meta text-slate-500">{t("These people tracked time and have no employee record, so there is no salary to split.", "Títo ľudia zaznamenali čas a nemajú kartu zamestnanca, takže mzdu nie je podľa čoho rozdeliť.", "Ezek az emberek rögzítettek időt, de nincs munkatársi lapjuk, ezért a bért nincs miből felosztani.")}</p>
+        <h3 className="type-card-title text-gray-900">{t("Time without salary data", "Čas bez údajov o mzde", "Idő béradat nélkül")}</h3>
+        <p className="mt-1 type-meta text-gray-500">{t("These people tracked time and have no employee record, so there is no salary to split.", "Títo ľudia zaznamenali čas a nemajú kartu zamestnanca, takže mzdu nie je podľa čoho rozdeliť.", "Ezek az emberek rögzítettek időt, de nincs munkatársi lapjuk, ezért a bért nincs miből felosztani.")}</p>
         {report.withoutSalary.length === 0 ? (
-          <p className="mt-3 text-ui text-slate-400" data-testid="salary-without">{t("None this month.", "Tento mesiac nikto.", "Ebben a hónapban senki.")}</p>
+          <p className="mt-3 text-ui text-gray-400" data-testid="salary-without">{t("None this month.", "Tento mesiac nikto.", "Ebben a hónapban senki.")}</p>
         ) : (
           <ul className="mt-3 grid gap-2" data-testid="salary-without">
             {report.withoutSalary.map((row) => (
               <li key={row.userId} className="flex flex-wrap items-baseline justify-between gap-2 text-ui">
-                <span className="font-semibold text-slate-900">{row.name}</span>
-                <span className="tabular-nums text-teal-700">{formatDuration(row.seconds)}</span>
+                <span className="font-semibold text-gray-900">{row.name}</span>
+                <span className="tabular-nums text-entity-text">{formatDuration(row.seconds)}</span>
                 <MoneyText bag={row.cost} language={deps.language} />
               </li>
             ))}

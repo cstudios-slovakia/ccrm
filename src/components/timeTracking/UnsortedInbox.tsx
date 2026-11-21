@@ -164,7 +164,7 @@ export function UnsortedInbox({ deps }: { deps: TimeDeps }) {
         ) : (
           <>
             {selected.size > 0 && (
-              <div className="grid gap-2 rounded-xl bg-white p-2">
+              <div className="grid gap-2 rounded-md bg-white p-2">
                 <ProjectPicker
                   projects={deps.projects}
                   leads={deps.leads}
@@ -178,7 +178,7 @@ export function UnsortedInbox({ deps }: { deps: TimeDeps }) {
                   type="button"
                   disabled={busy}
                   onClick={() => void assign([...selected], projectId ?? sharedSuggestion)}
-                  className="h-9 rounded-xl bg-amber-600 text-ui font-semibold text-white transition-all hover:bg-amber-700 active:scale-95 disabled:opacity-60 cursor-pointer"
+                  className="h-9 rounded-md bg-amber-600 text-ui font-semibold text-white transition-all hover:bg-amber-700 active:scale-95 disabled:opacity-60 cursor-pointer"
                 >
                   {t("Assign selected", "Priradiť vybrané", "Kijelöltek hozzárendelése")} · {selected.size}
                 </button>
@@ -189,7 +189,7 @@ export function UnsortedInbox({ deps }: { deps: TimeDeps }) {
                 const title = item.pageTitle || item.domain;
                 const project = item.suggestedProjectId;
                 return (
-                  <li key={item.id} className="grid gap-2 rounded-xl border border-amber-100 bg-white p-3" data-testid="unsorted-item">
+                  <li key={item.id} className="grid gap-2 rounded-md border border-amber-100 bg-white p-3" data-testid="unsorted-item">
                     <div className="flex items-start gap-2">
                       <input
                         type="checkbox"
@@ -209,8 +209,8 @@ export function UnsortedInbox({ deps }: { deps: TimeDeps }) {
                         {(item.domain[0] || "?").toUpperCase()}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-ui font-semibold text-slate-900">{title}</p>
-                        <p className="type-meta text-slate-500">
+                        <p className="truncate text-ui font-semibold text-gray-900">{title}</p>
+                        <p className="type-meta text-gray-500">
                           {item.domain}
                           {item.startedAt ? ` · ${clockTime(item.startedAt)}` : ""}
                           {" · "}
@@ -222,7 +222,7 @@ export function UnsortedInbox({ deps }: { deps: TimeDeps }) {
                         aria-label={t("Dismiss", "Zahodiť", "Elvetés")}
                         disabled={busy}
                         onClick={() => void dismiss([item.id])}
-                        className="inline-flex size-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
+                        className="inline-flex size-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 cursor-pointer"
                       >
                         <X className="size-4" />
                       </button>

@@ -22,7 +22,7 @@ export function TimeTrackingMobileBar({ onNavigate }: Props) {
       type="button"
       onClick={onClick}
       data-testid={testId}
-      className="inline-flex min-h-11 min-w-11 flex-1 flex-col items-center justify-center gap-0.5 text-micro font-semibold text-slate-600 hover:text-teal-700 cursor-pointer"
+      className="inline-flex min-h-11 min-w-11 flex-1 flex-col items-center justify-center gap-0.5 text-micro font-semibold text-gray-600 hover:text-entity-text cursor-pointer"
     >
       {icon}
       {label}
@@ -33,15 +33,15 @@ export function TimeTrackingMobileBar({ onNavigate }: Props) {
     <div className="ws-sm:hidden">
       <div className="h-16" aria-hidden />
       {running && (
-        <div data-testid="mobile-running-card" className="fixed inset-x-3 bottom-20 z-40 rounded-3xl border border-rose-200 bg-white p-4 shadow-xl">
+        <div data-testid="mobile-running-card" className="fixed inset-x-3 bottom-20 z-40 rounded-lg border border-rose-200 bg-white p-4 shadow-xl">
           <p className="type-overline text-rose-600">{t("Timer running", "Časovač beží", "Az időzítő fut")}</p>
-          <ClockDigits value={elapsed} className="text-metric text-slate-900" />
-          <p className="truncate text-body text-slate-700">{running.title || t("No title", "Bez názvu", "Nincs cím")}</p>
+          <ClockDigits value={elapsed} className="text-metric text-gray-900" />
+          <p className="truncate text-body text-gray-700">{running.title || t("No title", "Bez názvu", "Nincs cím")}</p>
           <button
             type="button"
             onClick={() => void stop()}
             data-testid="mobile-running-stop"
-            className="mt-3 inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-2xl bg-rose-600 px-4 text-ui font-semibold text-white cursor-pointer"
+            className="mt-3 inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 text-ui font-semibold text-white cursor-pointer"
           >
             <Square className="size-4 fill-current" />
             {t("Stop", "Zastaviť", "Leállítás")}
@@ -51,7 +51,7 @@ export function TimeTrackingMobileBar({ onNavigate }: Props) {
       <nav
         aria-label={t("Time tracking", "Evidencia času", "Időkövetés")}
         data-testid="time-mobile-bar"
-        className="fixed inset-x-0 bottom-0 z-40 flex border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]"
+        className="fixed inset-x-0 bottom-0 z-40 flex border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)]"
       >
         {item(t("Timer", "Časovač", "Időzítő"), <Timer className="size-4" />, () => onNavigate("time-tracking"), "mobile-tab-timer")}
         {item(t("Calendar", "Kalendár", "Naptár"), <CalendarDays className="size-4" />, () => onNavigate("time-tracking/calendar"), "mobile-tab-calendar")}

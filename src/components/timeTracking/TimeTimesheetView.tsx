@@ -233,7 +233,7 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
         }
         trailing={
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={copyLastWeek} disabled={!mayEdit} data-testid="timesheet-copy" className="inline-flex h-9 items-center rounded-xl px-3 text-ui font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40 cursor-pointer">
+            <button type="button" onClick={copyLastWeek} disabled={!mayEdit} data-testid="timesheet-copy" className="inline-flex h-9 items-center rounded-md px-3 text-ui font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-40 cursor-pointer">
               {t("Copy rows from last week", "Kopírovať riadky z minulého týždňa", "Sorok másolása a múlt hétről")}
             </button>
           </div>
@@ -248,7 +248,7 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
       />
 
       {byPerson && (
-        <p className="type-meta text-slate-500">{t("Pick one person to edit the timesheet.", "Vyberte jednu osobu, ak chcete upravovať výkaz.", "Válasszon egy személyt a munkaidő-nyilvántartás szerkesztéséhez.")}</p>
+        <p className="type-meta text-gray-500">{t("Pick one person to edit the timesheet.", "Vyberte jednu osobu, ak chcete upravovať výkaz.", "Válasszon egy személyt a munkaidő-nyilvántartás szerkesztéséhez.")}</p>
       )}
 
       {adding && mayEdit && (
@@ -278,10 +278,10 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
               disabled={!draftProject}
             />
           </div>
-          <button type="button" onClick={addRow} className="inline-flex h-9 items-center rounded-xl bg-teal-600 px-3 text-ui font-semibold text-white cursor-pointer">
+          <button type="button" onClick={addRow} className="inline-flex h-9 items-center rounded-md bg-entity-solid px-3 text-ui font-semibold text-white cursor-pointer">
             {t("Add", "Pridať", "Hozzáadás")}
           </button>
-          <button type="button" onClick={() => setAdding(false)} className="inline-flex h-9 items-center rounded-xl px-3 text-ui font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer">
+          <button type="button" onClick={() => setAdding(false)} className="inline-flex h-9 items-center rounded-md px-3 text-ui font-semibold text-gray-600 hover:bg-gray-100 cursor-pointer">
             {t("Cancel", "Zrušiť", "Mégse")}
           </button>
         </Surface>
@@ -291,7 +291,7 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
         <table className="w-full border-collapse" data-testid="timesheet-grid">
           <thead>
             <tr>
-              <th className="sticky left-0 bg-white px-3 py-2 text-left type-overline text-slate-500">{t("Project", "Projekt", "Projekt")}</th>
+              <th className="sticky left-0 bg-white px-3 py-2 text-left type-overline text-gray-500">{t("Project", "Projekt", "Projekt")}</th>
               {model.days.map((day) => {
                 const holiday = calendar.holiday(day);
                 const offName = holiday ? holidayName(holiday, country, deps.language) : calendar.override(day)?.kind === "extraDayOff" ? calendar.override(day)?.name : null;
@@ -302,25 +302,25 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
                     data-testid="timesheet-day"
                     data-date={day}
                     data-holiday={offName ? "1" : "0"}
-                    className={`min-w-16 px-1 py-2 text-center ${offName ? "bg-slate-100" : ""} ${calendar.isOffDay(day) && !offName ? "text-slate-400" : "text-slate-600"}`}
+                    className={`min-w-16 px-1 py-2 text-center ${offName ? "bg-gray-100" : ""} ${calendar.isOffDay(day) && !offName ? "text-gray-400" : "text-gray-600"}`}
                   >
                     <div className="type-overline">{dt.toLocaleDateString(locale, { weekday: "short" })}</div>
-                    <div className={`text-ui font-semibold tabular-nums ${day === today ? "text-teal-700" : ""}`}>{dt.getDate()}</div>
-                    {offName && <div className="truncate text-micro font-semibold text-slate-500" data-testid="timesheet-holiday">{offName}</div>}
+                    <div className={`text-ui font-semibold tabular-nums ${day === today ? "text-entity-text" : ""}`}>{dt.getDate()}</div>
+                    {offName && <div className="truncate text-micro font-semibold text-gray-500" data-testid="timesheet-holiday">{offName}</div>}
                   </th>
                 );
               })}
-              <th className="px-2 py-2 text-right type-overline text-slate-500">{t("Total", "Spolu", "Összesen")}</th>
+              <th className="px-2 py-2 text-right type-overline text-gray-500">{t("Total", "Spolu", "Összesen")}</th>
             </tr>
           </thead>
           <tbody>
             {model.rows.map((row) => {
               const label = rowLabel(row);
               return (
-                <tr key={`${row.userId ?? ""}-${row.projectId ?? ""}-${row.taskId ?? ""}`} className="border-t border-slate-100">
+                <tr key={`${row.userId ?? ""}-${row.projectId ?? ""}-${row.taskId ?? ""}`} className="border-t border-gray-100">
                   <th className="sticky left-0 bg-white px-3 py-1.5 text-left font-normal">
                     <div className="min-w-0">
-                      {byPerson && label.person && <span className="block type-meta text-slate-500">{label.person}</span>}
+                      {byPerson && label.person && <span className="block type-meta text-gray-500">{label.person}</span>}
                       <div className="flex min-w-0 items-center gap-1.5 text-ui">
                         {row.projectId ? (
                           <ProjectLabel projectId={row.projectId} name={label.project} />
@@ -331,7 +331,7 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
                             return <AssignProjectChip onClick={entry ? () => onOpen(entry) : undefined} />;
                           })()
                         )}
-                        {label.task && <span className="truncate text-slate-500">· {label.task}</span>}
+                        {label.task && <span className="truncate text-gray-500">· {label.task}</span>}
                       </div>
                     </div>
                   </th>
@@ -347,7 +347,7 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
                         onPointerDown={() => {
                           if (mayEdit && gate.locked && lockTitle) tt.notify(lockTitle, "warning");
                         }}
-                        className={`px-1 py-1 ${calendar.holiday(cell.day) || calendar.override(cell.day)?.kind === "extraDayOff" ? "bg-slate-100" : ""}`}
+                        className={`px-1 py-1 ${calendar.holiday(cell.day) || calendar.override(cell.day)?.kind === "extraDayOff" ? "bg-gray-100" : ""}`}
                       >
                         <Cell
                           seconds={cell.seconds}
@@ -360,18 +360,18 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
                       </td>
                     );
                   })}
-                  <td className="px-2 py-1 text-right text-ui font-semibold tabular-nums text-slate-800">{row.totalSec > 0 ? formatDuration(row.totalSec) : "–"}</td>
+                  <td className="px-2 py-1 text-right text-ui font-semibold tabular-nums text-gray-800">{row.totalSec > 0 ? formatDuration(row.totalSec) : "–"}</td>
                 </tr>
               );
             })}
             {!loading && model.rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-6 text-ui text-slate-500">{t("No rows this week. Add one, or copy last week's rows.", "Tento týždeň nemá riadky. Pridajte riadok alebo skopírujte minulý týždeň.", "Ezen a héten nincs sor. Adjon hozzá egyet, vagy másolja a múlt hetet.")}</td>
+                <td colSpan={9} className="px-3 py-6 text-ui text-gray-500">{t("No rows this week. Add one, or copy last week's rows.", "Tento týždeň nemá riadky. Pridajte riadok alebo skopírujte minulý týždeň.", "Ezen a héten nincs sor. Adjon hozzá egyet, vagy másolja a múlt hetet.")}</td>
               </tr>
             )}
-            <tr className="border-t border-dashed border-slate-300">
+            <tr className="border-t border-dashed border-gray-300">
               <td colSpan={9} className="p-0">
-                <button type="button" onClick={() => setAdding(true)} disabled={!mayEdit} data-testid="timesheet-add-row" className="inline-flex h-10 w-full items-center gap-1.5 px-3 text-ui font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-40 cursor-pointer">
+                <button type="button" onClick={() => setAdding(true)} disabled={!mayEdit} data-testid="timesheet-add-row" className="inline-flex h-10 w-full items-center gap-1.5 px-3 text-ui font-semibold text-gray-500 hover:bg-gray-50 hover:text-gray-800 disabled:opacity-40 cursor-pointer">
                   <Plus className="size-4" />
                   {t("Add row — pick project and task", "Pridať riadok — vyberte projekt a úlohu", "Sor hozzáadása — válasszon projektet és feladatot")}
                 </button>
@@ -379,12 +379,12 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
             </tr>
           </tbody>
           <tfoot>
-            <tr className="border-t border-slate-200 bg-slate-50" data-testid="timesheet-total">
-              <th className="sticky left-0 bg-slate-50 px-3 py-2 text-left text-ui font-semibold text-slate-800">{t("Totals", "Súčty", "Összesen")}</th>
+            <tr className="border-t border-gray-200 bg-gray-50" data-testid="timesheet-total">
+              <th className="sticky left-0 bg-gray-50 px-3 py-2 text-left text-ui font-semibold text-gray-800">{t("Totals", "Súčty", "Összesen")}</th>
               {model.columnTotals.map((sec, i) => (
-                <td key={model.days[i]} className="px-1 py-2 text-center text-ui font-semibold tabular-nums text-slate-800">{sec > 0 ? formatDuration(sec) : "–"}</td>
+                <td key={model.days[i]} className="px-1 py-2 text-center text-ui font-semibold tabular-nums text-gray-800">{sec > 0 ? formatDuration(sec) : "–"}</td>
               ))}
-              <td className="px-2 py-2 text-right text-ui font-bold tabular-nums text-teal-700">{model.grandTotal > 0 ? formatDuration(model.grandTotal) : "–"}</td>
+              <td className="px-2 py-2 text-right text-ui font-bold tabular-nums text-entity-text">{model.grandTotal > 0 ? formatDuration(model.grandTotal) : "–"}</td>
             </tr>
           </tfoot>
         </table>
@@ -416,7 +416,7 @@ function Cell({ seconds, disabled, title, onCommit, onInvalid, onOpen }: { secon
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
       }}
-      className="h-9 w-full rounded-lg bg-transparent px-1 text-right text-ui tabular-nums text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-teal-600/40 disabled:text-slate-400"
+      className="h-9 w-full rounded-lg bg-transparent px-1 text-right text-ui tabular-nums text-gray-800 outline-none focus:bg-white focus:ring-2 focus:ring-entity-ring disabled:text-gray-400"
     />
   );
 }

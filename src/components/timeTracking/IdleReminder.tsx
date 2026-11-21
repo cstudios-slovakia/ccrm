@@ -63,7 +63,7 @@ export function IdleReminder() {
     <div
       role="status"
       data-testid="idle-reminder"
-      className="fixed inset-x-3 bottom-24 z-50 flex items-start justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 shadow-xl ws-sm:bottom-4 ws-sm:left-auto ws-sm:right-4 ws-sm:max-w-sm"
+      className="fixed inset-x-3 bottom-24 z-50 flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950 shadow-xl ws-sm:bottom-4 ws-sm:left-auto ws-sm:right-4 ws-sm:max-w-sm"
     >
       <div className="min-w-0">
         <p className="type-label text-amber-900">{tt.t("Still working?", "Ešte pracujete?", "Még dolgozik?")}</p>
@@ -78,7 +78,7 @@ export function IdleReminder() {
       <button
         type="button"
         onClick={() => setOpen(false)}
-        className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl text-ui font-semibold text-amber-900 hover:bg-amber-100 cursor-pointer"
+        className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-ui font-semibold text-amber-900 hover:bg-amber-100 cursor-pointer"
       >
         {tt.t("Dismiss", "Zavrieť", "Bezárás")}
       </button>

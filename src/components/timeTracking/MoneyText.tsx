@@ -16,8 +16,8 @@ export function MoneyText({
   className?: string;
 }) {
   const codes = Object.keys(bag).sort();
-  const color = tone === "plain" ? "text-slate-900" : "text-violet-700";
-  if (!codes.length) return <span className={`tabular-nums text-slate-300 ${className}`}>—</span>;
+  const color = tone === "plain" ? "text-gray-900" : "text-violet-700";
+  if (!codes.length) return <span className={`tabular-nums text-gray-300 ${className}`}>—</span>;
   return (
     <span className={`tabular-nums ${color} ${className}`}>
       {codes.map((code, i) => (

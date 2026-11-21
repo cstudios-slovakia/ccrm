@@ -560,8 +560,8 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
           }
           trailing={
             <div className="flex items-center gap-3">
-            <span className="type-meta text-slate-500" data-testid="calendar-total">
-              {totalLabel} <span className="text-ui font-semibold tabular-nums text-slate-800">{formatDuration(rangeSeconds)}</span>
+            <span className="type-meta text-gray-500" data-testid="calendar-total">
+              {totalLabel} <span className="text-ui font-semibold tabular-nums text-gray-800">{formatDuration(rangeSeconds)}</span>
             </span>
             <div data-testid="calendar-zoom">
               <CustomSelect
@@ -588,20 +588,20 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
                 const dt = new Date(`${day}T12:00:00`);
                 const off = calendar.isOffDay(day) && !holidayLabel(day);
                 return (
-                  <div key={day} className={`border-l border-slate-100 px-1 py-2 text-center ${day === today ? "bg-teal-600 text-white" : off ? "text-slate-400" : "text-slate-700"}`}>
+                  <div key={day} className={`border-l border-gray-100 px-1 py-2 text-center ${day === today ? "bg-entity-solid text-white" : off ? "text-gray-400" : "text-gray-700"}`}>
                     <div className="type-overline">{dt.toLocaleDateString(locale, { weekday: "short" })}</div>
                     <div className="text-ui font-bold tabular-nums">{dt.getDate()}</div>
-                    <div className={`type-meta tabular-nums ${day === today ? "text-white/80" : "text-slate-500"}`} data-testid="calendar-day-total">{(daySeconds.get(day) ?? 0) > 0 ? formatDuration(daySeconds.get(day) ?? 0) : "–"}</div>
+                    <div className={`type-meta tabular-nums ${day === today ? "text-white/80" : "text-gray-500"}`} data-testid="calendar-day-total">{(daySeconds.get(day) ?? 0) > 0 ? formatDuration(daySeconds.get(day) ?? 0) : "–"}</div>
                   </div>
                 );
               })}
               {anyHoliday && (
                 <>
-                  <div className="type-meta px-1 py-1 text-slate-400">{t("All day", "Celý deň", "Egész nap")}</div>
+                  <div className="type-meta px-1 py-1 text-gray-400">{t("All day", "Celý deň", "Egész nap")}</div>
                   {hourDays.map((day) => {
                     const name = holidayLabel(day);
                     return (
-                      <div key={`h-${day}`} data-testid="calendar-holiday" data-holiday={name ? "1" : "0"} className={`truncate border-l border-t border-slate-100 px-1 py-1 text-micro font-semibold ${name ? "bg-slate-100 text-slate-600" : ""}`}>
+                      <div key={`h-${day}`} data-testid="calendar-holiday" data-holiday={name ? "1" : "0"} className={`truncate border-l border-t border-gray-100 px-1 py-1 text-micro font-semibold ${name ? "bg-gray-100 text-gray-600" : ""}`}>
                         {name}
                       </div>
                     );
@@ -642,7 +642,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
                 <div className="grid select-none" style={{ gridTemplateColumns: columns }}>
                   <div>
                     {HOURS.map((hour) => (
-                      <div key={hour} className="flex h-12 items-start justify-end border-t border-slate-100 pr-1 text-micro tabular-nums text-slate-400">
+                      <div key={hour} className="flex h-12 items-start justify-end border-t border-gray-100 pr-1 text-micro tabular-nums text-gray-400">
                         {String(hour).padStart(2, "0")}:00
                       </div>
                     ))}
@@ -655,10 +655,10 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
                       onPointerDown={(e) => onColumnDown(e, day)}
                       onDragOver={allowDrop}
                       onDrop={(e) => void onDrop(e, day, "hour")}
-                      className={`relative border-l border-slate-100 ${holidayLabel(day) ? "bg-slate-50" : ""}`}
+                      className={`relative border-l border-gray-100 ${holidayLabel(day) ? "bg-gray-50" : ""}`}
                     >
                       {HOURS.map((hour) => (
-                        <div key={hour} className="h-12 border-t border-slate-100" />
+                        <div key={hour} className="h-12 border-t border-gray-100" />
                       ))}
                       {timedOn(day).map((block) => {
                         const entry = byId.get(block.id);
@@ -671,13 +671,13 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
                             data-testid="calendar-block"
                             data-entry-id={entry.id}
                             onPointerDown={(e) => onBlockDown(e, entry, day)}
-                            className={`absolute z-10 overflow-hidden rounded-md border-l-4 px-1 py-0.5 ${entry.running ? "border-rose-600 bg-rose-50" : ""} ${entry.titleDeleted ? "text-slate-400" : "text-slate-800"}`}
+                            className={`absolute z-10 overflow-hidden rounded-md border-l-4 px-1 py-0.5 ${entry.running ? "border-rose-600 bg-rose-50" : ""} ${entry.titleDeleted ? "text-gray-400" : "text-gray-800"}`}
                             style={entry.running ? box({ startMin: block.startMin, endMin: block.endMin }, block.column, block.columns) : { ...box({ startMin: block.startMin, endMin: block.endMin }, block.column, block.columns), borderLeftColor: color, backgroundColor: `${color}22` }}
                           >
                             <div className="truncate text-micro font-semibold">{entry.title || t("Untitled", "Bez názvu", "Névtelen")}</div>
                             {entry.running && <RunningBadge elapsed={formatDuration(entryDurationSec(entry, nowMs))} />}
                             {entry.projectId && <ProjectLabel projectId={entry.projectId} name={lookups.projectName(entry.projectId)} compact className="max-w-full text-micro" />}
-                            <div className="text-micro tabular-nums text-slate-600">
+                            <div className="text-micro tabular-nums text-gray-600">
                               {formatMinute(block.startMin)}–{formatMinute(block.endMin)}
                               {block.plus > 0 ? ` +${block.plus}` : ""}
                               {entry.billable && <span className="ml-1 inline-block size-1.5 rounded-full bg-emerald-500" />}
@@ -687,7 +687,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
                         );
                       })}
                       {ghost?.kind === "draft" && ghost.day === day && (
-                        <div className="pointer-events-none absolute z-10 overflow-hidden rounded-md border border-dashed border-teal-600 bg-teal-50/80 px-1 py-0.5 text-micro font-semibold text-teal-700" style={box(ghost.span)}>
+                        <div className="pointer-events-none absolute z-10 overflow-hidden rounded-md border border-dashed border-entity-border bg-entity-subtle px-1 py-0.5 text-micro font-semibold text-entity-text" style={box(ghost.span)}>
                           + {t("New entry", "Nový záznam", "Új bejegyzés")} <span className="tabular-nums">{formatMinute(ghost.span.startMin)}–{formatMinute(ghost.span.endMin)}</span>
                         </div>
                       )}
@@ -706,7 +706,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
           <Surface padding="none" className="mt-3 overflow-hidden">
             <div className="grid grid-cols-7">
               {monthDays.slice(0, 7).map((day) => (
-                <div key={day} className="px-1 py-2 text-center type-overline text-slate-500">
+                <div key={day} className="px-1 py-2 text-center type-overline text-gray-500">
                   {new Date(`${day}T12:00:00`).toLocaleDateString(locale, { weekday: "short" })}
                 </div>
               ))}
@@ -726,10 +726,10 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
                     }}
                     onDragOver={allowDrop}
                     onDrop={(e) => void onDrop(e, day, "month")}
-                    className={`min-h-28 border-t border-l border-slate-100 p-1 ${name ? "bg-slate-100" : ""} ${inMonth ? "" : "bg-slate-50 text-slate-400"}`}
+                    className={`min-h-28 border-t border-l border-gray-100 p-1 ${name ? "bg-gray-100" : ""} ${inMonth ? "" : "bg-gray-50 text-gray-400"}`}
                   >
-                    <div className={`mb-1 text-ui font-semibold tabular-nums ${day === today ? "inline-flex size-6 items-center justify-center rounded-full bg-teal-600 text-white" : ""}`}>{Number(day.slice(8))}</div>
-                    {name && <div className="truncate text-micro font-semibold text-slate-500" data-testid="calendar-holiday">{name}</div>}
+                    <div className={`mb-1 text-ui font-semibold tabular-nums ${day === today ? "inline-flex size-6 items-center justify-center rounded-full bg-entity-solid text-white" : ""}`}>{Number(day.slice(8))}</div>
+                    {name && <div className="truncate text-micro font-semibold text-gray-500" data-testid="calendar-holiday">{name}</div>}
                     {layout.untimed.map((item) => {
                       const entry = byId.get(item.id);
                       if (!entry) return null;
@@ -808,14 +808,14 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
 
       <aside className="ws-lg:w-64 ws-lg:shrink-0" data-testid="calendar-task-rail">
         <Surface className="flex max-h-[36rem] flex-col gap-2">
-          <h3 className="type-label text-slate-800">{t("Your tasks", "Vaše úlohy", "Az Ön feladatai")}</h3>
-          <p className="type-meta text-slate-500">{t("Drag a task onto the calendar, or press play to start the timer.", "Úlohu pretiahnite do kalendára alebo spustite časovač.", "Húzza a feladatot a naptárra, vagy indítsa az időzítőt.")}</p>
+          <h3 className="type-label text-gray-800">{t("Your tasks", "Vaše úlohy", "Az Ön feladatai")}</h3>
+          <p className="type-meta text-gray-500">{t("Drag a task onto the calendar, or press play to start the timer.", "Úlohu pretiahnite do kalendára alebo spustite časovač.", "Húzza a feladatot a naptárra, vagy indítsa az időzítőt.")}</p>
           <div className="flex flex-col gap-1 overflow-y-auto">
-            {myTasks.length === 0 && <p className="text-ui text-slate-500">{t("No open tasks.", "Žiadne otvorené úlohy.", "Nincs nyitott feladat.")}</p>}
+            {myTasks.length === 0 && <p className="text-ui text-gray-500">{t("No open tasks.", "Žiadne otvorené úlohy.", "Nincs nyitott feladat.")}</p>}
             {myTasks.map((task) => {
               const projectId = lookups.resolveTaskProject(task).projectId;
               return (
-                <div key={task.id} className="flex items-center gap-1 rounded-xl border border-slate-200/80 px-2 py-1.5">
+                <div key={task.id} className="flex items-center gap-1 rounded-md border border-gray-200/80 px-2 py-1.5">
                   <span
                     draggable
                     onDragStart={(e) => {
@@ -823,7 +823,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
                       e.dataTransfer.setData("text/plain", `task:${task.id}`);
                       e.dataTransfer.effectAllowed = "copy";
                     }}
-                    className="cursor-grab text-slate-400"
+                    className="cursor-grab text-gray-400"
                     aria-label={t("Drag onto the calendar", "Pretiahnuť do kalendára", "Húzza a naptárra")}
                   >
                     <GripVertical className="size-4" />
@@ -831,14 +831,14 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
                   <button
                     type="button"
                     onClick={() => void tt.start({ taskId: task.id, projectId, originType: "task", originId: task.id, billable: settings.billableByDefault })}
-                    className="inline-flex size-7 items-center justify-center rounded-lg text-teal-700 hover:bg-teal-50 cursor-pointer"
+                    className="inline-flex size-7 items-center justify-center rounded-lg text-entity-text hover:bg-entity-subtle cursor-pointer"
                     aria-label={t("Start timer", "Spustiť časovač", "Időzítő indítása")}
                   >
                     <Play className="size-3.5 fill-current" />
                   </button>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-ui font-semibold text-slate-800">{task.title}</div>
-                    <div className={`truncate type-meta ${projectId ? "text-slate-500" : "text-amber-700"}`}>{projectId ? lookups.projectName(projectId) : t("No project", "Bez projektu", "Nincs projekt")}</div>
+                    <div className="truncate text-ui font-semibold text-gray-800">{task.title}</div>
+                    <div className={`truncate type-meta ${projectId ? "text-gray-500" : "text-amber-700"}`}>{projectId ? lookups.projectName(projectId) : t("No project", "Bez projektu", "Nincs projekt")}</div>
                   </div>
                 </div>
               );
@@ -885,13 +885,13 @@ function QuickPopover({
     ? t("hours only", "iba hodiny", "csak órák")
     : `${formatMinute(span.startMin)}–${formatMinute(span.endMin)}${plusDays(span.endMin) > 0 ? ` +${plusDays(span.endMin)}` : ""}`;
   return (
-    <div data-cal-popover className="absolute z-30 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl" style={{ top: popover.top, left: popover.left }}>
+    <div data-cal-popover className="absolute z-30 w-72 rounded-lg border border-gray-200 bg-white p-3 shadow-xl" style={{ top: popover.top, left: popover.left }}>
       {entry ? (
-        <div className={`mb-1 truncate text-ui font-semibold ${entry.titleDeleted ? "text-slate-400" : "text-slate-900"}`}>{entry.title || t("Untitled", "Bez názvu", "Névtelen")}</div>
+        <div className={`mb-1 truncate text-ui font-semibold ${entry.titleDeleted ? "text-gray-400" : "text-gray-900"}`}>{entry.title || t("Untitled", "Bez názvu", "Névtelen")}</div>
       ) : (
-        <div className="mb-1 text-ui font-semibold text-slate-900">{t("New entry", "Nový záznam", "Új bejegyzés")}</div>
+        <div className="mb-1 text-ui font-semibold text-gray-900">{t("New entry", "Nový záznam", "Új bejegyzés")}</div>
       )}
-      <div className="mb-2 text-ui tabular-nums text-slate-600">
+      <div className="mb-2 text-ui tabular-nums text-gray-600">
         {when}
         {entry && <span className="ml-2">{formatDuration(entryDurationSec(entry, nowMs))}</span>}
         {popover.kind === "draft" && <span className="ml-2">{formatDuration(instantsForSpan(popover.day, popover.span).durationSec)}</span>}
@@ -919,14 +919,14 @@ function QuickPopover({
           setBillable(next);
           if (entry) void onPatch(entry, { billable: next });
         }}
-        className={`mt-2 inline-flex h-8 items-center rounded-lg px-2 text-ui font-semibold cursor-pointer disabled:opacity-40 ${billable ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600"}`}
+        className={`mt-2 inline-flex h-8 items-center rounded-lg px-2 text-ui font-semibold cursor-pointer disabled:opacity-40 ${billable ? "bg-emerald-600 text-white" : "bg-gray-100 text-gray-600"}`}
       >
         {t("Billable", "Fakturovateľné", "Számlázható")}
       </button>
       <div className="mt-3 flex flex-wrap gap-2">
         {entry ? (
           <>
-            <button type="button" onClick={() => onOpen(entry)} className="inline-flex h-8 items-center rounded-lg bg-teal-600 px-2 text-ui font-semibold text-white cursor-pointer">
+            <button type="button" onClick={() => onOpen(entry)} className="inline-flex h-8 items-center rounded-lg bg-entity-solid px-2 text-ui font-semibold text-white cursor-pointer">
               {t("Open", "Otvoriť", "Megnyitás")}
             </button>
             {!readOnly && (
@@ -937,12 +937,12 @@ function QuickPopover({
           </>
         ) : (
           popover.kind === "draft" && (
-            <button type="button" disabled={readOnly} onClick={() => void onCreate(popover.day, popover.span, projectId, billable)} className="inline-flex h-8 items-center rounded-lg bg-teal-600 px-2 text-ui font-semibold text-white cursor-pointer disabled:opacity-40">
+            <button type="button" disabled={readOnly} onClick={() => void onCreate(popover.day, popover.span, projectId, billable)} className="inline-flex h-8 items-center rounded-lg bg-entity-solid px-2 text-ui font-semibold text-white cursor-pointer disabled:opacity-40">
               {t("Save", "Uložiť", "Mentés")}
             </button>
           )
         )}
-        <button type="button" onClick={onClose} className="inline-flex h-8 items-center rounded-lg px-2 text-ui font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer">
+        <button type="button" onClick={onClose} className="inline-flex h-8 items-center rounded-lg px-2 text-ui font-semibold text-gray-600 hover:bg-gray-100 cursor-pointer">
           {t("Close", "Zavrieť", "Bezárás")}
         </button>
       </div>
