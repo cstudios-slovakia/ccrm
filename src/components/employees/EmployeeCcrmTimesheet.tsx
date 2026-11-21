@@ -75,7 +75,7 @@ export function EmployeeCcrmTimesheet({ employee, year, month, t }: Props) {
       <Surface className="space-y-3" data-testid="ccrm-timesheet">
       <h3 className="type-card-title text-gray-900">{t(`${brand} time tracking`, `Evidencia času ${brand}`, `${brand} időkövetés`)}</h3>
       {error ? (
-        <p className="text-body text-rose-700">{t("Could not load time entries.", "Záznamy času sa nepodarilo načíť.", "Az időbejegyzéseket nem sikerült betölteni.")}</p>
+        <p className="text-body text-rose-700">{t("Could not load time entries.", "Záznamy času sa nepodarilo načítať.", "Az időbejegyzéseket nem sikerült betölteni.")}</p>
       ) : seconds === null ? (
         <p className="text-body text-gray-500">{t("Loading…", "Načítava sa…", "Betöltés…")}</p>
       ) : (
