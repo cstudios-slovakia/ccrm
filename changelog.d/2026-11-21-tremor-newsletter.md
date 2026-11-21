@@ -1,0 +1,1 @@
+- **Newsletter UI (`newsletter/`)**: Remade campaign screens, audience editor, dialogs (`newsletter` accent), builder shell, and controls in Tremor Blocks while keeping rendered email HTML engines unchanged.

@@ -87,7 +87,7 @@ export const UnsubscribedTab = ({ env }: { env: NewsletterEnv }) => {
       {confirmNode}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-60 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -149,7 +149,7 @@ export const UnsubscribedTab = ({ env }: { env: NewsletterEnv }) => {
         <Surface padding="none" className="overflow-x-auto">
           <table className="w-full min-w-160 text-left text-ui">
             <thead>
-              <tr className="border-b border-slate-100 type-overline text-slate-500">
+              <tr className="border-b border-gray-100 type-overline text-gray-500">
                 <th className="px-4 py-3 font-semibold">{t("Address", "Adresa", "Cím")}</th>
                 <th className="px-4 py-3 font-semibold">{t("Reason", "Dôvod", "Ok")}</th>
                 <th className="px-4 py-3 font-semibold">{t("Campaign", "Kampaň", "Kampány")}</th>
@@ -158,24 +158,24 @@ export const UnsubscribedTab = ({ env }: { env: NewsletterEnv }) => {
                 <th className="w-12 px-2 py-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-gray-100">
               {data.rows.map((r) => (
                 <tr key={r.email}>
-                  <td className="px-4 py-3 font-medium text-slate-900">
+                  <td className="px-4 py-3 font-medium text-gray-900">
                     {r.email}
-                    {r.note && <span className="block type-meta font-normal text-slate-500">{r.note}</span>}
+                    {r.note && <span className="block type-meta font-normal text-gray-500">{r.note}</span>}
                   </td>
-                  <td className="px-4 py-3 text-slate-700">{reasonLabel(r.reason, t)}</td>
-                  <td className="px-4 py-3 text-slate-700">{r.campaignName || "-"}</td>
-                  <td className="px-4 py-3 text-slate-500">{formatDate(r.createdAt, language)}</td>
-                  <td className="px-4 py-3 text-slate-500">{r.createdBy || "-"}</td>
+                  <td className="px-4 py-3 text-gray-700">{reasonLabel(r.reason, t)}</td>
+                  <td className="px-4 py-3 text-gray-700">{r.campaignName || "-"}</td>
+                  <td className="px-4 py-3 text-gray-500">{formatDate(r.createdAt, language)}</td>
+                  <td className="px-4 py-3 text-gray-500">{r.createdBy || "-"}</td>
                   <td className="px-2 py-3">
                     {canEdit && (
                       <button
                         type="button"
                         onClick={() => remove(r)}
                         aria-label={t("Remove", "Odstrániť", "Eltávolítás")}
-                        className="text-slate-400 hover:text-rose-600 cursor-pointer"
+                        className="text-gray-400 hover:text-rose-600 cursor-pointer"
                       >
                         <Trash2 className="size-4" />
                       </button>
@@ -186,7 +186,7 @@ export const UnsubscribedTab = ({ env }: { env: NewsletterEnv }) => {
             </tbody>
           </table>
           {data.total > PAGE && (
-            <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 type-meta text-slate-500">
+            <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 type-meta text-gray-500">
               <span>
                 {offset + 1}-{Math.min(offset + PAGE, data.total)} / {data.total}
               </span>

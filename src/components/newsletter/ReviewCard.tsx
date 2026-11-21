@@ -102,7 +102,7 @@ export const ReviewCard = ({
     <div className="grid gap-4">
       <ul className="grid gap-2 text-ui" data-testid="newsletter-checklist">
         {items.map((c) => (
-          <li key={c.key} className={`flex items-center gap-2 ${c.ok ? "text-slate-700" : "text-amber-700"}`}>
+          <li key={c.key} className={`flex items-center gap-2 ${c.ok ? "text-gray-700" : "text-amber-700"}`}>
             {c.ok ? <CheckCircle2 className="size-4 shrink-0 text-emerald-600" /> : <CircleAlert className="size-4 shrink-0" />}
             {checkLabel(c.key, t)}
           </li>
@@ -147,7 +147,7 @@ export const ReviewCard = ({
           aria-label={label}
           title={block ? blockReason(block, t) : undefined}
           icon={<Send className="size-4" />}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-ui font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover px-4 text-ui font-semibold text-white shadow-sm hover:bg-entity-solid-hover disabled:cursor-not-allowed disabled:opacity-50"
           data-testid="newsletter-send"
         >
           {sending ? t("Starting…", "Spúšťa sa…", "Indítás…") : label}

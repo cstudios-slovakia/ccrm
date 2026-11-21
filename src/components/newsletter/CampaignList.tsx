@@ -45,7 +45,7 @@ export const CampaignList = ({ env, onCreate, creating }: { env: NewsletterEnv; 
     return (
       <div className="grid gap-3">
         <Notice tone="error">{error}</Notice>
-        <button type="button" onClick={load} className="w-fit type-label text-indigo-600 cursor-pointer">
+        <button type="button" onClick={load} className="w-fit type-label text-entity-text cursor-pointer">
           {t("Try again", "Skúsiť znova", "Újra")}
         </button>
       </div>
@@ -82,7 +82,7 @@ export const CampaignList = ({ env, onCreate, creating }: { env: NewsletterEnv; 
       <Toolbar
         search={
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -103,26 +103,26 @@ export const CampaignList = ({ env, onCreate, creating }: { env: NewsletterEnv; 
         }
       />
       {shown.length === 0 ? (
-        <p className="type-body py-8 text-center text-slate-500">{t("No campaign matches.", "Žiadna kampaň nevyhovuje.", "Egy kampány sem felel meg.")}</p>
+        <p className="type-body py-8 text-center text-gray-500">{t("No campaign matches.", "Žiadna kampaň nevyhovuje.", "Egy kampány sem felel meg.")}</p>
       ) : (
         <Surface padding="none" className="overflow-hidden">
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-gray-100">
             {shown.map((c) => (
               <li key={c.id}>
                 <button
                   type="button"
                   onClick={() => navigate(`newsletter/${c.id}`)}
                   data-testid="newsletter-row"
-                  className="grid w-full gap-2 px-4 py-3.5 text-left transition-colors hover:bg-slate-50 cursor-pointer ws-md:grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_8rem_9rem] ws-md:items-center ws-md:gap-4 ws-sm:px-6"
+                  className="grid w-full gap-2 px-4 py-3.5 text-left transition-colors hover:bg-gray-50 cursor-pointer ws-md:grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_8rem_9rem] ws-md:items-center ws-md:gap-4 ws-sm:px-6"
                 >
                   <span className="min-w-0">
-                    <span className="block truncate text-ui font-semibold text-slate-900">{c.name}</span>
-                    <span className="block truncate type-meta text-slate-500">{c.subject || t("No subject", "Bez predmetu", "Nincs tárgy")}</span>
+                    <span className="block truncate text-ui font-semibold text-gray-900">{c.name}</span>
+                    <span className="block truncate type-meta text-gray-500">{c.subject || t("No subject", "Bez predmetu", "Nincs tárgy")}</span>
                   </span>
-                  <span className="min-w-0 type-meta text-slate-600">
+                  <span className="min-w-0 type-meta text-gray-600">
                     <span className="block truncate">{audienceLabel(normalizeAudience(c.audience), t)}</span>
                     {c.status !== "draft" && (
-                      <span className="block truncate text-slate-500">
+                      <span className="block truncate text-gray-500">
                         {t(`${c.counts.total} recipients`, `${c.counts.total} príjemcov`, `${c.counts.total} címzett`)}
                         {" · "}
                         {t(`${c.counts.sent} sent`, `${c.counts.sent} odoslaných`, `${c.counts.sent} elküldve`)}
@@ -133,7 +133,7 @@ export const CampaignList = ({ env, onCreate, creating }: { env: NewsletterEnv; 
                   <span>
                     <StatusChip status={c.status} counts={c.counts} t={t} />
                   </span>
-                  <span className="type-meta text-slate-500">
+                  <span className="type-meta text-gray-500">
                     {formatDate(c.status === "draft" ? c.updatedAt : c.finishedAt || c.startedAt || c.updatedAt, language)}
                     {c.createdBy && <span className="block truncate">{c.createdBy}</span>}
                   </span>

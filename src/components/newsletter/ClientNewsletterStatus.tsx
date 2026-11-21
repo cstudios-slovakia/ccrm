@@ -64,11 +64,11 @@ export const ClientNewsletterStatus = ({
         </span>
       ))}
       {campaigns.length > 0 && (
-        <ul className="space-y-1 text-ui text-slate-600">
+        <ul className="space-y-1 text-ui text-gray-600">
           {campaigns.map((c) => (
             <li key={c.id} className="flex justify-between gap-3">
               <span className="truncate">{c.name}</span>
-              <span className="shrink-0 text-slate-400">{formatDate(c.sentAt, language)}</span>
+              <span className="shrink-0 text-gray-400">{formatDate(c.sentAt, language)}</span>
             </li>
           ))}
         </ul>

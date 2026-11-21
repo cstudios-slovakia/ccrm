@@ -29,13 +29,13 @@ export interface NewsletterData {
 }
 
 export const FIELD =
-  "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-ui outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-300 disabled:bg-slate-50 disabled:text-slate-500";
-export const LABEL = "type-label text-slate-600";
-export const HINT = "type-meta text-slate-500";
+  "h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-ui outline-none focus:border-entity focus:ring-1 focus:ring-entity-ring disabled:bg-gray-50 disabled:text-gray-500";
+export const LABEL = "type-label text-gray-600";
+export const HINT = "type-meta text-gray-500";
 export const BTN_PRIMARY =
-  "inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-ui font-semibold text-white shadow-sm transition-all hover:bg-indigo-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
+  "inline-flex h-10 items-center justify-center gap-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover px-4 text-ui font-semibold text-white shadow-2xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
 export const BTN_SECONDARY =
-  "inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-ui font-semibold text-slate-700 transition-all hover:border-slate-300 hover:text-slate-900 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
+  "inline-flex h-10 items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-4 text-ui font-semibold text-gray-700 transition-colors hover:border-gray-300 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
 
 export const useDebounced = <T,>(value: T, ms: number): T => {
   const [v, setV] = useState(value);
@@ -62,7 +62,7 @@ export const statusLabel = (status: CampaignStatus, t: TFn): string => {
 };
 
 const STATUS_TONE: Record<CampaignStatus, string> = {
-  draft: "bg-slate-100 text-slate-700",
+  draft: "bg-gray-100 text-gray-700",
   sending: "bg-blue-50 text-blue-700",
   paused: "bg-amber-50 text-amber-700",
   sent: "bg-emerald-50 text-emerald-700",
@@ -105,12 +105,12 @@ export const Notice = ({ tone, children }: { tone: "error" | "warning" | "info";
       ? "border-rose-200 bg-rose-50 text-rose-800"
       : tone === "warning"
         ? "border-amber-200 bg-amber-50 text-amber-800"
-        : "border-slate-200 bg-slate-50 text-slate-700";
-  return <div className={`rounded-2xl border px-4 py-3 text-ui ${cls}`}>{children}</div>;
+        : "border-gray-200 bg-gray-50 text-gray-700";
+  return <div className={`rounded-lg border px-4 py-3 text-ui ${cls}`}>{children}</div>;
 };
 
 export const Loading = ({ t }: { t: TFn }) => (
-  <p className="type-body py-8 text-center text-slate-500">{t("Loading…", "Načítava sa…", "Betöltés…")}</p>
+  <p className="type-body py-8 text-center text-gray-500">{t("Loading…", "Načítava sa…", "Betöltés…")}</p>
 );
 
 /** True when sending can go ahead as far as the sender goes: a configured outgoing server, or demo mode (C10: demo never connects). */

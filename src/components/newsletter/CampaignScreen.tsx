@@ -30,7 +30,7 @@ const CardShell = ({
 }) => (
   <Surface>
     <div className="mb-4 flex items-center justify-between gap-3">
-      <h3 className="type-panel-title text-slate-900">{title}</h3>
+      <h3 className="type-panel-title text-gray-900">{title}</h3>
       {mark === "done" && <CheckCircle2 className="size-5 text-emerald-600" aria-label="OK" />}
       {mark === "attention" && <CircleAlert className="size-5 text-amber-600" aria-hidden="true" />}
     </div>
@@ -172,7 +172,7 @@ export const CampaignScreen = ({ id, env, data }: { id: string; env: NewsletterE
     return (
       <Page>
         <Notice tone="error">{error}</Notice>
-        <button type="button" onClick={() => navigate("newsletter")} className="w-fit type-label text-indigo-600 cursor-pointer">
+        <button type="button" onClick={() => navigate("newsletter")} className="w-fit type-label text-entity-text cursor-pointer">
           {t("Back to campaigns", "Späť na kampane", "Vissza a kampányokhoz")}
         </button>
       </Page>
@@ -265,7 +265,7 @@ export const CampaignScreen = ({ id, env, data }: { id: string; env: NewsletterE
                 aria-live="polite"
                 data-testid="newsletter-save-status"
                 data-state={save}
-                className={`type-meta ${save === "error" ? "text-rose-700 underline cursor-pointer" : "text-slate-500"}`}
+                className={`type-meta ${save === "error" ? "text-rose-700 underline cursor-pointer" : "text-gray-500"}`}
               >
                 {saveLabel}
               </button>

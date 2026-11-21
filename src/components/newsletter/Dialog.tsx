@@ -1,6 +1,7 @@
 import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
 const FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -61,7 +62,8 @@ export const Dialog = ({
   return createPortal(
     // Drawer layer (100000): portaled CustomSelect / ColorPicker panels (100001) must paint above it.
     <div
-      className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+      style={entityAccentStyle("newsletter")}
+      className="fixed inset-0 z-[100000] flex items-center justify-center bg-gray-900/50 p-4"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
@@ -71,11 +73,11 @@ export const Dialog = ({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl outline-none"
+        className="flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl outline-none"
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-3.5">
-          <h3 className="type-panel-title text-slate-900">{title}</h3>
-          <button type="button" onClick={onClose} aria-label={closeLabel} className="flex size-8 cursor-pointer items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100">
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-3.5">
+          <h3 className="type-panel-title text-gray-900">{title}</h3>
+          <button type="button" onClick={onClose} aria-label={closeLabel} className="flex size-8 cursor-pointer items-center justify-center rounded-md text-gray-500 hover:bg-gray-100">
             <X className="size-4" />
           </button>
         </div>

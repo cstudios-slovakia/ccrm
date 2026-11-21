@@ -28,7 +28,7 @@ export const ContentCard = ({
       <EmailThumbnail html={rendered.html} label={t("Preview of the e-mail", "Náhľad e-mailu", "Az e-mail előnézete")} />
       <div className="grid content-start gap-4">
         {emptyBody && (
-          <p className="text-ui text-slate-500">
+          <p className="text-ui text-gray-500">
             {t("The e-mail body is still empty. Open the design editor to start.", "Telo e-mailu je zatiaľ prázdne. Začnite v editore dizajnu.", "Az e-mail törzse még üres. A kezdéshez nyissa meg a dizájnszerkesztőt.")}
           </p>
         )}
@@ -39,7 +39,7 @@ export const ContentCard = ({
           </button>
         </div>
         <div className="grid gap-2">
-          <label className="flex cursor-pointer items-center gap-3 text-ui text-slate-800">
+          <label className="flex cursor-pointer items-center gap-3 text-ui text-gray-800">
             <input
               type="checkbox"
               role="switch"
@@ -50,7 +50,7 @@ export const ContentCard = ({
             />
             {t("Use the global header", "Použiť globálnu hlavičku", "A globális fejléc használata")}
           </label>
-          <label className="flex cursor-pointer items-center gap-3 text-ui text-slate-800">
+          <label className="flex cursor-pointer items-center gap-3 text-ui text-gray-800">
             <input
               type="checkbox"
               role="switch"

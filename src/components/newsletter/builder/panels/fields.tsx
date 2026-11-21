@@ -6,26 +6,26 @@ import type { Align } from '../types.ts';
 import { useBuilder } from '../builderContext.ts';
 
 export const INPUT_CLASS =
-  'w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-ui text-slate-800 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50';
+  'w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-ui text-gray-800 placeholder:text-gray-400 focus:border-entity focus:outline-none focus:ring-2 focus:ring-entity-ring disabled:opacity-50';
 
 export const Field: React.FC<{ label: string; hint?: string; children: React.ReactNode; className?: string }> = ({ label, hint, children, className }) => (
   <label className={cn('block', className)}>
-    <span className="mb-1 block type-label text-slate-600">{label}</span>
+    <span className="mb-1 block type-label text-gray-600">{label}</span>
     {children}
-    {hint && <span className="mt-1 block text-caption text-slate-400">{hint}</span>}
+    {hint && <span className="mt-1 block text-caption text-gray-400">{hint}</span>}
   </label>
 );
 
 /** A labelled group that is not one single input (several controls, no <label> wrapper). */
 export const Group: React.FC<{ label: string; children: React.ReactNode; className?: string }> = ({ label, children, className }) => (
   <div className={cn('block', className)}>
-    <span className="mb-1 block type-label text-slate-600">{label}</span>
+    <span className="mb-1 block type-label text-gray-600">{label}</span>
     {children}
   </div>
 );
 
 export const SectionTitle: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <h4 className="mt-1 type-overline text-slate-400">{children}</h4>
+  <h4 className="mt-1 type-overline text-gray-400">{children}</h4>
 );
 
 export const TextField: React.FC<{
@@ -89,7 +89,7 @@ export const NumberField: React.FC<{
         onBlur={() => setText(String(value))}
         className={INPUT_CLASS}
       />
-      {suffix && <span className="text-caption text-slate-400">{suffix}</span>}
+      {suffix && <span className="text-caption text-gray-400">{suffix}</span>}
     </span>
   );
 };
@@ -120,7 +120,7 @@ export const Segmented = <T extends string>({
   options: { value: T; label: React.ReactNode; title?: string }[];
   ariaLabel?: string;
 }) => (
-  <div role="group" aria-label={ariaLabel} className="inline-flex overflow-hidden rounded-lg border border-slate-200">
+  <div role="group" aria-label={ariaLabel} className="inline-flex overflow-hidden rounded-lg border border-gray-200">
     {options.map((o) => (
       <button
         key={o.value}
@@ -131,7 +131,7 @@ export const Segmented = <T extends string>({
         onClick={() => onChange(o.value)}
         className={cn(
           'cursor-pointer px-2.5 py-1.5 text-ui font-semibold transition-colors',
-          o.value === value ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50',
+          o.value === value ? 'bg-entity-solid hover:bg-entity-solid-hover text-white' : 'bg-white text-gray-600 hover:bg-gray-50',
         )}
       >
         {o.label}
@@ -167,9 +167,9 @@ export const ColorField: React.FC<{
   return (
     <span className="flex items-center gap-2">
       <ColorPicker value={value} fallback={fallback} variant="field" onChange={(hex) => onChange(hex)} />
-      <span className="font-mono text-caption text-slate-500">{(value || fallback).toLowerCase()}</span>
+      <span className="font-mono text-caption text-gray-500">{(value || fallback).toLowerCase()}</span>
       {resettable && value !== undefined && (
-        <button type="button" onClick={() => onChange(undefined)} className="cursor-pointer text-caption font-semibold text-indigo-600 hover:underline">
+        <button type="button" onClick={() => onChange(undefined)} className="cursor-pointer text-caption font-semibold text-entity-text hover:underline">
           {t('Default', 'Predvolená', 'Alapértelmezett')}
         </button>
       )}
@@ -178,8 +178,8 @@ export const ColorField: React.FC<{
 };
 
 export const ToggleField: React.FC<{ checked: boolean; onChange: (v: boolean) => void; label: string }> = ({ checked, onChange, label }) => (
-  <label className="flex cursor-pointer items-center gap-2 text-ui text-slate-700">
-    <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-indigo-600" />
+  <label className="flex cursor-pointer items-center gap-2 text-ui text-gray-700">
+    <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-entity-text" />
     {label}
   </label>
 );

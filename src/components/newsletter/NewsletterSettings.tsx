@@ -63,7 +63,7 @@ const Gate = ({ state, t, children }: { state: NewsletterConfigState; t: ReturnT
     return (
       <div className="grid gap-3">
         <Notice tone="error">{state.error}</Notice>
-        <button type="button" onClick={state.reload} className="w-fit type-label text-indigo-600 cursor-pointer">
+        <button type="button" onClick={state.reload} className="w-fit type-label text-entity-text cursor-pointer">
           {t("Try again", "Skúsiť znova", "Újra")}
         </button>
       </div>
@@ -125,8 +125,8 @@ export const NewsletterSendingSettings = ({ language, canEdit }: { language: Lan
                 </div>
                 <div className="grid gap-1.5">
                   <span className={LABEL}>{t("From address", "Adresa odosielateľa", "Feladó címe")}</span>
-                  <div className="flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 px-3 py-2.5 text-ui">
-                    <span className="font-medium text-slate-900">{info.senderEmail || "-"}</span>
+                  <div className="flex flex-wrap items-center gap-3 rounded-md bg-gray-50 px-3 py-2.5 text-ui">
+                    <span className="font-medium text-gray-900">{info.senderEmail || "-"}</span>
                     {info.senderConfigured ? (
                       <span className="inline-flex items-center gap-1.5 text-emerald-700">
                         <CircleCheck className="size-4" />
@@ -138,7 +138,7 @@ export const NewsletterSendingSettings = ({ language, canEdit }: { language: Lan
                         {t("Not set up", "Nie je nastavená", "Nincs beállítva")}
                       </span>
                     )}
-                    <a href="#settings/email/outgoing" className="ml-auto type-label font-semibold text-indigo-600 hover:text-indigo-500">
+                    <a href="#settings/email/outgoing" className="ml-auto type-label font-semibold text-entity-text hover:text-indigo-500">
                       {t("Outgoing server settings", "Nastavenia odchádzajúceho servera", "Kimenő szerver beállításai")}
                     </a>
                   </div>
@@ -319,7 +319,7 @@ export const NewsletterDesignSettings = ({
 
                   <div className="grid content-start gap-2" aria-label={t("Preview", "Náhľad", "Előnézet")}>
                     <span className={LABEL}>{t("Preview", "Náhľad", "Előnézet")}</span>
-                    <div className="overflow-hidden rounded-2xl border border-slate-200 p-4" style={{ backgroundColor: th.pageBackground }}>
+                    <div className="overflow-hidden rounded-lg border border-gray-200 p-4" style={{ backgroundColor: th.pageBackground }}>
                       <div
                         className="mx-auto rounded-md p-5"
                         style={{

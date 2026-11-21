@@ -25,14 +25,14 @@ export const RowPanel: React.FC<{ row: EmailRow }> = ({ row }) => {
               onClick={() => act.setLayout(row.id, layout)}
               className={cn(
                 'flex cursor-pointer items-center justify-center rounded-lg border px-2 py-2.5 transition-colors',
-                row.layout === layout ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 bg-white hover:border-indigo-300',
+                row.layout === layout ? 'border-indigo-500 bg-entity-subtle' : 'border-gray-200 bg-white hover:border-entity-border',
               )}
             >
               <LayoutGlyph layout={layout} />
             </button>
           ))}
         </div>
-        <p className="mt-1 text-caption text-slate-400">
+        <p className="mt-1 text-caption text-gray-400">
           {t(
             'With fewer columns, the blocks of the removed ones move into the last column.',
             'Pri menšom počte stĺpcov sa bloky odstránených presunú do posledného stĺpca.',
@@ -68,8 +68,8 @@ export const RowPanel: React.FC<{ row: EmailRow }> = ({ row }) => {
           />
           <SectionTitle>{t('Columns', 'Stĺpce', 'Oszlopok')}</SectionTitle>
           {row.columns.map((column, i) => (
-            <div key={column.id} className="space-y-2 rounded-lg border border-slate-200 p-2.5">
-              <div className="type-label text-slate-700">{`${t('Column', 'Stĺpec', 'Oszlop')} ${i + 1}`}</div>
+            <div key={column.id} className="space-y-2 rounded-lg border border-gray-200 p-2.5">
+              <div className="type-label text-gray-700">{`${t('Column', 'Stĺpec', 'Oszlop')} ${i + 1}`}</div>
               <Group label={t('Vertical alignment', 'Zvislé zarovnanie', 'Függőleges igazítás')}>
                 <Segmented<VerticalAlign>
                   value={column.verticalAlign ?? 'top'}

@@ -34,7 +34,7 @@ export const ImagePanel: React.FC<{
   return (
     <div className="space-y-4">
       {hasSrc && (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-1.5">
+        <div className="overflow-hidden rounded-lg border border-gray-200 bg-gray-50 p-1.5">
           <img src={absoluteUrl(block.src, assetBaseUrl)} alt="" className="mx-auto max-h-32 max-w-full object-contain" />
         </div>
       )}
@@ -44,7 +44,7 @@ export const ImagePanel: React.FC<{
           type="button"
           disabled={busy}
           onClick={() => fileRef.current?.click()}
-          className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-ui font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+          className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-entity-solid hover:bg-entity-solid-hover px-3 py-1.5 text-ui font-semibold text-white hover:bg-entity-solid-hover disabled:opacity-60"
         >
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
           {hasSrc ? t('Replace image', 'Nahradiť obrázok', 'Kép cseréje') : t('Upload image', 'Nahrať obrázok', 'Kép feltöltése')}
@@ -53,7 +53,7 @@ export const ImagePanel: React.FC<{
           <button
             type="button"
             onClick={() => setLibraryOpen((v) => !v)}
-            className="cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-ui font-semibold text-slate-700 hover:bg-slate-50"
+            className="cursor-pointer rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-ui font-semibold text-gray-700 hover:bg-gray-50"
           >
             {t('Uploaded images', 'Nahraté obrázky', 'Feltöltött képek')}
           </button>
@@ -72,13 +72,13 @@ export const ImagePanel: React.FC<{
       </div>
 
       {libraryOpen && (
-        <div className="rounded-lg border border-slate-200 p-2">
+        <div className="rounded-lg border border-gray-200 p-2">
           {libraryError ? (
             <p className="text-ui text-rose-600">{t('The image list could not be loaded.', 'Zoznam obrázkov sa nepodarilo načítať.', 'A képek listáját nem sikerült betölteni.')}</p>
           ) : !library ? (
-            <Loader2 className="mx-auto h-4 w-4 animate-spin text-slate-400" />
+            <Loader2 className="mx-auto h-4 w-4 animate-spin text-gray-400" />
           ) : library.length === 0 ? (
-            <p className="text-ui text-slate-500">{t('No uploaded images yet.', 'Zatiaľ nie sú nahraté žiadne obrázky.', 'Még nincs feltöltött kép.')}</p>
+            <p className="text-ui text-gray-500">{t('No uploaded images yet.', 'Zatiaľ nie sú nahraté žiadne obrázky.', 'Még nincs feltöltött kép.')}</p>
           ) : (
             <div className="grid max-h-48 grid-cols-3 gap-1.5 overflow-y-auto">
               {library.map((img) => (
@@ -90,7 +90,7 @@ export const ImagePanel: React.FC<{
                     patch({ src: img.url });
                     setLibraryOpen(false);
                   }}
-                  className="aspect-square cursor-pointer overflow-hidden rounded-md border border-slate-200 bg-slate-50 hover:border-indigo-400"
+                  className="aspect-square cursor-pointer overflow-hidden rounded-md border border-gray-200 bg-gray-50 hover:border-indigo-400"
                 >
                   <img src={img.url} alt={img.name} loading="lazy" className="h-full w-full object-cover" />
                 </button>

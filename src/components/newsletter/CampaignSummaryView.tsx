@@ -14,8 +14,8 @@ const POLL_MS = 5000;
 
 const Row = ({ label, value }: { label: string; value: string }) => (
   <div className="grid gap-0.5 ws-sm:grid-cols-[10rem_minmax(0,1fr)] ws-sm:gap-4">
-    <dt className="type-label text-slate-500">{label}</dt>
-    <dd className="min-w-0 break-words text-ui text-slate-900">{value || "-"}</dd>
+    <dt className="type-label text-gray-500">{label}</dt>
+    <dd className="min-w-0 break-words text-ui text-gray-900">{value || "-"}</dd>
   </div>
 );
 
@@ -115,14 +115,14 @@ export const CampaignSummaryView = ({
 
       <Surface>
         <div className="grid gap-3">
-          <div className="flex items-center justify-between gap-3 type-label text-slate-600">
+          <div className="flex items-center justify-between gap-3 type-label text-gray-600">
             <span>{t("Progress", "Priebeh", "Előrehaladás")}</span>
             <span>
               {pct} %{left != null && ` · ${formatDuration(left, t)}`}
             </span>
           </div>
-          <div className="h-2.5 overflow-hidden rounded-full bg-slate-100" role="progressbar" data-testid="newsletter-progress" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-            <div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${pct}%` }} />
+          <div className="h-2.5 overflow-hidden rounded-full bg-gray-100" role="progressbar" data-testid="newsletter-progress" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+            <div className="h-full rounded-full bg-entity-solid hover:bg-entity-solid-hover transition-all" style={{ width: `${pct}%` }} />
           </div>
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {status === "sending" && (
@@ -148,7 +148,7 @@ export const CampaignSummaryView = ({
                 disabled={busy || !canSend}
                 title={canSend ? undefined : noPermission}
                 icon={<Ban className="size-4" />}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 text-ui font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-rose-200 bg-white px-4 text-ui font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {t("Cancel sending", "Zrušiť odosielanie", "Küldés megszakítása")}
               </HoldToConfirmButton>
@@ -187,7 +187,7 @@ export const CampaignSummaryView = ({
       </Surface>
 
       <div className="grid gap-3">
-        <h3 className="type-panel-title text-slate-900">{t("Recipients", "Príjemcovia", "Címzettek")}</h3>
+        <h3 className="type-panel-title text-gray-900">{t("Recipients", "Príjemcovia", "Címzettek")}</h3>
         <RecipientsTable id={campaign.id} env={env} refreshKey={`${c.sent}-${c.failed}-${c.skipped}-${c.cancelled}-${campaign.status}`} />
       </div>
 

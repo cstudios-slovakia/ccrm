@@ -95,7 +95,7 @@ export const CampaignDesignScreen = ({ id, env, userEmail }: { id: string; env: 
     return (
       <Page>
         <Notice tone="error">{error}</Notice>
-        <button type="button" onClick={() => navigate("newsletter")} className="w-fit type-label text-indigo-600 cursor-pointer">
+        <button type="button" onClick={() => navigate("newsletter")} className="w-fit type-label text-entity-text cursor-pointer">
           {t("Back to campaigns", "Späť na kampane", "Vissza a kampányokhoz")}
         </button>
       </Page>
@@ -126,7 +126,7 @@ export const CampaignDesignScreen = ({ id, env, userEmail }: { id: string; env: 
         <ArrowLeft className="size-4" />
         {t("Back to the campaign", "Späť na kampaň", "Vissza a kampányhoz")}
       </button>
-      <h1 className="type-panel-title min-w-0 truncate text-slate-900">{campaign.name}</h1>
+      <h1 className="type-panel-title min-w-0 truncate text-gray-900">{campaign.name}</h1>
     </div>
   );
 
@@ -140,7 +140,7 @@ export const CampaignDesignScreen = ({ id, env, userEmail }: { id: string; env: 
             ? t("This campaign has been started, so the design is read-only.", "Táto kampaň bola spustená, dizajn je iba na čítanie.", "Ez a kampány elindult, a dizájn csak olvasható.")
             : t("You can view this design but not change it.", "Tento dizajn môžete zobraziť, ale nie meniť.", "Ezt a dizájnt megtekintheti, de nem módosíthatja.")}
         </Notice>
-        <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-gray-200 bg-white">
           <EmailPreview html={campaign.htmlSnapshot && campaign.status !== "draft" ? campaign.htmlSnapshot : rendered.html} warnings={rendered.warnings} language={lang} sampleMerge={sampleMerge} />
         </div>
       </Page>
@@ -175,7 +175,7 @@ export const CampaignDesignScreen = ({ id, env, userEmail }: { id: string; env: 
                   aria-live="polite"
                   data-testid="newsletter-save-status"
                   data-state={status}
-                  className={`type-meta ${status === "error" ? "cursor-pointer text-rose-700 underline" : "text-slate-500"}`}
+                  className={`type-meta ${status === "error" ? "cursor-pointer text-rose-700 underline" : "text-gray-500"}`}
                 >
                   {saveLabel}
                 </button>
@@ -185,7 +185,7 @@ export const CampaignDesignScreen = ({ id, env, userEmail }: { id: string; env: 
                 disabled={!canSend}
                 title={canSend ? undefined : t("You need the permission to send newsletters.", "Na odosielanie newsletterov potrebujete oprávnenie.", "A hírlevél küldéséhez jogosultság kell.")}
                 onClick={() => setTestOpen(true)}
-                className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-ui font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Send className="size-4" />
                 {t("Send test", "Odoslať test", "Teszt küldése")}

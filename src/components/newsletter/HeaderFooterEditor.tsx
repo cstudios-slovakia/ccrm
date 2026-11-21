@@ -45,7 +45,7 @@ export const HeaderFooterCards = ({ config, company, language, canEdit }: { conf
           >
             <div className="grid gap-3">
               <EmailThumbnail html={html} height={slot === "header" ? 150 : 220} label={title} />
-              <p className="type-meta text-slate-500">
+              <p className="type-meta text-gray-500">
                 {config[slot]
                   ? t("Edited by you.", "Upravené vami.", "Ön szerkesztette.")
                   : t("Default, built from the company profile.", "Predvolená, vytvorená z profilu firmy.", "Alapértelmezett, a cégprofilból készült.")}
@@ -108,7 +108,7 @@ export const HeaderFooterEditor = ({
           <ArrowLeft className="size-4" />
           {t("Back to design settings", "Späť na nastavenia dizajnu", "Vissza a dizájnbeállításokhoz")}
         </button>
-        <h2 className="type-panel-title text-slate-900">{title}</h2>
+        <h2 className="type-panel-title text-gray-900">{title}</h2>
         <span className="ml-auto flex items-center gap-3">
           <SaveStatus lang={language} status={status} />
           {canEdit && stored && (

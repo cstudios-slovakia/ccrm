@@ -57,7 +57,7 @@ const ToolbarButton: React.FC<{ title: string; onClick: () => void; disabled?: b
     aria-label={title}
     disabled={disabled}
     onClick={onClick}
-    className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent"
+    className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent"
   >
     {children}
   </button>
@@ -158,11 +158,11 @@ export const EmailBuilder: React.FC<EmailBuilderProps> = ({
 
   if (phone) {
     return (
-      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <p className="shrink-0 border-b border-slate-200 bg-amber-50 px-3 py-2.5 text-ui text-amber-800">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-md border border-gray-200 bg-white">
+        <p className="shrink-0 border-b border-gray-200 bg-amber-50 px-3 py-2.5 text-ui text-amber-800">
           {t('Edit the design on a larger screen.', 'Dizajn upravujte na väčšej obrazovke.', 'A dizájnt nagyobb képernyőn szerkessze.')}
         </p>
-        {toolbarExtra && <div className="shrink-0 border-b border-slate-200 px-3 py-2">{toolbarExtra}</div>}
+        {toolbarExtra && <div className="shrink-0 border-b border-gray-200 px-3 py-2">{toolbarExtra}</div>}
         {rendered && <EmailPreview html={rendered.html} warnings={rendered.warnings} language={language} sampleMerge={mergedSample} defaultDevice="mobile" />}
       </div>
     );
@@ -177,17 +177,17 @@ export const EmailBuilder: React.FC<EmailBuilderProps> = ({
         ref={rootRef}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="relative flex h-full min-h-[34rem] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white outline-none"
+        className="relative flex h-full min-h-[34rem] flex-col overflow-hidden rounded-md border border-gray-200 bg-white outline-none"
       >
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-gray-200 bg-white px-3 py-2">
           <ToolbarButton title={t('Undo (Ctrl+Z)', 'Späť (Ctrl+Z)', 'Visszavonás (Ctrl+Z)')} onClick={s.undo} disabled={!s.canUndo}>
             <Undo2 className="h-4 w-4" />
           </ToolbarButton>
           <ToolbarButton title={t('Redo (Ctrl+Shift+Z)', 'Znova (Ctrl+Shift+Z)', 'Ismétlés (Ctrl+Shift+Z)')} onClick={s.redo} disabled={!s.canRedo}>
             <Redo2 className="h-4 w-4" />
           </ToolbarButton>
-          <span className="mx-1 h-5 w-px bg-slate-200" />
-          <div role="group" aria-label={t('Canvas width', 'Šírka plátna', 'Vászon szélessége')} className="inline-flex overflow-hidden rounded-lg border border-slate-200">
+          <span className="mx-1 h-5 w-px bg-gray-200" />
+          <div role="group" aria-label={t('Canvas width', 'Šírka plátna', 'Vászon szélessége')} className="inline-flex overflow-hidden rounded-lg border border-gray-200">
             {(['desktop', 'mobile'] as const).map((d) => (
               <button
                 key={d}
@@ -196,7 +196,7 @@ export const EmailBuilder: React.FC<EmailBuilderProps> = ({
                 title={d === 'desktop' ? t('Desktop', 'Počítač', 'Asztali') : t('Phone', 'Telefón', 'Telefon')}
                 aria-label={d === 'desktop' ? t('Desktop', 'Počítač', 'Asztali') : t('Phone', 'Telefón', 'Telefon')}
                 onClick={() => setDevice(d)}
-                className={cn('flex h-8 w-9 cursor-pointer items-center justify-center transition-colors', device === d ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50')}
+                className={cn('flex h-8 w-9 cursor-pointer items-center justify-center transition-colors', device === d ? 'bg-entity-solid hover:bg-entity-solid-hover text-white' : 'bg-white text-gray-600 hover:bg-gray-50')}
               >
                 {d === 'desktop' ? <Monitor className="h-4 w-4" /> : <Smartphone className="h-4 w-4" />}
               </button>
@@ -205,7 +205,7 @@ export const EmailBuilder: React.FC<EmailBuilderProps> = ({
           <button
             type="button"
             onClick={() => setPreviewOpen(true)}
-            className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-700 hover:bg-slate-50"
+            className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-ui font-semibold text-gray-700 hover:bg-gray-50"
           >
             <Eye className="h-4 w-4" />
             {t('Preview', 'Náhľad', 'Előnézet')}
@@ -215,20 +215,20 @@ export const EmailBuilder: React.FC<EmailBuilderProps> = ({
 
         <div className="flex min-h-0 flex-1">
           <Canvas lockedHeader={mode === 'body' ? lockedHeader : null} lockedFooter={mode === 'body' ? lockedFooter : null} onEditLocked={onEditLocked} />
-          <aside className="flex w-80 shrink-0 flex-col border-l border-slate-200 bg-white">
+          <aside className="flex w-80 shrink-0 flex-col border-l border-gray-200 bg-white">
             {selectedBlock || selectedRow ? (
               <>
-                <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 px-3 py-2.5">
+                <div className="flex shrink-0 items-center gap-2 border-b border-gray-200 px-3 py-2.5">
                   <button
                     type="button"
                     onClick={() => act.select(null)}
                     title={t('Back', 'Späť', 'Vissza')}
                     aria-label={t('Back', 'Späť', 'Vissza')}
-                    className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-slate-500 hover:bg-slate-100"
+                    className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
                   >
                     <ArrowLeft className="h-4 w-4" />
                   </button>
-                  <h3 className="type-card-title text-slate-800">
+                  <h3 className="type-card-title text-gray-800">
                     {selectedBlock ? blockLabel(t, selectedBlock.type) : t('Row', 'Riadok', 'Sor')}
                   </h3>
                 </div>
@@ -245,7 +245,7 @@ export const EmailBuilder: React.FC<EmailBuilderProps> = ({
         {s.toast && (
           <div
             role="alert"
-            className="absolute bottom-4 left-1/2 z-50 flex max-w-md -translate-x-1/2 items-start gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-ui font-medium text-white shadow-lg"
+            className="absolute bottom-4 left-1/2 z-50 flex max-w-md -translate-x-1/2 items-start gap-2 rounded-md bg-rose-600 px-4 py-2.5 text-ui font-medium text-white shadow-lg"
           >
             <span>{s.toast.message}</span>
             <button type="button" onClick={s.dismissToast} aria-label={t('Close', 'Zavrieť', 'Bezárás')} className="cursor-pointer text-white/80 hover:text-white">

@@ -32,7 +32,7 @@ export const EmailThumbnail = ({
   }, [frameWidth]);
   const srcDoc = useMemo(() => substituteMergeTags(html, sampleMerge ?? sampleMergeValues(), { context: "html", mode: "preview" }), [html, sampleMerge]);
   return (
-    <div ref={box} className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-100" style={{ height }} role="img" aria-label={label}>
+    <div ref={box} className="relative overflow-hidden rounded-md border border-gray-200 bg-gray-100" style={{ height }} role="img" aria-label={label}>
       <iframe
         title={label}
         sandbox=""

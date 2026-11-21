@@ -52,12 +52,12 @@ export const SenderCard = ({
       </label>
       <div className="grid gap-1">
         <span className={LABEL}>{t("From address", "Adresa odosielateľa", "Feladó címe")}</span>
-        <div className={`${FIELD} flex items-center bg-slate-50 text-slate-700`} data-testid="newsletter-from-address">
+        <div className={`${FIELD} flex items-center bg-gray-50 text-gray-700`} data-testid="newsletter-from-address">
           <span className="truncate">{settings?.senderEmail || "-"}</span>
         </div>
       </div>
       {settings && !settings.senderConfigured && (
-        <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-ui text-amber-800 ws-md:col-span-2">
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-ui text-amber-800 ws-md:col-span-2">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <span>
             {t("Outgoing e-mail is not set up, so nothing can be sent. ", "Odchádzajúca pošta nie je nastavená, preto sa nedá nič odoslať. ", "A kimenő levelezés nincs beállítva, ezért semmi sem küldhető. ")}
@@ -103,7 +103,7 @@ export const SenderCard = ({
                   key={tag}
                   type="button"
                   onClick={() => insertTag(tag)}
-                  className="rounded-full border border-slate-200 bg-white px-2.5 py-0.5 type-label text-slate-600 hover:border-slate-300 cursor-pointer"
+                  className="rounded-full border border-gray-200 bg-white px-2.5 py-0.5 type-label text-gray-600 hover:border-gray-300 cursor-pointer"
                 >
                   {`{{${tag}}}`}
                 </button>

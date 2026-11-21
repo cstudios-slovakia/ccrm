@@ -6,7 +6,7 @@ import { useBuilder } from '../builderContext.ts';
 import { networkLabel } from '../labels.ts';
 import { AlignField, Group, SelectField, TextField } from './fields.tsx';
 
-const iconButton = 'flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 disabled:cursor-default disabled:opacity-30';
+const iconButton = 'flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 disabled:cursor-default disabled:opacity-30';
 
 export const SocialPanel: React.FC<{ block: SocialBlock; patch: (p: Record<string, unknown>) => void }> = ({ block, patch }) => {
   const { t } = useBuilder();
@@ -24,7 +24,7 @@ export const SocialPanel: React.FC<{ block: SocialBlock; patch: (p: Record<strin
       <Group label={t('Networks', 'Siete', 'Hálózatok')}>
         <div className="space-y-2">
           {items.map((item, i) => (
-            <div key={i} className="space-y-1.5 rounded-lg border border-slate-200 p-2">
+            <div key={i} className="space-y-1.5 rounded-lg border border-gray-200 p-2">
               <div className="flex items-center gap-1">
                 <div className="min-w-0 flex-1">
                   <SelectField
@@ -56,7 +56,7 @@ export const SocialPanel: React.FC<{ block: SocialBlock; patch: (p: Record<strin
         <button
           type="button"
           onClick={() => setItems([...items, { network: unused, url: '' }])}
-          className="mt-2 inline-flex cursor-pointer items-center gap-1 text-ui font-semibold text-indigo-600 hover:underline"
+          className="mt-2 inline-flex cursor-pointer items-center gap-1 text-ui font-semibold text-entity-text hover:underline"
         >
           <Plus className="h-3.5 w-3.5" />
           {t('Add network', 'Pridať sieť', 'Hálózat hozzáadása')}

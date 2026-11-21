@@ -21,8 +21,8 @@ const ToggleRow = ({
   title: string;
   children?: ReactNode;
 }) => (
-  <div className="rounded-2xl border border-slate-200 p-4">
-    <label className="flex cursor-pointer items-center gap-3 text-ui font-semibold text-slate-800">
+  <div className="rounded-lg border border-gray-200 p-4">
+    <label className="flex cursor-pointer items-center gap-3 text-ui font-semibold text-gray-800">
       <input
         type="checkbox"
         role="switch"
@@ -44,7 +44,7 @@ const Chip = ({ active, disabled, onClick, children }: { active: boolean; disabl
     onClick={onClick}
     aria-pressed={active}
     className={`rounded-full border px-3 py-1 type-label transition-colors cursor-pointer disabled:cursor-not-allowed ${
-      active ? "border-indigo-300 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+      active ? "border-entity-border bg-entity-subtle text-entity-text" : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
     }`}
   >
     {children}
@@ -124,12 +124,12 @@ export const AudienceEditor = ({
   return (
     <div className="grid gap-4">
       {/* Clients: required */}
-      <div className="rounded-2xl border border-slate-200 p-4">
+      <div className="rounded-lg border border-gray-200 p-4">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-ui font-semibold text-slate-800">{t("Clients", "Klienti", "Ügyfelek")}</span>
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 type-overline text-slate-600">{t("Required", "Povinné", "Kötelező")}</span>
+          <span className="text-ui font-semibold text-gray-800">{t("Clients", "Klienti", "Ügyfelek")}</span>
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 type-overline text-gray-600">{t("Required", "Povinné", "Kötelező")}</span>
         </div>
-        <div className="mt-3 inline-flex rounded-xl bg-slate-100 p-1" role="group">
+        <div className="mt-3 inline-flex rounded-md bg-gray-100 p-1" role="group">
           {(["all", "pick"] as const).map((mode) => (
             <button
               key={mode}
@@ -138,7 +138,7 @@ export const AudienceEditor = ({
               aria-pressed={audience.clients.mode === mode}
               onClick={() => setClients({ mode })}
               className={`rounded-lg px-3 py-1.5 text-ui font-semibold transition-colors cursor-pointer disabled:cursor-not-allowed ${
-                audience.clients.mode === mode ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                audience.clients.mode === mode ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-800"
               }`}
             >
               {mode === "all" ? t("All clients", "Všetci klienti", "Minden ügyfél") : t("Choose", "Vybrať", "Kiválasztás")}
@@ -153,11 +153,11 @@ export const AudienceEditor = ({
               {flat.length === 0 ? (
                 <p className={HINT}>{t("No client categories yet.", "Zatiaľ nie sú žiadne kategórie klientov.", "Még nincsenek ügyfélkategóriák.")}</p>
               ) : (
-                <div className="max-h-56 overflow-y-auto rounded-xl bg-slate-50 p-2">
+                <div className="max-h-56 overflow-y-auto rounded-md bg-gray-50 p-2">
                   {flat.map(({ category, depth }) => (
                     <label
                       key={category.id}
-                      className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-ui text-slate-800 hover:bg-white"
+                      className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-ui text-gray-800 hover:bg-white"
                       style={{ paddingLeft: `${0.5 + depth * 1.25}rem` }}
                     >
                       <input
@@ -200,14 +200,14 @@ export const AudienceEditor = ({
               {audience.clients.clientIds.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {audience.clients.clientIds.map((id) => (
-                    <span key={id} className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 py-1 pl-3 pr-1.5 type-label text-slate-700">
+                    <span key={id} className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 py-1 pl-3 pr-1.5 type-label text-gray-700">
                       {clientsById.get(id)?.name ?? t("Unknown client", "Neznámy klient", "Ismeretlen ügyfél")}
                       {!disabled && (
                         <button
                           type="button"
                           aria-label={t("Remove", "Odstrániť", "Eltávolítás")}
                           onClick={() => setClients({ clientIds: audience.clients.clientIds.filter((x) => x !== id) })}
-                          className="inline-flex size-5 items-center justify-center rounded-full text-slate-500 hover:bg-slate-200 hover:text-slate-800 cursor-pointer"
+                          className="inline-flex size-5 items-center justify-center rounded-full text-gray-500 hover:bg-gray-200 hover:text-gray-800 cursor-pointer"
                         >
                           <X className="size-3" />
                         </button>
@@ -319,18 +319,18 @@ export const AudienceEditor = ({
       )}
 
       {/* Live count */}
-      <div className="rounded-2xl bg-slate-50 p-4" aria-live="polite" data-testid="newsletter-audience-count">
+      <div className="rounded-lg bg-gray-50 p-4" aria-live="polite" data-testid="newsletter-audience-count">
         {!valid ? (
-          <p className="text-ui text-slate-500">{t("No recipients yet.", "Zatiaľ žiadni príjemcovia.", "Még nincsenek címzettek.")}</p>
+          <p className="text-ui text-gray-500">{t("No recipients yet.", "Zatiaľ žiadni príjemcovia.", "Még nincsenek címzettek.")}</p>
         ) : previewError ? (
           <p className="text-ui text-rose-700">
             {t("The recipient count could not be loaded.", "Počet príjemcov sa nepodarilo načítať.", "A címzettek száma nem tölthető be.")}
           </p>
         ) : !preview ? (
-          <p className="text-ui text-slate-500">{t("Counting…", "Počítam…", "Számolás…")}</p>
+          <p className="text-ui text-gray-500">{t("Counting…", "Počítam…", "Számolás…")}</p>
         ) : (
           <div className={`grid gap-2 ${loading ? "opacity-60" : ""}`}>
-            <p className="text-ui font-semibold text-slate-900">
+            <p className="text-ui font-semibold text-gray-900">
               {t(`${preview.total} recipients`, `${preview.total} príjemcov`, `${preview.total} címzett`)}
               {preview.withoutEmail > 0 &&
                 ` · ${t(`${preview.withoutEmail} without e-mail`, `${preview.withoutEmail} bez e-mailu`, `${preview.withoutEmail} e-mail nélkül`)}`}
@@ -346,20 +346,20 @@ export const AudienceEditor = ({
                 <button
                   type="button"
                   onClick={() => setShowList((v) => !v)}
-                  className="w-fit type-label text-indigo-600 hover:text-indigo-500 cursor-pointer"
+                  className="w-fit type-label text-entity-text hover:text-indigo-500 cursor-pointer"
                 >
                   {showList ? t("Hide list", "Skryť zoznam", "Lista elrejtése") : t("Show list", "Zobraziť zoznam", "Lista megjelenítése")}
                 </button>
                 {showList && (
-                  <ul className="grid gap-1 text-ui text-slate-700">
+                  <ul className="grid gap-1 text-ui text-gray-700">
                     {preview.sample.map((s) => (
                       <li key={s.email} className="flex flex-wrap gap-x-2">
                         <span className="font-medium">{s.name || s.email}</span>
-                        {s.name && <span className="text-slate-500">{s.email}</span>}
+                        {s.name && <span className="text-gray-500">{s.email}</span>}
                       </li>
                     ))}
                     {preview.total > preview.sample.length && (
-                      <li className="text-slate-500">
+                      <li className="text-gray-500">
                         {t(
                           `…and ${preview.total - preview.sample.length} more`,
                           `…a ďalších ${preview.total - preview.sample.length}`,

@@ -18,7 +18,7 @@ export const BlockPanel: React.FC<{
     case 'text':
       return (
         <div className="space-y-4">
-          <p className="text-caption text-slate-400">{t('Click the text on the canvas to edit it.', 'Text upravíte kliknutím na plátne.', 'A szöveget a vásznon kattintva szerkesztheti.')}</p>
+          <p className="text-caption text-gray-400">{t('Click the text on the canvas to edit it.', 'Text upravíte kliknutím na plátne.', 'A szöveget a vásznon kattintva szerkesztheti.')}</p>
           <Group label={t('Alignment', 'Zarovnanie', 'Igazítás')}>
             <AlignField value={block.align} onChange={(a) => patch({ align: a })} />
           </Group>
@@ -38,7 +38,7 @@ export const BlockPanel: React.FC<{
     case 'heading':
       return (
         <div className="space-y-4">
-          <p className="text-caption text-slate-400">{t('Click the heading on the canvas to edit it.', 'Nadpis upravíte kliknutím na plátne.', 'A címsort a vásznon kattintva szerkesztheti.')}</p>
+          <p className="text-caption text-gray-400">{t('Click the heading on the canvas to edit it.', 'Nadpis upravíte kliknutím na plátne.', 'A címsort a vásznon kattintva szerkesztheti.')}</p>
           <Group label={t('Level', 'Úroveň', 'Szint')}>
             <Segmented<'1' | '2' | '3'>
               value={String(block.level) as '1' | '2' | '3'}
@@ -117,7 +117,7 @@ export const BlockPanel: React.FC<{
           <Field label="HTML">
             <TextField value={block.html} onChange={(v) => patch({ html: v })} multiline rows={14} mono ariaLabel="HTML" />
           </Field>
-          <p className="text-caption text-slate-400">
+          <p className="text-caption text-gray-400">
             {t(
               'Your own markup, sent as written. Scripts do not run in e-mail. Use tables and inline styles for the best result.',
               'Vaše vlastné značky, odoslané tak, ako ich napíšete. Skripty sa v e-maile nespustia. Najlepší výsledok dosiahnete s tabuľkami a inline štýlmi.',
