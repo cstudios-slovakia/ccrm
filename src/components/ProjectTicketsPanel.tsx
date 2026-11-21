@@ -53,6 +53,7 @@ import {
   ticketTypeLabel,
 } from "./../utils/tickets";
 import { listProjectUsage } from "../utils/timeTrackingApi";
+import { entityAccentStyle } from "../utils/entityAccent";
 import { useTimeTracking } from "../hooks/useTimeTracking";
 import { CustomSelect } from "./ui/CustomSelect";
 import { TicketRichHtmlEditor, isImageAttachment } from "./ui/TicketRichHtmlEditor";
@@ -339,17 +340,17 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
   };
 
   return (
-    <div className="space-y-5">
+    <div style={entityAccentStyle("tickets")} className="space-y-5">
       {/* Sub-navigation between Project Tickets, Monthly Retainer, and Widget Settings */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 pb-3">
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setSubView("tickets")}
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-caption font-bold transition-colors cursor-pointer ${
+            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-caption font-semibold transition-colors cursor-pointer ${
               subView === "tickets"
-                ? "bg-orange-500 text-white shadow-xs"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                ? "bg-entity-solid text-white shadow-xs"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
             <TicketIcon className="w-4 h-4" />
@@ -361,10 +362,10 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
           <button
             type="button"
             onClick={() => setSubView("retainer")}
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-caption font-bold transition-colors cursor-pointer ${
+            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-caption font-semibold transition-colors cursor-pointer ${
               subView === "retainer"
                 ? "bg-emerald-600 text-white shadow-xs"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
             <ShieldCheck className="w-4 h-4" />
@@ -395,10 +396,10 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
           <button
             type="button"
             onClick={() => setSubView("widget")}
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-caption font-bold transition-colors cursor-pointer ${
+            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-caption font-semibold transition-colors cursor-pointer ${
               subView === "widget"
-                ? "bg-orange-500 text-white shadow-xs"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                ? "bg-entity-solid text-white shadow-xs"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
             }`}
           >
             <Code2 className="w-4 h-4" />
@@ -417,16 +418,16 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
             href={publicStatusUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-caption font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-caption font-semibold border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 shadow-2xs"
           >
-            <ExternalLink className="w-3.5 h-3.5 text-orange-500" />
+            <ExternalLink className="w-3.5 h-3.5 text-entity-text" />
             {tr("Verejný stav tiketov", "Public Status Board", "Nyilvános státusz oldal")}
           </a>
           {canEdit && setTickets && (
             <button
               type="button"
               onClick={() => setShowNewModal((v) => !v)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-caption font-bold bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-caption font-semibold bg-entity-solid hover:bg-entity-solid-hover text-white shadow-xs cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               {tr("Nový tiket", "New Ticket", "Új jegy")}
@@ -439,9 +440,9 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
       {showNewModal && (
         <form
           onSubmit={handleCreateQuickTicket}
-          className="p-4 rounded-2xl border border-indigo-500/30 bg-indigo-500/5 space-y-3"
+          className="p-4 rounded-lg border border-entity-border bg-entity-subtle/40 space-y-3"
         >
-          <div className="text-caption font-bold text-slate-900">
+          <div className="text-caption font-semibold text-gray-900">
             {tr(
               "Vytvoriť tiket pre tento projekt",
               "Create Ticket for this Project",
@@ -455,7 +456,7 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
               value={newSubject}
               onChange={(e) => setNewSubject(e.target.value)}
               placeholder={tr("Predmet tiketu *", "Ticket Subject *", "Jegy tárgya *")}
-              className="md:col-span-2 px-3 py-2 text-caption rounded-xl border border-slate-200 bg-white text-slate-900"
+              className="md:col-span-2 px-3 py-2 text-caption rounded-md border border-gray-300 bg-white text-gray-900 focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring"
             />
             <CustomSelect
               value={newType}
@@ -537,13 +538,13 @@ export const ProjectTicketsPanel: React.FC<ProjectTicketsPanelProps> = ({
             <button
               type="button"
               onClick={() => setShowNewModal(false)}
-              className="px-3 py-1.5 rounded-xl text-caption font-semibold border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              className="px-3 py-1.5 rounded-md text-caption font-semibold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer"
             >
               {tr("Zrušiť", "Cancel", "Mégse")}
             </button>
             <button
               type="submit"
-              className="px-4 py-1.5 rounded-xl text-caption font-bold bg-indigo-600 hover:bg-indigo-700 text-white"
+              className="px-4 py-1.5 rounded-md text-caption font-semibold bg-entity-solid hover:bg-entity-solid-hover text-white shadow-xs cursor-pointer"
             >
               {tr("Vytvoriť tiket", "Create Ticket", "Létrehozás")}
             </button>

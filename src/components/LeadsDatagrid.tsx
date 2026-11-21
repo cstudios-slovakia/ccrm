@@ -4,6 +4,8 @@ import { ListIcon } from "./ui/ListIcon";
 import { contactNameFieldsOf, contactNamePatch, type ContactNameParts } from "../utils/contactName";
 import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { SectionIcon } from "./icons/SectionIcon";
+import { EntityBadge } from "./tremor/EntityBadge";
+import { entityAccentStyle } from "../utils/entityAccent";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { leadHoverVars, markLeadHover } from "../utils/leadRowHover";
@@ -985,16 +987,16 @@ function LeadFilterToolbarControls({
                 onClick={onToggleCompact}
                 aria-pressed={compactMode}
                 title={systemLanguage === "sk" ? "Kompaktné" : systemLanguage === "hu" ? "Kompakt" : "Compact"}
-                className={`h-10 w-10 inline-flex items-center justify-center rounded-xl border transition-all cursor-pointer shrink-0 ${
+                className={`h-10 w-10 inline-flex items-center justify-center rounded-md border transition-all cursor-pointer shrink-0 shadow-2xs ${
                     compactMode
-                        ? "bg-indigo-600 border-indigo-700 text-white shadow-sm"
-                        : "bg-white border-slate-200 text-slate-400 hover:text-slate-600"
+                        ? "bg-entity-solid border-transparent text-white"
+                        : "bg-white border-gray-300 text-gray-500 hover:text-gray-800 hover:bg-gray-50"
                 }`}
             >
                 <Minimize2 className="h-4 w-4" />
             </button>
 
-            <div className={`flex h-10 items-center ${dense ? "gap-0.5 px-0.5" : "gap-1 px-1"} rounded-xl bg-slate-100 border border-slate-200 select-none shrink-0`}>
+            <div className={`flex h-10 items-center ${dense ? "gap-0.5 px-0.5" : "gap-1 px-1"} rounded-md bg-gray-100 border border-gray-200 select-none shrink-0`}>
                 {modes.map(({ mode, Icon, label }) => (
                     <button
                         key={mode}
@@ -1003,10 +1005,10 @@ function LeadFilterToolbarControls({
                         title={label}
                         aria-label={label}
                         aria-pressed={viewMode === mode}
-                        className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all cursor-pointer ${
+                        className={`flex h-8 w-8 items-center justify-center rounded-sm transition-all cursor-pointer ${
                             viewMode === mode
-                                ? "bg-white text-indigo-600 shadow-sm"
-                                : "text-slate-400 hover:text-slate-600"
+                                ? "bg-white text-entity-text shadow-2xs ring-1 ring-entity-border"
+                                : "text-gray-500 hover:text-gray-800"
                         }`}
                     >
                         <Icon className="h-4 w-4" />
@@ -1024,16 +1026,16 @@ function LeadFilterToolbarControls({
                         : (systemLanguage === "sk" ? "Filtrovať iba obľúbené" : systemLanguage === "hu" ? "Csak kedvencek" : "Filter favorites only")
                 }
                 aria-label={favoritesLabel}
-                className={`h-10 inline-flex items-center justify-center gap-1.5 rounded-xl border transition-all cursor-pointer shrink-0 ${
+                className={`h-10 inline-flex items-center justify-center gap-1.5 rounded-md border transition-all cursor-pointer shrink-0 shadow-2xs ${
                     dense ? "w-10" : "px-3"
                 } ${
                     favoritesOnly
                         ? "bg-rose-50 border-rose-300 text-rose-600"
-                        : "bg-white border-slate-200 text-slate-500 hover:text-slate-700"
+                        : "bg-white border-gray-300 text-gray-600 hover:text-gray-900 hover:bg-gray-50"
                 }`}
             >
-                <Heart className={`h-4 w-4 ${favoritesOnly ? "fill-rose-500 text-rose-500" : "text-slate-400"}`} />
-                {!dense && <span className="text-ui font-bold">{favoritesLabel}</span>}
+                <Heart className={`h-4 w-4 ${favoritesOnly ? "fill-rose-500 text-rose-500" : "text-gray-400"}`} />
+                {!dense && <span className="text-ui font-semibold">{favoritesLabel}</span>}
             </button>
 
             {viewMenu()}
@@ -1045,15 +1047,15 @@ function LeadFilterToolbarControls({
                     aria-expanded={showFilters}
                     aria-label={t("More filters", "Ďalšie filtre", "További szűrők")}
                     title={t("More filters", "Ďalšie filtre", "További szűrők")}
-                    className={`relative h-10 w-10 inline-flex items-center justify-center rounded-xl border transition-all cursor-pointer shrink-0 ${
+                    className={`relative h-10 w-10 inline-flex items-center justify-center rounded-md border transition-all cursor-pointer shrink-0 shadow-2xs ${
                         showFilters
-                            ? "bg-slate-200 border-slate-300 text-slate-800"
-                            : "bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+                            ? "bg-entity-subtle border-entity-border text-entity-text"
+                            : "bg-white border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-gray-800"
                     }`}
                 >
                     <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${showFilters ? "rotate-180" : ""}`} />
                     {hasExpandedFilters && !showFilters && (
-                        <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-blue-600" />
+                        <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-entity-solid" />
                     )}
                 </button>
             )}
@@ -5393,7 +5395,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                   }}
                   backLabel={getTranslation(systemLanguage, "common.back_to_leads")}
                   avatar={
-                    <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white border-2 border-blue-700 flex items-center justify-center font-heading font-bold text-title shadow-md shrink-0">
+                    <div className="h-11 w-11 rounded-lg bg-entity-solid text-white border border-entity-border flex items-center justify-center font-heading font-bold text-title shadow-xs shrink-0">
                         {getInitials(leadName || activeLead.name)}
                     </div>
                   }
@@ -5437,9 +5439,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         !isConvertDropdownOpen,
                                     )
                                 }
-                                className="h-11 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 active:scale-[0.98] transition-all text-white font-bold text-ui flex items-center gap-2 shadow-sm shadow-purple-600/20 cursor-pointer"
+                                style={entityAccentStyle("projects") as React.CSSProperties}
+                                className="h-10 px-4 rounded-md bg-entity-solid hover:bg-entity-solid-hover active:scale-[0.98] transition-all text-white font-semibold text-ui flex items-center gap-2 shadow-2xs cursor-pointer"
                             >
-                                <Briefcase className="h-4.5 w-4.5" />
+                                <Briefcase className="h-4 w-4" />
                                 <span>
                                     {t(
                                         "Convert to Project",
@@ -5451,8 +5454,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </button>
 
                             {isConvertDropdownOpen && (
-                                <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 z-[999] text-left animate-in slide-in-from-top-2 duration-200">
-                                    <span className="block px-4 py-1.5 type-overline text-slate-400 border-b border-slate-100 pb-2 mb-1.5">
+                                <div
+                                  style={entityAccentStyle("projects") as React.CSSProperties}
+                                  className="absolute right-0 mt-2 w-56 rounded-lg bg-white border border-gray-200 shadow-xl py-1.5 z-[999] text-left animate-in slide-in-from-top-2 duration-200"
+                                >
+                                    <span className="block px-4 py-1.5 type-overline text-gray-400 border-b border-gray-200 pb-2 mb-1">
                                         {t(
                                             "Choose Project Type",
                                             "Vyberte typ projektu",
@@ -5467,7 +5473,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     type,
                                                 )
                                             }
-                                            className="w-full text-left px-4 py-2 text-ui font-semibold text-slate-700 hover:bg-purple-50 hover:text-purple-600 transition-colors flex items-center gap-2 cursor-pointer"
+                                            className="w-full text-left px-4 py-2 text-ui font-medium text-gray-700 hover:bg-entity-subtle hover:text-entity-text transition-colors flex items-center gap-2 cursor-pointer"
                                         >
                                             <span
                                                 className="h-2 w-2 rounded-full"
@@ -5494,7 +5500,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 const back = `leads/${activeLead.id}`;
                                 window.location.hash = `orders/new?customer=${encodeURIComponent(activeLead.id)}&from=${encodeURIComponent(back)}`;
                             }}
-                            className="h-9 px-3 rounded-xl border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 transition-all text-ui font-semibold flex items-center gap-1.5 shadow-xs active:scale-95 cursor-pointer"
+                            style={entityAccentStyle("orders") as React.CSSProperties}
+                            className="h-9 px-3 rounded-md border border-entity-border bg-entity-subtle hover:bg-entity-muted text-entity-text transition-all text-ui font-semibold flex items-center gap-1.5 shadow-2xs active:scale-95 cursor-pointer"
                             title={t("Place new order for this lead", "Vystaviť novú objednávku pre tento lead", "Új rendelés feladása ehhez a leadhez")}
                         >
                             <SectionIcon id="orders" className="h-4 w-4" />
@@ -5605,21 +5612,27 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     <div className="ws-lg:col-span-5 space-y-6">
                         {/* 1. Client Profile Card (On Top) */}
                         {clientCardData ? (
-                            <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-400 bg-emerald-50/70 shadow-xl space-y-4 text-emerald-950">
-                                <div className="border-b-2 border-emerald-200/50 pb-2 flex items-center justify-between gap-2">
-                                    <span className="text-ui font-bold text-emerald-700 flex items-center gap-1.5">
-                                        <Briefcase className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5] shrink-0" />{" "}
+                            <div
+                                style={entityAccentStyle("clients")}
+                                className="p-6 rounded-lg border border-gray-200 border-t-2 border-t-entity-solid bg-white shadow-xs space-y-4 text-gray-900"
+                            >
+                                <div className="border-b border-gray-200 pb-3 flex items-center justify-between gap-2">
+                                    <span className="text-ui font-semibold text-entity-text flex items-center gap-1.5">
+                                        <Briefcase className="h-4 w-4 text-entity-text shrink-0" />{" "}
                                         {getTranslation(
                                             systemLanguage,
                                             "common.client_relationship_card",
                                         )}
                                     </span>
-                                    <span className="px-2 py-0.5 rounded-full type-overline bg-emerald-100 text-emerald-800 border border-emerald-200 animate-pulse shrink-0">
-                                        {getTranslation(
+                                    <EntityBadge
+                                        entity="clients"
+                                        label={getTranslation(
                                             systemLanguage,
                                             "common.synced_profile",
                                         )}
-                                    </span>
+                                        href={`#client-${encodeURIComponent(clientCardData.name)}`}
+                                        size="sm"
+                                    />
                                 </div>
 
                                 <div className="space-y-3.5">
@@ -5796,7 +5809,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             onClick={() => {
                                                 window.location.hash = `client-${encodeURIComponent(clientCardData.name)}`;
                                             }}
-                                            className="w-fit px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white type-overline shadow transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-emerald-700"
+                                            className="w-fit px-4 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white type-overline shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                                         >
                                             {getTranslation(
                                                 systemLanguage,
@@ -5808,17 +5821,20 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 </div>
                             </div>
                         ) : activeLead ? (
-                            <div className="glass-panel p-6 rounded-[28px] border-2 border-dashed border-slate-300 bg-white/80 shadow-sm space-y-4 text-slate-700">
-                                <div className="border-b border-slate-200 pb-2.5 flex items-center justify-between gap-2">
-                                    <span className="text-ui font-bold text-slate-500 flex items-center gap-1.5">
-                                        <Briefcase className="h-4.5 w-4.5 text-slate-400 stroke-[2.5] shrink-0" />
+                            <div
+                                style={entityAccentStyle("clients")}
+                                className="p-6 rounded-lg border border-dashed border-gray-300 bg-white shadow-xs space-y-4 text-gray-700"
+                            >
+                                <div className="border-b border-gray-200 pb-2.5 flex items-center justify-between gap-2">
+                                    <span className="text-ui font-semibold text-gray-600 flex items-center gap-1.5">
+                                        <Briefcase className="h-4 w-4 text-entity-text shrink-0" />
                                         {t(
                                             "Client Profile",
                                             "Profil klienta",
                                             "Ügyfélprofil",
                                         )}
                                     </span>
-                                    <span className="px-2.5 py-0.5 rounded-full type-overline bg-slate-100 text-slate-500 border border-slate-200 shrink-0">
+                                    <span className="px-2.5 py-0.5 rounded-md type-overline bg-gray-100 text-gray-600 border border-gray-200 shrink-0">
                                         {t(
                                             "No Client Linked",
                                             "Bez klienta",
@@ -5828,7 +5844,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 </div>
 
                                 <div className="space-y-3.5">
-                                    <p className="text-ui text-slate-600 leading-relaxed font-medium">
+                                    <p className="text-ui text-gray-600 leading-relaxed font-medium">
                                         {t(
                                             "This lead is not currently linked to an official client profile in the client registry. You can create a new client profile from this lead with one click.",
                                             "Tento lead zatiaľ nie je prepojený s oficiálnym profilom v evidencii klientov. Môžete z tohto leadu vytvoriť nového klienta jedným kliknutím.",
@@ -5840,7 +5856,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         <button
                                             type="button"
                                             onClick={() => handleCreateClientFromLead(activeLead)}
-                                            className="w-full px-5 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-ui font-bold shadow-md hover:shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                                            className="w-full px-4 py-2.5 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-semibold shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
                                         >
                                             <UserPlus className="h-4 w-4" />
                                             {t(
@@ -5884,11 +5900,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         ) : null}
 
                         {/* 2. Lead Details Panel (On Bottom) */}
-                        <div className="glass-panel p-6 rounded-[28px] border-2 border-blue-400 bg-white shadow-xl space-y-6 overflow-hidden relative">
+                        <div className="p-6 rounded-lg border border-gray-200 border-t-2 border-t-entity-solid bg-white shadow-xs space-y-6 overflow-hidden relative">
                             {/* Block header — same shape as every other block header */}
-                            <div className="border-b-2 border-slate-100 pb-2 flex items-center justify-between gap-2">
-                                <span className="text-ui font-bold text-blue-700 flex items-center gap-1.5">
-                                    <SlidersHorizontal className="h-4.5 w-4.5 text-blue-600 stroke-[2.5] shrink-0" />{" "}
+                            <div className="border-b border-gray-200 pb-3 flex items-center justify-between gap-2">
+                                <span className="text-ui font-semibold text-entity-text flex items-center gap-1.5">
+                                    <SlidersHorizontal className="h-4 w-4 text-entity-text shrink-0" />{" "}
                                     {getTranslation(
                                         systemLanguage,
                                         "profile.lead_params",
@@ -6631,16 +6647,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 );
                                                 if (referredBy) {
                                                     return (
-                                                        <a
+                                                        <EntityBadge
+                                                            entity="leads"
+                                                            label={`${referredBy.name} (${referredBy.city || "N/A"})`}
                                                             href={`#lead-${referredBy.id}`}
-                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100/50 text-indigo-700 hover:text-indigo-800 type-overline shadow-sm transition-all"
-                                                        >
-                                                            <User className="h-3.5 w-3.5" />
-                                                            {referredBy.name} (
-                                                            {referredBy.city ||
-                                                                "N/A"}
-                                                            )
-                                                        </a>
+                                                            size="md"
+                                                        />
                                                     );
                                                 }
                                                 return (
@@ -6691,12 +6703,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                 {/* Save Changes button */}
                                 {isEditingLead && (
-                                    <div className="pt-4 border-t-2 border-slate-100 flex animate-in fade-in duration-200 justify-end">
+                                    <div className="pt-4 border-t border-gray-200 flex animate-in fade-in duration-200 justify-end">
                                         <button
                                             type="submit"
-                                            className="w-fit px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-ui font-bold shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                                            className="w-fit px-4 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-medium shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                                         >
-                                            <Check className="h-4.5 w-4.5 stroke-[2.5]" />{" "}
+                                            <Check className="h-4 w-4" />{" "}
                                             {getTranslation(
                                                 systemLanguage,
                                                 "leads.detail.save_changes",
@@ -6710,10 +6722,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         {/* Remove Old Duplicate Client Profile Card since it was moved to the top */}
 
                         {/* 3. Pipeline Stage Gate & Tasks Card */}
-                        <div className="glass-panel p-6 rounded-[28px] border-2 border-violet-400 bg-white shadow-xl space-y-4">
-                            <div className="border-b-2 border-slate-100 pb-2 flex items-center justify-between gap-2">
-                                <span className="text-ui font-bold text-violet-700 flex items-center gap-1.5">
-                                    <CheckSquare className="h-4.5 w-4.5 text-violet-600 stroke-[2.5] shrink-0" />
+                        <div
+                            style={entityAccentStyle("tasks")}
+                            className="p-6 rounded-lg border border-gray-200 border-t-2 border-t-entity-solid bg-white shadow-xs space-y-4"
+                        >
+                            <div className="border-b border-gray-200 pb-3 flex items-center justify-between gap-2">
+                                <span className="text-ui font-semibold text-entity-text flex items-center gap-1.5">
+                                    <CheckSquare className="h-4 w-4 text-entity-text shrink-0" />
                                     {systemLanguage === "sk"
                                         ? "FÁZOVÁ BRÁNA A ÚLOHY"
                                         : systemLanguage === "hu"
@@ -6734,7 +6749,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     ).length;
                                     return (
                                         <span className="flex items-center gap-1">
-                                            <span className="px-2 py-0.5 rounded-full text-micro font-bold bg-violet-50 text-violet-700 border border-violet-200">
+                                            <span className="px-2 py-0.5 rounded-md text-micro font-semibold bg-entity-subtle text-entity-text border border-entity-border">
                                                 {leadTasks.length -
                                                     archivedCount}
                                             </span>
@@ -7406,7 +7421,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                     {/* RIGHT PANEL: Timeline History & Quick Logger / Lead Tasks */}
                     <div id="lead-detail-tabs" className="ws-lg:col-span-7 scroll-mt-4">
-                        <div className="glass-panel p-6 rounded-[28px] border-2 border-blue-400 bg-white shadow-xl space-y-6">
+                        <div className="p-6 rounded-lg border border-gray-200 border-t-2 border-t-entity-solid bg-white shadow-xs space-y-6">
                             {/* Tab Navigation Switches */}
                             <Tabs
                               value={activeDetailTab}
@@ -7418,11 +7433,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 clearLabel: t("Default tab — click to unpin", "Predvolená karta — kliknutím zrušíte", "Alapértelmezett lap — kattintson a feloldáshoz"),
                               }}
                               items={[
-                                { key: "timeline", icon: <Clock className="h-4.5 w-4.5 stroke-[2.5]" />, label: <>{" "}
+                                { key: "timeline", icon: <Clock className="h-4 w-4" />, label: <>{" "}
                                     {getTranslation(systemLanguage, "common.history_timeline")}</> },
-                                { key: "tasks", icon: <CheckSquare className="h-4.5 w-4.5 stroke-[2.5]" />, label: <>{" "}
+                                { key: "tasks", icon: <CheckSquare className="h-4 w-4" />, label: <>{" "}
                                     {t("Tasks", "Úlohy", "Feladatok")} ({activeLeadOpenTasksCount})</> },
-                                { key: "documents", icon: <ReceiptText className="h-4.5 w-4.5 stroke-[2.5]" />, label: <>{" "}
+                                { key: "documents", icon: <ReceiptText className="h-4 w-4" />, label: <>{" "}
                                     {t("Business documents", "Obchodné doklady", "Üzleti dokumentumok")}</> },
                               ]}
                             />
@@ -7431,8 +7446,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 <>
                                     {/* Logger form */}
                             <div>
-                                <h3 className="text-ui font-bold text-blue-700 mb-4 flex items-center gap-1.5 border-b-2 border-slate-100 pb-2">
-                                    <PencilLine className="h-4.5 w-4.5 text-blue-600 stroke-[2.5]" />{" "}
+                                <h3 className="text-ui font-semibold text-entity-text mb-4 flex items-center gap-1.5 border-b border-gray-200 pb-2">
+                                    <PencilLine className="h-4 w-4 text-entity-text" />{" "}
                                     {activeDetailTab === "documents"
                                         ? t(
                                               "File a business document",
@@ -7451,13 +7466,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 >
                                     {/* Switcher */}
                                     <div className="space-y-1">
-                                        <label className="type-overline text-slate-400">
+                                        <label className="type-overline text-gray-500">
                                             {getTranslation(
                                                 systemLanguage,
                                                 "logger.event_type",
                                             )}
                                         </label>
-                                        <div className="space-y-1.5 bg-slate-100 p-1.5 rounded-xl border-2 border-slate-200">
+                                        <div className="space-y-1.5 bg-gray-100 p-1 rounded-md border border-gray-200">
                                             {/* Communication events */}
                                             {activeDetailTab === "timeline" && (
                                             <div className="grid grid-cols-5 gap-1.5">
@@ -8007,11 +8022,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             <button
                                                 type="submit"
                                                 disabled={isUploadingDocuments}
-                                                className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-ui font-bold transition-all flex items-center gap-1.5 active:scale-95 shadow-lg w-fit ml-auto border-2 border-blue-700 disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
+                                                className="px-4 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-semibold transition-all flex items-center gap-1.5 shadow-xs w-fit ml-auto cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                                             >
                                                 {isUploadingDocuments ? (
                                                     <>
-                                                        <Loader2 className="h-4.5 w-4.5 stroke-[2.5] animate-spin" />
+                                                        <Loader2 className="h-4 w-4 animate-spin" />
                                                         {t(
                                                             "Uploading...",
                                                             "Nahrávanie...",
@@ -8020,7 +8035,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <Plus className="h-4.5 w-4.5 stroke-[2.5]" />{" "}
+                                                        <Plus className="h-4 w-4" />{" "}
                                                         {getTranslation(
                                                             systemLanguage,
                                                             "logger.btn_log",
@@ -8034,15 +8049,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </div>
 
                             {/* Chronological timeline */}
-                            <div className="border-t-2 border-slate-100 pt-6 space-y-4">
-                                <h3 className="text-ui font-bold text-slate-400 flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
-                                    <Clock className="h-4.5 w-4.5 text-blue-600 animate-pulse stroke-[2.5]" />{" "}
+                            <div className="border-t border-gray-200 pt-6 space-y-4">
+                                <h3 className="text-ui font-semibold text-gray-500 flex items-center gap-1.5 pb-2 border-b border-gray-200">
+                                    <Clock className="h-4 w-4 text-entity-text animate-pulse" />{" "}
                                     {getTranslation(
                                         systemLanguage,
                                         "common.chronological_timeline",
                                     )}
                                     {isLoadingMails && (
-                                        <span className="ml-2 type-overline text-blue-500 animate-pulse">
+                                        <span className="ml-2 type-overline text-entity-text animate-pulse">
                                             {t(
                                                 "Syncing Mail...",
                                                 "Synchronizácia pošty...",
@@ -9043,23 +9058,26 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     const statusLabel = (status: string) => projectStatusLabel(status, t, projectStatuses);
 
                     return (
-                        <div className="glass-panel p-6 rounded-[28px] border-2 border-purple-400 bg-white shadow-xl space-y-4">
-                            <div className="border-b-2 border-slate-100 pb-2 flex items-center justify-between gap-2">
-                                <span className="text-ui font-bold text-purple-700 flex items-center gap-1.5">
-                                    <Briefcase className="h-4.5 w-4.5 text-purple-600 stroke-[2.5] shrink-0" />
+                        <div
+                            style={entityAccentStyle("projects")}
+                            className="p-6 rounded-lg border border-gray-200 border-t-2 border-t-entity-solid bg-white shadow-xs space-y-4"
+                        >
+                            <div className="border-b border-gray-200 pb-3 flex items-center justify-between gap-2">
+                                <span className="text-ui font-semibold text-entity-text flex items-center gap-1.5">
+                                    <Briefcase className="h-4 w-4 text-entity-text shrink-0" />
                                     {t(
                                         "LINKED PROJECTS",
                                         "SPÁROVANÉ PROJEKTY",
                                         "KAPCSOLT PROJEKTEK",
                                     )}
                                 </span>
-                                <span className="px-2 py-0.5 rounded-full text-micro font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                                <span className="px-2 py-0.5 rounded-md text-micro font-semibold bg-entity-subtle text-entity-text border border-entity-border">
                                     {linked.length}
                                 </span>
                             </div>
 
                             {linked.length === 0 ? (
-                                <p className="text-caption font-semibold text-slate-400 italic">
+                                <p className="text-caption font-medium text-gray-500 italic">
                                     {t(
                                         "No project is paired with this lead yet.",
                                         "S týmto leadom zatiaľ nie je spárovaný žiadny projekt.",
@@ -9073,7 +9091,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         return (
                                             <div
                                                 key={p.id}
-                                                className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/60 px-3 py-2.5 hover:border-purple-300 transition-colors"
+                                                className="flex items-center gap-2.5 rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5 hover:border-entity-border transition-colors"
                                             >
                                                 <span
                                                     className="h-2.5 w-2.5 rounded-full shrink-0"
@@ -9102,7 +9120,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         )}
                                                 </div>
                                                 <span
-                                                    className="px-2 py-0.5 rounded-full text-micro font-bold border shrink-0"
+                                                    className="px-2 py-0.5 rounded-md text-micro font-semibold border shrink-0"
                                                     style={projectStatusBadgeStyle(p.status, projectStatuses)}
                                                 >
                                                     {statusLabel(p.status)}
@@ -9113,7 +9131,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         onClick={() =>
                                                             openProject(p.id)
                                                         }
-                                                        className="p-1.5 rounded-lg text-slate-400 hover:text-purple-600 hover:bg-purple-50 transition-colors cursor-pointer shrink-0"
+                                                        className="p-1.5 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-subtle transition-colors cursor-pointer shrink-0"
                                                         title={t(
                                                             "Open project",
                                                             "Otvoriť projekt",
@@ -9128,7 +9146,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     onClick={() =>
                                                         handleUnpairProject(p.id)
                                                     }
-                                                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
+                                                    className="p-1.5 rounded-md text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
                                                     title={t(
                                                         "Unpair project",
                                                         "Zrušiť spárovanie",
@@ -10529,7 +10547,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     setNewLeadOwner(autoAssignActive ? "" : projectManagers[0] || "");
                     setIsModalOpen(true);
                   }}
-                  className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-blue-600 text-white font-bold text-ui hover:bg-blue-700 shadow-md shadow-blue-600/20 cursor-pointer"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-entity-solid text-white font-semibold text-ui hover:bg-entity-solid-hover shadow-2xs cursor-pointer transition-colors"
                 >
                   <Plus className="h-4.5 w-4.5" />
                   <span>{getTranslation(systemLanguage, "leads.btn.add")}</span>
@@ -10571,23 +10589,23 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                           : "leads"
                 }
                 storageKey="ccrm_leads_equation_stats"
-                themeColor="blue"
+                themeColor="teal"
             />
 
             {/* Search, stage, PM and the view controls share the first row while
                 they fit. The row wraps instead of overflowing; time, type, then
                 the other filters join it while they fit, and the rest open below. */}
-            <div className="glass-panel relative z-30 flex w-full min-w-0 flex-col gap-2 ws-sm:gap-2.5 p-2 ws-sm:p-2.5 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
+            <div className="relative z-30 flex w-full min-w-0 flex-col gap-2 ws-sm:gap-2.5 p-2.5 rounded-lg border border-gray-200 bg-white shadow-xs">
                 <div ref={filterRowRef} className="flex flex-wrap items-center gap-2 ws-sm:gap-2.5 min-w-0">
                     <div ref={filterSearchRef} className="flex flex-wrap items-center gap-2 min-w-0 w-full max-w-full basis-full ws-sm:w-auto ws-sm:max-w-xs ws-sm:min-w-48 ws-sm:grow ws-sm:basis-48">
                         <div className="relative min-w-0 flex-1 basis-40">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                             <input
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 placeholder={getTranslation(systemLanguage, "leads.filter.search")}
-                                className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-ui font-semibold text-slate-800 bg-white"
+                                className="w-full h-10 pl-9 pr-3 rounded-md border border-gray-300 shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity-solid text-ui font-medium text-gray-900 bg-white placeholder:text-gray-400"
                             />
                         </div>
                         <div className="flex ws-sm:hidden max-w-full flex-wrap items-center justify-end gap-1.5 shrink-0">
@@ -10713,21 +10731,21 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
             </div>
 
-            <div className="glass-panel p-6 rounded-[28px] border border-blue-100 bg-white/90 shadow-glass space-y-4">
+            <div className="p-5 rounded-lg border border-gray-200 bg-white shadow-xs overflow-clip space-y-4">
 
                 {pipelineLeads.length === 0 && (
                     <div className="flex flex-col items-center justify-center text-center py-16 px-6 gap-3">
-                        <div className="h-14 w-14 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center">
-                            <TableProperties className="h-7 w-7 text-blue-500" />
+                        <div className="h-12 w-12 rounded-lg bg-entity-subtle border border-entity-border flex items-center justify-center">
+                            <TableProperties className="h-6 w-6 text-entity-text" />
                         </div>
-                        <h3 className="text-body font-heading font-bold text-slate-800">
+                        <h3 className="text-body font-heading font-bold text-gray-900">
                             {t(
                                 "No leads yet",
                                 "Zatiaľ žiadne leady",
                                 "Még nincsenek leadek",
                             )}
                         </h3>
-                        <p className="text-ui text-slate-400 max-w-sm">
+                        <p className="text-ui text-gray-500 max-w-sm">
                             {t(
                                 "Create your first lead to start building your pipeline.",
                                 "Vytvorte svoj prvý lead a začnite budovať pipeline.",
@@ -10737,7 +10755,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         <button
                             type="button"
                             onClick={() => setIsModalOpen(true)}
-                            className="mt-1 px-4 py-2 rounded-xl bg-blue-600 text-white text-ui font-bold shadow-sm hover:bg-blue-700 transition-colors"
+                            className="mt-1 px-4 py-2 rounded-md bg-entity-solid text-white text-ui font-semibold shadow-2xs hover:bg-entity-solid-hover transition-colors cursor-pointer"
                         >
                             {t(
                                 "Create your first lead",
@@ -10753,20 +10771,20 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     <div ref={tableWrapRef} className="table-page-wrap scrollbar-thin">
                         <table className="w-full border-collapse text-left block ws-lg:table">
                             <thead className="hidden ws-lg:table-header-group table-page-sticky-head">
-                                <tr className="bg-white text-blue-600 type-overline">
-                                    <th className="sticky bg-white z-10 py-4 px-3 w-12 border-b-2 border-slate-100 text-center">
+                                <tr className="bg-gray-50 text-entity-text type-overline">
+                                    <th className="sticky bg-gray-50 z-10 py-3 px-3 w-12 border-b border-gray-200 text-center">
                                         <button
                                             type="button"
                                             onClick={handleSelectAllVisible}
-                                            className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded-lg hover:bg-slate-100 flex items-center justify-center mx-auto cursor-pointer"
+                                            className="text-gray-400 hover:text-entity-text transition-colors p-1 rounded-md hover:bg-gray-100 flex items-center justify-center mx-auto cursor-pointer"
                                             title={areAllVisibleSelected ? "Deselect all" : "Select all"}
                                         >
                                             {areAllVisibleSelected ? (
-                                                <CheckSquare className="w-4 h-4 text-blue-600" />
+                                                <CheckSquare className="w-4 h-4 text-entity-text" />
                                             ) : isPartiallySelected ? (
-                                                <MinusSquare className="w-4 h-4 text-blue-600" />
+                                                <MinusSquare className="w-4 h-4 text-entity-text" />
                                             ) : (
-                                                <Square className="w-4 h-4 text-slate-300" />
+                                                <Square className="w-4 h-4 text-gray-300" />
                                             )}
                                         </button>
                                     </th>
@@ -11798,24 +11816,24 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     );
                                                 }
                                             }}
-                                            className={`flex flex-col min-w-71.25 max-w-80 flex-1 rounded-[26px] border-2 transition-all duration-300 ${
+                                            className={`flex flex-col min-w-71.25 max-w-80 flex-1 rounded-lg border transition-all duration-200 ${
                                                 isFavoritesGroup
-                                                    ? "bg-rose-50/60"
-                                                    : "bg-slate-50/40"
+                                                    ? "bg-rose-50/40"
+                                                    : "bg-gray-50/70"
                                             } ${
                                                 compactMode
                                                     ? "p-2.5 gap-2"
-                                                    : "p-4 gap-4"
+                                                    : "p-3.5 gap-3"
                                             } ${
                                                 isOver
-                                                    ? "border-dashed border-blue-400 bg-blue-50/15 scale-[0.99] shadow-inner"
+                                                    ? "border-dashed border-entity-solid bg-entity-subtle scale-[0.99]"
                                                     : isFavoritesGroup
-                                                      ? "border-rose-100"
-                                                      : "border-slate-100"
+                                                      ? "border-rose-200"
+                                                      : "border-gray-200"
                                             }`}
                                         >
                                             {/* Column Header */}
-                                            <div className="flex items-center justify-between pb-2 border-b border-slate-100 shrink-0">
+                                            <div className="flex items-center justify-between pb-2 border-b border-gray-200 shrink-0">
                                                 <div className="flex items-center gap-2">
                                                     <span
                                                         className="h-2.5 w-2.5 rounded-full"
@@ -11824,17 +11842,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 stateColor,
                                                         }}
                                                     />
-                                                    <span className="type-overline text-slate-800">
+                                                    <span className="type-overline text-gray-800">
                                                         {isFavoritesGroup
                                                             ? t("Favorites", "Obľúbené", "Kedvencek")
                                                             : group.state}
                                                     </span>
                                                 </div>
                                                 <div className="flex items-center gap-1.5">
-                                                    <span className="px-2 py-0.5 rounded-full text-micro font-bold bg-slate-100 text-slate-500 border border-slate-200 leading-none shrink-0 shadow-sm">
+                                                    <span className="px-2 py-0.5 rounded-full text-micro font-semibold bg-white text-gray-600 border border-gray-200 leading-none shrink-0 shadow-2xs">
                                                         {group.leads.length}
                                                     </span>
-                                                    <span className="text-micro font-extrabold text-indigo-700">
+                                                    <span className="text-micro font-bold text-entity-text tabular-nums">
                                                         {money(totalVal, {
                                                             maximumFractionDigits: 0,
                                                         })}
@@ -11914,7 +11932,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         onClick={() => {
                                                                             window.location.hash = `lead-${lead.id}`;
                                                                         }}
-                                                                        className={`glass-panel rounded-[22px] bg-white border border-slate-100 hover:border-blue-200 shadow-sm hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer relative group flex flex-col ${
+                                                                        className={`rounded-lg bg-white border border-gray-200 hover:border-entity-border shadow-xs hover:shadow-sm transition-all cursor-pointer relative group flex flex-col ${
                                                                             compactMode
                                                                                 ? "p-2 pb-2.5 pt-1 gap-1"
                                                                                 : "p-4 gap-2.5"
@@ -11931,13 +11949,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         e.stopPropagation();
                                                                                         handleToggleSelectLead(lead.id);
                                                                                     }}
-                                                                                    className="text-slate-400 hover:text-blue-600 transition-colors p-0.5 cursor-pointer"
+                                                                                    className="text-gray-400 hover:text-entity-text transition-colors p-0.5 cursor-pointer"
                                                                                     title={selectedLeadIds.has(lead.id) ? "Deselect" : "Select"}
                                                                                 >
                                                                                     {selectedLeadIds.has(lead.id) ? (
-                                                                                        <CheckSquare className="w-3.5 h-3.5 text-blue-600" />
+                                                                                        <CheckSquare className="w-3.5 h-3.5 text-entity-text" />
                                                                                     ) : (
-                                                                                        <Square className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-400" />
+                                                                                        <Square className="w-3.5 h-3.5 text-gray-300 group-hover:text-gray-400" />
                                                                                     )}
                                                                                 </button>
                                                                                 {/* Kanban is the other reading of the same list, so a
@@ -11970,7 +11988,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         e.stopPropagation();
                                                                                         window.location.hash = `lead-${lead.id}`;
                                                                                     }}
-                                                                                    className="p-1 rounded bg-slate-50 hover:bg-blue-50 text-blue-500 border border-slate-200/50 cursor-pointer"
+                                                                                    className="p-1 rounded-md bg-gray-50 hover:bg-entity-subtle text-entity-text border border-gray-200 cursor-pointer"
                                                                                     title={t(
                                                                                         "Edit Lead",
                                                                                         "Upraviť lead",
@@ -11989,7 +12007,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                             lead.name,
                                                                                         );
                                                                                     }}
-                                                                                    className="p-1 rounded bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-slate-200/50"
+                                                                                    className="p-1 rounded-md bg-gray-50 hover:bg-rose-50 text-gray-400 hover:text-rose-600 border border-gray-200"
                                                                                     title={t(
                                                                                         "Delete Lead",
                                                                                         "Odstrániť lead",
@@ -12003,7 +12021,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                                                         {/* Row 2: Lead Name & Dots Rating Stack */}
                                                                         <div className="flex flex-col">
-                                                                            <h4 className="text-ui font-bold text-slate-800 leading-snug group-hover:text-blue-600 transition-colors">
+                                                                            <h4 className="text-ui font-semibold text-gray-900 leading-snug group-hover:text-entity-text transition-colors">
                                                                                 {
                                                                                     lead.name
                                                                                 }
@@ -12410,7 +12428,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             "Ügyfél kiválasztása *",
                                         )}
                                     </label>
-                                    <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+                                    <div className="flex bg-gray-100 p-0.5 rounded-md border border-gray-200">
                                         <button
                                             type="button"
                                             onClick={() => {
@@ -12422,10 +12440,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 setNewLeadEmail("");
                                                 setSelectedExistingClient("");
                                             }}
-                                            className={`px-3 py-1 rounded-lg type-overline transition-all ${
+                                            className={`px-3 py-1 rounded-sm type-overline transition-all ${
                                                 clientMode === "none"
-                                                    ? "bg-white text-blue-600 shadow-sm font-bold"
-                                                    : "text-slate-500 hover:text-slate-800 font-bold"
+                                                    ? "bg-white text-entity-text shadow-2xs font-semibold"
+                                                    : "text-gray-500 hover:text-gray-800 font-semibold"
                                             }`}
                                         >
                                             {t(
@@ -12445,10 +12463,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 setNewLeadEmail("");
                                                 setSelectedExistingClient("");
                                             }}
-                                            className={`px-3 py-1 rounded-lg type-overline transition-all ${
+                                            className={`px-3 py-1 rounded-sm type-overline transition-all ${
                                                 clientMode === "existing"
-                                                    ? "bg-white text-blue-600 shadow-sm font-bold"
-                                                    : "text-slate-500 hover:text-slate-800 font-bold"
+                                                    ? "bg-white text-entity-text shadow-2xs font-semibold"
+                                                    : "text-gray-500 hover:text-gray-800 font-semibold"
                                             }`}
                                         >
                                             {t(
@@ -12468,10 +12486,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 setNewLeadEmail("");
                                                 setSelectedExistingClient("");
                                             }}
-                                            className={`px-3 py-1 rounded-lg type-overline transition-all ${
+                                            className={`px-3 py-1 rounded-sm type-overline transition-all ${
                                                 clientMode === "new"
-                                                    ? "bg-white text-blue-600 shadow-sm font-bold"
-                                                    : "text-slate-500 hover:text-slate-800 font-bold"
+                                                    ? "bg-white text-entity-text shadow-2xs font-semibold"
+                                                    : "text-gray-500 hover:text-gray-800 font-semibold"
                                             }`}
                                         >
                                             {t(
@@ -12823,26 +12841,26 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </div>
 
                             {/* Category interest selection grid */}
-                            <div className="space-y-2 border-t border-slate-100 pt-3">
-                                <label className="type-overline text-slate-500 flex items-center gap-1.5">
-                                    <Tag className="h-4 w-4 text-blue-600" />{" "}
+                            <div className="space-y-2 border-t border-gray-200 pt-3">
+                                <label className="type-overline text-gray-500 flex items-center gap-1.5">
+                                    <Tag className="h-4 w-4 text-entity-text" />{" "}
                                     {t(
                                         "Interested Categories / Services",
                                         "Kategórie záujmu / Služby",
                                         "Érdeklődési kategóriák / Szolgáltatások",
                                     )}
                                 </label>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-blue-50/5 border border-blue-100/30 p-3 rounded-2xl">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-gray-50 border border-gray-200 p-3 rounded-lg">
                                     {leadCategories.map((cat) => {
                                         const isChecked =
                                             newLeadCategories.includes(cat);
                                         return (
                                             <label
                                                 key={cat}
-                                                className={`flex items-center gap-2 px-3 py-1.5 border rounded-xl cursor-pointer type-overline transition-all select-none ${
+                                                className={`flex items-center gap-2 px-3 py-1.5 border rounded-md cursor-pointer type-overline transition-all select-none ${
                                                     isChecked
-                                                        ? "bg-blue-50 border-blue-300 text-blue-700 shadow-sm"
-                                                        : "bg-white border-slate-100 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                                        ? "bg-entity-subtle border-entity-border text-entity-text shadow-2xs"
+                                                        : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-gray-800"
                                                 }`}
                                             >
                                                 <input
@@ -12866,7 +12884,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                             );
                                                         }
                                                     }}
-                                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 shrink-0"
+                                                    className="rounded border-gray-300 text-entity-text focus:ring-entity-ring h-3.5 w-3.5 shrink-0"
                                                 />
                                                 <span className="truncate">
                                                     {cat}
@@ -12880,9 +12898,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             {/* What the client actually wants — free text, so the person who
                   takes the call can record the problem instead of squeezing it
                   into the fixed category checkboxes. */}
-                            <div className="space-y-1 border-t border-slate-100 pt-3">
-                                <label className="type-overline text-slate-500 flex items-center gap-1.5">
-                                    <PencilLine className="h-3.5 w-3.5 text-blue-500" />{" "}
+                            <div className="space-y-1 border-t border-gray-200 pt-3">
+                                <label className="type-overline text-gray-500 flex items-center gap-1.5">
+                                    <PencilLine className="h-3.5 w-3.5 text-entity-text" />{" "}
                                     {t(
                                         "Client's Interest / Problem to Solve",
                                         "Záujem klienta / Problém na riešenie",
@@ -12900,7 +12918,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         "Čo klient potrebuje? Aký problém mu riešime?",
                                         "Mire van szüksége az ügyfélnek? Milyen problémát oldunk meg neki?",
                                     )}
-                                    className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-ui text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500 resize-none"
+                                    className="w-full px-3.5 py-2.5 rounded-md bg-white border border-gray-300 text-ui text-gray-900 focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring resize-none"
                                 />
                             </div>
 
@@ -12942,17 +12960,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 </div>
                             </div>
 
-                            <div className="pt-4 border-t border-slate-100 flex justify-end gap-3.5">
+                            <div className="pt-4 border-t border-gray-200 flex justify-end gap-3">
                                 <button
                                     type="button"
                                     onClick={closeLeadModal}
-                                    className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-800 text-ui font-bold transition-all"
+                                    className="px-4 py-2 rounded-md border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 text-ui font-medium transition-all cursor-pointer"
                                 >
                                     {t("Cancel", "Zrušiť", "Mégse")}
                                 </button>
                                 <button
                                     type="submit"
-                                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-ui font-extrabold shadow-lg shadow-blue-600/25 transition-all flex items-center gap-1.5"
+                                    className="px-4 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-semibold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
                                 >
                                     <Plus className="h-3.5 w-3.5" />{" "}
                                     {t(

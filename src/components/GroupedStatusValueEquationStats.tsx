@@ -764,7 +764,7 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
                       "Filtrovať podľa názvu, klienta, manažéra, divízie...",
                       "Szűrés név, ügyfél, felelős, divízió szerint..."
                     )}
-                    className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-semibold focus:outline-hidden focus:bg-white focus:border-indigo-500 transition-colors"
+                    className="w-full pl-9 pr-8 py-2 bg-white border border-gray-300 rounded-md text-ui font-medium focus:outline-hidden focus:border-entity-solid focus:ring-2 focus:ring-entity-ring transition-colors"
                   />
                   {drawerSearch && (
                     <button

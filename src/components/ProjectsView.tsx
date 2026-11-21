@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { SectionIcon } from "./icons/SectionIcon";
+import { EntityBadge } from "./tremor/EntityBadge";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { createPortal } from "react-dom";
@@ -83,9 +84,9 @@ const STAT_CHIP_TONES = {
     count: "text-sky-600",
   },
   purple: {
-    idle: "border-slate-200 text-slate-500 hover:border-purple-200 hover:text-purple-600",
-    active: "bg-purple-600 border-purple-600 text-white",
-    count: "text-purple-600",
+    idle: "border-gray-200 text-gray-600 hover:border-entity-border hover:text-entity-text",
+    active: "bg-entity-solid border-entity-solid text-white",
+    count: "text-entity-text",
   },
   emerald: {
     idle: "border-slate-200 text-slate-500 hover:border-emerald-200 hover:text-emerald-600",
@@ -1478,7 +1479,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               systemLanguage={userLanguage as any}
             />
             <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: pType.color }} />
-            <span className="font-heading font-bold text-ui text-slate-800 group-hover:text-indigo-600 transition-colors truncate">
+            <span className="font-heading font-semibold text-ui text-gray-900 group-hover:text-entity-text transition-colors truncate">
               {title}
             </span>
           </div>
@@ -1595,20 +1596,20 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     <div className="relative select-none" ref={createDropdownRef}>
       <button
         onClick={() => setIsCreateDropdownOpen(!isCreateDropdownOpen)}
-        className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-purple-600 text-white font-bold text-ui hover:bg-purple-700 shadow-md shadow-purple-600/20 cursor-pointer"
+        className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white font-semibold text-ui shadow-xs transition-colors cursor-pointer"
       >
-        <Plus className="h-4.5 w-4.5" />
+        <Plus className="h-4 w-4" />
         <span>{t("New Project", "Nový projekt", "Új projekt")}</span>
-        <ChevronDown className="h-4 w-4 shrink-0 ml-1" />
+        <ChevronDown className="h-4 w-4 shrink-0 ml-0.5" />
       </button>
 
       {isCreateDropdownOpen && (
-        <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 z-[950] animate-in slide-in-from-top-2 duration-250">
-          <span className="block px-4 py-1.5 type-overline text-slate-400 border-b border-slate-100 pb-2 mb-1.5 text-left">
+        <div className="absolute right-0 mt-2 w-56 rounded-lg bg-white border border-gray-200 shadow-lg py-1.5 z-[950] animate-in slide-in-from-top-2 duration-200">
+          <span className="block px-3.5 py-1.5 type-overline text-gray-400 border-b border-gray-100 pb-2 mb-1 text-left">
             {t("Select Project Type", "Vyberte typ projektu", "Válasszon projekt típust")}
           </span>
           {projectTypes.length === 0 ? (
-            <span className="block px-4 py-2 text-ui text-slate-400 italic text-left">
+            <span className="block px-3.5 py-2 text-ui text-gray-400 italic text-left">
               {t("No types configured yet.", "Zatiaľ nie sú nastavené typy.", "Még nincsenek típusok.")}
             </span>
           ) : (
@@ -1616,7 +1617,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               <button
                 key={type.id}
                 onClick={() => handleStartCreateProject(type)}
-                className="w-full text-left px-4 py-2 text-ui font-semibold text-slate-700 hover:bg-purple-50 hover:text-purple-600 transition-colors flex items-center gap-2 cursor-pointer"
+                className="w-full text-left px-3.5 py-2 text-ui font-medium text-gray-700 hover:bg-entity-subtle hover:text-entity-text transition-colors flex items-center gap-2 cursor-pointer"
               >
                 <span className="h-2 w-2 rounded-full" style={{ backgroundColor: type.color }} />
                 <span>{type.name}</span>
@@ -1628,7 +1629,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               another type without hunting through the settings tab. */}
           <button
             onClick={handleStartCreateProjectType}
-            className="w-full text-left px-4 py-2 mt-1.5 border-t border-slate-100 pt-2.5 text-ui font-bold text-purple-600 hover:bg-purple-50 transition-colors flex items-center gap-2 cursor-pointer"
+            className="w-full text-left px-3.5 py-2 mt-1 border-t border-gray-100 pt-2 text-ui font-semibold text-entity-text hover:bg-entity-subtle transition-colors flex items-center gap-2 cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5 shrink-0" />
             <span>{t("New project type", "Nový typ projektu", "Új projekt típus")}</span>
@@ -1728,7 +1729,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             {activeSubTab === "settings" ? (
               <button
                 onClick={() => setActiveSubTab("list")}
-                className="flex items-center gap-1.5 pl-3 pr-4 py-2.5 rounded-2xl border border-slate-200 bg-white text-slate-600 font-heading font-bold text-ui hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer"
+                className="flex items-center gap-1.5 pl-3 pr-4 py-2 rounded-md border border-gray-300 bg-white text-gray-700 font-heading font-semibold text-ui hover:bg-gray-50 hover:text-gray-900 shadow-2xs transition-all cursor-pointer"
               >
                 <ChevronLeft className="h-4 w-4 shrink-0" />
                 <span>{t("Back to projects", "Späť na projekty", "Vissza a projektekhez")}</span>
@@ -1740,7 +1741,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   <button
                     onClick={() => setActiveSubTab("settings")}
                     title={t("Project settings", "Nastavenia projektov", "Projekt beállítások")}
-                    className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-slate-400 font-heading font-bold text-ui hover:bg-slate-100 hover:text-slate-700 transition-all cursor-pointer"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-md border border-gray-200 bg-white text-gray-600 font-heading font-semibold text-ui hover:bg-gray-50 hover:text-gray-900 shadow-2xs transition-all cursor-pointer"
                   >
                     <Settings className="h-4 w-4 shrink-0" />
                     <span className="hidden ws-sm:inline">{t("Settings", "Nastavenia", "Beállítások")}</span>
@@ -1844,10 +1845,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           "Kattintson az összes állapot megjelenítéséhez (beleértve a lezártakat is).",
                         )
                   }
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border shadow-sm transition-all cursor-pointer active:scale-[0.98] shrink-0 ${
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md border shadow-2xs transition-all cursor-pointer shrink-0 ${
                     isAllVisible
                       ? STAT_CHIP_TONES.slate.active
-                      : "bg-white/95 border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700"
+                      : "bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-800"
                   }`}
                 >
                   <span
@@ -1892,10 +1893,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           "Rejtett — kattintson a megjelenítéshez (Alt+Kattintás csak ennek)",
                         )
                   }
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border shadow-sm transition-all cursor-pointer active:scale-[0.98] shrink-0 ${
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md border shadow-2xs transition-all cursor-pointer shrink-0 ${
                     active
                       ? ""
-                      : "bg-slate-100/60 border-slate-200 text-slate-400 opacity-60 hover:opacity-100 hover:border-slate-300 hover:text-slate-600 hover:bg-white/95"
+                      : "bg-gray-50 border-gray-200 text-gray-500 opacity-70 hover:opacity-100 hover:border-gray-300 hover:text-gray-700 hover:bg-white"
                   }`}
                   style={active ? { backgroundColor: color, borderColor: color, color: readableOn(color) } : undefined}
                 >
@@ -1929,8 +1930,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 "Projekty po termíne",
                 "Határidőn túli projektek",
               )}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border shadow-sm transition-all cursor-pointer active:scale-[0.98] shrink-0 ${
-                overdueOnly ? STAT_CHIP_TONES.rose.active : `bg-white/95 ${STAT_CHIP_TONES.rose.idle}`
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md border shadow-2xs transition-all cursor-pointer shrink-0 ${
+                overdueOnly ? STAT_CHIP_TONES.rose.active : `bg-white ${STAT_CHIP_TONES.rose.idle}`
               }`}
             >
               <Flag className={`h-3.5 w-3.5 shrink-0 ${overdueOnly ? "text-white" : "text-rose-500"}`} />
@@ -1942,7 +1943,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               </span>
               {unexplainedIds.size > 0 && (
                 <span
-                  className={`px-1.5 py-0.5 rounded-full text-micro font-bold tabular-nums ${
+                  className={`px-1.5 py-0.5 rounded-md text-micro font-bold tabular-nums ${
                     overdueOnly ? "bg-white/20 text-white" : "bg-rose-100 text-rose-700"
                   }`}
                   title={t(
@@ -1958,17 +1959,17 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           </div>
 
           {/* One filter bar, one row. On mobile, search and switcher are on top, and dropdown filters are side scrollable. */}
-          <div className="glass-panel relative z-20 flex flex-col ws-sm:flex-row ws-sm:flex-wrap ws-sm:items-center gap-2 ws-sm:gap-2.5 p-2 ws-sm:p-2.5 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
+          <div className="relative z-20 flex flex-col ws-sm:flex-row ws-sm:flex-wrap ws-sm:items-center gap-2 ws-sm:gap-2.5 p-2 ws-sm:p-2.5 rounded-lg border border-gray-200 bg-white shadow-xs">
             {/* Search + Action Menus Row on Mobile / Inline on Desktop */}
             <div className="flex items-center gap-2 w-full ws-sm:w-auto ws-sm:flex-1 ws-sm:max-w-xs">
               {/* Search */}
               <div className="relative flex-1 min-w-0">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder={t("Search projects...", "Vyhľadať projekty...", "Projekt keresése...")}
-                  className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-ui font-semibold text-slate-800 bg-white"
+                  className="w-full h-10 pl-9 pr-3 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity-solid text-ui font-medium text-gray-900 bg-white"
                 />
               </div>
 
@@ -1990,14 +1991,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     ? (settingsAccess.edit
                       ? t(`Columns of the "${layoutType.name}" type — the same for everyone.`, `Stĺpce typu „${layoutType.name}“ — rovnaké pre všetkých.`, `A(z) „${layoutType.name}” típus oszlopai — mindenkinek ugyanazok.`)
                       : t(`Columns of the "${layoutType.name}" type. Only someone who can edit project types can change them.`, `Stĺpce typu „${layoutType.name}“. Zmeniť ich môže len ten, kto smie upravovať typy projektov.`, `A(z) „${layoutType.name}” típus oszlopai. Csak projekt típusokat szerkeszteni jogosult felhasználó módosíthatja őket.`))
-                    : t("All types: built-in columns only. Filter the list by one type to show its own attributes as columns.", "Všetky typy: len vstavané stĺpce. Vyfiltrujte zoznam podľa typu a zobrazíte aj jeho atribúty.", "Minden típus: csak beépített oszlopok. Szűrjön egy típusra, hogy az attribútumai is oszlopként megjelenjenek.")}
+                    : t("All types: built-in columns only. Filter the list by one type to show its own attributes as columns.", "Všetky typy: len vstavané stĺpce. Vyfiltrujte zoznam podľa typu a zobrazíte aj jeho atribúty.", "Minden típus: csak beépített oszlopok. Szűrjön egy típusra, hogy az attribútumai is oszlopként megjelenek.")}
                   onReset={() => {
                     setSort({ key: "default", direction: "asc" });
                     if (canEditColumns) saveColumns(null);
                   }}
                 />
 
-                <div className="flex items-center gap-0.5 p-1 rounded-xl bg-slate-100 border border-slate-200 select-none shrink-0">
+                <div className="flex items-center gap-0.5 p-1 rounded-md bg-gray-100 border border-gray-200 select-none shrink-0">
                   {([
                     { mode: "structure" as const, Icon: ListTree, label: t("Structure view", "Zobrazenie štruktúry", "Struktúra nézet") },
                     { mode: "list" as const, Icon: Rows3, label: t("List view", "Zobrazenie zoznamu", "Lista nézet") },
@@ -2010,10 +2011,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       title={label}
                       aria-label={label}
                       aria-pressed={viewMode === mode}
-                      className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                      className={`p-1.5 rounded-sm transition-all cursor-pointer ${
                         viewMode === mode
-                          ? "bg-white text-indigo-600 shadow-sm"
-                          : "text-slate-400 hover:text-slate-600"
+                          ? "bg-white text-entity-text shadow-2xs ring-1 ring-entity-border"
+                          : "text-gray-400 hover:text-gray-600"
                       }`}
                     >
                       <Icon className="h-4 w-4" />
@@ -2143,7 +2144,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               />
 
               {/* Structure, table or cards. */}
-              <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200 select-none shrink-0">
+              <div className="flex items-center gap-1 p-1 rounded-md bg-gray-100 border border-gray-200 select-none shrink-0">
                 {([
                   { mode: "structure" as const, Icon: ListTree, label: t("Structure view", "Zobrazenie štruktúry", "Struktúra nézet") },
                   { mode: "list" as const, Icon: Rows3, label: t("List view", "Zobrazenie zoznamu", "Lista nézet") },
@@ -2156,10 +2157,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     title={label}
                     aria-label={label}
                     aria-pressed={viewMode === mode}
-                    className={`p-2 rounded-lg transition-all cursor-pointer ${
+                    className={`p-1.5 rounded-sm transition-all cursor-pointer ${
                       viewMode === mode
-                        ? "bg-white text-indigo-600 shadow-sm"
-                        : "text-slate-400 hover:text-slate-600"
+                        ? "bg-white text-entity-text shadow-2xs ring-1 ring-entity-border"
+                        : "text-gray-400 hover:text-gray-600"
                     }`}
                   >
                     <Icon className="h-4.5 w-4.5" />
@@ -2174,7 +2175,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               progress, so a project cannot say one thing in one view and
               something else in the other. */}
           {filteredProjects.length === 0 ? (
-            <div className="glass-panel p-12 rounded-3xl border border-white/60 bg-white/95 text-center text-slate-400 shadow-glass mt-6">
+            <div className="p-12 rounded-lg border border-gray-200 bg-white text-center text-gray-400 shadow-xs mt-6">
               {projectTypes.length === 0 ? (
                 <>
                   <p className="text-body font-semibold">
@@ -2188,9 +2189,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     <button
                       type="button"
                       onClick={handleStartCreateProjectType}
-                      className="inline-flex items-center gap-1.5 mt-4 px-5 py-2.5 rounded-2xl bg-purple-600 text-white font-bold text-ui hover:bg-purple-700 shadow-md shadow-purple-600/20 cursor-pointer"
+                      className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white font-semibold text-ui shadow-xs cursor-pointer"
                     >
-                      <Plus className="h-4.5 w-4.5" />
+                      <Plus className="h-4 w-4" />
                       <span>{t("New project type", "Nový typ projektu", "Új projekt típus")}</span>
                     </button>
                   )}
@@ -2200,7 +2201,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               )}
             </div>
           ) : viewMode === "list" || isStructure ? (
-            <div ref={resultsRef} className="glass-panel overflow-clip rounded-3xl border border-white/60 bg-white/95 shadow-glass mt-6">
+            <div ref={resultsRef} className="overflow-clip rounded-lg border border-gray-200 bg-white shadow-xs mt-6">
               <div ref={tableWrapRef} className="table-page-wrap scrollbar-thin">
                 <table className="w-full text-left border-collapse min-w-0 ws-lg:min-w-210">
                   {/* The head is drawn from the layout the project type set —
@@ -2208,20 +2209,20 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       column is, and whether it is here at all, is decided in one
                       place. See utils/projectColumns.ts. */}
                   <thead className="hidden ws-lg:table-header-group table-page-sticky-head">
-                    <tr className="border-b border-slate-200 bg-slate-50">
-                      <th className="sticky left-0 z-20 bg-slate-50 px-3 py-3 w-10 text-center border-b border-slate-200">
+                    <tr className="border-b border-gray-200 bg-gray-50">
+                      <th className="sticky left-0 z-20 bg-gray-50 px-3 py-3 w-10 text-center border-b border-gray-200">
                         <button
                           type="button"
                           onClick={handleSelectAllVisible}
-                          className="p-1 text-slate-400 hover:text-indigo-600 rounded transition-colors cursor-pointer inline-flex items-center justify-center"
+                          className="p-1 text-gray-400 hover:text-entity-text rounded transition-colors cursor-pointer inline-flex items-center justify-center"
                           title={areAllVisibleSelected ? t("Deselect all", "Zrušiť výber", "Kijelölés törlése") : t("Select all", "Vybrať všetko", "Összes kijelölése")}
                         >
                           {areAllVisibleSelected ? (
-                            <CheckSquare className="h-4 w-4 text-indigo-600" />
+                            <CheckSquare className="h-4 w-4 text-entity-text" />
                           ) : isPartiallySelected ? (
-                            <MinusSquare className="h-4 w-4 text-indigo-600" />
+                            <MinusSquare className="h-4 w-4 text-entity-text" />
                           ) : (
-                            <Square className="h-4 w-4 text-slate-400" />
+                            <Square className="h-4 w-4 text-gray-400" />
                           )}
                         </button>
                       </th>
@@ -2235,7 +2236,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           return (
                             <th
                               key={col.key}
-                              className="bg-slate-50 px-4 py-3 type-overline text-slate-400 whitespace-nowrap border-b border-slate-200"
+                              className="bg-gray-50 px-4 py-3 type-overline text-gray-500 whitespace-nowrap border-b border-gray-200"
                             >
                               {columnLabel(col)}
                             </th>
@@ -2245,13 +2246,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           <th
                             key={col.key}
                             aria-sort={active ? (effectiveSort.direction === "asc" ? "ascending" : "descending") : "none"}
-                            className="bg-slate-50 px-4 py-3 type-overline text-slate-400 whitespace-nowrap border-b border-slate-200"
+                            className="bg-gray-50 px-4 py-3 type-overline text-gray-500 whitespace-nowrap border-b border-gray-200"
                           >
                             <button
                               type="button"
                               onClick={() => setSort(nextProjectSort(effectiveSort, key))}
-                              className={`group/sort inline-flex items-center gap-1 uppercase tracking-widest font-bold cursor-pointer transition-colors duration-150 ${
-                                active ? "text-indigo-600" : "hover:text-slate-700"
+                              className={`group/sort inline-flex items-center gap-1 uppercase tracking-widest font-semibold cursor-pointer transition-colors duration-150 ${
+                                active ? "text-entity-text" : "hover:text-gray-800"
                               }`}
                             >
                               {columnLabel(col)}
@@ -2264,7 +2265,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           </th>
                         );
                       })}
-                      <th className="sticky right-0 bg-slate-50 z-30 px-4 py-3 w-28 text-right shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-b border-slate-200" />
+                      <th className="sticky right-0 bg-gray-50 z-30 px-4 py-3 w-28 text-right shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-b border-gray-200" />
                     </tr>
                   </thead>
                   <tbody>
@@ -2286,14 +2287,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           data-project-row={p.id}
                           {...projectDrag.rowProps(p.id)}
                           onClick={() => handleOpenProject(p, pType)}
-                          className={`border-b border-slate-200/70 ws-lg:border-slate-100 last:border-0 hover:bg-indigo-50/40 transition-[background-color,opacity] duration-150 cursor-pointer group block ws-lg:table-row ${
-                            isSelected ? "bg-indigo-50/70" : ""
+                          className={`border-b border-gray-200 last:border-0 hover:bg-entity-subtle/40 transition-[background-color,opacity] duration-150 cursor-pointer group block ws-lg:table-row ${
+                            isSelected ? "bg-entity-subtle/70" : ""
                           } ${
                             projectDrag.draggedId === p.id ? "opacity-40" : ""
                           } ${
                             // A table row cannot hold a positioned marker, so the drop line is an inset edge on its cells.
-                            drop === "before" ? "[&>td]:shadow-[inset_0_2px_0_0_var(--color-indigo-500)]"
-                              : drop === "after" ? "[&>td]:shadow-[inset_0_-2px_0_0_var(--color-indigo-500)]" : ""
+                            drop === "before" ? "[&>td]:shadow-[inset_0_2px_0_0_var(--entity-accent)]"
+                              : drop === "after" ? "[&>td]:shadow-[inset_0_-2px_0_0_var(--entity-accent)]" : ""
                           }`}
                         >
                           {/* ============================================================ */}
@@ -2308,13 +2309,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           >
                             <button
                               type="button"
-                              className="p-1 text-slate-400 hover:text-indigo-600 rounded transition-colors cursor-pointer inline-flex items-center justify-center"
+                              className="p-1 text-gray-400 hover:text-entity-text rounded transition-colors cursor-pointer inline-flex items-center justify-center"
                               title={isSelected ? t("Deselect", "Odznačiť", "Kijelölés megszüntetése") : t("Select", "Označiť", "Kijelölés")}
                             >
                               {isSelected ? (
-                                <CheckSquare className="h-4 w-4 text-indigo-600" />
+                                <CheckSquare className="h-4 w-4 text-entity-text" />
                               ) : (
-                                <Square className="h-4 w-4 text-slate-300 group-hover:text-slate-400" />
+                                <Square className="h-4 w-4 text-gray-300 group-hover:text-gray-400" />
                               )}
                             </button>
                           </td>
@@ -2330,7 +2331,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                   <Move
                                     aria-hidden
                                     data-structure-handle
-                                    className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-indigo-500 transition-colors duration-150 cursor-grab active:cursor-grabbing"
+                                    className="h-3.5 w-3.5 shrink-0 text-gray-300 group-hover:text-entity-text transition-colors duration-150 cursor-grab active:cursor-grabbing"
                                   />
                                   <div className="min-w-0 flex-1">{renderColumnCell(col, { project: p, pType, lead, title, progress, dl })}</div>
                                 </div>
@@ -2339,7 +2340,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                   {colIndex === 0 && canDragProjects && (
                                     <GripVertical
                                       aria-hidden
-                                      className="absolute left-0.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-grab"
+                                      className="absolute left-0.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-grab"
                                     />
                                   )}
                                   {renderColumnCell(col, { project: p, pType, lead, title, progress, dl })}
@@ -2348,10 +2349,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                             </td>
                           ))}
                           <td
-                            className={`hidden ws-lg:table-cell px-4 py-3 sticky right-0 z-10 w-28 transition-colors shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-slate-100/80 ${
+                            className={`hidden ws-lg:table-cell px-4 py-3 sticky right-0 z-10 w-28 transition-colors shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-gray-200 ${
                               isSelected
-                                ? "bg-indigo-50/95 group-hover:bg-indigo-50"
-                                : "bg-white/95 group-hover:bg-[#f5f7ff] backdrop-blur-xs"
+                                ? "bg-entity-subtle group-hover:bg-entity-subtle"
+                                : "bg-white group-hover:bg-gray-50"
                             }`}
                           >
                             <div className="flex items-center gap-1 justify-end">
@@ -2361,7 +2362,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                   e.stopPropagation();
                                   handleOpenQuickEdit(p);
                                 }}
-                                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all cursor-pointer"
+                                className="p-1.5 text-gray-400 hover:text-entity-text hover:bg-entity-subtle rounded-md transition-all cursor-pointer"
                                 title={t("Quick edit", "Rýchla úprava", "Gyors szerkesztés")}
                               >
                                 <PanelRightOpen className="h-4 w-4" />
@@ -2428,16 +2429,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                       e.stopPropagation();
                                       handleToggleSelectProject(p.id);
                                     }}
-                                    className="p-1 -ml-1 text-slate-400 hover:text-indigo-600 rounded transition-colors cursor-pointer inline-flex items-center justify-center shrink-0"
+                                    className="p-1 -ml-1 text-gray-400 hover:text-entity-text rounded transition-colors cursor-pointer inline-flex items-center justify-center shrink-0"
                                     title={isSelected ? t("Deselect", "Odznačiť", "Kijelölés megszüntetése") : t("Select", "Označiť", "Kijelölés")}
                                   >
                                     {isSelected ? (
-                                      <CheckSquare className="h-4 w-4 text-indigo-600" />
+                                      <CheckSquare className="h-4 w-4 text-entity-text" />
                                     ) : (
-                                      <Square className="h-4 w-4 text-slate-400" />
+                                      <Square className="h-4 w-4 text-gray-400" />
                                     )}
                                   </button>
-                                  <span className="px-2 py-0.5 rounded-full text-micro font-bold border shrink-0" style={projectStatusBadgeStyle(p.status, projectStatuses)}>
+                                  <span className="px-2 py-0.5 rounded-md text-micro font-semibold border shrink-0" style={projectStatusBadgeStyle(p.status, projectStatuses)}>
                                     {projectStatusLabel(p.status, t, projectStatuses)}
                                   </span>
                                   {dl && (
@@ -2456,7 +2457,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                   <button
                                     type="button"
                                     onClick={() => handleOpenQuickEdit(p)}
-                                    className="h-6 w-6 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-slate-200/60 flex items-center justify-center transition-colors cursor-pointer"
+                                    className="h-6 w-6 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-subtle flex items-center justify-center transition-colors cursor-pointer"
                                     title={t("Quick edit", "Rýchla úprava", "Gyors szerkesztés")}
                                   >
                                     <PanelRightOpen className="h-3.5 w-3.5" />
@@ -2464,7 +2465,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                   <button
                                     type="button"
                                     onClick={() => handleOpenProject(p, pType)}
-                                    className="h-6 w-6 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-slate-200/60 flex items-center justify-center transition-colors cursor-pointer"
+                                    className="h-6 w-6 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-subtle flex items-center justify-center transition-colors cursor-pointer"
                                     title={t("Edit project", "Upraviť projekt", "Projekt szerkesztése")}
                                   >
                                     <Edit3 className="h-3.5 w-3.5" />
@@ -2634,7 +2635,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       SUMMABLE_PROJECT_COLUMNS — nothing here changes for a new one. */}
                   {columnTotals.size > 0 && (
                     <tfoot data-projects-totals>
-                      <tr className="block ws-lg:table-row border-t-2 border-slate-200 bg-slate-50/70">
+                      <tr className="block ws-lg:table-row border-t border-gray-200 bg-gray-50">
                         <td className="hidden ws-lg:table-cell px-3 py-3 w-10" />
                         {activeColumns.map((col, colIndex) => {
                           const parts = columnTotals.get(col.key);
@@ -2645,14 +2646,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                               className="hidden ws-lg:table-cell px-4 py-3 align-top"
                             >
                               {colIndex === 0 && (
-                                <span className="type-overline text-slate-500">
+                                <span className="type-overline text-gray-500">
                                   {t("Totals", "Súčty", "Összesen")}
                                 </span>
                               )}
                               {parts && (
                                 <div className="flex flex-col gap-0.5">
                                   {parts.map(part => (
-                                    <span key={part.currency} className="text-ui font-bold text-slate-800 tabular-nums whitespace-nowrap">
+                                    <span key={part.currency} className="text-ui font-bold text-gray-900 tabular-nums whitespace-nowrap">
                                       {formatMoney(part.amount, part.currency, userLanguage)}
                                     </span>
                                   ))}
@@ -2661,17 +2662,17 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                             </td>
                           );
                         })}
-                        <td className="hidden ws-lg:table-cell px-4 py-3 sticky right-0 z-10 w-28 bg-slate-50/95 backdrop-blur-xs shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-slate-200/50" />
+                        <td className="hidden ws-lg:table-cell px-4 py-3 sticky right-0 z-10 w-28 bg-gray-50 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-gray-200" />
 
                         {/* Under ws-lg the rows are cards, so the totals are a card too. */}
                         <td className="block ws-lg:hidden px-3.5 ws-sm:px-4 py-3 space-y-1">
-                          <span className="type-overline text-slate-500">{t("Totals", "Súčty", "Összesen")}</span>
+                          <span className="type-overline text-gray-500">{t("Totals", "Súčty", "Összesen")}</span>
                           {activeColumns.filter(col => columnTotals.has(col.key)).map(col => (
                             <div key={col.key} className="flex items-baseline justify-between gap-3">
-                              <span className="text-ui font-semibold text-slate-500">{columnLabel(col)}</span>
+                              <span className="text-ui font-semibold text-gray-600">{columnLabel(col)}</span>
                               <span className="flex flex-col items-end">
                                 {columnTotals.get(col.key)!.map(part => (
-                                  <span key={part.currency} className="text-ui font-bold text-slate-800 tabular-nums whitespace-nowrap">
+                                  <span key={part.currency} className="text-ui font-bold text-gray-900 tabular-nums whitespace-nowrap">
                                     {formatMoney(part.amount, part.currency, userLanguage)}
                                   </span>
                                 ))}
@@ -2710,10 +2711,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     data-project-card={p.id}
                     {...projectDrag.rowProps(p.id)}
                     onClick={() => handleOpenProject(p, pType)}
-                    className={`glass-panel p-5 rounded-3xl border transition-all duration-300 cursor-pointer flex flex-col text-left group relative ${
+                    className={`p-5 rounded-lg border transition-all duration-200 cursor-pointer flex flex-col text-left group relative ${
                       isSelected
-                        ? "border-indigo-400/80 bg-indigo-50/40 ring-2 ring-indigo-500/30 shadow-md"
-                        : "border-white/60 bg-white/95 shadow-glass hover:shadow-lg"
+                        ? "border-entity-solid bg-entity-subtle/30 ring-2 ring-entity-ring shadow-xs"
+                        : "border-gray-200 bg-white shadow-xs hover:shadow-md"
                     } ${
                       projectDrag.draggedId === p.id ? "opacity-40" : ""
                     }`}
@@ -2727,17 +2728,17 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                             e.stopPropagation();
                             handleToggleSelectProject(p.id);
                           }}
-                          className="p-1 -ml-1 text-slate-400 hover:text-indigo-600 rounded transition-colors cursor-pointer inline-flex items-center justify-center shrink-0"
+                          className="p-1 -ml-1 text-gray-400 hover:text-entity-text rounded transition-colors cursor-pointer inline-flex items-center justify-center shrink-0"
                           title={isSelected ? t("Deselect", "Odznačiť", "Kijelölés megszüntetése") : t("Select", "Označiť", "Kijelölés")}
                         >
                           {isSelected ? (
-                            <CheckSquare className="h-4 w-4 text-indigo-600" />
+                            <CheckSquare className="h-4 w-4 text-entity-text" />
                           ) : (
-                            <Square className="h-4 w-4 text-slate-400 group-hover:text-slate-600" />
+                            <Square className="h-4 w-4 text-gray-400 group-hover:text-gray-600" />
                           )}
                         </button>
                         <div
-                          className="flex items-center gap-2 px-3 py-1 rounded-full text-ui font-bold shadow-sm"
+                          className="flex items-center gap-2 px-2.5 py-1 rounded-md text-ui font-semibold shadow-2xs"
                           style={{ backgroundColor: pType.color, color: readableOn(pType.color) }}
                         >
                           {renderIcon(pType.icon, "h-3.5 w-3.5")}
@@ -2745,7 +2746,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                         </div>
                         {financials.hasValue && (
                           <span
-                            className="font-heading font-bold text-ui text-blue-700 bg-blue-50/90 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/60 px-2 py-0.5 rounded-md border border-blue-200/70 whitespace-nowrap shadow-2xs shrink-0"
+                            className="font-heading font-semibold text-ui bg-entity-subtle text-entity-text px-2 py-0.5 rounded-md border border-entity-border whitespace-nowrap shadow-2xs shrink-0"
                             title={financials.invoiced > 0
                               ? t(
                                   `Remaining to invoice: ${formatMoney(financials.invoicable, financials.currency, userLanguage)} (Total: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}, Invoiced: ${formatMoney(financials.invoiced, financials.currency, userLanguage)})`,
@@ -2761,7 +2762,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           >
                             {formatMoney(financials.invoicable > 0 ? financials.invoicable : financials.totalBudget, financials.currency, userLanguage)}
                             {financials.invoiced > 0 && financials.invoicable > 0 && (
-                              <span className="text-micro font-bold text-blue-500/80 ml-1">
+                              <span className="text-micro font-semibold text-entity-text/80 ml-1">
                                 {t("rem.", "zost.", "fennm.")}
                               </span>
                             )}
@@ -2782,27 +2783,30 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           size="sm"
                           systemLanguage={userLanguage as any}
                         />
-                        <span className="px-2 py-0.5 rounded-full text-micro font-bold border" style={projectStatusBadgeStyle(p.status, projectStatuses)}>
+                        <span className="px-2 py-0.5 rounded-md text-micro font-semibold border" style={projectStatusBadgeStyle(p.status, projectStatuses)}>
                           {projectStatusLabel(p.status, t, projectStatuses)}
                         </span>
                       </div>
                     </div>
 
                     {/* The project's own name, or the client it is paired with. */}
-                    <h4 className="font-heading font-bold text-slate-800 group-hover:text-indigo-600 transition-colors text-title-sm">
+                    <h4 className="font-heading font-semibold text-gray-900 group-hover:text-entity-text transition-colors text-title-sm">
                       {title}
                     </h4>
 
                     {/* The paired client, once the project carries a name of its
                         own and the heading is no longer showing it. */}
                     {lead && lead.name !== title && (
-                      <div className="flex items-center gap-1 text-caption text-slate-400 font-bold mt-1">
-                        <Briefcase className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate">{lead.name}</span>
+                      <div className="mt-1.5">
+                        <EntityBadge
+                          entity="clients"
+                          label={lead.name}
+                          size="sm"
+                        />
                       </div>
                     )}
                     {!lead && (
-                      <span className="block text-caption text-slate-400 font-bold mt-1">
+                      <span className="block text-caption text-gray-400 font-medium mt-1">
                         {t("Unassigned client", "Nepriradený klient", "Nincs hozzárendelve")}
                       </span>
                     )}
@@ -2877,7 +2881,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                         e.stopPropagation();
                         handleOpenQuickEdit(p);
                       }}
-                      className="absolute right-20 top-14 opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer z-10"
+                      className="absolute right-20 top-14 opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-entity-text hover:bg-entity-subtle rounded-md transition-all cursor-pointer z-10"
                       title={t("Quick edit", "Rýchla úprava", "Gyors szerkesztés")}
                     >
                       <PanelRightOpen className="h-4.5 w-4.5" />
@@ -2889,7 +2893,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                         <button
                           type="button"
                           onClick={() => handleArchiveProject(p.id)}
-                          className="absolute right-12 top-14 opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-xl transition-all cursor-pointer z-10 cursor-pointer"
+                          className="absolute right-12 top-14 opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-amber-500 hover:bg-amber-50 rounded-md transition-all cursor-pointer z-10"
                           title={t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása")}
                         >
                           <ArchiveRestore className="h-4.5 w-4.5" />
@@ -2900,7 +2904,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           lang={userLanguage}
                           what={projectTitle(p)}
                           onConfirm={() => handleArchiveProject(p.id)}
-                          className="absolute right-12 top-14 opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-xl transition-all cursor-pointer z-10"
+                          className="absolute right-12 top-14 opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-amber-500 hover:bg-amber-50 rounded-md transition-all cursor-pointer z-10"
                           title={t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
                         >
                           <Archive className="h-4.5 w-4.5" />
@@ -2915,7 +2919,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           lang={userLanguage}
                           what={projectTitle(p)}
                           onConfirm={() => handleDeleteProject(p.id)}
-                          className="absolute right-4 top-14 opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all z-10"
+                          className="absolute right-4 top-14 opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-all z-10"
                           title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
                       >
                         <Trash2 className="h-4.5 w-4.5" />
@@ -2927,14 +2931,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     {canDragProjects && (
                       <GripHorizontal
                         aria-hidden
-                        className="absolute left-1/2 top-1 -translate-x-1/2 h-4 w-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-grab"
+                        className="absolute left-1/2 top-1 -translate-x-1/2 h-4 w-4 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-grab"
                       />
                     )}
 
                     {/* Drop marker in the gap beside the card — cards flow along a row. */}
                     {drop && (
                       <span
-                        className={`pointer-events-none absolute inset-y-4 w-1 rounded-full bg-indigo-500 animate-in fade-in duration-150 ${
+                        className={`pointer-events-none absolute inset-y-4 w-1 rounded-full bg-entity-solid animate-in fade-in duration-150 ${
                           drop === "before" ? "-left-3.5" : "-right-3.5"
                         }`}
                       />

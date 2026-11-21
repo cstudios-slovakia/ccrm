@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { EntityHeader, Tabs } from "./layout";
+import { EntityBadge } from "./tremor/EntityBadge";
+import { entityAccentStyle } from "../utils/entityAccent";
 import * as Icons from "lucide-react";
 import {
   Plus, Trash2, Upload, FileText, ArrowLeft, Mail, Phone,
@@ -1909,17 +1911,17 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     if (!isSidebar) return content;
     const isCollapsed = collapsedSections[key] ?? false;
     return (
-      <div key={key} className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm text-left">
-        <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
+      <div key={key} className="shrink-0 bg-white border border-gray-200 rounded-lg p-5 shadow-xs text-left">
+        <div className="flex items-center justify-between gap-2 pb-3 border-b border-gray-100">
           <button
             type="button"
             onClick={() => toggleSection(key)}
             className="flex items-center gap-2.5 min-w-0 text-left cursor-pointer group"
           >
-            <span className="p-1.5 rounded-xl bg-slate-100 text-slate-600 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+            <span className="p-1.5 rounded-md bg-gray-100 text-gray-600 group-hover:bg-entity-subtle group-hover:text-entity-text transition-colors">
               {icon}
             </span>
-            <h4 className="text-ui font-heading font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+            <h4 className="text-ui font-heading font-semibold text-gray-900 group-hover:text-entity-text transition-colors">
               {title}
             </h4>
             {badge}
@@ -1927,7 +1929,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           <button
             type="button"
             onClick={() => toggleSection(key)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+            className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
             title={isCollapsed ? t("Expand", "Rozbaliť", "Kibontás") : t("Collapse", "Zbaliť", "Összecsukás")}
           >
             {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
@@ -1939,7 +1941,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   const mainView = (
-    <div className={isSidebar ? "relative w-full max-w-2xl ws-lg:max-w-3xl bg-slate-100 flex flex-col h-full shadow-2xl border-l border-slate-200 transition-transform duration-200 ease-out transform " + (isClosing ? "translate-x-full" : "translate-x-0") : "w-full flex flex-col h-auto ws-lg:h-[calc(100vh-11rem)] animate-fade-in text-left"}>
+    <div className={isSidebar ? "relative w-full max-w-2xl ws-lg:max-w-3xl bg-gray-50 flex flex-col h-full shadow-2xl border-l border-gray-200 transition-transform duration-200 ease-out transform " + (isClosing ? "translate-x-full" : "translate-x-0") : "w-full flex flex-col h-auto ws-lg:h-[calc(100vh-11rem)] animate-fade-in text-left"}>
 
       {/* Entity header / Sidebar header */}
       {isSidebar ? (
@@ -1970,7 +1972,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 autoFocus
                 maxLength={200}
                 placeholder={t("e.g. Roof replacement, Kosice", "napr. Výmena strechy, Košice", "pl. Tetőcsere, Kassa")}
-                className="select-text min-w-0 flex-1 max-w-xl px-2 py-0.5 -my-1 rounded-xl border border-indigo-300 bg-white type-entity-title text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                className="select-text min-w-0 flex-1 max-w-xl px-2.5 py-1 -my-1 rounded-md border border-entity-solid bg-white type-entity-title text-gray-900 focus:outline-none focus:ring-2 focus:ring-entity-ring"
               />
             ) : (
               <>
@@ -1985,7 +1987,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => { nameCancelledRef.current = false; setNameDraft(projectName); setIsEditingName(true); }}
-                    className="shrink-0 p-1.5 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all active:scale-95 cursor-pointer"
+                    className="shrink-0 p-1.5 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-subtle transition-all cursor-pointer"
                     title={t("Rename project", "Premenovať projekt", "Projekt átnevezése")}
                   >
                     <Edit3 className="h-5 w-5" />
@@ -2128,9 +2130,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
 
           {/* PROJECT CARD DETAILS */}
-          <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+          <div className="shrink-0 bg-white border border-gray-200 rounded-lg p-5 shadow-xs">
             <div className="flex items-center justify-between gap-2 pb-3">
-              <h4 className="text-ui font-heading font-bold text-slate-900">
+              <h4 className="text-ui font-heading font-semibold text-gray-900">
                 {t("Project Card Details", "Detaily karty projektu", "Projekt részletei")}
               </h4>
             </div>
@@ -2559,9 +2561,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               file list, the money and contact pickers while editable) takes
               the whole row. */}
           {(projectType.attributes || []).length > 0 && (
-          <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-2 pb-3 mb-4 border-b border-slate-200">
-              <h4 className="text-ui font-heading font-bold text-slate-900">
+          <div className="shrink-0 bg-white border border-gray-200 rounded-lg p-5 shadow-xs">
+            <div className="flex items-center justify-between gap-2 pb-3 mb-4 border-b border-gray-200">
+              <h4 className="text-ui font-heading font-semibold text-gray-900">
                 {t("Custom Attributes", "Vlastné atribúty", "Egyedi attribútumok")}
               </h4>
             </div>
@@ -2621,7 +2623,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         type="text"
                         value={val}
                         onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 text-ui font-medium bg-white text-gray-900 focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring"
                       />
                     )}
 
@@ -2631,7 +2633,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         value={val}
                         onChange={e => updateVal(e.target.value)}
                         rows={3}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800 resize-none"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 text-ui font-medium bg-white text-gray-900 focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring resize-none"
                       />
                     )}
 
@@ -2641,7 +2643,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         type="number"
                         value={val}
                         onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 text-ui font-medium bg-white text-gray-900 focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring"
                       />
                     )}
 
@@ -2654,7 +2656,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         type="date"
                         value={val}
                         onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 text-ui font-medium bg-white text-gray-900 focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring"
                       />
                     )}
 
@@ -2664,7 +2666,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         type="time"
                         value={val}
                         onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 text-ui font-medium bg-white text-gray-900 focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring"
                       />
                     )}
 
@@ -2674,7 +2676,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         type="datetime-local"
                         value={val}
                         onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 text-ui font-medium bg-white text-gray-900 focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring"
                       />
                     )}
 
@@ -2798,14 +2800,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                     }
                                   }}
                                   placeholder={t("Add checkbox…", "Pridať políčko…", "Jelölőnégyzet hozzáadása…")}
-                                  className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-slate-200 text-ui font-semibold bg-white text-slate-800"
+                                  className="flex-1 min-w-0 px-2.5 py-1.5 rounded-md border border-gray-300 text-ui font-medium bg-white text-gray-900 focus:outline-none focus:border-entity-solid"
                                 />
                                 <button
                                   type="button"
                                   onClick={addExtra}
                                   disabled={!draft.trim()}
                                   aria-label={t("Add checkbox", "Pridať políčko", "Jelölőnégyzet hozzáadása")}
-                                  className="shrink-0 p-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-95 cursor-pointer"
+                                  className="shrink-0 p-1.5 rounded-md bg-entity-solid text-white hover:bg-entity-solid-hover disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 cursor-pointer"
                                 >
                                   <Plus className="h-3.5 w-3.5" />
                                 </button>
@@ -2928,9 +2930,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               // nobody, and a way in. A read-only role only gets the note.
               if (!canEdit || !pickingClient) {
                 return (
-                  <div className="shrink-0 bg-white border border-dashed border-slate-300 rounded-3xl p-5 shadow-sm text-center">
-                    <Icons.Unlink className="h-5 w-5 text-slate-300 mx-auto mb-2" />
-                    <p className="text-caption font-bold text-slate-500 leading-snug">
+                  <div className="shrink-0 bg-white border border-dashed border-gray-300 rounded-lg p-5 shadow-xs text-center">
+                    <Icons.Unlink className="h-5 w-5 text-gray-300 mx-auto mb-2" />
+                    <p className="text-caption font-semibold text-gray-500 leading-snug">
                       {t(
                         "This project is not paired with any lead or client.",
                         "Tento projekt nie je spárovaný so žiadnym leadom ani klientom.",
@@ -2941,7 +2943,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setPickingClient(true)}
-                        className="mt-2.5 px-3 py-1.5 rounded-xl type-overline text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                        className="mt-2.5 px-3 py-1.5 rounded-md type-overline text-entity-text hover:bg-entity-subtle transition-colors cursor-pointer"
                       >
                         {t("Pair now", "Spárovať", "Párosítať")}
                       </button>
@@ -2950,8 +2952,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 );
               }
               return (
-                <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
-                  <label className="block type-overline text-slate-400 mb-1">{t("Paired Lead / Client", "Spárovaný lead / klient", "Párosított lead / ügyfél")}</label>
+                <div className="shrink-0 bg-white border border-gray-200 rounded-lg p-5 shadow-xs">
+                  <label className="block type-overline text-gray-500 mb-1">{t("Paired Lead / Client", "Spárovaný lead / klient", "Párosított lead / ügyfél")}</label>
                   <ClientSelect
                     leads={leads}
                     value={associatedLeadId}
@@ -2999,71 +3001,77 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             const noneAdded = <span className="text-slate-300 italic">{getTranslation(userLanguage, "profile.none_added")}</span>;
 
             return (
-              <div className="shrink-0 rounded-3xl border-2 border-emerald-400 bg-emerald-50/70 shadow-md p-4 space-y-3 text-emerald-950">
-                <div className="border-b-2 border-emerald-200/50 pb-2 flex items-center justify-between gap-2 flex-wrap">
-                  <span className="type-overline text-emerald-700 flex items-center gap-1.5 min-w-0">
-                    <Icons.Briefcase className="h-4 w-4 text-emerald-600 stroke-[2.5] shrink-0" />
+              <div
+                style={entityAccentStyle("clients")}
+                className="shrink-0 rounded-lg border border-gray-200 border-t-2 border-t-entity-solid bg-white shadow-xs p-4 space-y-3 text-gray-900"
+              >
+                <div className="border-b border-gray-200 pb-2.5 flex items-center justify-between gap-2 flex-wrap">
+                  <span className="type-overline text-entity-text flex items-center gap-1.5 min-w-0">
+                    <Icons.Briefcase className="h-4 w-4 text-entity-text shrink-0" />
                     <span>{getTranslation(userLanguage, "common.client_relationship_card")}</span>
                   </span>
-                  <span className="px-2 py-0.5 rounded-full type-overline bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
-                    {getTranslation(userLanguage, "common.synced_profile")}
-                  </span>
+                  <EntityBadge
+                    entity="clients"
+                    label={getTranslation(userLanguage, "common.synced_profile")}
+                    href={`#client-${encodeURIComponent(pairedLead.name)}`}
+                    size="sm"
+                  />
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-bold text-body shadow shrink-0">
+                  <div className="h-10 w-10 rounded-md bg-entity-solid text-white flex items-center justify-center font-heading font-semibold text-body shadow-2xs shrink-0">
                     {initials}
                   </div>
                   <div className="min-w-0">
-                    <h4 className="text-body font-bold text-slate-800 line-clamp-1">{pairedLead.name}</h4>
-                    <span className="type-overline text-emerald-700">{clientTypeLabel}</span>
+                    <h4 className="text-body font-semibold text-gray-900 line-clamp-1">{pairedLead.name}</h4>
+                    <span className="type-overline text-entity-text">{clientTypeLabel}</span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 text-caption bg-white/70 p-3 rounded-xl border border-emerald-200/50">
+                <div className="grid grid-cols-2 gap-3 text-caption bg-gray-50 p-3 rounded-md border border-gray-200">
                   <div className="space-y-0.5 min-w-0">
-                    <span className="type-overline text-emerald-700/60 block">
+                    <span className="type-overline text-gray-500 block">
                       {getTranslation(userLanguage, "profile.phone_number")}
                     </span>
-                    <span className="font-extrabold text-slate-700 block truncate">
+                    <span className="font-semibold text-gray-800 block truncate">
                       {pairedLead.phone ? (
-                        <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-600 shrink-0" />{pairedLead.phone}</span>
+                        <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-entity-text shrink-0" />{pairedLead.phone}</span>
                       ) : noneAdded}
                     </span>
                     <WhatsAppChip lead={pairedLead} leads={leads} userLanguage={userLanguage} className="mt-1" />
                   </div>
                   <div className="space-y-0.5 min-w-0">
-                    <span className="type-overline text-emerald-700/60 block">
+                    <span className="type-overline text-gray-500 block">
                       {getTranslation(userLanguage, "profile.email_address")}
                     </span>
-                    <span className="font-extrabold text-slate-700 block truncate">
+                    <span className="font-semibold text-gray-800 block truncate">
                       {pairedLead.email ? (
-                        <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-emerald-600 shrink-0" /><span className="truncate">{pairedLead.email}</span></span>
+                        <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-entity-text shrink-0" /><span className="truncate">{pairedLead.email}</span></span>
                       ) : noneAdded}
                     </span>
                   </div>
-                  <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
-                    <span className="type-overline text-emerald-700/60 block">
+                  <div className="space-y-0.5 col-span-2 border-t border-gray-200 pt-2 mt-1">
+                    <span className="type-overline text-gray-500 block">
                       {getTranslation(userLanguage, "profile.location_address")}
                     </span>
-                    <span className="font-extrabold text-slate-700 block">
+                    <span className="font-semibold text-gray-800 block">
                       {addressText ? (
-                        <span className="flex items-center gap-1"><Icons.MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0" /><span className="line-clamp-1">{addressText}</span></span>
+                        <span className="flex items-center gap-1"><Icons.MapPin className="h-3.5 w-3.5 text-entity-text shrink-0" /><span className="line-clamp-1">{addressText}</span></span>
                       ) : noneAdded}
                     </span>
                   </div>
                   {pairedLead.website && (
-                    <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
-                      <span className="type-overline text-emerald-700/60 block">
+                    <div className="space-y-0.5 col-span-2 border-t border-gray-200 pt-2 mt-1">
+                      <span className="type-overline text-gray-500 block">
                         {getTranslation(userLanguage, "profile.website_link")}
                       </span>
                       <a
                         href={`https://${pairedLead.website.replace(/^https?:\/\//, "")}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="font-extrabold text-blue-600 hover:underline flex items-center gap-1"
+                        className="font-semibold text-entity-text hover:underline flex items-center gap-1"
                       >
-                        <Icons.Globe className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                        <Icons.Globe className="h-3.5 w-3.5 text-entity-text shrink-0" />
                         <span className="truncate">{pairedLead.website}</span>
                       </a>
                     </div>
@@ -3076,7 +3084,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setPickingClient(true)}
-                      className="px-2.5 py-1.5 rounded-lg type-overline text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer flex items-center gap-1"
+                      className="px-2.5 py-1.5 rounded-md type-overline text-entity-text hover:bg-entity-subtle transition-colors cursor-pointer flex items-center gap-1"
                       title={t("Pair with a different lead or client", "Spárovať s iným leadom alebo klientom", "Másik leaddel vagy ügyféllel párosítás")}
                     >
                       <Icons.Repeat className="h-3 w-3" />
@@ -3085,7 +3093,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => { setAssociatedLeadId(""); setAssociatedClientId(""); setPickingClient(false); }}
-                      className="px-2.5 py-1.5 rounded-lg type-overline text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex items-center gap-1"
+                      className="px-2.5 py-1.5 rounded-md type-overline text-gray-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex items-center gap-1"
                       title={t("Unpair this project", "Zrušiť spárovanie projektu", "Párosítás megszüntetése")}
                     >
                       <Icons.Unlink className="h-3 w-3" />
@@ -3096,7 +3104,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => { window.location.hash = `client-${encodeURIComponent(pairedLead.name)}`; }}
-                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white type-overline shadow transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-emerald-700 cursor-pointer"
+                    className="px-3.5 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white type-overline shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     {getTranslation(userLanguage, "common.view_full_profile")}
                     <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
@@ -3104,7 +3112,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </div>
 
                 {canEdit && (
-                <p className="text-micro font-semibold text-emerald-800/60 leading-snug">
+                <p className="text-micro font-medium text-gray-500 leading-snug">
                   {t(
                     "This project shows up on the lead's card too.",
                     "Tento projekt sa zobrazí aj na karte leadu.",
@@ -3118,7 +3126,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         </div>
 
         {/* RIGHT COLUMN: Timeline & Gantt Tabs */}
-        <div className={isSidebar ? "space-y-4 text-left" : "ws-lg:col-span-8 flex flex-col h-auto ws-lg:h-full ws-lg:overflow-hidden bg-white border border-slate-200 rounded-3xl p-4 ws-sm:p-5 shadow-sm text-left"}>
+        <div className={isSidebar ? "space-y-4 text-left" : "ws-lg:col-span-8 flex flex-col h-auto ws-lg:h-full ws-lg:overflow-hidden bg-white border border-gray-200 rounded-lg p-4 ws-sm:p-5 shadow-xs text-left"}>
           {/* Tab bar: icon, label, optional badge; scrolls sideways rather than wrapping. */}
           {!isSidebar && (
             <Tabs<RightTab>
@@ -3512,7 +3520,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   <button
                     type="submit"
-                    className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold cursor-pointer mt-4"
+                    className="w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white font-semibold shadow-xs cursor-pointer mt-4"
                   >
                     <Plus className="h-4 w-4" />
                     <span>{t("Add Event", "Pridať udalosť", "Esemény hozzáadása")}</span>
@@ -3524,21 +3532,21 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               {/* Timeline Events List */}
               <div className="flex-1 ws-lg:overflow-y-auto space-y-3.5 ws-lg:pr-1 scrollbar-thin">
                 {timeline.length === 0 ? (
-                  <div className="h-full min-h-50 flex items-center justify-center border-2 border-dashed border-slate-100 rounded-2xl p-6 text-slate-400 text-ui">
+                  <div className="h-full min-h-50 flex items-center justify-center border border-dashed border-gray-200 rounded-lg p-6 text-gray-400 text-ui">
                     {t("No events logged for this project yet.", "Zatiaľ neboli zaznamenané žiadne udalosti.", "Még nincsenek események rögzítve.")}
                   </div>
                 ) : (
                   timeline.map(event => (
-                    <div key={event.id} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm text-ui font-semibold relative group flex gap-3.5 animate-fade-in">
-                      <div className="p-2.5 rounded-xl bg-white border border-slate-200 shrink-0 self-start shadow-sm">
+                    <div key={event.id} className="p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-2xs text-ui font-medium relative group flex gap-3.5 animate-fade-in">
+                      <div className="p-2 rounded-md bg-white border border-gray-200 shrink-0 self-start shadow-2xs">
                         {getTimelineIcon(event.type, event.eventType)}
                       </div>
                       <div className="flex-1 text-left">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <span className="text-slate-800 text-ui font-bold">{event.title}</span>
+                            <span className="text-gray-900 text-ui font-semibold">{event.title}</span>
                             {event.eventType && (
-                              <span className="type-overline text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                              <span className="type-overline text-entity-text bg-entity-subtle border border-entity-border px-2 py-0.5 rounded-md">
                                 {projectType.timelineEventTypes?.find(t => t.id === event.eventType)?.name || event.eventType}
                               </span>
                             )}
@@ -3682,7 +3690,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   <button
                     type="submit"
-                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold cursor-pointer"
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white font-semibold shadow-xs cursor-pointer"
                   >
                     <Plus className="h-4 w-4" />
                     <span>{t("Add Row", "Pridať", "Hozzáadás")}</span>
@@ -3691,7 +3699,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 )}
 
                 {/* THE GANTT CONTAINER: Left Table & Right Timeline Scrollable */}
-                <div className="flex-1 border border-slate-200 rounded-3xl overflow-hidden bg-white shadow-sm flex flex-col relative min-h-87.5">
+                <div className="flex-1 border border-gray-200 rounded-lg overflow-hidden bg-white shadow-xs flex flex-col relative min-h-87.5">
                   
                   {/* Zoom controls floating */}
                   <div className="absolute right-4 top-3.5 z-30 flex items-center gap-1 bg-white/90 backdrop-blur border border-slate-200 p-1.5 rounded-xl shadow-sm">
@@ -3944,23 +3952,23 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           {/* GANTT EDIT MODAL */}
           {selectedGanttEdit && (
             <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
-              <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-glass border border-slate-200/60 text-left space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                  <h4 className="font-heading font-bold text-body text-slate-800">
+              <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg border border-gray-200 text-left space-y-4">
+                <div className="flex items-center justify-between border-b border-gray-200 pb-3">
+                  <h4 className="font-heading font-semibold text-body text-gray-900">
                     {t("Edit Task Details", "Upraviť podrobnosti úlohy", "Feladat részleteinek szerkesztése")}
                   </h4>
                   <button
                     type="button"
                     onClick={() => setSelectedGanttEdit(null)}
-                    className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                    className="p-1 hover:bg-gray-100 rounded-md text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
                   >
                     <Icons.X className="h-4.5 w-4.5" />
                   </button>
                 </div>
 
-                <div className="space-y-3.5 text-ui font-semibold text-slate-700">
+                <div className="space-y-3.5 text-ui font-medium text-gray-700">
                   <div>
-                    <label className="block type-overline text-slate-400 mb-1">{t("Task Title", "Názov úlohy", "Feladat címe")}</label>
+                    <label className="block type-overline text-gray-500 mb-1">{t("Task Title", "Názov úlohy", "Feladat címe")}</label>
                     <input
                       type="text"
                       value={selectedGanttEdit.title}
@@ -3969,12 +3977,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         setSelectedGanttEdit(prev => prev ? { ...prev, title: val } : null);
                         setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, title: val } : r));
                       }}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-bold text-slate-800"
+                      className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white font-semibold text-gray-900 focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring"
                     />
                   </div>
 
                   <div>
-                    <label className="block type-overline text-slate-400 mb-1">{t("Assignee Contact", "Kontakt", "Kapcsolat")}</label>
+                    <label className="block type-overline text-gray-500 mb-1">{t("Assignee Contact", "Kontakt", "Kapcsolat")}</label>
                     <ClientSelect
                       leads={leads}
                       value={selectedGanttEdit.contactId}
@@ -3988,7 +3996,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block type-overline text-slate-400 mb-1">{t("Start Date", "Začiatok", "Kezdet")}</label>
+                      <label className="block type-overline text-gray-500 mb-1">{t("Start Date", "Začiatok", "Kezdet")}</label>
                       <input
                         type="date"
                         value={selectedGanttEdit.startDate || ""}
@@ -3997,12 +4005,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           setSelectedGanttEdit(prev => prev ? { ...prev, startDate: val || undefined } : null);
                           setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, startDate: val || undefined } : r));
                         }}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white"
                       />
                     </div>
 
                     <div>
-                      <label className="block type-overline text-slate-400 mb-1">{t("End Date", "Koniec", "Vége")}</label>
+                      <label className="block type-overline text-gray-500 mb-1">{t("End Date", "Koniec", "Vége")}</label>
                       <input
                         type="date"
                         value={selectedGanttEdit.endDate || ""}
@@ -4011,13 +4019,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           setSelectedGanttEdit(prev => prev ? { ...prev, endDate: val || undefined } : null);
                           setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, endDate: val || undefined } : r));
                         }}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block type-overline text-slate-400 mb-1.5">{t("Progress", "Postup", "Haladás")} ({selectedGanttEdit.progress}%)</label>
+                    <label className="block type-overline text-gray-500 mb-1.5">{t("Progress", "Postup", "Haladás")} ({selectedGanttEdit.progress}%)</label>
                     <div className="flex items-center gap-3">
                       <input
                         type="range"
@@ -4029,7 +4037,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           setSelectedGanttEdit(prev => prev ? { ...prev, progress: val } : null);
                           setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, progress: val } : r));
                         }}
-                        className="flex-1 accent-indigo-600"
+                        className="flex-1 accent-entity-solid"
                       />
                       <div className="flex gap-1">
                         <button
@@ -4038,7 +4046,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             setSelectedGanttEdit(prev => prev ? { ...prev, progress: 0 } : null);
                             setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, progress: 0 } : r));
                           }}
-                          className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-micro cursor-pointer"
+                          className="px-2 py-1 rounded-md bg-gray-100 hover:bg-gray-200 text-micro cursor-pointer"
                         >
                           0%
                         </button>
@@ -4048,7 +4056,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             setSelectedGanttEdit(prev => prev ? { ...prev, progress: 100 } : null);
                             setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, progress: 100 } : r));
                           }}
-                          className="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-micro cursor-pointer"
+                          className="px-2 py-1 rounded-md bg-entity-subtle hover:bg-entity-muted text-entity-text text-micro cursor-pointer"
                         >
                           100%
                         </button>
@@ -4061,7 +4069,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setSelectedGanttEdit(null)}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-ui transition-colors cursor-pointer"
+                    className="px-4 py-2 bg-entity-solid hover:bg-entity-solid-hover text-white font-semibold rounded-md text-ui shadow-xs transition-colors cursor-pointer"
                   >
                     {t("Close", "Zatvoriť", "Bezárás")}
                   </button>
@@ -4138,7 +4146,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 )}
 
                 {canEdit && (
-                  <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                  <div className="flex flex-wrap items-center gap-2 bg-gray-50 p-3 rounded-lg border border-gray-200">
                     <input
                       value={newCustomFileName}
                       onChange={e => setNewCustomFileName(e.target.value)}
@@ -4149,14 +4157,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         }
                       }}
                       placeholder={t("e.g. Building permit", "napr. Stavebné povolenie", "pl. Építési engedély")}
-                      className="flex-1 min-w-[8rem] px-3 py-2 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      className="flex-1 min-w-[8rem] px-3 py-2 rounded-md border border-gray-300 text-ui font-medium bg-white text-gray-900 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity-solid"
                     />
                     <button
                       type="button"
                       onClick={handleAddCustomFileField}
                       disabled={!canAddCustomFile}
-                      title={newCustomFileTaken ? t("A file with this name already exists.", "Súbor s týmto názvom už existuje.", "Ilyen nevű fájl már létezik.") : undefined}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold text-ui hover:bg-indigo-700 transition-all duration-150 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                      title={newCustomFileTaken ? t("A file with this name already exists.", "Súbor s týmto názvom už existuje.", "Ilyen nevű fájl már lézik.") : undefined}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white font-semibold text-ui shadow-xs transition-all duration-150 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
                     >
                       <Plus className="h-4 w-4" />
                       <span>{t("Add custom file", "Pridať vlastný súbor", "Egyedi fájl hozzáadása")}</span>
@@ -4426,15 +4434,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </div>
 
                 {/* 0B. PROJECT BUDGET — the ceiling the direct costs are measured against */}
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="p-4 rounded-lg bg-gray-50 border border-gray-200 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2 min-w-0">
-                      <Wallet className="h-4 w-4 text-indigo-600 shrink-0" />
-                      <span className="text-ui font-bold text-slate-900">
+                      <Wallet className="h-4 w-4 text-entity-text shrink-0" />
+                      <span className="text-ui font-semibold text-gray-900">
                         {t("Project Budget", "Rozpočet projektu", "Projekt költségvetése")}
                       </span>
                       {budgetAnalysis && budgetDraft === null && (
-                        <span className="text-body font-bold text-slate-900">{money(budgetAnalysis.budget)}</span>
+                        <span className="text-body font-semibold text-gray-900">{money(budgetAnalysis.budget)}</span>
                       )}
                     </div>
 
@@ -4442,7 +4450,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setBudgetDraft(budgetAnalysis ? String(budgetAnalysis.budget) : "")}
-                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-ui font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                        className="px-3 py-1.5 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
                       >
                         {budgetAnalysis ? <Edit3 className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
                         {budgetAnalysis
@@ -4461,12 +4469,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           onKeyDown={(e) => { if (e.key === "Escape") setBudgetDraft(null); }}
                           placeholder="0.00"
                           aria-label={t("Project Budget", "Rozpočet projektu", "Projekt költségvetése")}
-                          className="w-28 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-ui font-bold focus:outline-none focus:border-indigo-500 transition-colors"
+                          className="w-28 px-3 py-1.5 rounded-md border border-gray-300 bg-white text-ui font-semibold focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring transition-colors"
                         />
-                        <span className="text-caption font-bold text-slate-500">{currencyCode || defaultCurrency}</span>
+                        <span className="text-caption font-semibold text-gray-500">{currencyCode || defaultCurrency}</span>
                         <button
                           type="submit"
-                          className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-ui font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                          className="px-3 py-1.5 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
                         >
                           <Check className="h-3.5 w-3.5" />
                           {t("Save", "Uložiť", "Mentés")}
@@ -4800,48 +4808,48 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           {/* PROJECT FINANCIAL MODAL */}
           {isFinModalOpen && (
             <div className="fixed inset-0 z-[100005] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="bg-white rounded-lg border border-gray-200 shadow-lg max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+                <div className="flex items-center justify-between border-b border-gray-200 pb-3">
                   <div className="flex items-center gap-2">
                     {finFormType === "income" ? <TrendingUp className="h-5 w-5 text-emerald-600" /> : <TrendingDown className="h-5 w-5 text-rose-600" />}
-                    <h3 className="text-body font-bold text-slate-900">
+                    <h3 className="text-body font-semibold text-gray-900">
                       {finEditingRecord
                         ? (finFormType === "income" ? t("Edit Project Invoice", "Upraviť faktúru projektu", "Számla szerkesztése") : t("Edit Project Expense", "Upraviť výdavok projektu", "Kiadás szerkesztése"))
                         : (finFormType === "income" ? t("Issue Project Invoice", "Vystaviť faktúru pre projekt", "Számla kiállítása projekthez") : t("Add Project Expense", "Pridať výdavok k projektu", "Új kiadás hozzáadása"))}
                     </h3>
                   </div>
-                  <button onClick={() => setIsFinModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer">
+                  <button onClick={() => setIsFinModalOpen(false)} className="p-1 text-gray-400 hover:text-gray-600 cursor-pointer">
                     <X className="h-4 w-4" />
                   </button>
                 </div>
 
-                <form onSubmit={handleSaveProjectFinancial} className="space-y-3.5 text-ui font-semibold text-left">
+                <form onSubmit={handleSaveProjectFinancial} className="space-y-3.5 text-ui font-medium text-left">
                   <div>
-                    <label className="block type-overline text-slate-400 mb-1">{t("Title / Description *", "Názov / Popis *", "Megnevezés *")}</label>
+                    <label className="block type-overline text-gray-500 mb-1">{t("Title / Description *", "Názov / Popis *", "Megnevezés *")}</label>
                     <input
                       required
                       value={finFormTitle}
                       onChange={(e) => setFinFormTitle(e.target.value)}
                       placeholder={finFormType === "income" ? t("e.g. Advance invoice 50%...", "napr. Zálohová faktúra 50%...", "pl. Előlegszámla 50%...") : t("e.g. Material purchase, rental...", "napr. Nákup materiálu, prenájom...", "pl. Anyagbeszerzés, bérlet...")}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:outline-none focus:border-indigo-500 font-medium"
+                      className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring font-medium"
                     />
                   </div>
 
                   {finFormType === "income" && (
                     <div>
-                      <label className="block type-overline text-slate-400 mb-1">{t("Invoice Number", "Číslo faktúry", "Számlaszám")}</label>
+                      <label className="block type-overline text-gray-500 mb-1">{t("Invoice Number", "Číslo faktúry", "Számlaszám")}</label>
                       <input
                         value={finFormInvoiceNumber}
                         onChange={(e) => setFinFormInvoiceNumber(e.target.value)}
                         placeholder="FA-2026-0001"
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-mono"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white font-mono"
                       />
                     </div>
                   )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block type-overline text-slate-400 mb-1">{t("Planned Amount (€) *", "Plánovaná suma (€) *", "Tervezett összeg (€) *")}</label>
+                      <label className="block type-overline text-gray-500 mb-1">{t("Planned Amount (€) *", "Plánovaná suma (€) *", "Tervezett összeg (€) *")}</label>
                       <input
                         type="number"
                         step="0.01"
@@ -4849,29 +4857,29 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         value={finFormAmountPlanned}
                         onChange={(e) => setFinFormAmountPlanned(e.target.value ? parseFloat(e.target.value) : "")}
                         placeholder="0.00"
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-bold"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white font-semibold"
                       />
                     </div>
                     <div>
-                      <label className="block type-overline text-slate-400 mb-1">{t("Real / Paid Amount (€)", "Skutočná suma (€)", "Valós összeg (€)")}</label>
+                      <label className="block type-overline text-gray-500 mb-1">{t("Real / Paid Amount (€)", "Skutočná suma (€)", "Valós összeg (€)")}</label>
                       <input
                         type="number"
                         step="0.01"
                         value={finFormAmountReal}
                         onChange={(e) => setFinFormAmountReal(e.target.value ? parseFloat(e.target.value) : "")}
                         placeholder="0.00"
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-bold text-emerald-600"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white font-semibold text-emerald-600"
                       />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block type-overline text-slate-400 mb-1">{t("Category", "Kategória", "Kategória")}</label>
+                      <label className="block type-overline text-gray-500 mb-1">{t("Category", "Kategória", "Kategória")}</label>
                       <select
                         value={finFormCategoryId}
                         onChange={(e) => setFinFormCategoryId(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white"
                       >
                         <option value="">{t("-- Select Category --", "-- Vyberte kategóriu --", "-- Válasszon --")}</option>
                         {financialCategories
@@ -4885,11 +4893,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     </div>
 
                     <div>
-                      <label className="block type-overline text-slate-400 mb-1">{t("Status", "Stav", "Állapot")}</label>
+                      <label className="block type-overline text-gray-500 mb-1">{t("Status", "Stav", "Állapot")}</label>
                       <select
                         value={finFormStatus}
                         onChange={(e) => setFinFormStatus(e.target.value as any)}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white"
                       >
                         {FINANCIAL_STATUS_OPTIONS.map((s) => (
                           <option key={s} value={s}>
@@ -4912,37 +4920,37 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block type-overline text-slate-400 mb-1">{t("Issue Date", "Dátum vystavenia", "Kiállítás dátuma")}</label>
+                      <label className="block type-overline text-gray-500 mb-1">{t("Issue Date", "Dátum vystavenia", "Kiállítás dátuma")}</label>
                       <input
                         type="date"
                         required
                         value={finFormIssueDate}
                         onChange={(e) => setFinFormIssueDate(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white"
                       />
                     </div>
                     <div>
-                      <label className="block type-overline text-slate-400 mb-1">{t("Due Date", "Dátum splatnosti", "Esedékesség")}</label>
+                      <label className="block type-overline text-gray-500 mb-1">{t("Due Date", "Dátum splatnosti", "Esedékesség")}</label>
                       <input
                         type="date"
                         value={finFormDueDate}
                         onChange={(e) => setFinFormDueDate(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
+                        className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white"
                       />
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-200">
                     <button
                       type="button"
                       onClick={() => setIsFinModalOpen(false)}
-                      className="px-4 py-2 rounded-xl text-slate-500 hover:bg-slate-100 cursor-pointer"
+                      className="px-4 py-2 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer"
                     >
                       {t("Cancel", "Zrušiť", "Mégsem")}
                     </button>
                     <button
                       type="submit"
-                      className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold cursor-pointer shadow-sm"
+                      className="px-4 py-2 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md font-semibold cursor-pointer shadow-xs"
                     >
                       {t("Save", "Uložiť", "Mentés")}
                     </button>

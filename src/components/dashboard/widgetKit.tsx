@@ -37,20 +37,20 @@ export const WidgetCard: React.FC<{
 }> = ({ icon: Icon, accent, title, titleTooltip, actions, flush, children, className }) => (
   <div
     className={cn(
-      "h-full bg-white border border-slate-200 rounded-3xl shadow-sm box-border flex flex-col",
-      flush ? "px-5.5 pt-5 pb-3 gap-3.5" : "px-5.5 py-5 gap-4.5",
+      "h-full bg-white border border-gray-200 rounded-lg shadow-xs box-border flex flex-col overflow-clip",
+      flush ? "px-5 pt-4 pb-3 gap-3" : "px-5 py-4 gap-4",
       className
     )}
   >
     <div className="flex items-center justify-between gap-3 h-7 shrink-0">
       <div className="flex items-center gap-2.5 min-w-0">
         <span
-          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+          className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
           style={{ backgroundColor: accent }}
         >
           <Icon className="h-4 w-4 text-white" strokeWidth={2.25} />
         </span>
-        <h2 className="m-0 type-overline text-slate-500 truncate" title={titleTooltip || title}>
+        <h2 className="m-0 type-overline text-gray-600 truncate" title={titleTooltip || title}>
           {title}
         </h2>
       </div>
@@ -71,7 +71,7 @@ export const SegmentedToggle: React.FC<{
   <div
     role="group"
     className={cn(
-      "flex items-center gap-0.5 p-0.75 rounded-[10px] bg-slate-100 box-border",
+      "flex items-center gap-0.5 p-0.75 rounded-md bg-gray-100 border border-gray-200 box-border",
       large ? "h-8.5" : "h-7"
     )}
   >
@@ -84,9 +84,9 @@ export const SegmentedToggle: React.FC<{
           aria-pressed={active}
           onClick={() => onChange(option.value)}
           className={cn(
-            "px-2.5 rounded-lg border-0 text-caption font-bold whitespace-nowrap transition-colors cursor-pointer",
+            "px-2.5 rounded-sm border-0 text-caption font-semibold whitespace-nowrap transition-colors cursor-pointer",
             large ? "h-7" : "h-5.5",
-            active ? "bg-white shadow-sm text-indigo-600" : "bg-transparent text-slate-500 hover:text-slate-700"
+            active ? "bg-white shadow-2xs text-entity-text" : "bg-transparent text-gray-500 hover:text-gray-800"
           )}
         >
           {option.label}
@@ -109,7 +109,7 @@ export const MoreLink: React.FC<{ label: string; onClick?: () => void; href?: st
       e.preventDefault();
       onClick();
     }}
-    className="flex items-center gap-1 h-7 px-2 rounded-lg text-ui font-bold text-indigo-600 hover:bg-indigo-50 transition-colors"
+    className="flex items-center gap-1 h-7 px-2 rounded-md text-ui font-semibold text-entity-text hover:bg-entity-subtle transition-colors"
   >
     {label}
     <ArrowRight className="h-3.5 w-3.5" strokeWidth={2.25} />
