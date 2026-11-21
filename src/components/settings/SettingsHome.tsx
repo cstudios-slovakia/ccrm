@@ -34,7 +34,7 @@ export const LayoutSwitch: React.FC<{
     { id: "sidebar", icon: <PanelLeft className="size-4" aria-hidden="true" />, label: t("settings.nav.ui.layout_sidebar"), aria: t("settings.nav.ui.layout_sidebar_aria") },
   ];
   return (
-    <div role="group" aria-label={t("settings.nav.ui.layout")} data-testid="settings-layout-switch" className="inline-flex gap-1 rounded-2xl border border-slate-200 bg-white p-1">
+    <div role="group" aria-label={t("settings.nav.ui.layout")} data-testid="settings-layout-switch" className="inline-flex gap-1 rounded-lg border border-gray-200 bg-white p-1">
       {options.map((o) => {
         const on = layout === o.id;
         return (
@@ -46,9 +46,9 @@ export const LayoutSwitch: React.FC<{
             data-testid={`settings-layout-${o.id}`}
             onClick={() => onChange(o.id)}
             className={cn(
-              "inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl text-ui font-semibold transition-colors",
+              "inline-flex cursor-pointer items-center justify-center gap-2 rounded-md text-ui font-semibold transition-colors",
               iconOnly ? "size-9" : "min-h-9 px-3.5",
-              on ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+              on ? "bg-entity-solid text-white" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900",
             )}
           >
             {o.icon}
@@ -68,7 +68,7 @@ export const PrefsLink: React.FC<{ lang: Language; iconOnly?: boolean }> = ({ la
       aria-label={iconOnly ? label : undefined}
       data-testid="settings-my-preferences"
       className={cn(
-        "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-ui font-semibold text-slate-700 no-underline transition-colors hover:bg-slate-50",
+        "inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-gray-200 bg-white text-ui font-semibold text-gray-700 no-underline transition-colors hover:bg-gray-50",
         iconOnly ? "size-11" : "px-4",
       )}
     >
@@ -91,10 +91,10 @@ export const SettingsHeader: React.FC<{
     return (
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-indigo-600">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-entity-text">
             <SettingsIcon className="size-5" aria-hidden="true" />
           </span>
-          <h1 className="type-page-title truncate text-slate-900">{t("settings.nav.ui.title")}</h1>
+          <h1 className="type-page-title truncate text-gray-900">{t("settings.nav.ui.title")}</h1>
         </div>
         <PrefsLink lang={lang} iconOnly />
       </div>
@@ -103,12 +103,12 @@ export const SettingsHeader: React.FC<{
   return (
     <header className="flex flex-wrap items-center justify-between gap-4">
       <div className="flex min-w-0 items-center gap-4">
-        <span className="flex size-13 shrink-0 items-center justify-center rounded-3xl border border-slate-200 bg-white text-indigo-600 shadow-glass">
+        <span className="flex size-13 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-entity-text shadow-xs">
           <SettingsIcon className="size-6.5" aria-hidden="true" />
         </span>
         <div className="flex min-w-0 flex-col gap-0.5">
-          <h1 className="type-page-title text-slate-900">{t("settings.nav.ui.title")}</h1>
-          <p className="type-body text-slate-500">{t("settings.nav.ui.subtitle")}</p>
+          <h1 className="type-page-title text-gray-900">{t("settings.nav.ui.title")}</h1>
+          <p className="type-body text-gray-500">{t("settings.nav.ui.subtitle")}</p>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2.5">
@@ -149,10 +149,10 @@ const SettingsTile: React.FC<{
         href={"#" + settingsPath(def.id)}
         onClick={onOpen}
         data-testid={`settings-tile-${def.id}`}
-        className="settings-tile flex h-41 flex-col gap-3 rounded-3xl border border-slate-200 bg-white p-4 no-underline shadow-glass-sm hover:border-indigo-200 hover:shadow-glass"
+        className="settings-tile flex h-41 flex-col gap-3 rounded-lg border border-gray-200 bg-white p-4 no-underline shadow-xs hover:border-entity-border hover:shadow-xs"
       >
         <span className="flex items-center justify-between">
-          <span className={cn("flex size-10 items-center justify-center rounded-2xl", tint.bg, tint.fg)}>
+          <span className={cn("flex size-10 items-center justify-center rounded-lg", tint.bg, tint.fg)}>
             <Icon className="size-5" aria-hidden="true" />
           </span>
           {badge && (
@@ -160,8 +160,8 @@ const SettingsTile: React.FC<{
           )}
         </span>
         <span className="flex min-w-0 flex-col gap-0.5">
-          <span className="type-card-title text-slate-900">{title}</span>
-          <span className="line-clamp-2 text-ui leading-snug text-slate-500">{t(categoryKey(def.id, "hint"))}</span>
+          <span className="type-card-title text-gray-900">{title}</span>
+          <span className="line-clamp-2 text-ui leading-snug text-gray-500">{t(categoryKey(def.id, "hint"))}</span>
         </span>
       </a>
     );
@@ -172,17 +172,17 @@ const SettingsTile: React.FC<{
       href={"#" + settingsPath(def.id)}
       onClick={onOpen}
       data-testid={`settings-tile-${def.id}`}
-      className="settings-tile flex h-30 items-start gap-3.5 rounded-3xl border border-slate-200 bg-white p-5.5 no-underline shadow-glass hover:border-indigo-200 hover:shadow-lg"
+      className="settings-tile flex h-30 items-start gap-3.5 rounded-lg border border-gray-200 bg-white p-5.5 no-underline shadow-xs hover:border-entity-border hover:shadow-xs"
     >
-      <span className={cn("flex size-11.5 shrink-0 items-center justify-center rounded-2xl", tint.bg, tint.fg)}>
+      <span className={cn("flex size-11.5 shrink-0 items-center justify-center rounded-lg", tint.bg, tint.fg)}>
         <Icon className="size-5.5" aria-hidden="true" />
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="flex items-center justify-between gap-2">
-          <span className="type-card-title truncate text-slate-900">{title}</span>
+          <span className="type-card-title truncate text-gray-900">{title}</span>
           {badge && <Badge badge={badge} />}
         </span>
-        <span className="line-clamp-2 text-ui leading-snug text-slate-500">{t(categoryKey(def.id, "desc"))}</span>
+        <span className="line-clamp-2 text-ui leading-snug text-gray-500">{t(categoryKey(def.id, "desc"))}</span>
       </span>
     </a>
   );
@@ -205,7 +205,7 @@ const Recents: React.FC<{
         href={"#" + settingsPath(hit.category.id, hit.section.id)}
         onClick={() => onOpen(ref)}
         data-testid="settings-recent-chip"
-        className="inline-flex min-h-9 shrink-0 items-center rounded-full border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-700 no-underline transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-800"
+        className="inline-flex min-h-9 shrink-0 items-center rounded-full border border-gray-200 bg-white px-3 text-ui font-semibold text-gray-700 no-underline transition-colors hover:border-entity-border hover:bg-entity-soft hover:text-entity-text"
       >
         {t(sectionKey(hit.category.id, hit.section.id, "title"))}
       </a>
@@ -222,7 +222,7 @@ const Recents: React.FC<{
   }
   return (
     <section aria-labelledby="settings-recents" className="flex flex-wrap items-center gap-2">
-      <h2 id="settings-recents" className="type-overline mr-1.5 text-slate-500">{t("settings.nav.ui.recents")}</h2>
+      <h2 id="settings-recents" className="type-overline mr-1.5 text-gray-500">{t("settings.nav.ui.recents")}</h2>
       {chips}
     </section>
   );
@@ -267,7 +267,7 @@ export const SettingsHome: React.FC<{
       />
 
       {searching ? (
-        <p className="flex items-start gap-2.5 px-1 text-ui leading-snug text-slate-500">
+        <p className="flex items-start gap-2.5 px-1 text-ui leading-snug text-gray-500">
           {!phone && <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />}
           {t(phone ? "settings.nav.ui.search_note_mobile" : "settings.nav.ui.search_note")}
         </p>
@@ -277,7 +277,7 @@ export const SettingsHome: React.FC<{
 
           {groups.map((group) => (
             <section key={group.id} aria-labelledby={`settings-group-${group.id}`} className={cn("flex flex-col", phone ? "gap-3" : "gap-3.5")}>
-              <h2 id={`settings-group-${group.id}`} className={cn("type-overline text-slate-500", phone && "mx-1 mt-1.5")}>
+              <h2 id={`settings-group-${group.id}`} className={cn("type-overline text-gray-500", phone && "mx-1 mt-1.5")}>
                 {t(groupLabelKey(group.id))}
               </h2>
               <div
@@ -298,11 +298,11 @@ export const SettingsHome: React.FC<{
             </section>
           ))}
 
-          <p className="flex items-center gap-2.5 px-1 text-ui text-slate-500">
+          <p className="flex items-center gap-2.5 px-1 text-ui text-gray-500">
             <Info className="size-4 shrink-0" aria-hidden="true" />
             <span>
               {pre}
-              <a href={PERSONAL_SETTINGS_HREF} className="font-semibold text-indigo-600 hover:text-indigo-800">{t("settings.nav.ui.my_prefs")}</a>
+              <a href={PERSONAL_SETTINGS_HREF} className="font-semibold text-entity-text hover:text-entity-text">{t("settings.nav.ui.my_prefs")}</a>
               {post}
             </span>
           </p>

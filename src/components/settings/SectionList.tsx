@@ -114,7 +114,7 @@ export const SectionTabs: React.FC<{
     <nav
       aria-label={t("settings.nav.ui.sections")}
       data-testid="settings-section-tabs"
-      className="sticky top-[calc(0.5rem_-_var(--gutter))] z-10 rounded-3xl border border-slate-200 bg-white/90 p-1.5 shadow-glass-sm backdrop-blur"
+      className="sticky top-[calc(0.5rem_-_var(--gutter))] z-10 rounded-lg border border-gray-200 bg-white p-1.5 shadow-xs"
     >
       <ScrollFade axis="x">
         <ul ref={listRef} role="tablist" aria-orientation="horizontal" onKeyDown={onKeyDown} className="flex gap-1">
@@ -135,8 +135,8 @@ export const SectionTabs: React.FC<{
                     onPick(id);
                   }}
                   className={cn(
-                    "inline-flex min-h-10 items-center rounded-2xl px-4 text-ui no-underline transition-colors",
-                    current ? "bg-indigo-50 font-bold text-indigo-700" : "font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                    "inline-flex min-h-10 items-center rounded-md px-4 text-ui no-underline transition-colors",
+                    current ? "bg-entity-soft font-bold text-entity-text" : "font-semibold text-gray-600 hover:bg-gray-100 hover:text-gray-900",
                   )}
                 >
                   {t(sectionKey(categoryId, id, "title"))}

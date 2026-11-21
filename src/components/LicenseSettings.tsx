@@ -22,8 +22,8 @@ interface LicenseSettingsProps {
 /** Row of the summary grid. */
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <div className="space-y-1">
-    <span className="type-overline text-slate-400 block">{label}</span>
-    <div className="text-ui font-bold text-slate-800 break-words">{children}</div>
+    <span className="type-overline text-gray-400 block">{label}</span>
+    <div className="text-ui font-bold text-gray-800 break-words">{children}</div>
   </div>
 );
 
@@ -84,7 +84,7 @@ export const LicenseSettings: React.FC<LicenseSettingsProps> = ({
       case "expiring":
         return { Icon: ShieldAlert, tone: "text-amber-600", chip: "bg-amber-50 border-amber-200 text-amber-700" };
       case "unconfigured":
-        return { Icon: Info, tone: "text-slate-400", chip: "bg-slate-50 border-slate-200 text-slate-600" };
+        return { Icon: Info, tone: "text-gray-400", chip: "bg-gray-50 border-gray-200 text-gray-600" };
       default:
         return { Icon: ShieldX, tone: "text-rose-600", chip: "bg-rose-50 border-rose-200 text-rose-700" };
     }
@@ -127,8 +127,8 @@ export const LicenseSettings: React.FC<LicenseSettingsProps> = ({
         {/* Licensing was never switched on for this build: say so instead of
             offering an activation form that cannot succeed. */}
         {!configured && (
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-ui font-semibold text-slate-600 flex items-start gap-2.5">
-            <Info className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" aria-hidden="true" />
+          <div className="p-4 rounded-lg bg-gray-50 border border-gray-200 text-ui font-semibold text-gray-600 flex items-start gap-2.5">
+            <Info className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" aria-hidden="true" />
             <span>{t("license.not_configured_notice")}</span>
           </div>
         )}
@@ -136,7 +136,7 @@ export const LicenseSettings: React.FC<LicenseSettingsProps> = ({
         {configured && state && (
           <>
             {/* What the licence says */}
-            <div className="grid grid-cols-2 ws-md:grid-cols-4 gap-5 p-5 rounded-2xl bg-slate-50/70 border border-slate-100">
+            <div className="grid grid-cols-2 ws-md:grid-cols-4 gap-5 p-5 rounded-lg bg-gray-50/70 border border-gray-100">
               {state.keyMasked && (
                 <Field label={t("license.key_installed")}>
                   <code className="font-mono text-caption tracking-wider">{state.keyMasked}</code>
@@ -147,9 +147,9 @@ export const LicenseSettings: React.FC<LicenseSettingsProps> = ({
               <Field label={t("license.expires")}>
                 {state.expiresAt ? (
                   <span className="flex items-center gap-1.5">
-                    <CalendarClock className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+                    <CalendarClock className="h-3.5 w-3.5 text-gray-400" aria-hidden="true" />
                     {formatDateLocalized(state.expiresAt, language)}
-                    {daysLine && <span className="font-semibold text-slate-500">({daysLine})</span>}
+                    {daysLine && <span className="font-semibold text-gray-500">({daysLine})</span>}
                   </span>
                 ) : (
                   t("license.expires_never")
@@ -157,7 +157,7 @@ export const LicenseSettings: React.FC<LicenseSettingsProps> = ({
               </Field>
               <Field label={t("license.seats")}>
                 <span className="flex items-center gap-1.5">
-                  <Users className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+                  <Users className="h-3.5 w-3.5 text-gray-400" aria-hidden="true" />
                   {seatsLine}
                 </span>
               </Field>
@@ -181,7 +181,7 @@ export const LicenseSettings: React.FC<LicenseSettingsProps> = ({
             {/* Seat pressure. Worth its own line: an admin who cannot add a
                 colleague needs to know why before they try. */}
             {(overSeats || atSeats) && (
-              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-ui font-semibold flex items-start gap-2.5">
+              <div className="p-3.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-ui font-semibold flex items-start gap-2.5">
                 <Users className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
                 <span>{overSeats ? t("license.seats_over") : t("license.seats_full")}</span>
               </div>
@@ -190,8 +190,8 @@ export const LicenseSettings: React.FC<LicenseSettingsProps> = ({
             {/* The licence server has not answered in a while, but the licence
                 is still good. Explaining this beats an unexplained stale date. */}
             {state.offlineDays !== null && state.offlineDays >= 2 && state.valid && (
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-slate-600 text-ui font-semibold flex items-start gap-2.5">
-                <Info className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" aria-hidden="true" />
+              <div className="p-3.5 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 text-ui font-semibold flex items-start gap-2.5">
+                <Info className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" aria-hidden="true" />
                 <span>{formatTranslation(language, "license.offline_notice", { days: state.offlineDays })}</span>
               </div>
             )}
@@ -208,7 +208,7 @@ export const LicenseSettings: React.FC<LicenseSettingsProps> = ({
               run("activate", () => activateLicense(keyInput.trim()), "license.activated_ok");
             }}
           >
-            <label className="type-overline text-slate-500 block pl-0.5">
+            <label className="type-overline text-gray-500 block pl-0.5">
               {t("license.key_label")}
             </label>
             <div className="flex flex-col ws-sm:flex-row gap-3">
@@ -220,12 +220,12 @@ export const LicenseSettings: React.FC<LicenseSettingsProps> = ({
                 spellCheck={false}
                 autoComplete="off"
                 disabled={busy !== null}
-                className="flex-1 px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold font-mono tracking-wider focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-60"
+                className="flex-1 px-3.5 py-2.5 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold font-mono tracking-wider focus:outline-none focus:border-entity-border transition-colors disabled:opacity-60"
               />
               <button
                 type="submit"
                 disabled={busy !== null || keyInput.trim() === ""}
-                className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 border border-indigo-700 text-white type-overline flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+                className="px-4 py-2.5 rounded-md bg-entity-solid hover:bg-entity-solid-hover border border-indigo-700 text-white type-overline flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
               >
                 {busy === "activate" ? (
                   <>
@@ -240,19 +240,19 @@ export const LicenseSettings: React.FC<LicenseSettingsProps> = ({
                 )}
               </button>
             </div>
-            <p className="text-micro font-semibold text-slate-400 pl-0.5">{t("license.key_hint")}</p>
+            <p className="text-micro font-semibold text-gray-400 pl-0.5">{t("license.key_hint")}</p>
           </form>
         )}
 
         {/* Outcome of the last action. */}
         {error && (
-          <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-ui font-semibold flex items-start gap-2.5 animate-in fade-in duration-200">
+          <div className="p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-ui font-semibold flex items-start gap-2.5 animate-in fade-in duration-200">
             <ShieldX className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" aria-hidden="true" />
             <span>{t(`license.error.${error}`)}</span>
           </div>
         )}
         {notice && (
-          <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-ui font-semibold flex items-start gap-2.5 animate-in fade-in duration-200">
+          <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-ui font-semibold flex items-start gap-2.5 animate-in fade-in duration-200">
             <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
             <span>{notice}</span>
           </div>
@@ -265,7 +265,7 @@ export const LicenseSettings: React.FC<LicenseSettingsProps> = ({
               type="button"
               disabled={busy !== null}
               onClick={() => run("refresh", refreshLicense, "license.checked_ok")}
-              className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 type-overline flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3.5 py-2 rounded-md bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 type-overline flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${busy === "refresh" ? "animate-spin" : ""}`} aria-hidden="true" />
               {busy === "refresh" ? t("license.rechecking") : t("license.recheck")}
@@ -278,7 +278,7 @@ export const LicenseSettings: React.FC<LicenseSettingsProps> = ({
                   if (!window.confirm(t("license.remove_confirm"))) return;
                   run("remove", removeLicense, "license.removed_ok");
                 }}
-                className="px-3.5 py-2 rounded-xl bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-slate-600 hover:text-rose-700 type-overline flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3.5 py-2 rounded-md bg-white hover:bg-rose-50 border border-gray-200 hover:border-rose-200 text-gray-600 hover:text-rose-700 type-overline flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                 {t("license.remove")}
@@ -288,7 +288,7 @@ export const LicenseSettings: React.FC<LicenseSettingsProps> = ({
         )}
 
         {/* What a licence actually controls. Last, and always shown. */}
-        <p className="text-caption font-semibold text-slate-500 leading-relaxed border-t border-slate-100 pt-4">
+        <p className="text-caption font-semibold text-gray-500 leading-relaxed border-t border-gray-100 pt-4">
           {t("license.updates_explainer")}
         </p>
       </SectionCard>

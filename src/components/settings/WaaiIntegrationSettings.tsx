@@ -57,27 +57,27 @@ const SCOPE_LABEL: Record<string, [string, string, string]> = {
 };
 
 const inputCls =
-  "min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-ui text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 disabled:opacity-50";
+  "min-h-11 w-full rounded-md border border-gray-200 bg-white px-3 text-ui text-gray-800 placeholder:text-gray-400 focus:border-entity-border focus:outline-none focus:ring-2 focus:ring-entity-solid/25 disabled:opacity-50";
 const primaryBtn =
-  "inline-flex min-h-11 items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
+  "inline-flex min-h-11 items-center gap-2 rounded-md bg-entity-solid px-5 text-ui font-bold text-white shadow-xs transition-colors hover:bg-entity-solid-hover disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
 const secondaryBtn =
-  "inline-flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-ui font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
+  "inline-flex min-h-11 items-center gap-2 rounded-md border border-gray-200 bg-white px-4 text-ui font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
 
 const Toggle: React.FC<{ checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string; disabled?: boolean }> = ({ checked, onChange, label, hint, disabled }) => (
   <label className="flex cursor-pointer items-start gap-3">
-    <input type="checkbox" className="mt-1 h-4 w-4 shrink-0 accent-indigo-600" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+    <input type="checkbox" className="mt-1 h-4 w-4 shrink-0 accent-entity-solid" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
     <span className="flex flex-col">
-      <span className="type-label text-slate-800">{label}</span>
-      {hint && <span className="type-meta text-slate-500">{hint}</span>}
+      <span className="type-label text-gray-800">{label}</span>
+      {hint && <span className="type-meta text-gray-500">{hint}</span>}
     </span>
   </label>
 );
 
 const Field: React.FC<{ label: string; hint?: string; error?: string; children: React.ReactNode }> = ({ label, hint, error, children }) => (
   <label className="flex flex-col gap-1.5">
-    <span className="type-label text-slate-800">{label}</span>
+    <span className="type-label text-gray-800">{label}</span>
     {children}
-    {error ? <span className="type-meta text-rose-600">{error}</span> : hint ? <span className="type-meta text-slate-500">{hint}</span> : null}
+    {error ? <span className="type-meta text-rose-600">{error}</span> : hint ? <span className="type-meta text-gray-500">{hint}</span> : null}
   </label>
 );
 
@@ -91,13 +91,13 @@ function Choice<V extends string>({ name, label, value, onChange, options }: {
 }) {
   return (
     <fieldset className="flex flex-col gap-2">
-      <legend className="type-label text-slate-800 mb-1">{label}</legend>
+      <legend className="type-label text-gray-800 mb-1">{label}</legend>
       {options.map((o) => (
-        <label key={o.value} className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3 transition-colors ${value === o.value ? "border-indigo-300 bg-indigo-50/50" : "border-slate-200 bg-white hover:bg-slate-50"}`}>
-          <input type="radio" name={name} className="mt-1 h-4 w-4 shrink-0 accent-indigo-600" checked={value === o.value} onChange={() => onChange(o.value)} />
+        <label key={o.value} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${value === o.value ? "border-entity-border bg-entity-soft" : "border-gray-200 bg-white hover:bg-gray-50"}`}>
+          <input type="radio" name={name} className="mt-1 h-4 w-4 shrink-0 accent-entity-solid" checked={value === o.value} onChange={() => onChange(o.value)} />
           <span className="flex flex-col">
-            <span className="type-label text-slate-800">{o.label}</span>
-            <span className="type-meta text-slate-500">{o.hint}</span>
+            <span className="type-label text-gray-800">{o.label}</span>
+            <span className="type-meta text-gray-500">{o.hint}</span>
           </span>
         </label>
       ))}
@@ -333,7 +333,7 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
   if (!status) {
     return (
       <SectionCard title={t("WhatsApp (WAAI)", "WhatsApp (WAAI)", "WhatsApp (WAAI)")}>
-        <LoaderCircle className="h-5 w-5 animate-spin text-slate-400" aria-label={t("Loading", "Načítava sa", "Betöltés")} />
+        <LoaderCircle className="h-5 w-5 animate-spin text-gray-400" aria-label={t("Loading", "Načítava sa", "Betöltés")} />
       </SectionCard>
     );
   }
@@ -346,7 +346,7 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
   };
   const stateCls: Record<TokenRow["state"], string> = {
     active: "bg-emerald-50 text-emerald-700",
-    revoked: "bg-slate-100 text-slate-500",
+    revoked: "bg-gray-100 text-gray-500",
     expired: "bg-amber-50 text-amber-700",
   };
   const lastUsed = status.tokens.map((x) => x.last_used_at).filter(Boolean).sort().pop() ?? null;
@@ -505,23 +505,23 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
         }
       >
         {!hasClient && (
-          <p className="type-body text-slate-500">{t("Save the connection settings first, then create a token.", "Najprv uložte nastavenia pripojenia, potom vytvorte token.", "Először mentse a kapcsolat beállításait, utána hozzon létre tokent.")}</p>
+          <p className="type-body text-gray-500">{t("Save the connection settings first, then create a token.", "Najprv uložte nastavenia pripojenia, potom vytvorte token.", "Először mentse a kapcsolat beállításait, utána hozzon létre tokent.")}</p>
         )}
 
         {newToken && (
-          <div role="status" className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <div role="status" className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
             <p className="type-label text-amber-900">
               {t("Copy it now. It is not shown again.", "Skopírujte ho hneď. Znova sa nezobrazí.", "Másolja ki most. Többé nem jelenik meg.")}
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <code className="min-w-0 flex-1 break-all rounded-xl bg-white px-3 py-2 font-mono text-caption text-slate-800" data-testid="waai-new-token">{newToken}</code>
+              <code className="min-w-0 flex-1 break-all rounded-md bg-white px-3 py-2 font-mono text-caption text-gray-800" data-testid="waai-new-token">{newToken}</code>
               <CopyButton text={newToken} t={t} />
             </div>
             <p className="type-meta text-amber-900">
               {t("Put these lines in WAAI's .env (the ai-worker container only), then restart it:", "Tieto riadky vložte do .env súboru WAAI (iba kontajner ai-worker) a kontajner reštartujte:", "Ezeket a sorokat tegye a WAAI .env fájljába (csak az ai-worker konténerhez), majd indítsa újra:")}
             </p>
             <div className="flex flex-wrap items-start gap-2">
-              <pre className="min-w-0 flex-1 overflow-x-auto rounded-xl bg-white px-3 py-2 font-mono text-caption text-slate-800">{waaiEnvSnippet(window.location.origin, newToken)}</pre>
+              <pre className="min-w-0 flex-1 overflow-x-auto rounded-md bg-white px-3 py-2 font-mono text-caption text-gray-800">{waaiEnvSnippet(window.location.origin, newToken)}</pre>
               <CopyButton text={waaiEnvSnippet(window.location.origin, newToken)} t={t} />
             </div>
             <div>
@@ -533,15 +533,15 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
         )}
 
         {status.tokens.length > 0 && (
-          <ul className="flex flex-col divide-y divide-slate-100">
+          <ul className="flex flex-col divide-y divide-gray-100">
             {status.tokens.map((tok) => (
               <li key={tok.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                 <div className="flex min-w-0 flex-col gap-0.5">
                   <div className="flex flex-wrap items-center gap-2">
-                    <code className="font-mono text-ui text-slate-800">ccrm_int_{tok.prefix}…</code>
+                    <code className="font-mono text-ui text-gray-800">ccrm_int_{tok.prefix}…</code>
                     <span className={`rounded-full px-2 py-0.5 type-overline ${stateCls[tok.state]}`}>{stateLabel[tok.state]}</span>
                   </div>
-                  <span className="type-meta text-slate-500">
+                  <span className="type-meta text-gray-500">
                     {t("Created", "Vytvorený", "Létrehozva")} {fmtDate(tok.created_at, activeLang)}
                     {tok.expires_at && ` · ${t("expires", "platí do", "lejár")} ${fmtDate(tok.expires_at, activeLang)}`}
                     {" · "}
@@ -560,7 +560,7 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
         )}
 
         {hasClient && (
-          <p className="type-meta text-slate-500">
+          <p className="type-meta text-gray-500">
             {lastUsed
               ? t(`WAAI last called ${brand} on ${fmtDate(lastUsed, activeLang)}.`, `WAAI naposledy volal ${PRODUCT_NAME} ${fmtDate(lastUsed, activeLang)}.`, `A WAAI utoljára ${fmtDate(lastUsed, activeLang)} hívta a ${PRODUCT_NAME}-et.`)
               : t(`WAAI has not called ${brand} yet.`, `WAAI zatiaľ nevolal ${PRODUCT_NAME}.`, `A WAAI még nem hívta a ${brand}-et.`)}
@@ -583,10 +583,10 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
         }
       >
         {!hasClient && (
-          <p className="type-body text-slate-500">{t("Save the connection settings first, then create the secret.", "Najprv uložte nastavenia pripojenia, potom vytvorte kľúč.", "Először mentse a kapcsolat beállításait, utána hozza létre a kulcsot.")}</p>
+          <p className="type-body text-gray-500">{t("Save the connection settings first, then create the secret.", "Najprv uložte nastavenia pripojenia, potom vytvorte kľúč.", "Először mentse a kapcsolat beállításait, utána hozza létre a kulcsot.")}</p>
         )}
         {hasClient && (
-          <p className="type-body text-slate-600">
+          <p className="type-body text-gray-600">
             {status.client?.has_sso_secret
               ? t("A secret is set.", "Kľúč je nastavený.", "A kulcs be van állítva.")
               : t("No secret yet: the WhatsApp module cannot sign anyone in.", "Zatiaľ žiadny kľúč: modul WhatsApp nemôže nikoho prihlásiť.", "Még nincs kulcs: a WhatsApp modul nem tud senkit beléptetni.")}
@@ -598,7 +598,7 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
         )}
 
         {newSecret && (
-          <div role="status" className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <div role="status" className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
             <p className="type-label text-amber-900">
               {t("Copy it now. It is not shown again.", "Skopírujte ho hneď. Znova sa nezobrazí.", "Másolja ki most. Többé nem jelenik meg.")}
             </p>
@@ -610,7 +610,7 @@ export const WaaiIntegrationSettings: React.FC<{ activeLang: Language }> = ({ ac
               )}
             </p>
             <div className="flex flex-wrap items-start gap-2">
-              <pre className="min-w-0 flex-1 overflow-x-auto rounded-xl bg-white px-3 py-2 font-mono text-caption text-slate-800" data-testid="waai-new-secret">{waaiSsoEnvSnippet(window.location.origin, newSecret)}</pre>
+              <pre className="min-w-0 flex-1 overflow-x-auto rounded-md bg-white px-3 py-2 font-mono text-caption text-gray-800" data-testid="waai-new-secret">{waaiSsoEnvSnippet(window.location.origin, newSecret)}</pre>
               <CopyButton text={waaiSsoEnvSnippet(window.location.origin, newSecret)} t={t} />
             </div>
             <div>

@@ -93,27 +93,27 @@ export const MarketingRoiSettings: React.FC<{
       </SectionCard>
     );
   }
-  if (!draft) return <div className="h-40 rounded-3xl bg-slate-50 animate-pulse" />;
+  if (!draft) return <div className="h-40 rounded-lg bg-gray-50 animate-pulse" />;
 
   const categoryPicker = (field: "newsletterCostCategoryIds" | "socialCostCategoryIds") =>
     expenseTree.length === 0 ? (
-      <p className="type-body text-slate-500">
+      <p className="type-body text-gray-500">
         {t("There are no expense categories yet.", "Zatiaľ nie sú žiadne kategórie výdavkov.", "Még nincsenek költségkategóriák.")}{" "}
-        <a href="#settings/finance/categories" className="font-bold text-indigo-600 hover:underline">
+        <a href="#settings/finance/categories" className="font-bold text-entity-text hover:underline">
           {t("Create one", "Vytvoriť", "Létrehozás")}
         </a>
       </p>
     ) : (
-      <div className="max-h-72 overflow-y-auto rounded-2xl border border-slate-200 divide-y divide-slate-100">
+      <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
         {expenseTree.map(({ cat, depth }) => (
           <label
             key={cat.id}
-            className={`flex items-center gap-2.5 py-2 pr-3 text-ui text-slate-700 ${canEdit ? "cursor-pointer hover:bg-slate-50" : "opacity-70"}`}
+            className={`flex items-center gap-2.5 py-2 pr-3 text-ui text-gray-700 ${canEdit ? "cursor-pointer hover:bg-gray-50" : "opacity-70"}`}
             style={{ paddingLeft: 12 + depth * 20 }}
           >
             <input
               type="checkbox"
-              className="h-4 w-4 accent-indigo-600"
+              className="h-4 w-4 accent-entity-solid"
               checked={draft[field].includes(cat.id)}
               disabled={!canEdit}
               onChange={() => toggleCategory(field, cat.id)}
@@ -164,16 +164,16 @@ export const MarketingRoiSettings: React.FC<{
         testId="marketing-roi-sources"
       >
         {leadSources.length === 0 ? (
-          <p className="type-body text-slate-500">{t("No lead sources are set up.", "Nie sú nastavené žiadne zdroje leadov.", "Nincsenek beállított lead-források.")}</p>
+          <p className="type-body text-gray-500">{t("No lead sources are set up.", "Nie sú nastavené žiadne zdroje leadov.", "Nincsenek beállított lead-források.")}</p>
         ) : (
-          <div className="rounded-2xl border border-slate-200 divide-y divide-slate-100">
+          <div className="rounded-lg border border-gray-200 divide-y divide-gray-100">
             {leadSources.map((source) => {
               const key = source.trim().toLowerCase();
               return (
                 <div key={source} className="flex items-center justify-between gap-3 px-3 py-2">
-                  <span className="text-ui font-bold text-slate-700 truncate">{source}</span>
+                  <span className="text-ui font-bold text-gray-700 truncate">{source}</span>
                   <select
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-ui text-slate-800 disabled:opacity-60"
+                    className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-ui text-gray-800 disabled:opacity-60"
                     value={draft.sourceChannels[key] || ""}
                     disabled={!canEdit}
                     onChange={(e) => {
@@ -203,12 +203,12 @@ export const MarketingRoiSettings: React.FC<{
         )}
         testId="marketing-roi-window"
       >
-        <label className="flex items-center gap-3 text-ui text-slate-700">
+        <label className="flex items-center gap-3 text-ui text-gray-700">
           <input
             type="number"
             min={1}
             max={365}
-            className="w-24 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-ui text-slate-800 disabled:opacity-60"
+            className="w-24 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-ui text-gray-800 disabled:opacity-60"
             value={daysText ?? String(draft.newsletterWindowDays)}
             disabled={!canEdit}
             onChange={(e) => setDaysText(e.target.value)}

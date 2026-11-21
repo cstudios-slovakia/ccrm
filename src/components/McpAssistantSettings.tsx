@@ -32,13 +32,13 @@ const StepHeader: React.FC<{ n: number; title: string; children?: React.ReactNod
       {n}
     </span>
     <div className="min-w-0">
-      <h4 className="text-ui font-bold text-slate-800">{title}</h4>
-      {children && <div className="text-caption text-slate-500 font-medium mt-0.5">{children}</div>}
+      <h4 className="text-ui font-bold text-gray-800">{title}</h4>
+      {children && <div className="text-caption text-gray-500 font-medium mt-0.5">{children}</div>}
     </div>
   </div>
 );
 
-const CARD = "glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4";
+const CARD = "p-6 rounded-lg border border-gray-200 bg-white shadow-xs space-y-4";
 
 const TRANSPORT_TABS = ["web", "editor", "cli", "bridge"] as const;
 type TransportTab = (typeof TRANSPORT_TABS)[number];
@@ -219,7 +219,7 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
     document.getElementById(`${tabsId}-tab-${TRANSPORT_TABS[next]}`)?.focus();
   };
 
-  const code = (text: string) => <code className="px-1 py-0.5 rounded bg-slate-100 font-mono text-micro text-slate-700">{text}</code>;
+  const code = (text: string) => <code className="px-1 py-0.5 rounded bg-gray-100 font-mono text-micro text-gray-700">{text}</code>;
 
   const keyActions = mcpData?.has_key && (
     <div className="flex flex-wrap items-center gap-2">
@@ -227,7 +227,7 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
         type="button"
         onClick={regenerateKey}
         disabled={isGenerating}
-        className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-ui font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+        className="px-4 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-md text-ui font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
       >
         <RefreshCw className={`h-3.5 w-3.5 ${isGenerating ? "animate-spin" : ""}`} />
         <span>{t("Regenerate key", "Pregenerovať kľúč", "Kulcs újragenerálása")}</span>
@@ -244,7 +244,7 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
           "Hozzáférési kulcs visszavonása, tartsa lenyomva a megerősítéshez"
         )}
         icon={<Trash2 className="h-3.5 w-3.5" />}
-        className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200/80 rounded-xl text-ui font-bold transition-all flex items-center gap-1.5 disabled:opacity-50"
+        className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200/80 rounded-md text-ui font-bold transition-all flex items-center gap-1.5 disabled:opacity-50"
       >
         {t("Revoke", "Odvolať", "Visszavonás")}
       </HoldToConfirmButton>
@@ -257,14 +257,14 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
       <div className={`${CARD} space-y-0`}>
         <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600 border border-emerald-100/60 shadow-sm shrink-0">
+            <div className="p-3 bg-emerald-50 rounded-lg text-emerald-600 border border-emerald-100/60 shadow-xs shrink-0">
               <Bot className="h-6 w-6" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-title-sm font-heading font-extrabold text-slate-900 tracking-tight">
+              <h3 className="text-title-sm font-heading font-extrabold text-gray-900 tracking-tight">
                 {t("AI Assistant (MCP)", "AI asistent (MCP)", "MI asszisztens (MCP)")}
               </h3>
-              <p className="text-ui text-slate-500 font-medium mt-0.5">
+              <p className="text-ui text-gray-500 font-medium mt-0.5">
                 {t(
                   `Let an AI assistant read and update your ${PRODUCT_NAME} data — leads, clients, projects, tasks, invoices — within your permissions.`,
                   `Nechajte AI asistenta čítať a upravovať ${PRODUCT_NAME} dáta – leady, klientov, projekty, úlohy, faktúry – v rámci vašich oprávnení.`,
@@ -277,7 +277,7 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
             type="button"
             onClick={fetchKey}
             disabled={isLoading}
-            className="px-3.5 py-2 rounded-xl text-ui font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0 self-start ws-sm:self-auto"
+            className="px-3.5 py-2 rounded-md text-ui font-bold text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-gray-200 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0 self-start ws-sm:self-auto"
             title={t("Refresh key status", "Obnoviť stav kľúča", "Kulcs állapotának frissítése")}
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin text-emerald-600" : ""}`} />
@@ -309,15 +309,15 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
         )}
 
         {mcpData && !mcpData.has_key && (
-          <div className="flex flex-col items-start gap-3 p-4 rounded-2xl bg-slate-50/80 border border-slate-200/60">
-            <span className="px-2 py-0.5 rounded-full text-micro font-bold bg-slate-200 text-slate-600">
+          <div className="flex flex-col items-start gap-3 p-4 rounded-lg bg-gray-50 border border-gray-200/60">
+            <span className="px-2 py-0.5 rounded-full text-micro font-bold bg-gray-200 text-gray-600">
               {t("No key yet", "Zatiaľ bez kľúča", "Még nincs kulcs")}
             </span>
             <button
               type="button"
               onClick={generateKey}
               disabled={isGenerating}
-              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-ui font-extrabold transition-all shadow-lg shadow-emerald-600/25 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-ui font-extrabold transition-all shadow-xs shadow-emerald-600/25 flex items-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <Key className="h-4 w-4" />
               <span>
@@ -329,7 +329,7 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
 
         {mcpData?.has_key && mcpData.key && newKey && (
           <div className="space-y-3 animate-fade-in">
-            <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-2xl bg-amber-50 border-2 border-amber-300 text-amber-950">
+            <div role="alert" className="flex items-start gap-2.5 p-3.5 rounded-lg bg-amber-50 border-2 border-amber-300 text-amber-950">
               <AlertTriangle className="h-4.5 w-4.5 text-amber-600 shrink-0 mt-0.5" />
               <div className="text-ui">
                 <p className="font-extrabold">
@@ -368,19 +368,19 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
 
         {mcpData?.has_key && mcpData.key && !newKey && (
           <div className="space-y-3" data-testid="mcp-key-saved">
-            <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/60 space-y-2.5">
+            <div className="p-4 rounded-lg bg-gray-50 border border-gray-200/60 space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0 font-mono text-ui text-slate-700">
-                  <Key className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                  <span className="font-bold text-slate-800">{mcpData.key.prefix}</span>
-                  <span className="text-slate-400">••••••••••••••••</span>
+                <div className="flex items-center gap-2 min-w-0 font-mono text-ui text-gray-700">
+                  <Key className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                  <span className="font-bold text-gray-800">{mcpData.key.prefix}</span>
+                  <span className="text-gray-400">••••••••••••••••</span>
                 </div>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                   {t("Active", "Aktívny", "Aktív")}
                 </span>
               </div>
-              <p className="text-caption text-slate-500 font-medium">
+              <p className="text-caption text-gray-500 font-medium">
                 {t("Created", "Vytvorený", "Létrehozva")}: {formatWhen(mcpData.key.created_at, activeLang)} ·{" "}
                 {t("Stored as a one-way hash", "Uložený ako jednosmerný hash", "Egyirányú hashként tárolva")}
               </p>
@@ -390,12 +390,12 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
                   {t("Last used", "Naposledy použitý", "Utoljára használva")} {formatWhen(mcpData.key.last_used_at, activeLang)}
                 </p>
               ) : (
-                <p className="text-caption font-medium text-slate-500">
+                <p className="text-caption font-medium text-gray-500">
                   {t("Last used", "Naposledy použitý", "Utoljára használva")}: {t("Never", "Nikdy", "Soha")} –{" "}
                   {t("the key has not connected yet.", "kľúč sa zatiaľ nepripojil.", "a kulcs még nem csatlakozott.")}
                 </p>
               )}
-              <p className="text-caption text-slate-600 font-medium">
+              <p className="text-caption text-gray-600 font-medium">
                 {t(
                   "For security the full key is shown only once. Lost it? Generate a new one — the old one stops working.",
                   "Z bezpečnostných dôvodov sa celý kľúč zobrazí iba raz. Stratili ste ho? Vygenerujte nový – ten starý prestane fungovať.",
@@ -418,7 +418,7 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
         </div>
 
         {mcpData && !mcpData.has_key && (
-          <div className="flex items-start gap-2 p-3 rounded-2xl bg-amber-50 border border-amber-200 text-ui font-medium text-amber-900">
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-ui font-medium text-amber-900">
             <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
             <span>
               {t(
@@ -433,7 +433,7 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
         <div
           role="tablist"
           aria-label={t("How your AI app connects", "Ako sa AI aplikácia pripája", "Az MI alkalmazás csatlakozási módja")}
-          className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 max-w-full overflow-x-auto"
+          className="flex items-center bg-gray-100 p-1 rounded-md border border-gray-200/80 max-w-full overflow-x-auto"
         >
           {TRANSPORT_TABS.map((id) => (
             <button
@@ -447,7 +447,7 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
               onClick={() => selectTab(id)}
               onKeyDown={onTabKeyDown}
               className={`px-3 py-1.5 text-caption font-bold rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-                tab === id ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                tab === id ? "bg-white text-entity-text shadow-xs" : "text-gray-600 hover:text-gray-900"
               }`}
             >
               {tabLabels[id]}
@@ -471,14 +471,14 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
 
           {tab === "editor" && (
             <>
-              <p className="text-ui text-slate-600 font-medium">
+              <p className="text-ui text-gray-600 font-medium">
                 {t(
                   "Cursor, VS Code, Windsurf, Antigravity, Claude Desktop (through its config file) and similar apps.",
                   "Cursor, VS Code, Windsurf, Antigravity, Claude Desktop (cez konfiguračný súbor) a podobné aplikácie.",
                   "Cursor, VS Code, Windsurf, Antigravity, Claude Desktop (a konfigurációs fájlján keresztül) és hasonló alkalmazások."
                 )}
               </p>
-              <p className="text-caption text-slate-500 font-medium">
+              <p className="text-caption text-gray-500 font-medium">
                 {t(
                   "Add this to your app's MCP configuration file (often called mcp.json or mcp_config.json). If the file already has an mcpServers block, add only the ccrm entry.",
                   "Pridajte to do konfiguračného súboru MCP vašej aplikácie (často sa volá mcp.json alebo mcp_config.json). Ak súbor už obsahuje blok mcpServers, pridajte iba položku ccrm.",
@@ -497,7 +497,7 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
 
           {tab === "cli" && (
             <>
-              <p className="text-ui text-slate-600 font-medium">
+              <p className="text-ui text-gray-600 font-medium">
                 {t(
                   "For AI agents you run in a terminal. Example for Claude Code:",
                   "Pre AI agentov, ktorých spúšťate v termináli. Príklad pre Claude Code:",
@@ -511,7 +511,7 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
                 value={buildCliCommand(origin, newKey)}
                 placeholderWarning={replaceWarning}
               />
-              <p className="text-caption text-slate-500 font-medium">
+              <p className="text-caption text-gray-500 font-medium">
                 {t(
                   "Using a different command-line agent? Use its own “add MCP server” command with the Server URL and header from the “Web app / connector” tab.",
                   "Používate iného agenta v príkazovom riadku? Použite jeho vlastný príkaz na pridanie MCP servera s URL servera a hlavičkou z karty „Webová aplikácia / konektor“.",
@@ -523,14 +523,14 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
 
           {tab === "bridge" && (
             <>
-              <p className="text-ui text-slate-600 font-medium">
+              <p className="text-ui text-gray-600 font-medium">
                 {t(
                   `Only needed for apps that cannot reach a remote URL. It runs a small Node program on your computer and needs the mcp-server folder from the ${brand} repository.`,
                   `Potrebné iba pre aplikácie, ktoré sa nevedia pripojiť na vzdialenú adresu. Spúšťa malý program v Node na vašom počítači a vyžaduje priečinok mcp-server z repozitára ${brand}.`,
                   `Csak olyan alkalmazásokhoz kell, amelyek nem érnek el távoli URL-t. Egy kis Node programot futtat a számítógépén, és a ${brand} tárolóból az mcp-server mappára van szüksége.`
                 )}
               </p>
-              <p className="text-caption text-slate-500 font-medium">
+              <p className="text-caption text-gray-500 font-medium">
                 {t("Replace", "Nahraďte", "Cserélje le a")} {code("/path/to/ccrm-app")}{" "}
                 {t(
                   `with the folder where the ${brand} repository is on your computer.`,
@@ -576,7 +576,7 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
           value={agentPrompt}
           longText
         />
-        <div className="bg-amber-50/50 border border-amber-200/60 rounded-2xl p-4.5 text-ui text-amber-950 font-medium space-y-3">
+        <div className="bg-amber-50/50 border border-amber-200/60 rounded-lg p-4.5 text-ui text-amber-950 font-medium space-y-3">
           <div className="font-bold text-amber-900 flex items-center gap-2">
             <Terminal className="h-4 w-4 text-amber-600" />
             <span>{t("Agent Identity & Scope:", "Identita a rozsah agenta:", "Ügynök identitás és hatókör:")}</span>
@@ -607,18 +607,18 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
 
       {/* Troubleshooting */}
       <Disclosure
-        className="glass-panel rounded-3xl bg-white/95"
+        className="rounded-lg bg-white"
         summary={
           <span className="flex items-center gap-2">
-            <LifeBuoy className="h-4 w-4 text-slate-500" />
+            <LifeBuoy className="h-4 w-4 text-gray-500" />
             {t("Something not working?", "Niečo nefunguje?", "Valami nem működik?")}
           </span>
         }
       >
         <dl className="space-y-3 text-ui">
           <div>
-            <dt className="font-bold text-slate-800">{t("“Unauthorized” or error 401", "„Unauthorized“ alebo chyba 401", "„Unauthorized” vagy 401-es hiba")}</dt>
-            <dd className="text-slate-600 font-medium">
+            <dt className="font-bold text-gray-800">{t("“Unauthorized” or error 401", "„Unauthorized“ alebo chyba 401", "„Unauthorized” vagy 401-es hiba")}</dt>
+            <dd className="text-gray-600 font-medium">
               {t(
                 "The key is wrong, was revoked or was replaced by a new one. Generate a new key in step 1 and update it in your AI app.",
                 "Kľúč je nesprávny, bol odvolaný alebo ho nahradil nový. Vygenerujte nový kľúč v kroku 1 a aktualizujte ho v AI aplikácii.",
@@ -627,18 +627,18 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
             </dd>
           </div>
           <div>
-            <dt className="font-bold text-slate-800">
+            <dt className="font-bold text-gray-800">
               {t("My app sends Authorization but still gets 401", "Moja aplikácia posiela Authorization, ale stále dostáva 401", "Az alkalmazásom Authorization fejlécet küld, mégis 401-et kap")}
             </dt>
-            <dd className="text-slate-600 font-medium">
+            <dd className="text-gray-600 font-medium">
               {t(`Some servers drop that header before ${brand} sees it. Use the`, `Niektoré servery túto hlavičku zahodia skôr, než ju ${brand} uvidí. Použite hlavičku`, `Egyes szerverek eldobják ezt a fejlécet, mielőtt a ${brand} látná. Használja az`)}{" "}
               {code("X-API-Key")}{" "}
               {t("header instead.", "namiesto nej.", "fejlécet helyette.")}
             </dd>
           </div>
           <div>
-            <dt className="font-bold text-slate-800">{t("What can the assistant see and do?", "Čo môže asistent vidieť a robiť?", "Mit láthat és tehet az asszisztens?")}</dt>
-            <dd className="text-slate-600 font-medium">
+            <dt className="font-bold text-gray-800">{t("What can the assistant see and do?", "Čo môže asistent vidieť a robiť?", "Mit láthat és tehet az asszisztens?")}</dt>
+            <dd className="text-gray-600 font-medium">
               {t(
                 "The key belongs to you: the assistant can see and do only what your role allows, and every change is logged under your name.",
                 "Kľúč patrí vám: asistent vidí a robí iba to, čo dovoľuje vaša rola, a každá zmena sa zaznamená pod vaším menom.",
@@ -647,8 +647,8 @@ export const McpAssistantSettings: React.FC<McpAssistantSettingsProps> = ({ curr
             </dd>
           </div>
           <div>
-            <dt className="font-bold text-slate-800">{t("I closed the page before copying the key", "Zavrel som stránku skôr, než som skopíroval kľúč", "Bezártam az oldalt, mielőtt kimásoltam a kulcsot")}</dt>
-            <dd className="text-slate-600 font-medium">
+            <dt className="font-bold text-gray-800">{t("I closed the page before copying the key", "Zavrel som stránku skôr, než som skopíroval kľúč", "Bezártam az oldalt, mielőtt kimásoltam a kulcsot")}</dt>
+            <dd className="text-gray-600 font-medium">
               {t(
                 "No problem – generate a new one in step 1. The old one stops working.",
                 "Nevadí – vygenerujte nový v kroku 1. Ten starý prestane fungovať.",

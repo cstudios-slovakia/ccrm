@@ -36,17 +36,17 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
   };
 
   return (
-    <div className={cn("text-left", compact ? "space-y-4" : "space-y-6 pt-5 border-t border-slate-200/80")}>
+    <div className={cn("text-left", compact ? "space-y-4" : "space-y-6 pt-5 border-t border-gray-200/80")}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-xl bg-indigo-50 text-indigo-600">
+          <div className="p-1.5 rounded-md bg-entity-soft text-entity-text">
             <SlidersHorizontal className="h-4 w-4" />
           </div>
           <div>
-            <h4 className="text-ui font-bold text-slate-800">
+            <h4 className="text-ui font-bold text-gray-800">
               {t("Sidebar & Navigation", "Bočné menu & Navigácia", "Oldalsáv és Navigáció")}
             </h4>
-            <p className="text-micro font-medium text-slate-500 mt-0.5">
+            <p className="text-micro font-medium text-gray-500 mt-0.5">
               {t(
                 "Customize left sidebar behavior, density and depth style",
                 "Prispôsobte správanie ľavého menu, hustotu a hĺbku",
@@ -60,8 +60,8 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
       {/* Grid of Main Settings */}
       <div className={cn("grid gap-4", compact ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2")}>
         {/* 1. Pinning Behavior */}
-        <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
-          <label className="type-overline text-slate-600 block">
+        <div className="p-4 rounded-lg bg-white border border-gray-200/80 shadow-xs space-y-3">
+          <label className="type-overline text-gray-600 block">
             {t("Sidebar Attachment", "Uchytenie bočného menu", "Oldalsáv rögzítése")}
           </label>
 
@@ -70,21 +70,21 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
               type="button"
               onClick={() => handleTogglePin(false)}
               className={cn(
-                "p-3 rounded-xl border text-left flex flex-col gap-2 transition-all cursor-pointer relative",
+                "p-3 rounded-md border text-left flex flex-col gap-2 transition-all cursor-pointer relative",
                 !sidebarPinned
-                  ? "bg-indigo-50/70 border-indigo-500/60 ring-2 ring-indigo-500/20"
-                  : "bg-slate-50/50 border-slate-200 hover:bg-slate-100/60"
+                  ? "bg-entity-soft border-entity-border ring-2 ring-entity-solid/25"
+                  : "bg-gray-50/50 border-gray-200 hover:bg-gray-100/60"
               )}
             >
               <div className="flex items-center justify-between">
-                <PanelLeftClose className={cn("h-4 w-4", !sidebarPinned ? "text-indigo-600" : "text-slate-400")} />
-                {!sidebarPinned && <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />}
+                <PanelLeftClose className={cn("h-4 w-4", !sidebarPinned ? "text-entity-text" : "text-gray-400")} />
+                {!sidebarPinned && <span className="h-1.5 w-1.5 rounded-full bg-entity-solid" />}
               </div>
               <div>
-                <span className="text-ui font-bold text-slate-800 block">
+                <span className="text-ui font-bold text-gray-800 block">
                   {t("Floating Overlay", "Plávajúce menu", "Lebegő menü")}
                 </span>
-                <span className="text-micro text-slate-500 leading-tight block mt-0.5">
+                <span className="text-micro text-gray-500 leading-tight block mt-0.5">
                   {t("Floats over UI on hover", "Rozbalí sa pri prechode myšou", "Rámutatáskor kinyílik")}
                 </span>
               </div>
@@ -94,21 +94,21 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
               type="button"
               onClick={() => handleTogglePin(true)}
               className={cn(
-                "p-3 rounded-xl border text-left flex flex-col gap-2 transition-all cursor-pointer relative",
+                "p-3 rounded-md border text-left flex flex-col gap-2 transition-all cursor-pointer relative",
                 sidebarPinned
-                  ? "bg-indigo-50/70 border-indigo-500/60 ring-2 ring-indigo-500/20"
-                  : "bg-slate-50/50 border-slate-200 hover:bg-slate-100/60"
+                  ? "bg-entity-soft border-entity-border ring-2 ring-entity-solid/25"
+                  : "bg-gray-50/50 border-gray-200 hover:bg-gray-100/60"
               )}
             >
               <div className="flex items-center justify-between">
-                <Pin className={cn("h-4 w-4", sidebarPinned ? "text-indigo-600 fill-indigo-600" : "text-slate-400")} />
-                {sidebarPinned && <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />}
+                <Pin className={cn("h-4 w-4", sidebarPinned ? "text-entity-text fill-indigo-600" : "text-gray-400")} />
+                {sidebarPinned && <span className="h-1.5 w-1.5 rounded-full bg-entity-solid" />}
               </div>
               <div>
-                <span className="text-ui font-bold text-slate-800 block">
+                <span className="text-ui font-bold text-gray-800 block">
                   {t("Pinned Column", "Pripnutý stĺpec", "Rögzített oszlop")}
                 </span>
-                <span className="text-micro text-slate-500 leading-tight block mt-0.5">
+                <span className="text-micro text-gray-500 leading-tight block mt-0.5">
                   {t("Permanent column with depth shadow", "Trvalý stĺpec s vnútorným tieňom", "Állandó oszlop belső árnyékkal")}
                 </span>
               </div>
@@ -117,8 +117,8 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
         </div>
 
         {/* 2. Compactness Density */}
-        <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
-          <label className="type-overline text-slate-600 block">
+        <div className="p-4 rounded-lg bg-white border border-gray-200/80 shadow-xs space-y-3">
+          <label className="type-overline text-gray-600 block">
             {t("Sidebar size", "Veľkosť bočného menu", "Oldalsáv mérete")}
           </label>
 
@@ -135,33 +135,33 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
                 type="button"
                 onClick={() => handleCompactnessChange(opt.id)}
                 className={cn(
-                  "p-2.5 rounded-xl border text-center flex flex-col items-center justify-center gap-1 transition-all cursor-pointer",
+                  "p-2.5 rounded-md border text-center flex flex-col items-center justify-center gap-1 transition-all cursor-pointer",
                   sidebarCompactness === opt.id
-                    ? "bg-indigo-50/70 border-indigo-500/60 ring-2 ring-indigo-500/20"
-                    : "bg-slate-50/50 border-slate-200 hover:bg-slate-100/60"
+                    ? "bg-entity-soft border-entity-border ring-2 ring-entity-solid/25"
+                    : "bg-gray-50/50 border-gray-200 hover:bg-gray-100/60"
                 )}
               >
                 <span
                   className={cn(
                     "text-ui font-bold block",
-                    sidebarCompactness === opt.id ? "text-indigo-600" : "text-slate-700"
+                    sidebarCompactness === opt.id ? "text-entity-text" : "text-gray-700"
                   )}
                 >
                   {opt.label}
                 </span>
-                <span className="text-micro text-slate-500 block">{opt.sub}</span>
+                <span className="text-micro text-gray-500 block">{opt.sub}</span>
               </button>
             ))}
           </div>
         </div>
 
         {/* 3. Unpinned Interaction Style */}
-        <div className={cn("p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3", !compact && "md:col-span-2")}>
+        <div className={cn("p-4 rounded-lg bg-white border border-gray-200/80 shadow-xs space-y-3", !compact && "md:col-span-2")}>
           <div className="flex items-center justify-between">
-            <label className="type-overline text-slate-600 block">
+            <label className="type-overline text-gray-600 block">
               {t("Unpinned Interaction Style", "Štýl nepripnutého menu", "Nem rögzített oldalsáv stílusa")}
             </label>
-            <span className="text-micro text-slate-500">
+            <span className="text-micro text-gray-500">
               {t("Active when sidebar is unpinned", "Platí, keď menu nie je pripnuté", "Akkor él, ha az oldalsáv nincs rögzítve")}
             </span>
           </div>
@@ -171,20 +171,20 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
               type="button"
               onClick={() => handleUnpinnedStyleChange("overlay")}
               className={cn(
-                "p-3 rounded-xl border text-left flex items-start gap-3 transition-all cursor-pointer",
+                "p-3 rounded-md border text-left flex items-start gap-3 transition-all cursor-pointer",
                 sidebarUnpinnedStyle === "overlay"
-                  ? "bg-indigo-50/70 border-indigo-500/60 ring-2 ring-indigo-500/20"
-                  : "bg-slate-50/50 border-slate-200 hover:bg-slate-100/60"
+                  ? "bg-entity-soft border-entity-border ring-2 ring-entity-solid/25"
+                  : "bg-gray-50/50 border-gray-200 hover:bg-gray-100/60"
               )}
             >
-              <div className="p-2 rounded-xl bg-slate-100 text-slate-600 shrink-0">
+              <div className="p-2 rounded-md bg-gray-100 text-gray-600 shrink-0">
                 <PanelLeftOpen className="h-4 w-4" />
               </div>
               <div className="flex-1 min-w-0">
-                <span className="text-ui font-bold text-slate-800 block">
+                <span className="text-ui font-bold text-gray-800 block">
                   {t("Standard Flyout", "Štandardné vysunutie", "Kinyíló sáv")}
                 </span>
-                <span className="text-micro text-slate-500 leading-snug block mt-0.5">
+                <span className="text-micro text-gray-500 leading-snug block mt-0.5">
                   {t(
                     "Expands sidebar smoothly on hover with full labels",
                     "Plynule vysunie celé menu s popiskami pri prejdení myšou",
@@ -198,23 +198,23 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
               type="button"
               onClick={() => handleUnpinnedStyleChange("dock")}
               className={cn(
-                "p-3 rounded-xl border text-left flex items-start gap-3 transition-all cursor-pointer",
+                "p-3 rounded-md border text-left flex items-start gap-3 transition-all cursor-pointer",
                 sidebarUnpinnedStyle === "dock"
-                  ? "bg-indigo-50/70 border-indigo-500/60 ring-2 ring-indigo-500/20"
-                  : "bg-slate-50/50 border-slate-200 hover:bg-slate-100/60"
+                  ? "bg-entity-soft border-entity-border ring-2 ring-entity-solid/25"
+                  : "bg-gray-50/50 border-gray-200 hover:bg-gray-100/60"
               )}
             >
-              <div className="p-2 rounded-xl bg-purple-100 text-purple-600 shrink-0">
+              <div className="p-2 rounded-md bg-purple-100 text-purple-600 shrink-0">
                 <Sparkles className="h-4 w-4 animate-pulse" />
               </div>
               <div className="flex-1 min-w-0">
-                <span className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
+                <span className="text-ui font-bold text-gray-800 flex items-center gap-1.5">
                   {t("Dynamic macOS Dock", "Dynamický macOS Dock", "Dinamikus macOS Dock")}
                   <span className="type-overline px-1.5 py-0.2 rounded-md bg-purple-100 text-purple-700">
                     NEW
                   </span>
                 </span>
-                <span className="text-micro text-slate-500 leading-snug block mt-0.5">
+                <span className="text-micro text-gray-500 leading-snug block mt-0.5">
                   {t(
                     "Fluid cursor-distance icon magnification with floating tooltips",
                     "Zväčšovanie ikon podľa vzdialenosti kurzora a plávajúce popisky",

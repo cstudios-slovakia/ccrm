@@ -188,13 +188,13 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
   };
 
   return (
-    <div className="border-t border-slate-200/80 pt-4 space-y-3">
+    <div className="border-t border-gray-200/80 pt-4 space-y-3">
       {/* Heading & Description */}
       <div>
-        <label className="type-overline text-slate-600 block">
+        <label className="type-overline text-gray-600 block">
           {t("Biometric login (passkeys)", "Biometrické prihlásenie (prístupové kľúče)", "Biometrikus bejelentkezés (hozzáférési kulcsok)")}
         </label>
-        <p className="text-ui text-slate-500 font-medium mt-0.5">
+        <p className="text-ui text-gray-500 font-medium mt-0.5">
           {t(
             "A passkey lets you sign in with your fingerprint, your face or the device PIN instead of a password. It stays on the device, and this site never sees your biometric data.",
             "Prístupový kľúč vám umožní prihlásiť sa odtlačkom prsta, tvárou alebo PIN-om zariadenia namiesto hesla. Zostáva uložený v zariadení a táto stránka nikdy nevidí vaše biometrické údaje.",
@@ -205,7 +205,7 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
 
       {/* Browser or Server unsupported states */}
       {!supported ? (
-        <p className="text-ui text-slate-400 italic py-1">
+        <p className="text-ui text-gray-400 italic py-1">
           {t(
             "Passkeys are not supported in this browser.",
             "Tento prehliadač nepodporuje prístupové kľúče.",
@@ -213,7 +213,7 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
           )}
         </p>
       ) : serverAvailable === false ? (
-        <p className="text-ui text-slate-400 italic py-1">
+        <p className="text-ui text-gray-400 italic py-1">
           {t(
             "Passkeys are not available on this server.",
             "Prístupové kľúče nie sú na tomto serveri dostupné.",
@@ -221,14 +221,14 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
           )}
         </p>
       ) : isLoading ? (
-        <div className="flex items-center gap-2 py-3 text-slate-400">
+        <div className="flex items-center gap-2 py-3 text-gray-400">
           <Loader2 className="h-4 w-4 animate-spin" />
         </div>
       ) : (
         <>
           {/* Success Feedback Banner */}
           {successMessage && (
-            <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-ui font-semibold animate-fade-in">
+            <div className="flex items-center gap-2 p-3 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-ui font-semibold animate-fade-in">
               <CheckCircle className="h-4.5 w-4.5 text-emerald-600 shrink-0" />
               <span>{successMessage}</span>
             </div>
@@ -236,14 +236,14 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
 
           {/* Passkeys List Card */}
           {passkeys.length === 0 ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-6 flex flex-col items-center justify-center text-center space-y-2">
-              <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+            <div className="rounded-md border border-gray-200 bg-gray-50/50 p-6 flex flex-col items-center justify-center text-center space-y-2">
+              <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-400">
                 <Fingerprint className="h-5 w-5" />
               </div>
-              <p className="type-label text-slate-700 font-bold">
+              <p className="type-label text-gray-700 font-bold">
                 {t("No passkeys yet", "Zatiaľ žiadne prístupové kľúče", "Még nincs hozzáférési kulcs")}
               </p>
-              <p className="text-ui text-slate-500 font-medium">
+              <p className="text-ui text-gray-500 font-medium">
                 {t(
                   "Add a passkey to sign in without a password",
                   "Pridajte prístupový kľúč a prihlasujte sa bez hesla",
@@ -252,7 +252,7 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
               </p>
             </div>
           ) : (
-            <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden bg-white">
+            <div className="rounded-md border border-gray-200 divide-y divide-gray-100 overflow-hidden bg-white">
               {passkeys.map((pk) => {
                 const addedStr =
                   pk.created_ago_seconds !== null
@@ -267,22 +267,22 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
                 return (
                   <div key={pk.id} className="p-3.5 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="h-9 w-9 rounded-xl bg-indigo-50 border border-indigo-100/60 flex items-center justify-center text-indigo-600 shrink-0">
+                      <div className="h-9 w-9 rounded-md bg-entity-soft border border-entity-border flex items-center justify-center text-entity-text shrink-0">
                         <Key className="h-4 w-4" />
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="type-label text-slate-800 font-bold truncate">
+                          <span className="type-label text-gray-800 font-bold truncate">
                             {pk.name}
                           </span>
                           {pk.authenticator && (
-                            <span className="type-overline px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-semibold shrink-0">
+                            <span className="type-overline px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 font-semibold shrink-0">
                               {pk.authenticator}
                             </span>
                           )}
                         </div>
                         {metaLine && (
-                          <p className="text-ui text-slate-400 font-medium truncate mt-0.5">
+                          <p className="text-ui text-gray-400 font-medium truncate mt-0.5">
                             {metaLine}
                           </p>
                         )}
@@ -294,7 +294,7 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
                       lang={asLang(systemLanguage)}
                       what={t("passkey", "prístupový kľúč", "hozzáférési kulcs")}
                       onConfirm={() => handleDelete(pk.id)}
-                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer shrink-0"
+                      className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer shrink-0"
                     >
                       <Trash2 className="h-4 w-4" />
                     </HoldToConfirmButton>
@@ -309,22 +309,22 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
             <button
               type="button"
               onClick={handleOpenAdd}
-              className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-ui font-bold transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
+              className="px-4 py-2 bg-entity-soft hover:bg-entity-soft text-entity-text rounded-md text-ui font-bold transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
             >
               <Plus className="h-4 w-4" />
               <span>{t("Add passkey", "Pridať prístupový kľúč", "Hozzáférési kulcs hozzáadása")}</span>
             </button>
           ) : (
-            <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-              <div className="flex items-center gap-2 text-slate-700">
-                <ShieldCheck className="h-4.5 w-4.5 text-indigo-600" />
+            <div className="space-y-3 rounded-md border border-gray-200 bg-gray-50/60 p-4">
+              <div className="flex items-center gap-2 text-gray-700">
+                <ShieldCheck className="h-4.5 w-4.5 text-entity-text" />
                 <span className="type-label font-bold">
                   {t("Add passkey", "Pridať prístupový kľúč", "Hozzáférési kulcs hozzáadása")}
                 </span>
               </div>
 
               {formError && (
-                <div className="flex items-start gap-2 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-ui font-semibold animate-shake">
+                <div className="flex items-start gap-2 p-3 rounded-md bg-rose-50 border border-rose-200 text-rose-800 text-ui font-semibold animate-shake">
                   <AlertCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
                   <span>{formError}</span>
                 </div>
@@ -332,7 +332,7 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
 
               {/* Passkey Name Input */}
               <div className="space-y-1">
-                <label htmlFor="passkey-name" className="type-overline text-slate-600 block">
+                <label htmlFor="passkey-name" className="type-overline text-gray-600 block">
                   {t("Passkey name", "Názov prístupového kľúča", "A hozzáférési kulcs neve")}
                 </label>
                 <input
@@ -341,9 +341,9 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder={t("e.g. MacBook Pro, iPhone", "napr. MacBook Pro, iPhone", "pl. MacBook Pro, iPhone")}
-                  className="w-full px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  className="w-full px-4 py-2.5 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:ring-1 focus:ring-entity-solid/25"
                 />
-                <p className="text-ui text-slate-400 font-medium">
+                <p className="text-ui text-gray-400 font-medium">
                   {t(
                     "A name helps you identify this passkey later.",
                     "Názov vám pomôže tento kľúč neskôr rozpoznať.",
@@ -354,7 +354,7 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
 
               {/* Current Password Confirmation Input */}
               <div className="space-y-1">
-                <label htmlFor="passkey-current-password" className="type-overline text-slate-600 block">
+                <label htmlFor="passkey-current-password" className="type-overline text-gray-600 block">
                   {t(
                     "Confirm with your current password",
                     "Potvrďte súčasným heslom",
@@ -366,7 +366,7 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  className="w-full pl-4 pr-10 py-2.5 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:ring-1 focus:ring-entity-solid/25"
                 />
               </div>
 
@@ -376,7 +376,7 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
                   type="button"
                   disabled={isRegistering || !name.trim() || !password}
                   onClick={handleRegister}
-                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed text-white rounded-xl text-ui font-bold transition-all flex items-center gap-2 active:scale-95 shadow-sm"
+                  className="px-4 py-2.5 bg-entity-solid hover:bg-entity-solid-hover disabled:bg-indigo-300 disabled:cursor-not-allowed text-white rounded-md text-ui font-bold transition-all flex items-center gap-2 active:scale-95 shadow-xs"
                 >
                   {isRegistering ? (
                     <>
@@ -391,7 +391,7 @@ export const PasskeySettings: React.FC<PasskeySettingsProps> = ({ systemLanguage
                   type="button"
                   disabled={isRegistering}
                   onClick={handleCancelAdd}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-ui font-semibold transition-all active:scale-95"
+                  className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-ui font-semibold transition-all active:scale-95"
                 >
                   {t("Cancel", "Zrušiť", "Mégse")}
                 </button>

@@ -394,7 +394,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16">
+    <div className="space-y-6 select-none animate-fade-in text-gray-800 pb-16">
       {/* Title */}
       <PageHeader
         icon={<Settings className="h-6 w-6 text-pink-500" />}
@@ -409,17 +409,17 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
       <div className={`grid grid-cols-1 ws-lg:grid-cols-[--spacing(64)_minmax(0,1fr)] gap-8 items-start`}>
         {/* Left Side Navigation Sidebar */}
         <div className="space-y-2 ws-lg:sticky ws-lg:top-24 select-none shrink-0">
-          <div className="glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col gap-1.5">
-            <span className="type-overline text-slate-400 px-3 pb-2.5 border-b border-slate-200 mb-1.5 block">
+          <div className="p-4 rounded-lg border border-gray-200 bg-white shadow-xs flex flex-col gap-1.5">
+            <span className="type-overline text-gray-400 px-3 pb-2.5 border-b border-gray-200 mb-1.5 block">
               {t("Account Categories", "Nastavenia Konta", "Fiók kategóriák")}
             </span>
             <button
               type="button"
               onClick={() => setActiveSubTab("profile")}
-              className={`w-full text-left px-4 py-3 rounded-2xl type-overline transition-all flex items-center gap-2 cursor-pointer ${
+              className={`w-full text-left px-4 py-3 rounded-lg type-overline transition-all flex items-center gap-2 cursor-pointer ${
                 activeSubTab === "profile"
-                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 border border-indigo-700"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-transparent"
+                  ? "bg-entity-solid text-white shadow-xs border border-indigo-700"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-50 border border-transparent"
               }`}
             >
               <User className="h-4 w-4" /> {t("My Profile", "Základný profil", "Saját profil")}
@@ -427,10 +427,10 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
             <button
               type="button"
               onClick={() => setActiveSubTab("email")}
-              className={`w-full text-left px-4 py-3 rounded-2xl type-overline transition-all flex items-center gap-2 cursor-pointer ${
+              className={`w-full text-left px-4 py-3 rounded-lg type-overline transition-all flex items-center gap-2 cursor-pointer ${
                 activeSubTab === "email"
-                  ? "bg-pink-600 text-white shadow-lg shadow-pink-600/20 border border-pink-700"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-transparent"
+                  ? "bg-pink-600 text-white shadow-xs shadow-pink-600/20 border border-pink-700"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-50 border border-transparent"
               }`}
             >
               <Mail className="h-4 w-4" /> {t("Email Server", "E-mailová schránka", "E-mail szerver")}
@@ -438,10 +438,10 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
             <button
               type="button"
               onClick={() => setActiveSubTab("mcp")}
-              className={`w-full text-left px-4 py-3 rounded-2xl type-overline transition-all flex items-center gap-2 cursor-pointer ${
+              className={`w-full text-left px-4 py-3 rounded-lg type-overline transition-all flex items-center gap-2 cursor-pointer ${
                 activeSubTab === "mcp"
-                  ? "bg-emerald-600 text-white shadow-lg shadow-emerald-600/20 border border-emerald-700"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-transparent"
+                  ? "bg-emerald-600 text-white shadow-xs shadow-emerald-600/20 border border-emerald-700"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-50 border border-transparent"
               }`}
             >
               <Bot className="h-4 w-4 text-emerald-400" /> {t("AI Assistant (MCP)", "AI Asistent (MCP)", "MI Asszisztens (MCP)")}
@@ -449,20 +449,20 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
             <button
               type="button"
               onClick={() => setActiveSubTab("errors")}
-              className={`w-full text-left px-4 py-3 rounded-2xl type-overline transition-all flex items-center gap-2 cursor-pointer ${
+              className={`w-full text-left px-4 py-3 rounded-lg type-overline transition-all flex items-center gap-2 cursor-pointer ${
                 activeSubTab === "errors"
-                  ? "bg-red-600 text-white shadow-lg shadow-red-600/20 border border-red-700"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-transparent"
+                  ? "bg-red-600 text-white shadow-xs shadow-red-600/20 border border-red-700"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-50 border border-transparent"
               }`}
             >
               <AlertOctagon className={`h-4 w-4 ${activeSubTab === "errors" ? "text-white" : "text-red-500"}`} /> {t("Error Logs", "Chyby a Výnimky", "Hibanaplók")}
             </button>
 
-            <div className="border-t border-slate-100 my-1 pt-2.5">
+            <div className="border-t border-gray-100 my-1 pt-2.5">
               <button
                 type="button"
                 onClick={handleClearCacheAndReload}
-                className="w-full text-left px-4 py-3 rounded-2xl type-overline transition-all flex items-center gap-2 cursor-pointer text-amber-700 hover:text-amber-950 hover:bg-amber-50 border border-transparent"
+                className="w-full text-left px-4 py-3 rounded-lg type-overline transition-all flex items-center gap-2 cursor-pointer text-amber-700 hover:text-amber-950 hover:bg-amber-50 border border-transparent"
               >
                 <RefreshCw className="h-4 w-4 text-amber-500" /> {t("Clear Cache & Reload", "Vymazať cache a načítať", "Gyorsítótár törlése és újratöltés")}
               </button>
@@ -475,19 +475,19 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
           {/* TAB 1: User Profile Settings */}
           {activeSubTab === "profile" && (
-            <form onSubmit={handleSaveProfile} className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass max-w-2xl">
-              <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-                <User className="h-4.5 w-4.5 text-indigo-500" /> {t("Personal Information", "Osobné Údaje", "Személyes adatok")}
+            <form onSubmit={handleSaveProfile} className="p-6 rounded-lg space-y-6 border border-gray-200 bg-white shadow-xs max-w-2xl">
+              <h3 className="text-body font-heading font-bold text-gray-900 flex items-center gap-2 border-b border-gray-200 pb-3">
+                <User className="h-4.5 w-4.5 text-entity-text" /> {t("Personal Information", "Osobné Údaje", "Személyes adatok")}
               </h3>
 
               {!canChangeAccount && (
-                <p className="type-meta text-slate-500 rounded-xl bg-slate-50 border border-slate-200 px-3 py-2" data-testid="personal-account-locked">
+                <p className="type-meta text-gray-500 rounded-md bg-gray-50 border border-gray-200 px-3 py-2" data-testid="personal-account-locked">
                   {getTranslation(systemLanguage, "personal.account_locked")}
                 </p>
               )}
 
               <div className="space-y-1.5">
-                <label className="type-overline text-slate-600">{t("Display Name", "Meno a priezvisko", "Megjelenítendő név")}</label>
+                <label className="type-overline text-gray-600">{t("Display Name", "Meno a priezvisko", "Megjelenítendő név")}</label>
                 <input
                   type="text"
                   required
@@ -496,12 +496,12 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                   aria-readonly={!canChangeAccount}
                   data-testid="personal-name"
                   onChange={(e) => setName(e.target.value)}
-                  className={`w-full px-4 py-2.5 rounded-xl ${canChangeAccount ? "bg-white" : "bg-slate-50 text-slate-500 cursor-not-allowed"} border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500`}
+                  className={`w-full px-4 py-2.5 rounded-md ${canChangeAccount ? "bg-white" : "bg-gray-50 text-gray-500 cursor-not-allowed"} border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:ring-1 focus:ring-entity-solid/25`}
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="type-overline text-slate-600">{t("Email Address", "E-mailová adresa", "E-mail cím")}</label>
+                <label className="type-overline text-gray-600">{t("Email Address", "E-mailová adresa", "E-mail cím")}</label>
                 <input
                   type="email"
                   required
@@ -510,24 +510,24 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                   aria-readonly={!canChangeAccount}
                   data-testid="personal-email"
                   onChange={(e) => setEmail(e.target.value)}
-                  className={`w-full px-4 py-2.5 rounded-xl ${canChangeAccount ? "bg-white" : "bg-slate-50 text-slate-500 cursor-not-allowed"} border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500`}
+                  className={`w-full px-4 py-2.5 rounded-md ${canChangeAccount ? "bg-white" : "bg-gray-50 text-gray-500 cursor-not-allowed"} border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:ring-1 focus:ring-entity-solid/25`}
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="type-overline text-slate-600">{t("New Password", "Nové heslo", "Új jelszó")}</label>
+                <label className="type-overline text-gray-600">{t("New Password", "Nové heslo", "Új jelszó")}</label>
                 <PasswordInput
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  className="w-full pl-4 pr-10 py-2.5 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:ring-1 focus:ring-entity-solid/25"
                 />
               </div>
 
               <PasskeySettings systemLanguage={activeLang} />
 
               <div className="space-y-1.5">
-                <label className="type-overline text-slate-600">{t("Display Language", "Jazyk rozhrania", "Megjelenítési nyelv")}</label>
+                <label className="type-overline text-gray-600">{t("Display Language", "Jazyk rozhrania", "Megjelenítési nyelv")}</label>
                 <CustomSelect
                   value={userLanguage}
                   onChange={(v) => setUserLanguage(v as Language)}
@@ -553,10 +553,10 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
               <SidebarSettings systemLanguage={activeLang} />
 
               {/* Notification Settings */}
-              <div className="space-y-2 border-t border-slate-200/80 pt-4">
+              <div className="space-y-2 border-t border-gray-200/80 pt-4">
                 <div className="flex items-center justify-between">
-                  <label className="type-overline text-slate-600 flex items-center gap-1.5">
-                    <Bell className="h-3.5 w-3.5 text-indigo-500" />
+                  <label className="type-overline text-gray-600 flex items-center gap-1.5">
+                    <Bell className="h-3.5 w-3.5 text-entity-text" />
                     {t("Desktop & Push Notifications", "Upozornenia na ploche", "Asztali értesítések")}
                   </label>
                   <span className={`px-2.5 py-0.5 rounded-lg type-overline ${
@@ -573,8 +573,8 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                       : t("Not enabled", "Nepovolené", "Nincs engedélyezve")}
                   </span>
                 </div>
-                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">
-                  <p className="text-ui text-slate-600 leading-relaxed max-w-md font-medium">
+                <div className="bg-gray-50 border border-gray-200/80 rounded-lg p-4 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">
+                  <p className="text-ui text-gray-600 leading-relaxed max-w-md font-medium">
                     {t(
                       "Get alerted with an audio chime and desktop notification when a new task is assigned to you or completed.",
                       "Získajte okamžité zvukové a obrazové upozornenie pri priradení novej úlohy alebo jej dokončení.",
@@ -586,7 +586,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                       <button
                         type="button"
                         onClick={handleEnableNotifications}
-                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-xl text-ui font-bold text-white shadow-md shadow-indigo-600/20 active:scale-95 transition flex items-center gap-2 cursor-pointer"
+                        className="px-4 py-2 bg-entity-solid hover:bg-entity-solid rounded-md text-ui font-bold text-white shadow-xs active:scale-95 transition flex items-center gap-2 cursor-pointer"
                       >
                         <Bell className="h-4 w-4" />
                         <span>{t("Enable Notifications", "Zapnúť upozornenia", "Értesítések bekapcsolása")}</span>
@@ -595,9 +595,9 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                       <button
                         type="button"
                         onClick={handleTestNotification}
-                        className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-ui font-bold text-slate-700 shadow-2xs active:scale-95 transition flex items-center gap-2 cursor-pointer"
+                        className="px-4 py-2 bg-white hover:bg-gray-100 border border-gray-200 rounded-md text-ui font-bold text-gray-700 shadow-2xs active:scale-95 transition flex items-center gap-2 cursor-pointer"
                       >
-                        <Volume2 className="h-4 w-4 text-indigo-600" />
+                        <Volume2 className="h-4 w-4 text-entity-text" />
                         <span>{t("Test Alert", "Otestovať zvuk a hlásenie", "Riasztás tesztelése")}</span>
                       </button>
                     )}
@@ -610,7 +610,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
               <div className="flex justify-end pt-2">
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 rounded-xl text-ui font-semibold text-white shadow-lg shadow-indigo-600/20 transition-all flex items-center justify-center gap-1.5"
+                  className="px-5 py-2.5 bg-entity-solid hover:bg-entity-solid rounded-md text-ui font-semibold text-white shadow-xs transition-all flex items-center justify-center gap-1.5"
                 >
                   <Save className="h-4 w-4" /> {t("Save Changes", "Uložiť zmeny", "Változások mentése")}
                 </button>
@@ -622,7 +622,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
           {activeSubTab === "email" && (
             <div className="grid grid-cols-1 ws-xl:grid-cols-12 gap-8 max-w-5xl">
               {emailSettings.isValidated === true ? (
-                <div className="ws-xl:col-span-8 glass-panel p-6 rounded-3xl space-y-6 border-2 border-emerald-500 bg-emerald-50 shadow-glass flex flex-col justify-between text-left animate-fade-in">
+                <div className="ws-xl:col-span-8 p-6 rounded-lg space-y-6 border-2 border-emerald-500 bg-emerald-50 shadow-xs flex flex-col justify-between text-left animate-fade-in">
                   <div>
                     <h3 className="text-body font-heading font-bold text-emerald-950 flex items-center gap-2 border-b-2 border-emerald-300 pb-3">
                       <CheckCircle2 className="h-5 w-5 text-emerald-600 animate-bounce" />
@@ -630,7 +630,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                     </h3>
 
                     <div className="mt-4 space-y-4">
-                      <p className="text-ui text-slate-700 font-medium">
+                      <p className="text-ui text-gray-700 font-medium">
                         {t(
                           "Your email server credentials have been successfully validated. A pink envelope navigation shortcut is now active in your sidebar.",
                           "Váš mailový účet je správne prepojený a overený. V ľavom menu sa zobrazuje ružová ikona obálky pre prístup k schránke.",
@@ -638,55 +638,55 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                         )}
                       </p>
 
-                      <div className="bg-white/80 border border-emerald-200 rounded-2xl p-4 space-y-2.5 text-ui text-slate-700 shadow-sm">
+                      <div className="bg-white border border-emerald-200 rounded-lg p-4 space-y-2.5 text-ui text-gray-700 shadow-xs">
                         <div>
-                          <span className="type-overline text-slate-400 block">{t("Service Provider / Protocol", "Poskytovateľ služby / Protokol", "Szolgáltató / Protokoll")}</span>
+                          <span className="type-overline text-gray-400 block">{t("Service Provider / Protocol", "Poskytovateľ služby / Protokol", "Szolgáltató / Protokoll")}</span>
                           <span className="font-bold uppercase text-emerald-950 font-heading">{isMicrosoftProfile(emailSettings) ? 'Microsoft 365' : emailSettings.provider === 'exchange' ? 'Microsoft Exchange' : t("IMAP / SMTP Server", "IMAP / SMTP server", "IMAP / SMTP szerver")}</span>
                         </div>
                         {isMicrosoftProfile(emailSettings) ? (
                           <div data-testid="microsoft-mailbox-account">
-                            <span className="type-overline text-slate-400 block">{t("Signed in as", "Prihlásené ako", "Bejelentkezve mint")}</span>
-                            <span className="font-bold text-slate-800 break-all">{emailSettings.graphAccount}</span>
+                            <span className="type-overline text-gray-400 block">{t("Signed in as", "Prihlásené ako", "Bejelentkezve mint")}</span>
+                            <span className="font-bold text-gray-800 break-all">{emailSettings.graphAccount}</span>
                           </div>
                         ) : emailSettings.provider === 'smtp' ? (
                           <>
                             <div className="grid grid-cols-2 gap-4">
                               <div>
-                                <span className="type-overline text-slate-400 block">{t("IMAP Incoming Server", "Prichádzajúci server IMAP", "IMAP bejövő szerver")}</span>
-                                <span className="font-mono font-bold text-slate-800">{emailSettings.imapHost}:{emailSettings.imapPort} ({emailSettings.imapSecure})</span>
+                                <span className="type-overline text-gray-400 block">{t("IMAP Incoming Server", "Prichádzajúci server IMAP", "IMAP bejövő szerver")}</span>
+                                <span className="font-mono font-bold text-gray-800">{emailSettings.imapHost}:{emailSettings.imapPort} ({emailSettings.imapSecure})</span>
                               </div>
                               <div>
-                                <span className="type-overline text-slate-400 block">{t("IMAP Username", "Používateľské meno IMAP", "IMAP felhasználónév")}</span>
-                                <span className="font-bold text-slate-800">{emailSettings.imapUsername}</span>
+                                <span className="type-overline text-gray-400 block">{t("IMAP Username", "Používateľské meno IMAP", "IMAP felhasználónév")}</span>
+                                <span className="font-bold text-gray-800">{emailSettings.imapUsername}</span>
                               </div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                               <div>
-                                <span className="type-overline text-slate-400 block">{t("SMTP Outgoing Server", "Odchádzajúci server SMTP", "SMTP kimenő szerver")}</span>
-                                <span className="font-mono font-bold text-slate-800">{emailSettings.smtpHost}:{emailSettings.smtpPort} ({emailSettings.smtpSecure})</span>
+                                <span className="type-overline text-gray-400 block">{t("SMTP Outgoing Server", "Odchádzajúci server SMTP", "SMTP kimenő szerver")}</span>
+                                <span className="font-mono font-bold text-gray-800">{emailSettings.smtpHost}:{emailSettings.smtpPort} ({emailSettings.smtpSecure})</span>
                               </div>
                               <div>
-                                <span className="type-overline text-slate-400 block">{t("SMTP Username", "Používateľské meno SMTP", "SMTP felhasználónév")}</span>
-                                <span className="font-bold text-slate-800">{emailSettings.smtpUsername}</span>
+                                <span className="type-overline text-gray-400 block">{t("SMTP Username", "Používateľské meno SMTP", "SMTP felhasználónév")}</span>
+                                <span className="font-bold text-gray-800">{emailSettings.smtpUsername}</span>
                               </div>
                             </div>
                           </>
                         ) : (
                           <div className="grid grid-cols-2 gap-4">
                             <div>
-                              <span className="type-overline text-slate-400 block">{t("Exchange Endpoint URL", "URL koncového bodu Exchange", "Exchange végpont URL")}</span>
-                              <span className="font-mono font-bold text-slate-800 break-all">{emailSettings.exchangeUrl || t("Office365 default", "Predvolené Office365", "Office365 alapértelmezett")}</span>
+                              <span className="type-overline text-gray-400 block">{t("Exchange Endpoint URL", "URL koncového bodu Exchange", "Exchange végpont URL")}</span>
+                              <span className="font-mono font-bold text-gray-800 break-all">{emailSettings.exchangeUrl || t("Office365 default", "Predvolené Office365", "Office365 alapértelmezett")}</span>
                             </div>
                             <div>
-                              <span className="type-overline text-slate-400 block">{t("Username", "Používateľské meno", "Felhasználónév")}</span>
-                              <span className="font-bold text-slate-800">{emailSettings.username}</span>
+                              <span className="type-overline text-gray-400 block">{t("Username", "Používateľské meno", "Felhasználónév")}</span>
+                              <span className="font-bold text-gray-800">{emailSettings.username}</span>
                             </div>
                           </div>
                         )}
                       </div>
 
                       {microsoftProfileNeedsReconnect(emailSettings) && (
-                        <div role="alert" data-testid="microsoft-reconnect" className="bg-amber-50 border border-amber-300 rounded-2xl p-4 space-y-3">
+                        <div role="alert" data-testid="microsoft-reconnect" className="bg-amber-50 border border-amber-300 rounded-lg p-4 space-y-3">
                           <p className="text-ui font-semibold text-amber-900">
                             {t(
                               "The Microsoft sign-in has expired or was revoked, so this mailbox is not being read or sent from. Sign in again to reconnect it.",
@@ -737,7 +737,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                         setTestResult(null);
                         setTimeout(() => onSync(), 100);
                       }}
-                      className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 rounded-xl text-ui font-semibold text-white shadow-lg shadow-rose-600/20 transition-all cursor-pointer"
+                      className="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 rounded-md text-ui font-semibold text-white shadow-xs shadow-rose-600/20 transition-all cursor-pointer"
                     >
                       {t("Reset Server Settings", "Resetovať nastavenia", "Szerverbeállítások visszaállítása")}
                     </button>
@@ -745,14 +745,14 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                 </div>
               ) : (
                 <>
-                  <form onSubmit={handleSaveEmailSettings} className="ws-xl:col-span-8 glass-panel p-6 rounded-3xl space-y-5 border border-white/60 bg-white/95 shadow-glass">
-                    <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
+                  <form onSubmit={handleSaveEmailSettings} className="ws-xl:col-span-8 p-6 rounded-lg space-y-5 border border-gray-200 bg-white shadow-xs">
+                    <h3 className="text-body font-heading font-bold text-gray-900 flex items-center gap-2 border-b border-gray-200 pb-3">
                       <Mail className="h-4.5 w-4.5 text-pink-500" /> {t("Mail Server Integration", "Konfigurácia Mailového Servera", "Levelezőszerver integráció")}
                     </h3>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
-                        <label className="type-overline text-slate-400">{t("Integration Service", "Protokol / Služba", "Integrációs szolgáltatás")}</label>
+                        <label className="type-overline text-gray-400">{t("Integration Service", "Protokol / Služba", "Integrációs szolgáltatás")}</label>
                         <CustomSelect
                           value={emailSettings.provider}
                           onChange={(v) => setEmailSettings((prev: any) => ({ ...prev, provider: v }))}
@@ -765,23 +765,23 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                       </div>
                       {emailSettings.provider === "exchange" && (
                         <div className="space-y-1">
-                          <label className="type-overline text-slate-400">{t("Username / Login Address", "E-mail používateľa", "Felhasználónév / Bejelentkezési cím")}</label>
+                          <label className="type-overline text-gray-400">{t("Username / Login Address", "E-mail používateľa", "Felhasználónév / Bejelentkezési cím")}</label>
                           <input
                             type="email"
                             required
                             value={emailSettings.username}
                             onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, username: e.target.value }))}
                             placeholder={t("e.g. user@domain.sk", "napr. user@domain.sk", "pl. user@domain.sk")}
-                            className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 focus:outline-none focus:bg-white"
+                            className="w-full px-3 py-2 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 focus:outline-none focus:bg-white"
                           />
                         </div>
                       )}
                     </div>
 
                     {isMicrosoftProfile(emailSettings) ? (
-                      <div className="border-t border-slate-100 pt-4 space-y-3" data-testid="microsoft-mailbox-panel">
-                        <span className="type-overline text-indigo-600 block">{t("Microsoft 365 / Exchange Online", "Microsoft 365 / Exchange Online", "Microsoft 365 / Exchange Online")}</span>
-                        <p className="text-ui text-slate-600 leading-relaxed">
+                      <div className="border-t border-gray-100 pt-4 space-y-3" data-testid="microsoft-mailbox-panel">
+                        <span className="type-overline text-entity-text block">{t("Microsoft 365 / Exchange Online", "Microsoft 365 / Exchange Online", "Microsoft 365 / Exchange Online")}</span>
+                        <p className="text-ui text-gray-600 leading-relaxed">
                           {t(
                             "A Microsoft 365 mailbox is connected without a password: sign in with your Microsoft account and allow access to your mail. You can take the access back at any time, here or in your Microsoft account.",
                             "Schránka Microsoft 365 sa pripája bez hesla: prihláste sa svojím účtom Microsoft a povoľte prístup k pošte. Prístup môžete kedykoľvek zrušiť, tu alebo vo svojom účte Microsoft.",
@@ -793,35 +793,35 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                     ) : emailSettings.provider === "smtp" ? (
                       <>
                         {/* IMAP Config Panel */}
-                        <div className="border-t border-slate-100 pt-4 space-y-3">
+                        <div className="border-t border-gray-100 pt-4 space-y-3">
                           <span className="type-overline text-pink-600 block">
                             {t("1. Incoming Mail Configuration (IMAP)", "1. Nastavenia prichádzajúcej pošty (IMAP)", "1. Bejövő levelezés beállítása (IMAP)")}
                           </span>
                           <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-3">
                             <div className="space-y-1">
-                              <label className="type-overline text-slate-400">{t("IMAP Server Host", "Hostiteľ servera IMAP", "IMAP szerver hoszt")}</label>
+                              <label className="type-overline text-gray-400">{t("IMAP Server Host", "Hostiteľ servera IMAP", "IMAP szerver hoszt")}</label>
                               <input
                                 type="text"
                                 required
                                 value={emailSettings.imapHost}
                                 onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, imapHost: e.target.value }))}
                                 placeholder="imap.domain.sk"
-                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 focus:outline-none"
+                                className="w-full px-3 py-2 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 focus:outline-none"
                               />
                             </div>
                             <div className="space-y-1">
-                              <label className="type-overline text-slate-400">{t("IMAP Port", "Port IMAP", "IMAP port")}</label>
+                              <label className="type-overline text-gray-400">{t("IMAP Port", "Port IMAP", "IMAP port")}</label>
                               <input
                                 type="text"
                                 required
                                 value={emailSettings.imapPort}
                                 onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, imapPort: e.target.value }))}
                                 placeholder="993"
-                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 focus:outline-none font-mono"
+                                className="w-full px-3 py-2 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 focus:outline-none font-mono"
                               />
                             </div>
                             <div className="space-y-1">
-                              <label className="type-overline text-slate-400">{t("Connection Security", "Zabezpečenie pripojenia", "Kapcsolat biztonsága")}</label>
+                              <label className="type-overline text-gray-400">{t("Connection Security", "Zabezpečenie pripojenia", "Kapcsolat biztonsága")}</label>
                               <CustomSelect
                                 value={emailSettings.imapSecure}
                                 onChange={(v) => setEmailSettings((prev: any) => ({ ...prev, imapSecure: v }))}
@@ -836,18 +836,18 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
                           <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-3">
                             <div className="space-y-1">
-                              <label className="type-overline text-slate-400">{t("IMAP Username", "Používateľské meno IMAP", "IMAP felhasználónév")}</label>
+                              <label className="type-overline text-gray-400">{t("IMAP Username", "Používateľské meno IMAP", "IMAP felhasználónév")}</label>
                               <input
                                 type="text"
                                 required
                                 value={emailSettings.imapUsername}
                                 onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, imapUsername: e.target.value }))}
                                 placeholder="imap-login@domain.sk"
-                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 focus:outline-none"
+                                className="w-full px-3 py-2 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 focus:outline-none"
                               />
                             </div>
                             <div className="space-y-1">
-                              <label className="type-overline text-slate-400">{t("IMAP Password", "Heslo IMAP", "IMAP jelszó")}</label>
+                              <label className="type-overline text-gray-400">{t("IMAP Password", "Heslo IMAP", "IMAP jelszó")}</label>
                               <SecretInput
                                 required
                                 mono={false}
@@ -862,35 +862,35 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                         </div>
 
                         {/* SMTP Config Panel */}
-                        <div className="border-t border-slate-100 pt-4 space-y-3">
+                        <div className="border-t border-gray-100 pt-4 space-y-3">
                           <span className="type-overline text-pink-600 block">
                             {t("2. Outgoing Mail Configuration (SMTP)", "2. Nastavenia odchádzajúcej pošty (SMTP)", "2. Kimenő levelezés beállítása (SMTP)")}
                           </span>
                           <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-3">
                             <div className="space-y-1">
-                              <label className="type-overline text-slate-400">{t("SMTP Server Host", "Hostiteľ servera SMTP", "SMTP szerver hoszt")}</label>
+                              <label className="type-overline text-gray-400">{t("SMTP Server Host", "Hostiteľ servera SMTP", "SMTP szerver hoszt")}</label>
                               <input
                                 type="text"
                                 required
                                 value={emailSettings.smtpHost}
                                 onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, smtpHost: e.target.value }))}
                                 placeholder="smtp.domain.sk"
-                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 focus:outline-none"
+                                className="w-full px-3 py-2 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 focus:outline-none"
                               />
                             </div>
                             <div className="space-y-1">
-                              <label className="type-overline text-slate-400">{t("SMTP Port", "Port SMTP", "SMTP port")}</label>
+                              <label className="type-overline text-gray-400">{t("SMTP Port", "Port SMTP", "SMTP port")}</label>
                               <input
                                 type="text"
                                 required
                                 value={emailSettings.smtpPort}
                                 onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, smtpPort: e.target.value }))}
                                 placeholder="465"
-                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 focus:outline-none font-mono"
+                                className="w-full px-3 py-2 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 focus:outline-none font-mono"
                               />
                             </div>
                             <div className="space-y-1">
-                              <label className="type-overline text-slate-400">{t("Connection Security", "Zabezpečenie pripojenia", "Kapcsolat biztonsága")}</label>
+                              <label className="type-overline text-gray-400">{t("Connection Security", "Zabezpečenie pripojenia", "Kapcsolat biztonsága")}</label>
                               <CustomSelect
                                 value={emailSettings.smtpSecure}
                                 onChange={(v) => setEmailSettings((prev: any) => ({ ...prev, smtpSecure: v }))}
@@ -905,18 +905,18 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
                           <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-3">
                             <div className="space-y-1">
-                              <label className="type-overline text-slate-400">{t("SMTP Username", "Používateľské meno SMTP", "SMTP felhasználónév")}</label>
+                              <label className="type-overline text-gray-400">{t("SMTP Username", "Používateľské meno SMTP", "SMTP felhasználónév")}</label>
                               <input
                                 type="text"
                                 required
                                 value={emailSettings.smtpUsername}
                                 onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, smtpUsername: e.target.value }))}
                                 placeholder="smtp-login@domain.sk"
-                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 focus:outline-none"
+                                className="w-full px-3 py-2 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 focus:outline-none"
                               />
                             </div>
                             <div className="space-y-1">
-                              <label className="type-overline text-slate-400">{t("SMTP Password", "Heslo SMTP", "SMTP jelszó")}</label>
+                              <label className="type-overline text-gray-400">{t("SMTP Password", "Heslo SMTP", "SMTP jelszó")}</label>
                               <SecretInput
                                 required
                                 mono={false}
@@ -931,27 +931,27 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                         </div>
                       </>
                     ) : (
-                      <div className="border-t border-slate-100 pt-3 space-y-3">
-                        <span className="type-overline text-indigo-600 block">{t("Microsoft Exchange Settings", "Nastavenia Microsoft Exchange", "Microsoft Exchange beállítások")}</span>
+                      <div className="border-t border-gray-100 pt-3 space-y-3">
+                        <span className="type-overline text-entity-text block">{t("Microsoft Exchange Settings", "Nastavenia Microsoft Exchange", "Microsoft Exchange beállítások")}</span>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1">
-                            <label className="type-overline text-slate-400">{t("Exchange Server URL", "URL servera Exchange", "Exchange szerver URL")}</label>
+                            <label className="type-overline text-gray-400">{t("Exchange Server URL", "URL servera Exchange", "Exchange szerver URL")}</label>
                             <input
                               type="text"
                               value={emailSettings.exchangeUrl}
                               onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, exchangeUrl: e.target.value }))}
                               placeholder="https://outlook.office365.com/EWS/Exchange.asmx"
-                              className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 focus:outline-none"
+                              className="w-full px-3 py-2 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 focus:outline-none"
                             />
                           </div>
                           <div className="space-y-1">
-                            <label className="type-overline text-slate-400">{t("AD Domain (optional)", "Doména AD (voliteľné)", "AD tartomány (opcionális)")}</label>
+                            <label className="type-overline text-gray-400">{t("AD Domain (optional)", "Doména AD (voliteľné)", "AD tartomány (opcionális)")}</label>
                             <input
                               type="text"
                               value={emailSettings.exchangeDomain}
                               onChange={(e) => setEmailSettings((prev: any) => ({ ...prev, exchangeDomain: e.target.value }))}
                               placeholder="INTERNAL"
-                              className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 focus:outline-none"
+                              className="w-full px-3 py-2 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 focus:outline-none"
                             />
                           </div>
                         </div>
@@ -959,8 +959,8 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                     )}
 
                     {emailSettings.provider === "exchange" && (
-                      <div className="space-y-1 border-t border-slate-100 pt-3">
-                        <label className="type-overline text-slate-400">{t("Account Password", "Heslo k účtu / App Password", "Fiók jelszava")}</label>
+                      <div className="space-y-1 border-t border-gray-100 pt-3">
+                        <label className="type-overline text-gray-400">{t("Account Password", "Heslo k účtu / App Password", "Fiók jelszava")}</label>
                         <SecretInput
                           required
                           mono={false}
@@ -975,7 +975,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
                     {/* Validation outcome */}
                     {testResult && (
-                      <div className={`p-4 rounded-2xl flex items-start gap-3 border ${
+                      <div className={`p-4 rounded-lg flex items-start gap-3 border ${
                         testResult.status === "success"
                           ? "bg-emerald-50/60 border-emerald-200 text-emerald-900"
                           : "bg-rose-50/60 border-rose-200 text-rose-900"
@@ -989,12 +989,12 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                       </div>
                     )}
 
-                    <div className={isMicrosoftProfile(emailSettings) ? "hidden" : "flex items-center justify-between pt-3 border-t border-slate-100"}>
+                    <div className={isMicrosoftProfile(emailSettings) ? "hidden" : "flex items-center justify-between pt-3 border-t border-gray-100"}>
                       <button
                         type="button"
                         onClick={handleTestConnection}
                         disabled={isTesting}
-                        className="px-4.5 py-2.5 rounded-xl border-2 border-slate-300 text-slate-700 hover:border-slate-800 hover:text-slate-950 type-overline flex items-center gap-1.5 shadow-sm transition-all"
+                        className="px-4.5 py-2.5 rounded-md border-2 border-gray-300 text-gray-700 hover:border-gray-800 hover:text-gray-950 type-overline flex items-center gap-1.5 shadow-xs transition-all"
                       >
                         {isTesting ? (
                           <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -1006,7 +1006,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
                       <button
                         type="submit"
-                        className="px-5 py-2.5 bg-pink-600 hover:bg-pink-700 rounded-xl text-ui font-semibold text-white shadow-lg shadow-pink-600/20 transition-all flex items-center justify-center gap-1.5"
+                        className="px-5 py-2.5 bg-pink-600 hover:bg-pink-700 rounded-md text-ui font-semibold text-white shadow-xs shadow-pink-600/20 transition-all flex items-center justify-center gap-1.5"
                       >
                         <Save className="h-4 w-4" /> {t("Save Integration", "Uložiť integráciu", "Integráció mentése")}
                       </button>
@@ -1015,22 +1015,22 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
                   {/* MS Exchange and settings tips sidebar */}
                   <div className="ws-xl:col-span-4 space-y-4">
-                    <div className="glass-panel p-5 rounded-3xl bg-slate-50 border border-slate-200/60 space-y-3.5">
-                      <h4 className="type-overline text-slate-500 pb-2 border-b border-slate-200">
+                    <div className="p-5 rounded-lg bg-gray-50 border border-gray-200/60 space-y-3.5">
+                      <h4 className="type-overline text-gray-500 pb-2 border-b border-gray-200">
                         {t("Microsoft Exchange Instructions", "Pokyny pre Microsoft Exchange", "Microsoft Exchange útmutató")}
                       </h4>
-                      <ul className="text-micro leading-relaxed text-slate-600 space-y-2.5 font-medium list-disc pl-4.5">
+                      <ul className="text-micro leading-relaxed text-gray-600 space-y-2.5 font-medium list-disc pl-4.5">
                         <li>
-                          <strong className="text-slate-800">{t("Microsoft 365 / Exchange Online:", "Microsoft 365 / Exchange Online:", "Microsoft 365 / Exchange Online:")}</strong> {t("Microsoft no longer accepts a password for these mailboxes. Choose Microsoft 365 / Exchange Online above and sign in with Microsoft.", "Microsoft pre tieto schránky už neprijíma heslo. Vyberte vyššie Microsoft 365 / Exchange Online a prihláste sa cez Microsoft.", "A Microsoft ezekhez a postafiókokhoz már nem fogad el jelszót. Válassza fent a Microsoft 365 / Exchange Online lehetőséget, és jelentkezzen be a Microsofttal.")}
+                          <strong className="text-gray-800">{t("Microsoft 365 / Exchange Online:", "Microsoft 365 / Exchange Online:", "Microsoft 365 / Exchange Online:")}</strong> {t("Microsoft no longer accepts a password for these mailboxes. Choose Microsoft 365 / Exchange Online above and sign in with Microsoft.", "Microsoft pre tieto schránky už neprijíma heslo. Vyberte vyššie Microsoft 365 / Exchange Online a prihláste sa cez Microsoft.", "A Microsoft ezekhez a postafiókokhoz már nem fogad el jelszót. Válassza fent a Microsoft 365 / Exchange Online lehetőséget, és jelentkezzen be a Microsofttal.")}
                         </li>
                         <li>
-                          <strong className="text-slate-800">{t("Server Endpoints:", "Koncové body servera:", "Szerver végpontok:")}</strong> {t("Autodiscovery URL is recommended, e.g.,", "Odporúča sa adresa URL automatického zisťovania, napr.,", "Az automatikus felderítési URL ajánlott, pl.,")} <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 font-mono text-micro">https://outlook.office365.com/EWS/Exchange.asmx</code>.
+                          <strong className="text-gray-800">{t("Server Endpoints:", "Koncové body servera:", "Szerver végpontok:")}</strong> {t("Autodiscovery URL is recommended, e.g.,", "Odporúča sa adresa URL automatického zisťovania, napr.,", "Az automatikus felderítési URL ajánlott, pl.,")} <code className="bg-white px-1.5 py-0.5 rounded border border-gray-200 font-mono text-micro">https://outlook.office365.com/EWS/Exchange.asmx</code>.
                         </li>
                         <li>
-                          <strong className="text-slate-800">{t("OAuth Requirements:", "Požiadavky OAuth:", "OAuth követelmények:")}</strong> {t("Multi-factor authentication accounts must generate a specific", "Účty s viacfaktorovým overením musia vygenerovať osobitné", "A többtényezős hitelesítést használó fiókoknak külön kell létrehozniuk egy")} <strong className="text-slate-800">App Password</strong> {t("inside Azure / Microsoft security preferences.", "v nastaveniach zabezpečenia Azure / Microsoft.", "jelszót az Azure / Microsoft biztonsági beállításaiban.")}
+                          <strong className="text-gray-800">{t("OAuth Requirements:", "Požiadavky OAuth:", "OAuth követelmények:")}</strong> {t("Multi-factor authentication accounts must generate a specific", "Účty s viacfaktorovým overením musia vygenerovať osobitné", "A többtényezős hitelesítést használó fiókoknak külön kell létrehozniuk egy")} <strong className="text-gray-800">App Password</strong> {t("inside Azure / Microsoft security preferences.", "v nastaveniach zabezpečenia Azure / Microsoft.", "jelszót az Azure / Microsoft biztonsági beállításaiban.")}
                         </li>
                         <li>
-                          <strong className="text-slate-800">{t("IMAP protocol status:", "Stav protokolu IMAP:", "IMAP protokoll állapota:")}</strong> {t("Ensure IMAP/SMTP connectivity is enabled for the mailbox under Microsoft Admin center policies.", "Uistite sa, že je pre schránku povolené pripojenie IMAP/SMTP v zásadách centra Microsoft Admin.", "Győződjön meg róla, hogy az IMAP/SMTP kapcsolat engedélyezve van a postafiókhoz a Microsoft Admin központ házirendjeiben.")}
+                          <strong className="text-gray-800">{t("IMAP protocol status:", "Stav protokolu IMAP:", "IMAP protokoll állapota:")}</strong> {t("Ensure IMAP/SMTP connectivity is enabled for the mailbox under Microsoft Admin center policies.", "Uistite sa, že je pre schránku povolené pripojenie IMAP/SMTP v zásadách centra Microsoft Admin.", "Győződjön meg róla, hogy az IMAP/SMTP kapcsolat engedélyezve van a postafiókhoz a Microsoft Admin központ házirendjeiben.")}
                         </li>
                       </ul>
                     </div>
@@ -1045,13 +1045,13 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
           {/* TAB 4: Error Logs Exception Tracking */}
           {activeSubTab === "errors" && (
-            <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
+            <div className="p-6 rounded-lg space-y-6 border border-gray-200 bg-white shadow-xs">
 
               {/* Toggle Error Sidebar */}
-              <div className="flex items-center justify-between p-4.5 bg-slate-50 border border-slate-200/60 rounded-2xl">
+              <div className="flex items-center justify-between p-4.5 bg-gray-50 border border-gray-200/60 rounded-lg">
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-ui font-bold text-slate-900">{t("Error Sidebar Panel", "Panel chýb na boku", "Hiba oldalsáv panel")}</span>
-                  <span className="text-micro text-slate-500 font-medium">
+                  <span className="text-ui font-bold text-gray-900">{t("Error Sidebar Panel", "Panel chýb na boku", "Hiba oldalsáv panel")}</span>
+                  <span className="text-micro text-gray-500 font-medium">
                     {t(
                       "Show quick access to background error logs in the main sidebar",
                       "Zobraziť rýchly prístup k chybám na hlavnom bočnom paneli",
@@ -1074,19 +1074,19 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                     }}
                     className="sr-only peer"
                   />
-                  <div className="w-10 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                  <div className="w-10 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
                 </label>
               </div>
 
-              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2">
+              <div className="flex items-center justify-between border-b border-gray-200 pb-3">
+                <h3 className="text-body font-heading font-bold text-gray-900 flex items-center gap-2">
                   <AlertOctagon className="h-4.5 w-4.5 text-red-500 animate-pulse" /> {t("System Errors & Exceptions", "Systémové chyby a výnimky", "Rendszerhibák és kivételek")}
                 </h3>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={fetchErrorLogs}
-                    className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-xl type-overline flex items-center gap-1 cursor-pointer"
+                    className="px-3.5 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-md type-overline flex items-center gap-1 cursor-pointer"
                   >
                     <RefreshCw className="h-3.5 w-3.5" /> {t("Refresh", "Obnoviť", "Frissítés")}
                   </button>
@@ -1095,7 +1095,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                       lang={asLang(activeLang)}
                       what={t("error logs", "chybové záznamy", "hibanaplók")}
                       onConfirm={clearErrorLogs}
-                      className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl type-overline flex items-center gap-1"
+                      className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-md type-overline flex items-center gap-1"
                   >
                     {t("Clear Logs", "Vymazať záznamy", "Naplók törlése")}
                   </HoldToConfirmButton>
@@ -1104,21 +1104,21 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
               {isLoadingLogs ? (
                 <div className="flex justify-center py-12">
-                  <RefreshCw className="h-6 w-6 animate-spin text-slate-400" />
+                  <RefreshCw className="h-6 w-6 animate-spin text-gray-400" />
                 </div>
               ) : errorLogs.length === 0 ? (
-                <div className="text-center py-12 text-slate-500 font-bold text-ui">
+                <div className="text-center py-12 text-gray-500 font-bold text-ui">
                   {t("No system errors found.", "Nenašli sa žiadne systémové chyby.", "Nem található rendszerhiba.")}
                 </div>
               ) : (
                 <div ref={tableWrapRef} className="table-page-wrap">
                   <table className="w-full text-left text-ui border-collapse">
                     <thead className="table-page-sticky-head">
-                      <tr className="border-b border-slate-200 text-slate-500 type-overline">
-                        <th className="sticky z-10 bg-slate-50 py-3 px-4">{t("Timestamp", "Čas", "Időbélyeg")}</th>
-                        <th className="sticky z-10 bg-slate-50 py-3 px-4">{t("Method", "Metóda", "Metódus")}</th>
-                        <th className="sticky z-10 bg-slate-50 py-3 px-4">URI</th>
-                        <th className="sticky z-10 bg-slate-50 py-3 px-4">{t("Message", "Chyba", "Üzenet")}</th>
+                      <tr className="border-b border-gray-200 text-gray-500 type-overline">
+                        <th className="sticky z-10 bg-gray-50 py-3 px-4">{t("Timestamp", "Čas", "Időbélyeg")}</th>
+                        <th className="sticky z-10 bg-gray-50 py-3 px-4">{t("Method", "Metóda", "Metódus")}</th>
+                        <th className="sticky z-10 bg-gray-50 py-3 px-4">URI</th>
+                        <th className="sticky z-10 bg-gray-50 py-3 px-4">{t("Message", "Chyba", "Üzenet")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1126,21 +1126,21 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                         <tr
                           key={log.id}
                           onClick={() => setSelectedLog(log)}
-                          className="border-b border-slate-100 hover:bg-red-50/40 transition-all cursor-pointer font-medium text-slate-700"
+                          className="border-b border-gray-100 hover:bg-red-50/40 transition-all cursor-pointer font-medium text-gray-700"
                         >
-                          <td className="py-3 px-4 font-mono text-micro whitespace-nowrap text-slate-500">
+                          <td className="py-3 px-4 font-mono text-micro whitespace-nowrap text-gray-500">
                             {log.created_at}
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap">
                             <span className={`px-2 py-0.5 rounded-md type-overline ${
                               log.request_method === 'POST'
                                 ? 'bg-blue-50 text-blue-700'
-                                : 'bg-slate-50 text-slate-700'
+                                : 'bg-gray-50 text-gray-700'
                             }`}>
                               {log.request_method}
                             </span>
                           </td>
-                          <td className="py-3 px-4 font-mono text-micro text-slate-600 truncate max-w-xs">
+                          <td className="py-3 px-4 font-mono text-micro text-gray-600 truncate max-w-xs">
                             {log.request_uri}
                           </td>
                           <td className="py-3 px-4 font-bold text-red-600 truncate max-w-sm">
@@ -1161,50 +1161,50 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
       {/* Exception Detail Popup Modal */}
       {selectedLog && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="glass-panel w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh] text-left">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+        <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-3xl bg-white rounded-lg shadow-xs border border-gray-200 overflow-hidden flex flex-col max-h-[85vh] text-left">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50">
               <div className="flex items-center gap-2 text-red-600">
                 <AlertOctagon className="h-5 w-5 shrink-0" />
-                <h3 className="font-heading font-extrabold text-slate-900 text-ui">
+                <h3 className="font-heading font-extrabold text-gray-900 text-ui">
                   {t("Exception / Error Details", "Detail výnimky / chyby", "Kivétel / hiba részletei")}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedLog(null)}
-                className="text-slate-400 hover:text-slate-800 p-1.5 hover:bg-slate-100 rounded-xl transition-all cursor-pointer font-bold text-body"
+                className="text-gray-400 hover:text-gray-800 p-1.5 hover:bg-gray-100 rounded-md transition-all cursor-pointer font-bold text-body"
               >
                 ✕
               </button>
             </div>
-            <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-700 text-ui">
-              <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-4 border-b border-slate-100 pb-4">
+            <div className="p-6 overflow-y-auto space-y-4 font-medium text-gray-700 text-ui">
+              <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-4 border-b border-gray-100 pb-4">
                 <div>
-                  <span className="type-overline text-slate-400 block">{t("Date & Time", "Dátum a čas", "Dátum és idő")}</span>
-                  <span className="font-mono text-micro text-slate-700 font-bold">{selectedLog.created_at}</span>
+                  <span className="type-overline text-gray-400 block">{t("Date & Time", "Dátum a čas", "Dátum és idő")}</span>
+                  <span className="font-mono text-micro text-gray-700 font-bold">{selectedLog.created_at}</span>
                 </div>
                 <div>
-                  <span className="type-overline text-slate-400 block">{t("Method & URI", "Metóda & URI", "Metódus és URI")}</span>
-                  <span className="font-mono text-micro text-slate-700 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
+                  <span className="type-overline text-gray-400 block">{t("Method & URI", "Metóda & URI", "Metódus és URI")}</span>
+                  <span className="font-mono text-micro text-gray-700 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
                 </div>
                 <div>
-                  <span className="type-overline text-slate-400 block">{t("File & Line", "Súbor a riadok", "Fájl és sor")}</span>
-                  <span className="font-mono text-micro text-slate-700 font-bold">{selectedLog.file ? `${selectedLog.file.split('/').pop()}:${selectedLog.line}` : 'N/A'}</span>
+                  <span className="type-overline text-gray-400 block">{t("File & Line", "Súbor a riadok", "Fájl és sor")}</span>
+                  <span className="font-mono text-micro text-gray-700 font-bold">{selectedLog.file ? `${selectedLog.file.split('/').pop()}:${selectedLog.line}` : 'N/A'}</span>
                 </div>
               </div>
 
               <div className="space-y-1">
-                <span className="type-overline text-slate-400 block">{t("Error Message", "Chybová správa", "Hibaüzenet")}</span>
-                <div className="p-3 bg-red-50 text-red-800 rounded-xl font-mono text-caption font-bold border border-red-100 whitespace-pre-wrap leading-relaxed">
+                <span className="type-overline text-gray-400 block">{t("Error Message", "Chybová správa", "Hibaüzenet")}</span>
+                <div className="p-3 bg-red-50 text-red-800 rounded-md font-mono text-caption font-bold border border-red-100 whitespace-pre-wrap leading-relaxed">
                   {selectedLog.message}
                 </div>
               </div>
 
               {selectedLog.file && (
                 <div className="space-y-1">
-                  <span className="type-overline text-slate-400 block">{t("Full File Path", "Úplná cesta k súboru", "Teljes fájlútvonal")}</span>
-                  <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl font-mono text-micro border border-slate-100">
+                  <span className="type-overline text-gray-400 block">{t("Full File Path", "Úplná cesta k súboru", "Teljes fájlútvonal")}</span>
+                  <div className="p-2.5 bg-gray-50 text-gray-600 rounded-md font-mono text-micro border border-gray-100">
                     {selectedLog.file} ({t("Line", "Riadok", "Sor")} {selectedLog.line})
                   </div>
                 </div>
@@ -1212,8 +1212,8 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
               {selectedLog.trace && (
                 <div className="space-y-1">
-                  <span className="type-overline text-slate-400 block">{t("Stack Trace", "Zásobník volaní", "Hívási verem")}</span>
-                  <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-micro overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-64">
+                  <span className="type-overline text-gray-400 block">{t("Stack Trace", "Zásobník volaní", "Hívási verem")}</span>
+                  <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg font-mono text-micro overflow-x-auto whitespace-pre leading-relaxed border border-gray-800 max-h-64">
                     {selectedLog.trace}
                   </pre>
                 </div>
@@ -1221,8 +1221,8 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
 
               {selectedLog.payload && (
                 <div className="space-y-1">
-                  <span className="type-overline text-slate-400 block">{t("Request Payload", "Telo požiadavky", "Kérés tartalma")}</span>
-                  <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-micro overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-48">
+                  <span className="type-overline text-gray-400 block">{t("Request Payload", "Telo požiadavky", "Kérés tartalma")}</span>
+                  <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg font-mono text-micro overflow-x-auto whitespace-pre leading-relaxed border border-gray-800 max-h-48">
                     {selectedLog.payload}
                   </pre>
                 </div>

@@ -47,19 +47,19 @@ const WIDTHS: { w: number | null; label: string }[] = [
 ];
 
 const btn =
-  "h-9 px-3 rounded-xl border text-ui font-semibold transition-all cursor-pointer active:scale-[0.98]";
-const btnPrimary = `${btn} bg-slate-900 border-slate-900 text-white hover:bg-slate-800`;
-const btnGhost = `${btn} bg-white border-slate-200 text-slate-700 hover:border-slate-300`;
+  "h-9 px-3 rounded-md border text-ui font-semibold transition-all cursor-pointer active:scale-[0.98]";
+const btnPrimary = `${btn} bg-gray-900 border-gray-900 text-white hover:bg-gray-800`;
+const btnGhost = `${btn} bg-white border-gray-200 text-gray-700 hover:border-gray-300`;
 const input =
-  "h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-ui text-slate-800 placeholder:text-slate-400 outline-none focus:border-slate-400";
+  "h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-ui text-gray-800 placeholder:text-gray-400 outline-none focus:border-gray-400";
 
 const Section = ({ id, title, note, children }: { id: string; title: string; note: string; children: React.ReactNode }) => (
   <section id={id} className="flex flex-col gap-3">
     <div>
-      <h3 className="type-panel-title text-slate-900">{title}</h3>
-      <p className="type-meta text-slate-500">{note}</p>
+      <h3 className="type-panel-title text-gray-900">{title}</h3>
+      <p className="type-meta text-gray-500">{note}</p>
     </div>
-    <div className="rounded-3xl border border-dashed border-slate-300 p-4 ws-sm:p-6">{children}</div>
+    <div className="rounded-lg border border-dashed border-gray-300 p-4 ws-sm:p-6">{children}</div>
   </section>
 );
 
@@ -85,34 +85,34 @@ export default function UiGallery() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans">
+    <div className="min-h-screen bg-gray-100 font-sans">
       {/* Controls: outside the workspace, so they stay the same while you test. */}
-      <div className="sticky top-0 z-50 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
-        <strong className="text-ui text-slate-900">UI gallery</strong>
+      <div className="sticky top-0 z-50 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-gray-200 bg-white px-4 py-3">
+        <strong className="text-ui text-gray-900">UI gallery</strong>
         <div className="flex items-center gap-1">
-          <span className="type-meta mr-1 text-slate-500">View size</span>
+          <span className="type-meta mr-1 text-gray-500">View size</span>
           {MODES.map((m) => (
             <button
               key={m.id}
               type="button"
               onClick={() => pickMode(m.id)}
-              className={`${btn} ${mode === m.id ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-200 text-slate-700"}`}
+              className={`${btn} ${mode === m.id ? "bg-gray-900 border-gray-900 text-white" : "bg-white border-gray-200 text-gray-700"}`}
             >
               {m.label}
             </button>
           ))}
-          <span className="type-meta ml-2 text-slate-500">
+          <span className="type-meta ml-2 text-gray-500">
             now {size} · scale {scale}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-1">
-          <span className="type-meta mr-1 text-slate-500">Workspace width</span>
+          <span className="type-meta mr-1 text-gray-500">Workspace width</span>
           {WIDTHS.map((o) => (
             <button
               key={o.label}
               type="button"
               onClick={() => setFrame(o.w)}
-              className={`${btn} ${frame === o.w ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-200 text-slate-700"}`}
+              className={`${btn} ${frame === o.w ? "bg-gray-900 border-gray-900 text-white" : "bg-white border-gray-200 text-gray-700"}`}
             >
               {o.label}
             </button>
@@ -121,11 +121,11 @@ export default function UiGallery() {
       </div>
 
       <div className="overflow-x-auto p-4">
-        <main className="workspace bg-slate-50 rounded-3xl" style={frame ? { maxWidth: frame } : undefined}>
+        <main className="workspace bg-gray-50 rounded-lg" style={frame ? { maxWidth: frame } : undefined}>
           <Page className="gap-10">
             <Section id="page-header" title="PageHeader" note="Title + subtitle left, actions right. Actions wrap under the title below ws-md.">
               <PageHeader
-                icon={<Users className="text-slate-700" />}
+                icon={<Users className="text-gray-700" />}
                 title="Clients"
                 subtitle="Companies and people you work with, with their open leads and invoices"
                 actions={
@@ -144,7 +144,7 @@ export default function UiGallery() {
               <EntityHeader
                 onBack={() => {}}
                 backLabel="Back to clients"
-                avatar={<div className="flex size-12 items-center justify-center rounded-2xl bg-slate-900 text-white font-bold">AC</div>}
+                avatar={<div className="flex size-12 items-center justify-center rounded-lg bg-gray-900 text-white font-bold">AC</div>}
                 title="Acme Components s.r.o. with a deliberately long company name to test truncation"
                 badges={<span className="rounded-full bg-emerald-50 px-2 py-0.5 type-meta font-semibold text-emerald-700">Active</span>}
                 meta="Bratislava · since 2021"
@@ -170,7 +170,7 @@ export default function UiGallery() {
               <Toolbar
                 search={
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
                     <input className={`${input} pl-9`} placeholder="Search…" />
                   </div>
                 }
@@ -192,11 +192,11 @@ export default function UiGallery() {
 
             <Section id="surface" title="Surface" note="Card, and one inset level inside it. Padding steps up at ws-sm.">
               <Surface>
-                <div className="type-card-title text-slate-900">Card</div>
-                <p className="type-body mb-4 text-slate-600">Body text at the current view size.</p>
+                <div className="type-card-title text-gray-900">Card</div>
+                <p className="type-body mb-4 text-gray-600">Body text at the current view size.</p>
                 <Surface tone="inset">
-                  <div className="type-label text-slate-700">Inset</div>
-                  <p className="type-meta text-slate-500">Second level, never a third.</p>
+                  <div className="type-label text-gray-700">Inset</div>
+                  <p className="type-meta text-gray-500">Second level, never a third.</p>
                 </Surface>
               </Surface>
             </Section>
@@ -206,15 +206,15 @@ export default function UiGallery() {
                 nav={
                   <Surface padding="none" className="p-2">
                     {["Profile", "Security", "Notifications", "Appearance"].map((l, i) => (
-                      <div key={l} className={`rounded-xl px-3 py-2 text-ui ${i === 0 ? "bg-slate-100 font-semibold text-slate-900" : "text-slate-600"}`}>{l}</div>
+                      <div key={l} className={`rounded-md px-3 py-2 text-ui ${i === 0 ? "bg-gray-100 font-semibold text-gray-900" : "text-gray-600"}`}>{l}</div>
                     ))}
                   </Surface>
                 }
-                rail={<Surface><div className="type-card-title">Rail</div><p className="type-meta text-slate-500">Visible from ws-2xl only.</p></Surface>}
+                rail={<Surface><div className="type-card-title">Rail</div><p className="type-meta text-gray-500">Visible from ws-2xl only.</p></Surface>}
               >
                 <Surface>
-                  <div className="type-card-title text-slate-900">Main pane</div>
-                  <p className="type-body text-slate-600">Takes the remaining width, no cap.</p>
+                  <div className="type-card-title text-gray-900">Main pane</div>
+                  <p className="type-body text-gray-600">Takes the remaining width, no cap.</p>
                 </Surface>
               </SplitLayout>
             </Section>
@@ -240,7 +240,7 @@ export default function UiGallery() {
             </Section>
 
             <Section id="type" title="Type roles" note="The scale itself. Compare the three view sizes on this block.">
-              <div className="flex flex-col gap-1 text-slate-800">
+              <div className="flex flex-col gap-1 text-gray-800">
                 <div className="type-page-title">type-page-title · Page title</div>
                 <div className="type-panel-title">type-panel-title · Section title</div>
                 <div className="type-card-title">type-card-title · Card title</div>

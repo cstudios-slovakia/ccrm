@@ -50,7 +50,7 @@ export const ClientCategoryBadge: React.FC<{
     <span
       title={fullPath}
       className={cn(
-        "inline-flex items-center gap-1.5 max-w-full px-2 py-0.5 rounded-md border border-slate-200 bg-white type-overline text-slate-600",
+        "inline-flex items-center gap-1.5 max-w-full px-2 py-0.5 rounded-md border border-gray-200 bg-white type-overline text-gray-600",
         className
       )}
     >
@@ -91,7 +91,7 @@ export const ClientCategorySelect: React.FC<{
               />
               <span className="truncate">
                 {ancestors.length > 0 && (
-                  <span className="text-slate-400">{ancestors.map((a) => a.name).join(" › ")} › </span>
+                  <span className="text-gray-400">{ancestors.map((a) => a.name).join(" › ")} › </span>
                 )}
                 {category.name}
               </span>
@@ -114,24 +114,24 @@ export const ClientCategorySelect: React.FC<{
 
 const ROW_STYLES = {
   1: {
-    row: "p-3.5 bg-slate-50/80 border-b border-slate-100",
+    row: "p-3.5 bg-gray-50 border-b border-gray-100",
     swatch: "h-3.5 w-3.5",
-    name: "font-bold text-ui text-slate-900",
-    badge: "px-2 py-0.5 rounded-full text-micro font-semibold bg-slate-200 text-slate-600",
+    name: "font-bold text-ui text-gray-900",
+    badge: "px-2 py-0.5 rounded-full text-micro font-semibold bg-gray-200 text-gray-600",
     icon: "h-3.5 w-3.5",
   },
   2: {
-    row: "p-2 rounded-xl bg-white border border-slate-100",
+    row: "p-2 rounded-md bg-white border border-gray-100",
     swatch: "h-3 w-3",
-    name: "font-semibold text-ui text-slate-800",
-    badge: "px-1.5 py-0.2 rounded text-micro bg-slate-100 text-slate-500",
+    name: "font-semibold text-ui text-gray-800",
+    badge: "px-1.5 py-0.2 rounded text-micro bg-gray-100 text-gray-500",
     icon: "h-3 w-3",
   },
   3: {
-    row: "p-1.5 px-3 rounded-lg bg-slate-50 border border-slate-100 text-ui",
+    row: "p-1.5 px-3 rounded-lg bg-gray-50 border border-gray-100 text-ui",
     swatch: "h-2.5 w-2.5",
-    name: "text-slate-700 font-medium",
-    badge: "text-micro text-slate-400",
+    name: "text-gray-700 font-medium",
+    badge: "text-micro text-gray-400",
     icon: "h-3 w-3",
   },
 } as const;
@@ -440,7 +440,7 @@ export const ClientCategoryManager: React.FC<{
 
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {editable && (
-            <GripVertical className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-emerald-500 transition-colors duration-150" />
+            <GripVertical className="h-3.5 w-3.5 shrink-0 text-gray-300 group-hover:text-emerald-500 transition-colors duration-150" />
           )}
           <ColorPicker
             value={shownColor}
@@ -465,7 +465,7 @@ export const ClientCategoryManager: React.FC<{
                   setRenamingId(null);
                 }
               }}
-              className="min-w-0 flex-1 px-2 py-1 rounded-lg border border-emerald-300 bg-white text-ui font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              className="min-w-0 flex-1 px-2 py-1 rounded-lg border border-emerald-300 bg-white text-ui font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
             />
           ) : (
             <span
@@ -497,7 +497,7 @@ export const ClientCategoryManager: React.FC<{
                 setRenamingId(cat.id);
                 setRenameDraft(cat.name);
               }}
-              className="p-1 text-slate-400 hover:text-emerald-600 active:scale-90 transition-all duration-150 cursor-pointer"
+              className="p-1 text-gray-400 hover:text-emerald-600 active:scale-90 transition-all duration-150 cursor-pointer"
               title={t("Rename category", "Premenovať kategóriu", "Kategória átnevezése")}
             >
               <PencilLine className={styles.icon} />
@@ -508,7 +508,7 @@ export const ClientCategoryManager: React.FC<{
                   lang={readUiLanguage()}
                   what={cat.name}
                   onConfirm={() => handleDelete(cat)}
-                  className="p-1 text-slate-400 hover:text-rose-600 active:scale-90 transition-all duration-150"
+                  className="p-1 text-gray-400 hover:text-rose-600 active:scale-90 transition-all duration-150"
                   title={t("Delete category", "Vymazať", "Törlés")}
               >
                 <Trash2 className={styles.icon} />
@@ -526,9 +526,9 @@ export const ClientCategoryManager: React.FC<{
     <>
       {/* Quick add */}
       {editable && (
-      <form onSubmit={handleCreate} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-wrap items-end gap-3">
+      <form onSubmit={handleCreate} className="p-4 rounded-lg bg-gray-50 border border-gray-200 flex flex-wrap items-end gap-3">
         <div className="flex-1 min-w-50">
-          <label className="text-caption font-bold text-slate-500 block mb-1">
+          <label className="text-caption font-bold text-gray-500 block mb-1">
             {t("Category Name", "Názov kategórie", "Kategória neve")}
           </label>
           <input
@@ -536,12 +536,12 @@ export const ClientCategoryManager: React.FC<{
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder={words.namePlaceholder}
-            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-ui text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
           />
         </div>
 
         <div className="min-w-55">
-          <label className="text-caption font-bold text-slate-500 block mb-1">
+          <label className="text-caption font-bold text-gray-500 block mb-1">
             {t("Parent Category (optional)", "Nadradená kategória (voliteľné)", "Szülő kategória (opcionális)")}
           </label>
           <CustomSelect
@@ -549,12 +549,12 @@ export const ClientCategoryManager: React.FC<{
             onChange={(val) => setNewParentId(val)}
             options={parentOptions}
             size="sm"
-            className="w-full text-ui font-semibold rounded-xl bg-white border-slate-200"
+            className="w-full text-ui font-semibold rounded-md bg-white border-gray-200"
           />
         </div>
 
         <div>
-          <label className="text-caption font-bold text-slate-500 block mb-1">
+          <label className="text-caption font-bold text-gray-500 block mb-1">
             {newParentId && !colorTouched ? t("Color (inherited)", "Farba (zdedená)", "Szín (örökölt)") : t("Color", "Farba", "Szín")}
           </label>
           <ColorPicker
@@ -583,7 +583,7 @@ export const ClientCategoryManager: React.FC<{
       ) : (
         <>
           {editable && (
-            <p className="-mt-3 text-caption text-slate-400 flex items-center gap-1.5">
+            <p className="-mt-3 text-caption text-gray-400 flex items-center gap-1.5">
               <GripVertical className="h-3.5 w-3.5 shrink-0" />
               {t(
                 "Drag a category to reorder it or move it under another one; click its colour dot to recolour it, double-click its name to rename it.",
@@ -602,14 +602,14 @@ export const ClientCategoryManager: React.FC<{
               const l1Color = shownColorOf(l1);
               const level2 = clientCategoryChildren(categories, l1.id);
               return (
-                <div key={l1.id} className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
+                <div key={l1.id} className="border border-gray-200 rounded-lg overflow-hidden bg-white">
                   {renderRow(l1, 1, null)}
                   {level2.length > 0 && (
-                    <div className="p-3 space-y-2 bg-slate-50/30">
+                    <div className="p-3 space-y-2 bg-gray-50/30">
                       {level2.map((l2) => {
                         const level3 = clientCategoryChildren(categories, l2.id);
                         return (
-                          <div key={l2.id} className="pl-4 border-l-2 border-slate-200 space-y-2">
+                          <div key={l2.id} className="pl-4 border-l-2 border-gray-200 space-y-2">
                             {renderRow(l2, 2, l1Color)}
                             {level3.length > 0 && (
                               <div className="pl-6 space-y-1">
@@ -630,8 +630,8 @@ export const ClientCategoryManager: React.FC<{
                 onDragOver={(e) => handleDragOver(e, null)}
                 onDrop={handleDrop}
                 className={cn(
-                  "animate-in fade-in slide-in-from-bottom-1 duration-200 rounded-2xl border-2 border-dashed px-4 py-3 text-center text-ui font-semibold transition-colors",
-                  dropTarget?.targetId === null ? "border-emerald-400 bg-emerald-50 text-emerald-600" : "border-slate-200 text-slate-400"
+                  "animate-in fade-in slide-in-from-bottom-1 duration-200 rounded-lg border-2 border-dashed px-4 py-3 text-center text-ui font-semibold transition-colors",
+                  dropTarget?.targetId === null ? "border-emerald-400 bg-emerald-50 text-emerald-600" : "border-gray-200 text-gray-400"
                 )}
               >
                 {t(

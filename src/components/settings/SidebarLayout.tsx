@@ -99,14 +99,14 @@ export const SidebarLayout: React.FC<{
         <nav
           aria-label={t("settings.nav.ui.categories_nav")}
           data-testid="settings-nav"
-          className="glass-panel flex min-w-60 max-w-75 flex-[1_1_16.5rem] flex-col rounded-3xl border border-white/60 bg-white/95 p-3.5 shadow-glass ws-lg:sticky ws-lg:top-[calc(0.5rem_-_var(--gutter))]"
+          className="flex min-w-60 max-w-75 flex-[1_1_16.5rem] flex-col rounded-lg border border-gray-200 bg-white p-3.5 shadow-xs ws-lg:sticky ws-lg:top-[calc(0.5rem_-_var(--gutter))]"
         >
           <SettingsNavSearch lang={lang} catalog={catalog} query={query} setQuery={setQuery} inputRef={searchRef} onOpen={onOpenSearchHit}>
             <ScrollFade axis="y" className="max-h-[calc(100vh_-_14rem)]">
               <div className="flex flex-col gap-0.5">
                 {groups.map((group) => (
                   <div key={group.id} className="flex flex-col gap-0.5">
-                    <span className="type-overline px-3 pb-1 pt-3.5 text-slate-500 first:pt-1.5">{t(groupLabelKey(group.id))}</span>
+                    <span className="type-overline px-3 pb-1 pt-3.5 text-gray-500 first:pt-1.5">{t(groupLabelKey(group.id))}</span>
                     {group.categories.map((c) => {
                       const on = c.def.id === def.id;
                       const CIcon = c.def.icon;
@@ -119,15 +119,15 @@ export const SidebarLayout: React.FC<{
                             onClick={() => onOpenCategory(c.def.id)}
                             data-testid={`settings-nav-${c.def.id}`}
                             className={cn(
-                              "flex min-h-10.5 items-center gap-3 rounded-xl px-3 text-body font-semibold no-underline transition-colors",
-                              on ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/25" : "text-slate-700 hover:bg-slate-100 hover:text-slate-900",
+                              "flex min-h-10.5 items-center gap-3 rounded-md px-3 text-body font-semibold no-underline transition-colors",
+                              on ? "bg-entity-solid text-white shadow-xs " : "text-gray-700 hover:bg-gray-100 hover:text-gray-900",
                             )}
                           >
                             <CIcon className={cn("size-4.5 shrink-0", on ? "text-white" : ctint.fg)} aria-hidden="true" />
                             {t(categoryKey(c.def.id, "title"))}
                           </a>
                           {on && c.sections.length > 1 && (
-                            <ul className="mb-1.5 ml-5.5 mt-1 flex flex-col gap-px border-l-2 border-indigo-100 pl-3">
+                            <ul className="mb-1.5 ml-5.5 mt-1 flex flex-col gap-px border-l-2 border-entity-border pl-3">
                               {c.sections.map((s) => {
                                 const cur = shownId === s.id;
                                 return (
@@ -152,7 +152,7 @@ export const SidebarLayout: React.FC<{
                                       }}
                                       className={cn(
                                         "flex min-h-8.5 items-center rounded-lg px-2.5 text-ui no-underline transition-colors",
-                                        cur ? "bg-indigo-50 font-bold text-indigo-700" : "font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900",
+                                        cur ? "bg-entity-soft font-bold text-entity-text" : "font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900",
                                       )}
                                     >
                                       {t(sectionKey(c.def.id, s.id, "title"))}
@@ -174,12 +174,12 @@ export const SidebarLayout: React.FC<{
 
         <div className="flex min-w-0 flex-[999_1_36rem] flex-col gap-6" data-testid="settings-category" data-category={def.id}>
           <div className="flex items-center gap-3.5">
-            <span className={cn("flex size-12 shrink-0 items-center justify-center rounded-2xl", tint.bg, tint.fg)}>
+            <span className={cn("flex size-12 shrink-0 items-center justify-center rounded-lg", tint.bg, tint.fg)}>
               <Icon className="size-6" aria-hidden="true" />
             </span>
             <div className="flex min-w-0 flex-col gap-0.5">
-              <h2 className="type-page-title text-slate-900">{t(categoryKey(def.id, "title"))}</h2>
-              <p className="type-body text-slate-500">{t(categoryKey(def.id, "subtitle"))}</p>
+              <h2 className="type-page-title text-gray-900">{t(categoryKey(def.id, "title"))}</h2>
+              <p className="type-body text-gray-500">{t(categoryKey(def.id, "subtitle"))}</p>
             </div>
           </div>
           <div className="flex flex-col gap-8" data-testid="settings-section-stack">

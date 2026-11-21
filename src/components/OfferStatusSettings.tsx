@@ -83,7 +83,7 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
           return {
             name: t("Draft", "Návrh", "Piszkozat"),
             desc: t("Being prepared — where every new document starts", "Pripravuje sa — tu začína každý nový doklad", "Előkészületben — itt indul minden új bizonylat"),
-            chip: "bg-slate-100 text-slate-700 border-slate-200",
+            chip: "bg-gray-100 text-gray-700 border-gray-200",
           };
         case "open":
           return {
@@ -116,7 +116,7 @@ export const OfferStatusSettings: React.FC<OfferStatusSettingsProps> = ({
         return {
           name: t("Draft", "Návrh", "Piszkozat"),
           desc: t("Being prepared — where every new offer starts", "Pripravuje sa — tu začína každá nová ponuka", "Előkészületben — itt indul minden új ajánlat"),
-          chip: "bg-slate-100 text-slate-700 border-slate-200",
+          chip: "bg-gray-100 text-gray-700 border-gray-200",
         };
       case "open":
         return {

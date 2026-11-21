@@ -47,7 +47,7 @@ const LANGUAGES: { code: "sk" | "hu" | "en"; label: string }[] = [
 const DEFAULT_CURRENCY: Record<string, string> = { sk: "EUR", hu: "HUF", en: "USD" };
 
 const selectCls =
-  "min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-ui text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 disabled:opacity-50";
+  "min-h-11 w-full rounded-md border border-gray-200 bg-white px-3 text-ui text-gray-800 focus:border-entity-border focus:outline-none focus:ring-2 focus:ring-entity-solid/25 disabled:opacity-50";
 
 const showToast = (message: string) => (window as unknown as { showToast?: (m: string) => void }).showToast?.(message);
 
@@ -127,14 +127,14 @@ export const DemoReseedSettings: React.FC<{ language: Language; canEdit: boolean
   if (loadFailed) {
     return (
       <SectionCard testId="demo-reseed" tone="warning" title={t("Re-seed demo data", "Znovu načítať demo dáta", "Demó adatok újratöltése")}>
-        <p className="text-ui text-slate-600" data-testid="demo-reseed-load-error">
+        <p className="text-ui text-gray-600" data-testid="demo-reseed-load-error">
           {t("The demo status could not be read.", "Stav demo dát sa nepodarilo načítať.", "A demó állapotát nem sikerült beolvasni.")}{" "}
-          <button type="button" className="cursor-pointer font-semibold text-indigo-600 underline" onClick={() => void load()}>
+          <button type="button" className="cursor-pointer font-semibold text-entity-text underline" onClick={() => void load()}>
             {t("Try again", "Skúsiť znova", "Újra")}
           </button>
         </p>
         {loadDetail && (
-          <p className="mt-2 break-words font-mono text-micro text-slate-500" data-testid="demo-reseed-load-detail">{loadDetail}</p>
+          <p className="mt-2 break-words font-mono text-micro text-gray-500" data-testid="demo-reseed-load-detail">{loadDetail}</p>
         )}
       </SectionCard>
     );
@@ -159,7 +159,7 @@ export const DemoReseedSettings: React.FC<{ language: Language; canEdit: boolean
       )}
     >
       {showNotice && (
-        <div role="status" data-testid="demo-reseed-notice" className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-ui text-amber-900">
+        <div role="status" data-testid="demo-reseed-notice" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-4 text-ui text-amber-900">
           <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <p>
             {addable.length > 0
@@ -180,7 +180,7 @@ export const DemoReseedSettings: React.FC<{ language: Language; canEdit: boolean
       <SettingsGroup>
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1.5">
-            <span className="type-label text-slate-800">{t("Demo data language", "Jazyk demo dát", "Demóadatok nyelve")}</span>
+            <span className="type-label text-gray-800">{t("Demo data language", "Jazyk demo dát", "Demóadatok nyelve")}</span>
             <select
               data-testid="demo-reseed-language"
               className={selectCls}
@@ -195,7 +195,7 @@ export const DemoReseedSettings: React.FC<{ language: Language; canEdit: boolean
             </select>
           </label>
           <label className="flex flex-col gap-1.5">
-            <span className="type-label text-slate-800">{t("Currency", "Mena", "Pénznem")}</span>
+            <span className="type-label text-gray-800">{t("Currency", "Mena", "Pénznem")}</span>
             <select
               data-testid="demo-reseed-currency"
               className={selectCls}
@@ -212,16 +212,16 @@ export const DemoReseedSettings: React.FC<{ language: Language; canEdit: boolean
           <input
             type="checkbox"
             data-testid="demo-reseed-reset-company"
-            className="mt-1 h-4 w-4 shrink-0 accent-indigo-600"
+            className="mt-1 h-4 w-4 shrink-0 accent-entity-solid"
             checked={resetCompany}
             disabled={running || !canEdit}
             onChange={(e) => setResetCompany(e.target.checked)}
           />
           <span className="flex flex-col">
-            <span className="type-label text-slate-800">
+            <span className="type-label text-gray-800">
               {t("Also reset company profile, divisions and lists", "Resetovať aj profil spoločnosti, divízie a zoznamy", "A cégprofil, a divíziók és a listák visszaállítása is")}
             </span>
-            <span className="type-meta text-slate-500">
+            <span className="type-meta text-gray-500">
               {t(
                 "Rewrites the company profile, the divisions, and the pipeline states, sources, categories and task states in the chosen language. Untick it to keep your own.",
                 "Prepíše profil spoločnosti, divízie, stavy pipeline, zdroje, kategórie a stavy úloh vo zvolenom jazyku. Odznačte, ak chcete zachovať vlastné.",
@@ -232,7 +232,7 @@ export const DemoReseedSettings: React.FC<{ language: Language; canEdit: boolean
         </label>
       </SettingsGroup>
 
-      <p className="type-meta text-slate-600" data-testid="demo-reseed-confirm-text">
+      <p className="type-meta text-gray-600" data-testid="demo-reseed-confirm-text">
         {t(
           "This replaces every demo record and the demo logins, and signs you out. Records you created yourself are kept, but a link from one of them to a demo record may stop working.",
           "Nahradí všetky demo záznamy a demo prihlásenia a odhlási vás. Záznamy, ktoré ste vytvorili sami, zostanú, ale odkaz z nich na demo záznam môže prestať fungovať.",
@@ -246,7 +246,7 @@ export const DemoReseedSettings: React.FC<{ language: Language; canEdit: boolean
 
       <div className="flex flex-wrap items-center justify-end gap-3">
         {running && (
-          <span className="inline-flex items-center gap-2 text-ui text-slate-500" data-testid="demo-reseed-running">
+          <span className="inline-flex items-center gap-2 text-ui text-gray-500" data-testid="demo-reseed-running">
             <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
             {t("Re-seeding… this can take a minute.", "Prebieha načítanie… môže to trvať minútu.", "Újratöltés… ez eltarthat egy percig.")}
           </span>
@@ -260,7 +260,7 @@ export const DemoReseedSettings: React.FC<{ language: Language; canEdit: boolean
           hint={t("Hold to re-seed", "Podržte na opätovné načítanie", "Tartsa lenyomva az újratöltéshez")}
           aria-label={t("Re-seed demo data, hold to confirm", "Znovu načítať demo dáta, podržaním potvrďte", "Demó adatok újratöltése, tartsa lenyomva a megerősítéshez")}
           data-testid="demo-reseed-run"
-          className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-amber-300 bg-white px-5 text-ui font-bold text-amber-800 shadow-sm transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-amber-300 bg-white px-5 text-ui font-bold text-amber-800 shadow-xs transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {t("Re-seed demo data", "Znovu načítať demo dáta", "Demó adatok újratöltése")}
         </HoldToConfirmButton>

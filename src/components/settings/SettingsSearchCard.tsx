@@ -82,8 +82,8 @@ export const SearchResults: React.FC<{
   if (groups.length === 0) {
     return (
       <div className="settings-results-in px-4 py-8 text-center" role="status">
-        <p className="text-body font-bold text-slate-800">{formatTranslation(lang, "settings.nav.ui.no_match", { query })}</p>
-        <p className="mt-1 text-ui text-slate-500">{t("settings.nav.ui.no_match_hint")}</p>
+        <p className="text-body font-bold text-gray-800">{formatTranslation(lang, "settings.nav.ui.no_match", { query })}</p>
+        <p className="mt-1 text-ui text-gray-500">{t("settings.nav.ui.no_match_hint")}</p>
       </div>
     );
   }
@@ -100,7 +100,7 @@ export const SearchResults: React.FC<{
           const CatIcon = cat.icon;
           return (
             <li key={group.categoryId} role="presentation" className="flex flex-col gap-0.5">
-              <span className={cn("type-overline text-slate-500", density === "nav" ? "px-3 pb-1 pt-2.5" : "px-3 pb-1 pt-3")}>
+              <span className={cn("type-overline text-gray-500", density === "nav" ? "px-3 pb-1 pt-2.5" : "px-3 pb-1 pt-3")}>
                 {t(categoryKey(group.categoryId, "title"))}
               </span>
               {group.hits.map((hit) => {
@@ -117,24 +117,24 @@ export const SearchResults: React.FC<{
                     onClick={() => onPick(hit)}
                     onMouseEnter={() => setActive(idx)}
                     className={cn(
-                      "flex items-center gap-3 rounded-2xl px-3 no-underline transition-colors",
+                      "flex items-center gap-3 rounded-lg px-3 no-underline transition-colors",
                       density === "wide" ? "min-h-15 gap-3.5 py-2" : density === "phone" ? "min-h-16 py-1.5" : "min-h-12 py-1.5",
-                      isActive ? "bg-indigo-50 outline outline-2 -outline-offset-2 outline-indigo-200" : "hover:bg-slate-50",
+                      isActive ? "bg-entity-soft outline outline-2 -outline-offset-2 outline-entity-border" : "hover:bg-gray-50",
                     )}
                   >
-                    <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-xl", tint.bg, tint.fg)}>
+                    <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-md", tint.bg, tint.fg)}>
                       <SecIcon className="size-4.5" aria-hidden="true" />
                     </span>
                     <span className="flex min-w-0 flex-1 flex-col gap-px">
-                      <span className="text-body font-bold text-slate-900"><Highlighted text={hit.title} query={query} /></span>
+                      <span className="text-body font-bold text-gray-900"><Highlighted text={hit.title} query={query} /></span>
                       {density !== "nav" && (
-                        <span className="text-ui text-slate-600"><Highlighted text={hit.hint} query={query} /></span>
+                        <span className="text-ui text-gray-600"><Highlighted text={hit.hint} query={query} /></span>
                       )}
                     </span>
                     {density === "wide" && isActive && (
-                      <span className="shrink-0 text-ui font-semibold text-indigo-700">{t("settings.nav.ui.open_enter")}</span>
+                      <span className="shrink-0 text-ui font-semibold text-entity-text">{t("settings.nav.ui.open_enter")}</span>
                     )}
-                    {density === "phone" && <ChevronRight className="size-4 shrink-0 text-slate-400" aria-hidden="true" />}
+                    {density === "phone" && <ChevronRight className="size-4 shrink-0 text-gray-400" aria-hidden="true" />}
                   </a>
                 );
               })}
@@ -147,7 +147,7 @@ export const SearchResults: React.FC<{
 };
 
 const Kbd: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <kbd className="rounded-md border border-slate-200 bg-white px-1.5 py-px font-sans text-caption font-semibold text-slate-600">{children}</kbd>
+  <kbd className="rounded-md border border-gray-200 bg-white px-1.5 py-px font-sans text-caption font-semibold text-gray-600">{children}</kbd>
 );
 
 /**
@@ -179,14 +179,14 @@ export const SettingsSearchCard: React.FC<{
       aria-label={t("settings.nav.ui.search_label")}
       className={cn(
         "overflow-hidden border bg-white transition-shadow",
-        wide ? "rounded-3xl" : "rounded-2xl",
+        wide ? "rounded-lg" : "rounded-lg",
         searching
-          ? "border-indigo-200 shadow-glass ring-4 ring-indigo-50"
-          : "border-slate-200 shadow-glass focus-within:border-indigo-200 focus-within:ring-4 focus-within:ring-indigo-50",
+          ? "border-entity-border shadow-xs ring-4 ring-entity-solid/25"
+          : "border-gray-200 shadow-xs focus-within:border-entity-border focus-within:ring-4 focus-within:ring-entity-soft",
       )}
     >
-      <div className={cn("flex items-center", wide ? "min-h-15 gap-3.5 pl-5 pr-3" : "min-h-13 gap-2.5 pl-4 pr-1", searching && "border-b border-slate-100")}>
-        <Search className={cn("shrink-0 text-indigo-600", wide ? "size-5" : "size-4.5")} aria-hidden="true" />
+      <div className={cn("flex items-center", wide ? "min-h-15 gap-3.5 pl-5 pr-3" : "min-h-13 gap-2.5 pl-4 pr-1", searching && "border-b border-gray-100")}>
+        <Search className={cn("shrink-0 text-entity-text", wide ? "size-5" : "size-4.5")} aria-hidden="true" />
         <label htmlFor={listId + "-q"} className="sr-only">{t("settings.nav.ui.search_label")}</label>
         <input
           ref={inputRef}
@@ -204,20 +204,20 @@ export const SettingsSearchCard: React.FC<{
             handleSearchKeys(e, { flat, active, setActive, open: onOpen, clear: () => setQuery("") })
           }
           className={cn(
-            "min-h-11 min-w-0 flex-1 appearance-none border-0 bg-transparent text-slate-900 outline-none placeholder:text-slate-500 [&::-webkit-search-cancel-button]:hidden",
+            "min-h-11 min-w-0 flex-1 appearance-none border-0 bg-transparent text-gray-900 outline-none placeholder:text-gray-500 [&::-webkit-search-cancel-button]:hidden",
             wide ? "text-body" : "text-body",
           )}
         />
         {searching ? (
           <>
-            {wide && <span className="shrink-0 text-ui text-slate-500" aria-live="polite">
+            {wide && <span className="shrink-0 text-ui text-gray-500" aria-live="polite">
               {count === 0 ? "" : count === 1 ? t("settings.nav.ui.results_one") : formatTranslation(lang, "settings.nav.ui.results_many", { count })}
             </span>}
             <button
               type="button"
               onClick={() => { setQuery(""); inputRef.current?.focus(); }}
               aria-label={t("settings.nav.ui.search_clear")}
-              className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+              className="flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
             >
               <X className="size-4.5" aria-hidden="true" />
             </button>
@@ -241,7 +241,7 @@ export const SettingsSearchCard: React.FC<{
             listId={listId}
           />
           {wide && (
-            <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 bg-slate-50 px-5 py-3 text-ui text-slate-500">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-gray-100 bg-gray-50 px-5 py-3 text-ui text-gray-500">
               <span><Kbd>↑</Kbd> <Kbd>↓</Kbd> {t("settings.nav.ui.kbd_move")}</span>
               <span><Kbd>↵</Kbd> {t("settings.nav.ui.kbd_open")}</span>
               <span><Kbd>Esc</Kbd> {t("settings.nav.ui.kbd_clear")}</span>
@@ -273,7 +273,7 @@ export const SettingsNavSearch: React.FC<{
 
   return (
     <>
-      <div className="mb-2.5 flex min-h-11 items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 pl-3 pr-1 text-slate-500 focus-within:border-indigo-300 focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-100">
+      <div className="mb-2.5 flex min-h-11 items-center gap-2.5 rounded-md border border-gray-200 bg-gray-50 pl-3 pr-1 text-gray-500 focus-within:border-entity-border focus-within:bg-white focus-within:ring-2 focus-within:ring-entity-solid/25">
         <Search className="size-4 shrink-0" aria-hidden="true" />
         <label htmlFor={listId + "-q"} className="sr-only">{t("settings.nav.ui.search_label")}</label>
         <input
@@ -289,14 +289,14 @@ export const SettingsNavSearch: React.FC<{
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("settings.nav.ui.search_placeholder_short")}
           onKeyDown={(e) => handleSearchKeys(e, { flat, active, setActive, open: onOpen, clear: () => setQuery("") })}
-          className="min-w-0 flex-1 appearance-none border-0 bg-transparent text-ui text-slate-900 outline-none placeholder:text-slate-500 [&::-webkit-search-cancel-button]:hidden"
+          className="min-w-0 flex-1 appearance-none border-0 bg-transparent text-ui text-gray-900 outline-none placeholder:text-gray-500 [&::-webkit-search-cancel-button]:hidden"
         />
         {searching ? (
           <button
             type="button"
             onClick={() => { setQuery(""); inputRef.current?.focus(); }}
             aria-label={t("settings.nav.ui.search_clear")}
-            className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900"
           >
             <X className="size-4" aria-hidden="true" />
           </button>

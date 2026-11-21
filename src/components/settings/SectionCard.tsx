@@ -23,24 +23,24 @@ export const SectionCard: React.FC<{
   <div
     data-testid={testId}
     className={cn(
-      "glass-panel flex flex-col gap-6 rounded-3xl border p-6 text-left shadow-glass",
-      tone === "danger" && "border-rose-200/70 bg-rose-50/20",
-      tone === "warning" && "border-amber-200/70 bg-amber-50/20",
-      tone === "default" && "border-white/60 bg-white/95",
+      "glass-panel flex flex-col gap-6 rounded-lg border p-6 text-left shadow-xs",
+      tone === "danger" && "border-rose-200 bg-rose-50/40",
+      tone === "warning" && "border-amber-200 bg-amber-50/40",
+      tone === "default" && "border-gray-200 bg-white",
       className,
     )}
   >
-    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3.5">
+    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 pb-3.5">
       <div className="flex min-w-0 flex-col gap-1">
         <h3
           className={cn(
             "type-panel-title font-heading",
-            tone === "danger" ? "text-rose-800" : tone === "warning" ? "text-amber-800" : "text-slate-900",
+            tone === "danger" ? "text-rose-800" : tone === "warning" ? "text-amber-800" : "text-gray-900",
           )}
         >
           {title}
         </h3>
-        {description && <p className="type-body max-w-2xl text-slate-500">{description}</p>}
+        {description && <p className="type-body max-w-2xl text-gray-500">{description}</p>}
       </div>
       {action}
     </div>
@@ -58,8 +58,8 @@ export const SettingsGroup: React.FC<{
   <div className={cn("flex flex-col gap-3", className)}>
     {(title || description) && (
       <div className="flex flex-col gap-0.5">
-        {title && <h4 className="text-body font-bold text-slate-800">{title}</h4>}
-        {description && <p className="text-ui text-slate-500">{description}</p>}
+        {title && <h4 className="text-body font-bold text-gray-800">{title}</h4>}
+        {description && <p className="text-ui text-gray-500">{description}</p>}
       </div>
     )}
     {children}
@@ -80,7 +80,7 @@ export const SaveStatus: React.FC<{ lang: Language; status: AutosaveStatus }> = 
       data-status={status}
       className={cn(
         "inline-flex min-h-7 items-center gap-1.5 rounded-full px-3 text-caption font-semibold",
-        saving ? "bg-slate-100 text-slate-600" : "bg-emerald-50 text-emerald-700",
+        saving ? "bg-gray-100 text-gray-600" : "bg-emerald-50 text-emerald-700",
       )}
     >
       {saving ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden="true" /> : <Check className="size-3.5" aria-hidden="true" />}
@@ -107,7 +107,7 @@ export const ModuleLinkCard: React.FC<{
       <a
         href={href}
         data-testid="settings-module-link"
-        className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white no-underline shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500"
+        className="inline-flex min-h-11 items-center gap-2 rounded-md bg-entity-solid px-5 text-ui font-semibold text-white no-underline shadow-xs transition-colors hover:bg-entity-solid-hover"
       >
         {getTranslation(lang, "settings.nav.ui.module_link_btn")}
         <ArrowUpRight className="size-4" aria-hidden="true" />
@@ -115,8 +115,8 @@ export const ModuleLinkCard: React.FC<{
     }
   >
     <div className="flex items-center gap-4">
-      <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">{icon}</span>
-      <p className="type-body text-slate-500">{getTranslation(lang, "settings.nav.ui.module_link_body")}</p>
+      <span className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-entity-soft text-entity-text">{icon}</span>
+      <p className="type-body text-gray-500">{getTranslation(lang, "settings.nav.ui.module_link_body")}</p>
     </div>
   </SectionCard>
 );

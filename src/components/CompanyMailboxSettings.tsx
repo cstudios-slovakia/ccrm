@@ -607,20 +607,20 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
   const renderCategoryPill = (cat: "email" | "whatsapp" | "agents") => {
     if (cat === "email") {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-bold tracking-wider uppercase bg-slate-900/5 dark:bg-white/10 text-slate-700 dark:text-slate-200">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-bold tracking-wider uppercase bg-gray-100 text-gray-700">
           <Mail className="w-3 h-3 opacity-80" /> {t.catEmail}
         </span>
       );
     }
     if (cat === "whatsapp") {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-bold tracking-wider uppercase bg-emerald-500/15 text-emerald-800 dark:text-emerald-300">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-bold tracking-wider uppercase bg-emerald-50 text-emerald-700">
           <MessageCircle className="w-3 h-3" /> {t.catWhatsapp}
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-bold tracking-wider uppercase bg-violet-500/15 text-violet-800 dark:text-violet-300">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-bold tracking-wider uppercase bg-violet-50 text-violet-700">
         <Bot className="w-3 h-3" /> {t.catAgents}
       </span>
     );
@@ -659,7 +659,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
       return (
         <span
           data-testid="company-mailbox-error"
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-micro font-semibold text-rose-600 dark:text-rose-400"
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-50 border border-rose-200 text-micro font-semibold text-rose-600"
           title={err}
         >
           <AlertCircle className="w-3.5 h-3.5 shrink-0" />
@@ -671,11 +671,11 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
     if (box.connectorType === "whatsapp") {
       const connected = box.settings?.waStatus === "connected" || Boolean(box.settings?.waAccountId);
       return connected ? (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 text-micro font-semibold text-emerald-700 dark:text-emerald-300">
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-micro font-semibold text-emerald-700">
           <CheckCircle2 className="w-3.5 h-3.5" /> {t.waConnectedBadge}
         </span>
       ) : (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/15 text-micro font-semibold text-amber-700 dark:text-amber-300">
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 text-micro font-semibold text-amber-700">
           <QrCode className="w-3.5 h-3.5" /> {t.waQrRequiredBadge}
         </span>
       );
@@ -687,11 +687,11 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
         box.connectorType === "messenger" ||
         Boolean(box.settings?.botmanToken || box.settings?.botmanAppId);
       return ready ? (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 text-micro font-semibold text-emerald-700 dark:text-emerald-300">
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-micro font-semibold text-emerald-700">
           <CheckCircle2 className="w-3.5 h-3.5" /> BotMan Active
         </span>
       ) : (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/15 text-micro font-semibold text-amber-700 dark:text-amber-300">
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 text-micro font-semibold text-amber-700">
           <KeyRound className="w-3.5 h-3.5" /> Token Needed
         </span>
       );
@@ -708,11 +708,11 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
             : "API Key Ready"
         : t.agentReadyBadge;
       return hasToken ? (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 text-micro font-semibold text-emerald-700 dark:text-emerald-300">
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-micro font-semibold text-emerald-700">
           <Sparkles className="w-3.5 h-3.5" /> {readyLabel}
         </span>
       ) : (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/15 text-micro font-semibold text-amber-700 dark:text-amber-300">
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 text-micro font-semibold text-amber-700">
           <KeyRound className="w-3.5 h-3.5" /> {t.agentSetupNeededBadge}
         </span>
       );
@@ -720,17 +720,17 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
 
     const s = backlogSummary(folders);
     if (!s.started) {
-      return <span className="text-micro text-slate-400">{t.idle}</span>;
+      return <span className="text-micro text-gray-400">{t.idle}</span>;
     }
     return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-micro text-slate-700 dark:text-slate-300">
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-micro text-gray-700">
         {s.caughtUp ? (
           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
         ) : (
           <RefreshCw className="w-3.5 h-3.5 text-amber-500" />
         )}
         <span>{s.caughtUp ? t.caughtUp : t.backfilling}</span>
-        <span className="text-slate-400">
+        <span className="text-gray-400">
           · {s.filed} {t.filed}
         </span>
       </span>
@@ -746,16 +746,16 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
           ? t.envRemoteBridge
           : t.envCloudMcp;
     return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-micro font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/70 dark:border-slate-700">
-        <Terminal className="w-3 h-3 text-indigo-500" />
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-micro font-semibold bg-gray-100 text-gray-600 border border-gray-200/70">
+        <Terminal className="w-3 h-3 text-entity-text" />
         {label}
       </span>
     );
   };
 
   const inp =
-    "mt-1 w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 text-ui text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40 font-normal";
-  const lbl = "block type-overline text-slate-600 dark:text-slate-300";
+    "mt-1 w-full px-3 py-2 rounded-lg bg-white border border-gray-200 text-ui text-gray-900 focus:outline-none focus:ring-2 focus:ring-entity-solid/25 font-normal";
+  const lbl = "block type-overline text-gray-600 ";
 
   const activeMeta = editing ? PROVIDERS[editing.connectorType] ?? PROVIDERS.smtp : PROVIDERS.smtp;
 
@@ -773,7 +773,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                 setFormMsg(null);
                 setEditing(emptyMailboxDraft("smtp"));
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-caption font-semibold shadow-sm transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-entity-solid hover:bg-entity-solid-hover text-white text-caption font-semibold shadow-xs transition-colors"
             >
               <Plus className="w-3.5 h-3.5" /> {t.add}
             </button>
@@ -781,13 +781,13 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
         }
       >
         {data && data.imapAvailable === false && (
-          <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-caption">
+          <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-caption">
             <AlertCircle className="w-4 h-4 shrink-0" /> {t.noImap}
           </div>
         )}
 
         {error && (
-          <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-300 text-caption">
+          <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-600 text-caption">
             <AlertCircle className="w-4 h-4 shrink-0" /> {error}
           </div>
         )}
@@ -797,7 +797,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
         </div>
 
         {/* Filter Bar & Add Connection Dropdown */}
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200/60 dark:border-slate-800">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-gray-200/60">
           <div className="flex flex-wrap items-center gap-1.5">
             {(
               [
@@ -813,8 +813,8 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                 onClick={() => setCategoryFilter(tab.id)}
                 className={`px-2.5 py-1 rounded-lg text-micro font-semibold transition-colors ${
                   categoryFilter === tab.id
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "bg-slate-100 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-700/70"
+                    ? "bg-entity-solid text-white shadow-xs"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200/70 "
                 }`}
               >
                 {tab.label}
@@ -827,25 +827,25 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
               type="button"
               data-testid="add-connector-dropdown-btn"
               onClick={() => setAddMenuOpen((v) => !v)}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 text-caption font-semibold text-slate-800 dark:text-slate-100 shadow-2xs transition-all"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-white border border-gray-200 hover:border-entity-border text-caption font-semibold text-gray-800 shadow-2xs transition-all"
             >
-              <Plus className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <Plus className="w-3.5 h-3.5 text-entity-text" />
               <span>{t.add}</span>
               <ChevronDown
-                className={`w-3.5 h-3.5 text-slate-400 transition-transform ${addMenuOpen ? "rotate-180" : ""}`}
+                className={`w-3.5 h-3.5 text-gray-400 transition-transform ${addMenuOpen ? "rotate-180" : ""}`}
               />
             </button>
 
             {addMenuOpen && (
               <div
                 data-testid="add-connector-dropdown-menu"
-                className="absolute right-0 mt-1.5 w-72 max-h-[34rem] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-700 shadow-xl z-50 p-1.5 space-y-1.5"
+                className="absolute right-0 mt-1.5 w-72 max-h-[34rem] overflow-y-auto rounded-lg bg-white border border-gray-200/90 shadow-xs z-50 p-1.5 space-y-1.5"
               >
                 {CONNECTOR_MENU_GROUPS.map((group) => {
                   const items = ALL_PROVIDER_TYPES.filter(group.filter);
                   return (
                     <div key={group.key}>
-                      <div className="px-2.5 py-1 text-micro font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                      <div className="px-2.5 py-1 text-micro font-bold uppercase tracking-wider text-gray-400">
                         {getConnectorGroupTitle(group.key, t)}
                       </div>
                       <div className="space-y-0.5">
@@ -861,14 +861,14 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                                 setFormMsg(null);
                                 setEditing(emptyMailboxDraft(pType));
                               }}
-                              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-left hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors"
+                              className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-left hover:bg-gray-100 transition-colors"
                             >
                               <div
                                 className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${meta.iconBg}`}
                               >
                                 <ProviderLogo type={pType} className="w-3.5 h-3.5" />
                               </div>
-                              <span className="text-caption font-semibold text-slate-800 dark:text-slate-100 truncate">
+                              <span className="text-caption font-semibold text-gray-800 truncate">
                                 {meta.label}
                               </span>
                             </button>
@@ -885,11 +885,11 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
 
         {/* Unified Color-Coded Connector List with High Visual Distinction */}
         {loading && !data ? (
-          <div className="py-6 flex items-center justify-center text-slate-400 text-caption gap-2">
+          <div className="py-6 flex items-center justify-center text-gray-400 text-caption gap-2">
             <Loader2 className="w-4 h-4 animate-spin" />
           </div>
         ) : filteredConnectors.length === 0 ? (
-          <p className="text-caption text-slate-500 dark:text-slate-400 py-3">{t.none}</p>
+          <p className="text-caption text-gray-500 py-3">{t.none}</p>
         ) : (
           <div className="space-y-2.5">
             {filteredConnectors.map((box) => {
@@ -902,12 +902,12 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                 <div
                   key={box.id}
                   data-testid={`company-mailbox-${box.id}`}
-                  className={`p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 ${meta.rowBorder} ${meta.rowBg} ${meta.rowTint} flex flex-wrap items-center justify-between gap-3 transition-all shadow-2xs`}
+                  className={`p-3.5 rounded-lg border border-gray-200/80 ${meta.rowBorder} ${meta.rowBg} ${meta.rowTint} flex flex-wrap items-center justify-between gap-3 transition-all shadow-2xs`}
                 >
                   {/* Left: Distinct Logo + Category Pill + Provider Pill + Name + Spec + Users */}
                   <div className="flex items-start gap-3.5 min-w-0">
                     <div
-                      className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${meta.iconBg}`}
+                      className={`w-11 h-11 rounded-md flex items-center justify-center shrink-0 ${meta.iconBg}`}
                       title={meta.label}
                     >
                       <ProviderLogo type={box.connectorType} className="w-5 h-5" />
@@ -919,21 +919,21 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                         <span className={`px-2 py-0.5 rounded-md text-micro font-bold ${meta.badgeClass}`}>
                           {meta.label}
                         </span>
-                        <span className="text-micro text-slate-400 dark:text-slate-500 font-mono hidden sm:inline">
+                        <span className="text-micro text-gray-400 font-mono hidden sm:inline">
                           {renderTechnicalSpec(box)}
                         </span>
                       </div>
 
                       {/* Main Title & Account Handle */}
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-body font-bold text-slate-900 dark:text-white truncate">
+                        <span className="text-body font-bold text-gray-900 truncate">
                           {box.name}
                         </span>
-                        <span className="px-2 py-0.5 rounded bg-slate-900/5 dark:bg-white/5 text-caption text-slate-600 dark:text-slate-300 font-mono truncate">
+                        <span className="px-2 py-0.5 rounded bg-gray-100 text-caption text-gray-600 font-mono truncate">
                           {box.address}
                         </span>
                         {!box.isActive && (
-                          <span className="px-2 py-0.5 rounded-full text-micro font-semibold bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                          <span className="px-2 py-0.5 rounded-full text-micro font-semibold bg-gray-200 text-gray-600">
                             {t.paused}
                           </span>
                         )}
@@ -947,11 +947,11 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                       {isMicrosoftMailbox(box) && (
                         <div className="flex flex-wrap items-center gap-3" data-testid="company-mailbox-microsoft">
                           {box.connected ? (
-                            <span className="text-caption text-slate-600 dark:text-slate-300">
-                              {t.msSignedInAs} <strong className="text-slate-800 dark:text-slate-100">{box.account}</strong>
+                            <span className="text-caption text-gray-600">
+                              {t.msSignedInAs} <strong className="text-gray-800">{box.account}</strong>
                             </span>
                           ) : (
-                            <span role="alert" className="text-caption font-semibold text-amber-800 dark:text-amber-300">
+                            <span role="alert" className="text-caption font-semibold text-amber-800">
                               {box.account ? t.msExpired : t.msNotSignedIn}
                             </span>
                           )}
@@ -967,16 +967,16 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
 
                       {/* Assigned Users Chips */}
                       <div className="pt-0.5 flex flex-wrap items-center gap-1.5">
-                        <Users className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <Users className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                         {assignedUsers.length === 0 ? (
-                          <span className="text-micro text-slate-400">{t.allAdminsDefault}</span>
+                          <span className="text-micro text-gray-400">{t.allAdminsDefault}</span>
                         ) : (
                           assignedUsers.map((u) => (
                             <span
                               key={u.id}
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-semibold bg-white/90 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200/90 dark:border-slate-700 shadow-2xs"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-semibold bg-white text-gray-700 border border-gray-200/90 shadow-2xs"
                             >
-                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                              <span className="w-1.5 h-1.5 rounded-full bg-entity-solid" />
                               {u.name}
                             </span>
                           ))
@@ -995,7 +995,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                           onClick={() => onRunNow(box)}
                           disabled={busy === box.id}
                           title={t.fileNow}
-                          className="p-2 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-white/80 dark:hover:bg-slate-800 disabled:opacity-40"
+                          className="p-2 rounded-lg text-gray-500 hover:text-entity-text hover:bg-white disabled:opacity-40"
                         >
                           {busy === box.id ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
@@ -1013,7 +1013,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                             setTimeout(() => void startWhatsAppQrPairing(), 50);
                           }}
                           title={t.waScanBtn}
-                          className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-500/15"
+                          className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50"
                         >
                           <QrCode className="w-4 h-4" />
                         </button>
@@ -1024,7 +1024,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                           onClick={() => onTestSavedAgentMcp(box)}
                           disabled={busy === box.id}
                           title={t.agentTestPromptBtn}
-                          className="p-2 rounded-lg text-amber-600 dark:text-amber-400 hover:bg-amber-500/15 disabled:opacity-40"
+                          className="p-2 rounded-lg text-amber-600 hover:bg-amber-50 disabled:opacity-40"
                         >
                           {busy === box.id ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
@@ -1040,7 +1040,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                           setEditing(draftFromMailbox(box));
                         }}
                         title={t.edit}
-                        className="p-2 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-white/80 dark:hover:bg-slate-800"
+                        className="p-2 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-white"
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
@@ -1049,7 +1049,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                         onClick={() => onDelete(box)}
                         disabled={busy === box.id}
                         title={t.remove}
-                        className="p-2 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-500/10 disabled:opacity-40"
+                        className="p-2 rounded-lg text-gray-500 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-40"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -1063,8 +1063,8 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
 
         {/* Personal Mailboxes Filing Status Footer */}
         {data && Array.isArray(data.userMailboxes) && data.userMailboxes.length > 0 && (
-          <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-slate-800">
-            <div className="type-overline text-slate-500 dark:text-slate-400 mb-2">
+          <div className="mt-4 pt-3 border-t border-gray-200/60">
+            <div className="type-overline text-gray-500 mb-2">
               {t.personalHeading}
             </div>
             <div className="space-y-1.5">
@@ -1074,19 +1074,19 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                 const s = backlogSummary(uFolders);
                 return (
                   <div key={u.id} className="flex items-center justify-between text-caption">
-                    <span className="text-slate-700 dark:text-slate-300">
-                      {u.name} <span className="text-slate-400 font-mono">({u.email})</span>
+                    <span className="text-gray-700">
+                      {u.name} <span className="text-gray-400 font-mono">({u.email})</span>
                     </span>
                     {err ? (
                       <span
-                        className="inline-flex items-center gap-1 text-micro text-rose-600 dark:text-rose-400"
+                        className="inline-flex items-center gap-1 text-micro text-rose-600"
                         title={err}
                       >
                         <AlertCircle className="w-3.5 h-3.5" />
                         <span className="truncate max-w-[28ch]">{err}</span>
                       </span>
                     ) : (
-                      <span className="text-micro text-slate-500">
+                      <span className="text-micro text-gray-500">
                         {s.caughtUp ? t.caughtUp : t.backfilling} · {s.filed} {t.filed}
                       </span>
                     )}
@@ -1101,7 +1101,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
       {/* Color-Coded Bottom Slide-Up Popup Modal for Creating / Editing Credentials */}
       {editing && (
         <div
-          className="fixed inset-0 z-[9999] flex items-end justify-center bg-slate-950/60 backdrop-blur-xs p-0 sm:p-4 animate-fade-in"
+          className="fixed inset-0 z-[9999] flex items-end justify-center bg-gray-100 p-0 sm:p-4 animate-fade-in"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setEditing(null);
@@ -1112,12 +1112,12 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
           <form
             data-testid="company-mailbox-form"
             onSubmit={onSave}
-            className={`w-full max-w-4xl max-h-[88vh] flex flex-col rounded-t-3xl sm:rounded-3xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200/80 dark:border-slate-800 ${activeMeta.modalBorder} overflow-hidden animate-slide-up`}
+            className={`w-full max-w-4xl max-h-[88vh] flex flex-col rounded-t-lg sm:rounded-lg bg-white shadow-xs border border-gray-200/80 ${activeMeta.modalBorder} overflow-hidden animate-slide-up`}
           >
             {/* Color-Coded Modal Header */}
             <div className={`shrink-0 px-6 py-4 flex items-center justify-between gap-3 ${activeMeta.modalHeaderBg}`}>
               <div className="flex items-center gap-3.5 min-w-0">
-                <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${activeMeta.iconBg}`}>
+                <div className={`w-11 h-11 rounded-lg flex items-center justify-center shrink-0 ${activeMeta.iconBg}`}>
                   <ProviderLogo type={editing.connectorType} className="w-5 h-5" />
                 </div>
                 <div className="min-w-0">
@@ -1127,7 +1127,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                       {activeMeta.label}
                     </span>
                   </div>
-                  <h3 className="text-body font-bold text-slate-900 dark:text-white truncate mt-0.5">
+                  <h3 className="text-body font-bold text-gray-900 truncate mt-0.5">
                     {editing.id
                       ? `${t.edit}: ${editing.name || editing.address}`
                       : `${t.add} — ${activeMeta.label}`}
@@ -1140,7 +1140,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                   setEditing(null);
                   setWaQrModalOpen(false);
                 }}
-                className="p-2 rounded-xl text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
+                className="p-2 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-200/60 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1155,34 +1155,34 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                   type="button"
                   data-testid="modal-connector-type-dropdown"
                   onClick={() => setModalTypeMenuOpen((v) => !v)}
-                  className="mt-1.5 w-full flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 text-left transition-all shadow-2xs"
+                  className="mt-1.5 w-full flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-md bg-white border border-gray-200 hover:border-entity-border text-left transition-all shadow-2xs"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${activeMeta.iconBg}`}>
                       <ProviderLogo type={editing.connectorType} className="w-4 h-4" />
                     </div>
                     <div className="min-w-0 flex flex-wrap items-center gap-2">
-                      <span className="text-ui font-bold text-slate-900 dark:text-white truncate">
+                      <span className="text-ui font-bold text-gray-900 truncate">
                         {activeMeta.label}
                       </span>
                       {renderCategoryPill(activeMeta.category)}
                     </div>
                   </div>
                   <ChevronDown
-                    className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${modalTypeMenuOpen ? "rotate-180" : ""}`}
+                    className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${modalTypeMenuOpen ? "rotate-180" : ""}`}
                   />
                 </button>
 
                 {modalTypeMenuOpen && (
                   <div
                     data-testid="modal-connector-type-menu"
-                    className="absolute left-0 right-0 mt-1.5 max-h-[34rem] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-700 shadow-2xl z-50 p-2 space-y-2"
+                    className="absolute left-0 right-0 mt-1.5 max-h-[34rem] overflow-y-auto rounded-lg bg-white border border-gray-200/90 shadow-xs z-50 p-2 space-y-2"
                   >
                     {CONNECTOR_MENU_GROUPS.map((group) => {
                       const items = ALL_PROVIDER_TYPES.filter(group.filter);
                       return (
                         <div key={group.key}>
-                          <div className="px-2.5 py-1 text-micro font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                          <div className="px-2.5 py-1 text-micro font-bold uppercase tracking-wider text-gray-400">
                             {getConnectorGroupTitle(group.key, t)}
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
@@ -1198,10 +1198,10 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                                     setModalTypeMenuOpen(false);
                                     switchConnectorType(pType);
                                   }}
-                                  className={`flex items-center justify-between gap-2.5 px-3 py-2 rounded-xl text-left transition-all ${
+                                  className={`flex items-center justify-between gap-2.5 px-3 py-2 rounded-md text-left transition-all ${
                                     selected
                                       ? `${meta.badgeClass} ${meta.accentRing}`
-                                      : "hover:bg-slate-100 dark:hover:bg-slate-800/80 text-slate-800 dark:text-slate-100"
+                                      : "hover:bg-gray-100 text-gray-800 "
                                   }`}
                                 >
                                   <div className="flex items-center gap-2.5 min-w-0">
@@ -1284,20 +1284,20 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                         onChange={(e) => setField("backfillSince", e.target.value)}
                       />
                     </label>
-                    <p className="text-micro text-slate-400 mt-0.5">{t.sinceHint}</p>
+                    <p className="text-micro text-gray-400 mt-0.5">{t.sinceHint}</p>
                   </div>
                 )}
               </div>
 
               {/* Multi-User Assignment Picker (`userIds[]`) */}
-              <div className="p-3.5 rounded-2xl bg-slate-50/90 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 space-y-2.5">
+              <div className="p-3.5 rounded-lg bg-gray-50 border border-gray-200/80 space-y-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <div className="type-label text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                      <Users className="w-4 h-4 text-indigo-500" />
+                    <div className="type-label text-gray-800 flex items-center gap-1.5">
+                      <Users className="w-4 h-4 text-entity-text" />
                       {t.usersLabel} ({editing.userIds.length})
                     </div>
-                    <p className="text-micro text-slate-500 dark:text-slate-400">{t.usersHint}</p>
+                    <p className="text-micro text-gray-500">{t.usersHint}</p>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <button
@@ -1315,7 +1315,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                             : d,
                         );
                       }}
-                      className="px-2.5 py-1 rounded-lg text-micro font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100"
+                      className="px-2.5 py-1 rounded-lg text-micro font-semibold bg-white border border-gray-200 text-gray-700 hover:bg-gray-100"
                     >
                       {t.selectAllUsers}
                     </button>
@@ -1333,7 +1333,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                             : d,
                         )
                       }
-                      className="px-2.5 py-1 rounded-lg text-micro font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-100"
+                      className="px-2.5 py-1 rounded-lg text-micro font-semibold bg-white border border-gray-200 text-gray-500 hover:bg-gray-100"
                     >
                       {t.clearUsers}
                     </button>
@@ -1353,7 +1353,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                         className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-caption font-semibold border transition-all ${
                           selected
                             ? `${activeMeta.accentBtn} border-transparent shadow-2xs`
-                            : "bg-white dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-400"
+                            : "bg-white text-gray-700 border-gray-200 hover:border-gray-400"
                         }`}
                       >
                         {selected && <Check className="w-3.5 h-3.5" />}
@@ -1367,21 +1367,21 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
 
               {/* 1. GMAIL FORM */}
               {editing.connectorType === "gmail" && (
-                <div className="p-4 rounded-2xl bg-rose-500/[0.05] border border-rose-500/25 space-y-3">
+                <div className="p-4 rounded-lg bg-rose-500/[0.05] border border-rose-500/25 space-y-3">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="type-label text-rose-700 dark:text-rose-300 flex items-center gap-1.5">
+                    <span className="type-label text-rose-700 flex items-center gap-1.5">
                       <Mail className="w-4 h-4" /> Gmail App Password Setup
                     </span>
                     <a
                       href="https://myaccount.google.com/apppasswords"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-micro font-semibold text-rose-600 dark:text-rose-400 hover:underline"
+                      className="inline-flex items-center gap-1 text-micro font-semibold text-rose-600 hover:underline"
                     >
                       Google App Passwords <ExternalLink className="w-3 h-3" />
                     </a>
                   </div>
-                  <p className="text-micro text-slate-600 dark:text-slate-300">{t.gmailHint}</p>
+                  <p className="text-micro text-gray-600">{t.gmailHint}</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className={lbl}>
@@ -1419,8 +1419,8 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
               {/* 2. SMTP / IMAP FORM */}
               {editing.connectorType === "smtp" && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2.5 p-3.5 rounded-2xl bg-sky-500/[0.04] dark:bg-slate-800/40 border border-sky-500/20">
-                    <div className="type-label text-sky-700 dark:text-sky-300">{t.incoming}</div>
+                  <div className="space-y-2.5 p-3.5 rounded-lg bg-sky-50 border border-sky-200">
+                    <div className="type-label text-sky-700">{t.incoming}</div>
                     <div className="grid grid-cols-3 gap-2">
                       <div className="col-span-2">
                         <label className={lbl}>
@@ -1520,8 +1520,8 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                     </div>
                   </div>
 
-                  <div className="space-y-2.5 p-3.5 rounded-2xl bg-sky-500/[0.04] dark:bg-slate-800/40 border border-sky-500/20">
-                    <div className="type-label text-sky-700 dark:text-sky-300">{t.outgoing}</div>
+                  <div className="space-y-2.5 p-3.5 rounded-lg bg-sky-50 border border-sky-200">
+                    <div className="type-label text-sky-700">{t.outgoing}</div>
                     <div className="grid grid-cols-3 gap-2">
                       <div className="col-span-2">
                         <label className={lbl}>
@@ -1565,9 +1565,9 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
 
               {/* 3. MS EXCHANGE FORM */}
               {editing.connectorType === "exchange" && (
-                <div className="p-4 rounded-2xl bg-blue-600/[0.05] border border-blue-600/25 space-y-3">
+                <div className="p-4 rounded-lg bg-entity-soft border border-entity-border space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="type-label text-blue-700 dark:text-blue-300">{t.exchangeModeLabel}</span>
+                    <span className="type-label text-entity-text">{t.exchangeModeLabel}</span>
                     <div className="flex items-center gap-1.5">
                       {(["imap", "graph", "signin"] as const).map((m) => {
                         // "signin" is the Microsoft 365 sign-in (provider "microsoft365"); the other two keep provider "exchange".
@@ -1589,8 +1589,8 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                             }}
                             className={`px-2.5 py-1 rounded-lg text-micro font-semibold ${
                               active
-                                ? "bg-blue-600 text-white"
-                                : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                                ? "bg-entity-solid text-white"
+                                : "bg-white text-gray-600 border border-gray-200 "
                             }`}
                           >
                             {m === "imap" ? t.exchangeModeImap : m === "graph" ? t.exchangeModeGraph : t.exchangeModeSignIn}
@@ -1601,7 +1601,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                   </div>
 
                   {isMicrosoftDraft(editing) ? (
-                    <p className="text-caption text-slate-600 dark:text-slate-300" data-testid="company-mailbox-microsoft-hint">
+                    <p className="text-caption text-gray-600" data-testid="company-mailbox-microsoft-hint">
                       {t.msHint}
                     </p>
                   ) : (editing.settings.exchangeMode ?? "imap") === "graph" ? (
@@ -1689,24 +1689,24 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
 
               {/* 4. WHATSAPP (WAAI QR CODE) FORM */}
               {editing.connectorType === "whatsapp" && (
-                <div className="p-4 rounded-2xl bg-emerald-500/[0.06] border border-emerald-500/25 space-y-3">
+                <div className="p-4 rounded-lg bg-emerald-500/[0.06] border border-emerald-500/25 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <div className="type-label text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                      <div className="type-label text-emerald-700 flex items-center gap-1.5">
                         <QrCode className="w-4 h-4" /> {t.waSectionTitle}
                         {editing.settings.waStatus === "connected" && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-micro font-semibold">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 text-micro font-semibold">
                             <CheckCircle2 className="w-3.5 h-3.5" /> {t.waConnectedBadge}
                           </span>
                         )}
                       </div>
-                      <p className="text-micro text-slate-600 dark:text-slate-300 mt-0.5">{t.waSectionDesc}</p>
+                      <p className="text-micro text-gray-600 mt-0.5">{t.waSectionDesc}</p>
                     </div>
                     <button
                       type="button"
                       data-testid="whatsapp-scan-qr-btn"
                       onClick={() => void startWhatsAppQrPairing()}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-caption font-semibold shadow-xs"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-caption font-semibold shadow-xs"
                     >
                       <QrCode className="w-4 h-4" />
                       {editing.settings.waStatus === "connected" ? t.waRescanBtn : t.waScanBtn}
@@ -1716,28 +1716,28 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                   {waQrModalOpen && (
                     <div
                       data-testid="whatsapp-qr-panel"
-                      className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-emerald-500/30 flex flex-col sm:flex-row items-center gap-4"
+                      className="p-4 rounded-md bg-white border border-emerald-200 flex flex-col sm:flex-row items-center gap-4"
                     >
                       <div className="shrink-0">
                         {waQrDataUrl ? (
                           <img
                             src={waQrDataUrl}
                             alt="WhatsApp QR Code"
-                            className="w-52 h-52 rounded-xl border border-slate-200 p-2 bg-white shadow-xs"
+                            className="w-52 h-52 rounded-md border border-gray-200 p-2 bg-white shadow-xs"
                           />
                         ) : (
-                          <div className="w-52 h-52 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 flex flex-col items-center justify-center p-4 text-center gap-2">
+                          <div className="w-52 h-52 rounded-md border border-gray-200 bg-gray-50 flex flex-col items-center justify-center p-4 text-center gap-2">
                             {waPairingStatus === "error" ? (
                               <>
                                 <AlertCircle className="w-7 h-7 text-rose-500" />
-                                <span className="text-micro text-rose-600 dark:text-rose-400">
+                                <span className="text-micro text-rose-600">
                                   {waPairingNote || "QR code unavailable"}
                                 </span>
                               </>
                             ) : (
                               <>
                                 <Loader2 className="w-7 h-7 animate-spin text-emerald-600" />
-                                <span className="text-micro text-slate-600 dark:text-slate-300">
+                                <span className="text-micro text-gray-600">
                                   {waPairingStatus === "authenticated"
                                     ? "Completing WhatsApp handshake…"
                                     : "Requesting live WhatsApp QR code from WAAI…"}
@@ -1748,16 +1748,16 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                         )}
                       </div>
                       <div className="space-y-2 text-center sm:text-left">
-                        <div className="text-ui font-semibold text-slate-900 dark:text-white">
+                        <div className="text-ui font-semibold text-gray-900">
                           Scan with WhatsApp on your phone
                         </div>
-                        <ol className="text-caption text-slate-600 dark:text-slate-300 list-decimal list-inside space-y-1">
+                        <ol className="text-caption text-gray-600 list-decimal list-inside space-y-1">
                           <li>Open WhatsApp on your phone</li>
                           <li>Tap Menu / Settings → Linked Devices</li>
                           <li>Tap Link a Device and point your camera at this QR code</li>
                         </ol>
                         {waPairingNote && (
-                          <div className="flex items-center gap-1.5 text-micro text-emerald-700 dark:text-emerald-300 font-medium pt-0.5">
+                          <div className="flex items-center gap-1.5 text-micro text-emerald-700 font-medium pt-0.5">
                             {waPairingStatus === "authenticated" || waPairingStatus === "starting" ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
                             ) : (
@@ -1778,7 +1778,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                           <button
                             type="button"
                             onClick={cancelWhatsAppQrPairing}
-                            className="px-2.5 py-1.5 rounded-lg text-caption text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                            className="px-2.5 py-1.5 rounded-lg text-caption text-gray-500 hover:bg-gray-100"
                           >
                             {t.cancel}
                           </button>
@@ -1809,19 +1809,19 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                 return (
                   <div
                     data-testid={`botman-setup-${editing.connectorType}`}
-                    className={`p-4 rounded-2xl border space-y-4 ${activeMeta.badgeClass}`}
+                    className={`p-4 rounded-lg border space-y-4 ${activeMeta.badgeClass}`}
                   >
                     {/* Header + Official Developer Portal Link */}
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
-                        <div className="type-label text-slate-900 dark:text-white flex items-center gap-2">
+                        <div className="type-label text-gray-900 flex items-center gap-2">
                           <MessageCircle className="w-4 h-4" />
                           <span>{activeMeta.label} — BotMan Setup Guide</span>
-                          <span className="px-2 py-0.5 rounded bg-slate-900/10 dark:bg-white/10 font-mono text-micro">
+                          <span className="px-2 py-0.5 rounded bg-gray-900/10 font-mono text-micro">
                             {bmSpec.driverClass}
                           </span>
                         </div>
-                        <p className="text-micro text-slate-600 dark:text-slate-300 mt-1">
+                        <p className="text-micro text-gray-600 mt-1">
                           {bmSpec.summary[lang] ?? bmSpec.summary.en}
                         </p>
                       </div>
@@ -1829,7 +1829,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                         href={bmSpec.portalUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-micro font-bold shadow-2xs ${activeMeta.accentBtn}`}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-micro font-bold shadow-2xs ${activeMeta.accentBtn}`}
                       >
                         <span>{bmSpec.portalLabel}</span>
                         <ExternalLink className="w-3.5 h-3.5" />
@@ -1837,15 +1837,15 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                     </div>
 
                     {/* User-Friendly Step-by-Step Setup Instructions */}
-                    <div className="p-3.5 rounded-xl bg-white/90 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 space-y-2">
-                      <div className="type-overline text-slate-700 dark:text-slate-200">
+                    <div className="p-3.5 rounded-md bg-white border border-gray-200/80 space-y-2">
+                      <div className="type-overline text-gray-700">
                         {lang === "sk"
                           ? "Ako nastaviť tento konektor (Krok za krokom)"
                           : lang === "hu"
                             ? "Beállítás lépésről lépésre"
                             : "How to Set Up (Step-by-Step Guide)"}
                       </div>
-                      <ol className="list-decimal list-inside space-y-2 text-caption text-slate-700 dark:text-slate-200">
+                      <ol className="list-decimal list-inside space-y-2 text-caption text-gray-700">
                         {(bmSpec.setupSteps[lang] ?? bmSpec.setupSteps.en).map((stepText, idx) => (
                           <li key={idx} className="leading-relaxed">
                             {stepText.replace(/^\d+\.\s*/, "")}
@@ -1871,7 +1871,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                             />
                           </label>
                           {f.hint && (
-                            <p className="mt-1 text-micro text-slate-500 dark:text-slate-400 leading-snug">
+                            <p className="mt-1 text-micro text-gray-500 leading-snug">
                               {f.hint[lang] ?? f.hint.en}
                             </p>
                           )}
@@ -1880,13 +1880,13 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                     </div>
 
                     {/* Copyable Webhook URL / Web Widget Embed Snippet + 1-Click Webhook Registration */}
-                    <div className="p-3 rounded-xl bg-slate-900/5 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800 space-y-2">
+                    <div className="p-3 rounded-md bg-gray-100 border border-gray-200/80 space-y-2">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <div className="type-overline text-slate-500 dark:text-slate-400">
+                          <div className="type-overline text-gray-500">
                             {widgetSnippet ? "Embeddable Website <script> Snippet" : "CCRM BotMan Webhook Callback URL"}
                           </div>
-                          <code className="block font-mono text-micro text-slate-800 dark:text-slate-200 truncate mt-0.5">
+                          <code className="block font-mono text-micro text-gray-800 truncate mt-0.5">
                             {widgetSnippet || webhookUrl}
                           </code>
                         </div>
@@ -1898,7 +1898,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                               setCopiedKey(true);
                               setTimeout(() => setCopiedKey(false), 1800);
                             }}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-micro font-semibold"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white text-gray-700 border border-gray-200 text-micro font-semibold"
                           >
                             {copiedKey ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
                             <span>{widgetSnippet ? "Copy <script>" : "Copy Webhook URL"}</span>
@@ -1921,7 +1921,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                         </div>
                       </div>
                       {!widgetSnippet && (
-                        <p className="text-micro text-slate-500 dark:text-slate-400 leading-snug">
+                        <p className="text-micro text-gray-500 leading-snug">
                           {bmSpec.supportsLocalPolling
                             ? "Localhost Ready: Even without a public HTTPS webhook, CCRM automatically syncs messages via API polling once your token is saved. For instant push webhooks on localhost, expose port 8085 via ngrok/Cloudflare Tunnel."
                             : "Note: External cloud webhooks require a public HTTPS URL (e.g. your production domain or an ngrok tunnel to localhost:8085)."}
@@ -1961,10 +1961,10 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                       : { url: "https://platform.openai.com/api-keys", name: "OpenAI Platform", placeholder: "sk-proj-…", modelPlaceholder: "gpt-4o" };
 
                 return (
-                  <div className={`p-4 rounded-2xl border space-y-3 ${activeMeta.badgeClass}`}>
+                  <div className={`p-4 rounded-lg border space-y-3 ${activeMeta.badgeClass}`}>
                     {/* Auth Mode Switcher: Subscription CLI/OAuth vs Universal API Key */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-black/10 dark:border-white/10">
-                      <div className="inline-flex rounded-xl bg-white/80 dark:bg-slate-900/80 p-1 border border-slate-200/80 dark:border-slate-700">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-gray-200">
+                      <div className="inline-flex rounded-md bg-white p-1 border border-gray-200/80">
                         <button
                           type="button"
                           data-testid="agent-mode-subscription-btn"
@@ -1972,7 +1972,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                           className={`px-3 py-1 rounded-lg text-micro font-bold transition-colors ${
                             !isApiMode
                               ? `${activeMeta.accentBtn} shadow-2xs`
-                              : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                              : "text-gray-600 hover:bg-gray-100 "
                           }`}
                         >
                           {lang === "sk"
@@ -1988,7 +1988,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                           className={`px-3 py-1 rounded-lg text-micro font-bold transition-colors ${
                             isApiMode
                               ? `${activeMeta.accentBtn} shadow-2xs`
-                              : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                              : "text-gray-600 hover:bg-gray-100 "
                           }`}
                         >
                           {lang === "sk"
@@ -1999,7 +1999,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                         </button>
                       </div>
 
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/80 dark:bg-slate-900/70 border border-slate-200/80 dark:border-slate-700 text-micro font-semibold text-slate-700 dark:text-slate-200">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white border border-gray-200/80 text-micro font-semibold text-gray-700">
                         <Terminal className="w-3.5 h-3.5 text-emerald-600" />
                         {isApiMode
                           ? lang === "sk"
@@ -2015,7 +2015,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                       <>
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div>
-                            <div className="type-label text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <div className="type-label text-gray-900 flex items-center gap-1.5">
                               <KeyRound className="w-4 h-4" />{" "}
                               {lang === "sk"
                                 ? "Priame HTTPS API pripojenie (Funguje na každom hostingu + CCRM MCP)"
@@ -2023,7 +2023,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                                   ? "Közvetlen HTTPS API kapcsolat (Minden tárhelyen működik + CCRM MCP)"
                                   : "Direct HTTPS API Key (Works on All Hostings + CCRM MCP)"}
                             </div>
-                            <p className="text-micro text-slate-600 dark:text-slate-300 mt-0.5">
+                            <p className="text-micro text-gray-600 mt-0.5">
                               {lang === "sk"
                                 ? "Komunikuje priamo cez PHP HTTPS (cURL) bez potreby CLI, Node.js alebo proc_open. Podporuje plné volanie CCRM MCP nástrojov, subagentov a spúšťačov."
                                 : lang === "hu"
@@ -2035,7 +2035,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                             href={apiKeyPortal.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-caption font-semibold shadow-2xs ${activeMeta.accentBtn}`}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-caption font-semibold shadow-2xs ${activeMeta.accentBtn}`}
                           >
                             <span>
                               {lang === "sk"
@@ -2113,10 +2113,10 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                       <>
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div>
-                            <div className="type-label text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <div className="type-label text-gray-900 flex items-center gap-1.5">
                               <Sparkles className="w-4 h-4" /> {t.agentSectionTitle}
                             </div>
-                            <p className="text-micro text-slate-600 dark:text-slate-300 mt-0.5">{t.agentSectionDesc}</p>
+                            <p className="text-micro text-gray-600 mt-0.5">{t.agentSectionDesc}</p>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
                             {data?.environment?.mode === "local_cli" &&
@@ -2125,7 +2125,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                                   type="button"
                                   onClick={() => void onInstallCli(editing.connectorType)}
                                   disabled={busy !== null}
-                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-micro font-semibold disabled:opacity-40"
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-micro font-semibold disabled:opacity-40"
                                 >
                                   {busy === "cli" ? (
                                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -2140,7 +2140,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                               data-testid="agent-start-oauth-btn"
                               onClick={() => void onStartSubscriptionOAuth()}
                               disabled={busy !== null}
-                              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-caption font-semibold shadow-xs disabled:opacity-40 ${activeMeta.accentBtn}`}
+                              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md text-caption font-semibold shadow-xs disabled:opacity-40 ${activeMeta.accentBtn}`}
                             >
                               {busy === "login" ? (
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -2154,13 +2154,13 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
 
                         {/* Interactive PKCE / PTY OAuth Step */}
                         {oauthUrl && (
-                          <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-2">
+                          <div className="p-3.5 rounded-md bg-white border border-gray-200 space-y-2">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <a
                                 href={oauthUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 text-caption font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                                className="inline-flex items-center gap-1.5 text-caption font-semibold text-entity-text hover:underline"
                               >
                                 {t.agentOpenAuthUrl} <ExternalLink className="w-3.5 h-3.5" />
                               </a>
@@ -2236,10 +2236,10 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                     )}
 
                     {/* CCRM MCP Endpoint Info */}
-                    <div className="pt-1 flex flex-wrap items-center justify-between gap-2 text-micro text-slate-600 dark:text-slate-300">
+                    <div className="pt-1 flex flex-wrap items-center justify-between gap-2 text-micro text-gray-600">
                       <span>
                         CCRM MCP Endpoint:{" "}
-                        <code className="font-mono text-slate-800 dark:text-slate-100">
+                        <code className="font-mono text-gray-800">
                           {typeof window !== "undefined" ? `${window.location.origin}/api/mcp.php` : "/api/mcp.php"}
                         </code>{" "}
                         (auto-provisioned per assigned user)
@@ -2252,7 +2252,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                           setCopiedKey(true);
                           setTimeout(() => setCopiedKey(false), 1800);
                         }}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/80 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200/70 dark:border-slate-700"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white text-gray-700 border border-gray-200/70"
                       >
                         {copiedKey ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
                         Copy MCP URL
@@ -2260,7 +2260,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                     </div>
 
                     {agentTestOutput && (
-                      <div className="p-2.5 rounded-lg bg-slate-900 text-emerald-300 font-mono text-micro">
+                      <div className="p-2.5 rounded-lg bg-gray-900 text-emerald-300 font-mono text-micro">
                         {agentTestOutput}
                       </div>
                     )}
@@ -2273,7 +2273,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                 {isEmailConnector(editing.connectorType) &&
                   !isMicrosoftDraft(editing) &&
                   (editing.settings.exchangeMode ?? "imap") !== "graph" && (
-                    <label className="inline-flex items-center gap-2 text-caption text-slate-700 dark:text-slate-300 cursor-pointer">
+                    <label className="inline-flex items-center gap-2 text-caption text-gray-700 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={editing.settings.imapAllowSelfSigned}
@@ -2282,7 +2282,7 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                       {t.selfSigned}
                     </label>
                   )}
-                <label className="inline-flex items-center gap-2 text-caption text-slate-700 dark:text-slate-300 cursor-pointer">
+                <label className="inline-flex items-center gap-2 text-caption text-gray-700 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={editing.isActive}
@@ -2294,10 +2294,10 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
 
               {formMsg && (
                 <div
-                  className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-caption font-medium ${
+                  className={`flex items-center gap-2 px-3.5 py-2.5 rounded-md text-caption font-medium ${
                     formMsg.kind === "ok"
-                      ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
-                      : "bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-300"
+                      ? "bg-emerald-50 border border-emerald-200 text-emerald-700 "
+                      : "bg-rose-50 border border-rose-200 text-rose-600 "
                   }`}
                 >
                   {formMsg.kind === "ok" ? (
@@ -2311,13 +2311,13 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
             </div>
 
             {/* Sticky Color-Coded Modal Footer */}
-            <div className="shrink-0 px-6 py-4 bg-slate-50/90 dark:bg-slate-900/90 border-t border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+            <div className="shrink-0 px-6 py-4 bg-gray-50 border-t border-gray-200/80 flex flex-wrap items-center justify-between gap-2">
               <button
                 type="button"
                 onClick={onTest}
                 // A Microsoft 365 mailbox can only be tested once it is saved and signed in.
                 disabled={busy !== null || (isMicrosoftDraft(editing) && !editing.id)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-caption font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-gray-300 text-caption font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-40"
               >
                 {busy === "test" && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 {busy === "test" ? t.testing : t.test}
@@ -2329,14 +2329,14 @@ export const CompanyMailboxSettings: React.FC<Props> = ({ userLanguage, systemLa
                     setEditing(null);
                     setWaQrModalOpen(false);
                   }}
-                  className="px-3.5 py-2 rounded-xl text-caption font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800"
+                  className="px-3.5 py-2 rounded-md text-caption font-semibold text-gray-600 hover:bg-gray-200/60"
                 >
                   {t.cancel}
                 </button>
                 <button
                   type="submit"
                   disabled={busy !== null}
-                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-caption font-bold shadow-sm transition-all disabled:opacity-40 ${activeMeta.accentBtn}`}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-caption font-bold shadow-xs transition-all disabled:opacity-40 ${activeMeta.accentBtn}`}
                 >
                   {busy === "save" && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   {busy === "save" ? t.saving : t.save}

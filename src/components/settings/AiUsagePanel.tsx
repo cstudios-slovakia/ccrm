@@ -107,7 +107,7 @@ export const AiUsagePanel: React.FC<{ lang: Language }> = ({ lang }) => {
     setMonth(next);
   };
 
-  const navButton = "inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition duration-150 ease-out hover:-translate-y-px hover:border-slate-300 hover:bg-slate-50 hover:shadow-sm active:translate-y-0 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 disabled:pointer-events-none disabled:opacity-40 motion-reduce:transform-none";
+  const navButton = "inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-600 transition duration-150 ease-out hover:-translate-y-px hover:border-gray-300 hover:bg-gray-50 hover:shadow-xs active:translate-y-0 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 disabled:pointer-events-none disabled:opacity-40 motion-reduce:transform-none";
 
   return (
     <SectionCard
@@ -136,7 +136,7 @@ export const AiUsagePanel: React.FC<{ lang: Language }> = ({ lang }) => {
             id="ai-usage-month"
             value={month}
             onChange={(e) => go(e.target.value)}
-            className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-800 transition duration-150 ease-out focus:border-indigo-500 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
+            className="h-9 rounded-md border border-gray-200 bg-white px-3 text-ui font-semibold text-gray-800 transition duration-150 ease-out focus:border-entity-border focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
           >
             {monthChoices.map((choice) => (
               <option key={choice} value={choice}>
@@ -160,19 +160,19 @@ export const AiUsagePanel: React.FC<{ lang: Language }> = ({ lang }) => {
       <div key={month} className={reduceMotion ? "flex flex-col gap-5" : "flex flex-col gap-5 animate-fade-in"}>
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="type-overline text-slate-500">{t("Month total", "Spolu za mesiac", "Havi összesen")}</p>
-            <p className="text-metric font-heading tabular-nums text-slate-900" aria-live="polite">
+            <p className="type-overline text-gray-500">{t("Month total", "Spolu za mesiac", "Havi összesen")}</p>
+            <p className="text-metric font-heading tabular-nums text-gray-900" aria-live="polite">
               {status === "ready" ? <CountUp value={total} format={formatUsd} /> : "—"}
             </p>
           </div>
-          <p className="text-ui text-slate-500">
+          <p className="text-ui text-gray-500">
             {status === "ready" ? (
               <>
-                <CountUp value={totalTokens} format={formatTokens} className="font-semibold tabular-nums text-slate-700" />
+                <CountUp value={totalTokens} format={formatTokens} className="font-semibold tabular-nums text-gray-700" />
                 {" "}
                 {t("tokens", "tokenov", "token")}
                 {" · "}
-                <CountUp value={totalCalls} format={formatTokens} className="font-semibold tabular-nums text-slate-700" />
+                <CountUp value={totalCalls} format={formatTokens} className="font-semibold tabular-nums text-gray-700" />
                 {" "}
                 {t("calls", "volaní", "hívás")}
               </>
@@ -185,20 +185,20 @@ export const AiUsagePanel: React.FC<{ lang: Language }> = ({ lang }) => {
         {status === "loading" && (
           <div className="flex flex-col gap-2" aria-hidden="true">
             {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="h-10 animate-pulse rounded-xl bg-slate-100" />
+              <div key={i} className="h-10 animate-pulse rounded-md bg-gray-100" />
             ))}
           </div>
         )}
 
         {status === "error" && (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-6 text-center">
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-6 text-center">
             <p className="text-ui font-semibold text-rose-800">
               {t("Usage could not be loaded.", "Spotrebu sa nepodarilo načítať.", "A használatot nem sikerült betölteni.")}
             </p>
             <button
               type="button"
               onClick={() => setReload((n) => n + 1)}
-              className="mt-3 rounded-xl bg-white px-4 py-2 text-ui font-bold text-slate-700 shadow-sm transition duration-150 ease-out hover:-translate-y-px hover:shadow active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 motion-reduce:transform-none"
+              className="mt-3 rounded-md bg-white px-4 py-2 text-ui font-bold text-gray-700 shadow-xs transition duration-150 ease-out hover:-translate-y-px hover:shadow active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 motion-reduce:transform-none"
             >
               {t("Try again", "Skúsiť znova", "Újra")}
             </button>
@@ -206,11 +206,11 @@ export const AiUsagePanel: React.FC<{ lang: Language }> = ({ lang }) => {
         )}
 
         {status === "ready" && rows.length === 0 && (
-          <div className="flex flex-col items-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/70 px-4 py-10 text-center">
-            <p className="text-ui font-bold text-slate-600">
+          <div className="flex flex-col items-center rounded-lg border-2 border-dashed border-gray-200 bg-gray-50/70 px-4 py-10 text-center">
+            <p className="text-ui font-bold text-gray-600">
               {t("No AI usage this month", "Tento mesiac žiadna spotreba AI", "Ebben a hónapban nincs AI-használat")}
             </p>
-            <p className="mt-1 max-w-2xl text-micro text-slate-400">
+            <p className="mt-1 max-w-2xl text-micro text-gray-400">
               {t(
                 "Summaries, the assistant, rehearsals, workflows and voice calls show up here after they run.",
                 "Súhrny, asistent, skúšky, workflowy a hlasové hovory sa tu objavia po tom, ako prebehnú.",
@@ -221,10 +221,10 @@ export const AiUsagePanel: React.FC<{ lang: Language }> = ({ lang }) => {
         )}
 
         {status === "ready" && rows.length > 0 && (
-          <ScrollFade axis="x" className="rounded-2xl border border-slate-200">
+          <ScrollFade axis="x" className="rounded-lg border border-gray-200">
             <table className="w-full border-collapse text-left">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/80">
+                <tr className="border-b border-gray-200 bg-gray-50">
                   {[
                     t("Feature", "Funkcia", "Funkció"),
                     t("Model", "Model", "Modell"),
@@ -237,7 +237,7 @@ export const AiUsagePanel: React.FC<{ lang: Language }> = ({ lang }) => {
                     <th
                       key={heading}
                       scope="col"
-                      className={`type-overline px-3 py-2.5 text-slate-500 ${i >= 2 ? "text-right" : ""}`}
+                      className={`type-overline px-3 py-2.5 text-gray-500 ${i >= 2 ? "text-right" : ""}`}
                     >
                       {heading}
                     </th>
@@ -255,25 +255,25 @@ export const AiUsagePanel: React.FC<{ lang: Language }> = ({ lang }) => {
                   return (
                     <tr
                       key={`${row.feature}-${row.model}`}
-                      className={`border-b border-slate-100 last:border-0 ${reduceMotion ? "" : "animate-fade-in"}`}
+                      className={`border-b border-gray-100 last:border-0 ${reduceMotion ? "" : "animate-fade-in"}`}
                       style={reduceMotion ? undefined : { animationDelay: `${index * 40}ms` }}
                     >
-                      <td className="px-3 py-3 text-ui font-semibold text-slate-800">{aiFeatureLabel(row.feature, lang)}</td>
-                      <td className="px-3 py-3 text-ui text-slate-600">{aiModelLabel(row.model)}</td>
-                      <td className="px-3 py-3 text-right font-mono text-ui tabular-nums text-slate-600">{formatTokens(row.calls)}</td>
-                      <td className="px-3 py-3 text-right font-mono text-ui tabular-nums text-slate-700">
+                      <td className="px-3 py-3 text-ui font-semibold text-gray-800">{aiFeatureLabel(row.feature, lang)}</td>
+                      <td className="px-3 py-3 text-ui text-gray-600">{aiModelLabel(row.model)}</td>
+                      <td className="px-3 py-3 text-right font-mono text-ui tabular-nums text-gray-600">{formatTokens(row.calls)}</td>
+                      <td className="px-3 py-3 text-right font-mono text-ui tabular-nums text-gray-700">
                         {input > 0 ? formatTokens(input) : "—"}
                         {row.cachedInputTokens > 0 && (
-                          <span className="mt-0.5 block text-micro font-sans text-slate-400">
+                          <span className="mt-0.5 block text-micro font-sans text-gray-400">
                             {formatTokens(row.cachedInputTokens)} {t("cached", "z cache", "gyorsítótár")}
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-3 text-right font-mono text-ui tabular-nums text-slate-700">
+                      <td className="px-3 py-3 text-right font-mono text-ui tabular-nums text-gray-700">
                         {row.outputTokens > 0 ? formatTokens(row.outputTokens) : "—"}
                       </td>
-                      <td className="px-3 py-3 text-right font-mono text-ui tabular-nums text-slate-600">{audio}</td>
-                      <td className="px-3 py-3 text-right font-mono text-ui font-bold tabular-nums text-slate-900">
+                      <td className="px-3 py-3 text-right font-mono text-ui tabular-nums text-gray-600">{audio}</td>
+                      <td className="px-3 py-3 text-right font-mono text-ui font-bold tabular-nums text-gray-900">
                         {price === null ? "—" : formatUsd(price)}
                       </td>
                     </tr>
@@ -281,20 +281,20 @@ export const AiUsagePanel: React.FC<{ lang: Language }> = ({ lang }) => {
                 })}
               </tbody>
               <tfoot>
-                <tr className="bg-slate-50/80">
-                  <th scope="row" className="px-3 py-3 text-left text-ui font-bold text-slate-900">
+                <tr className="bg-gray-50">
+                  <th scope="row" className="px-3 py-3 text-left text-ui font-bold text-gray-900">
                     {t("Total", "Spolu", "Összesen")}
                   </th>
                   <td />
-                  <td className="px-3 py-3 text-right font-mono text-ui font-bold tabular-nums text-slate-800">{formatTokens(totalCalls)}</td>
-                  <td className="px-3 py-3 text-right font-mono text-ui font-bold tabular-nums text-slate-800">
+                  <td className="px-3 py-3 text-right font-mono text-ui font-bold tabular-nums text-gray-800">{formatTokens(totalCalls)}</td>
+                  <td className="px-3 py-3 text-right font-mono text-ui font-bold tabular-nums text-gray-800">
                     {formatTokens(rows.reduce((sum, row) => sum + row.inputTokens + row.cachedInputTokens, 0))}
                   </td>
-                  <td className="px-3 py-3 text-right font-mono text-ui font-bold tabular-nums text-slate-800">
+                  <td className="px-3 py-3 text-right font-mono text-ui font-bold tabular-nums text-gray-800">
                     {formatTokens(rows.reduce((sum, row) => sum + row.outputTokens, 0))}
                   </td>
                   <td />
-                  <td className="px-3 py-3 text-right font-mono text-ui font-bold tabular-nums text-slate-900">{formatUsd(total)}</td>
+                  <td className="px-3 py-3 text-right font-mono text-ui font-bold tabular-nums text-gray-900">{formatUsd(total)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -302,7 +302,7 @@ export const AiUsagePanel: React.FC<{ lang: Language }> = ({ lang }) => {
         )}
 
         {status === "ready" && (
-          <p className="text-micro text-slate-400">
+          <p className="text-micro text-gray-400">
             {t(
               "Prices are the providers’ standard list rates for that month. Cached input is priced at the cache-read rate. A model with no rate here is shown, and left out of the total.",
               "Ceny sú štandardné cenníkové sadzby poskytovateľov pre daný mesiac. Vstup z cache je za sadzbu čítania cache. Model bez sadzby sa zobrazí a do súčtu sa nezaráta.",

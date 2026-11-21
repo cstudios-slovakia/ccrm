@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { CircleAlert, CircleCheck, KeyRound } from "lucide-react";
+import { entityAccentStyle } from "../../utils/entityAccent";
 import type { Language } from "../../utils/translations";
 
 /**
@@ -59,18 +60,18 @@ export function reseedModuleLabel(lang: Language, module: string): string {
 export const ReseedReportTable: React.FC<{ report: Record<string, ReseedModuleReport>; language: Language }> = ({ report, language }) => (
   <table className="w-full text-left" data-testid="demo-reseed-report">
     <thead>
-      <tr className="border-b border-slate-200">
-        <th scope="col" className="type-overline py-2 pr-3 text-slate-500">{tr(language, "Module", "Modul", "Modul")}</th>
-        <th scope="col" className="type-overline py-2 text-right text-slate-500">{tr(language, "Rows / result", "Riadky / výsledok", "Sorok / eredmény")}</th>
+      <tr className="border-b border-gray-200">
+        <th scope="col" className="type-overline py-2 pr-3 text-gray-500">{tr(language, "Module", "Modul", "Modul")}</th>
+        <th scope="col" className="type-overline py-2 text-right text-gray-500">{tr(language, "Rows / result", "Riadky / výsledok", "Sorok / eredmény")}</th>
       </tr>
     </thead>
     <tbody>
       {Object.entries(report).map(([module, r]) => (
-        <tr key={module} data-module={module} data-state={r.skipped ? "skipped" : r.ok ? "ok" : "failed"} className="border-b border-slate-100 last:border-0">
-          <td className="py-2 pr-3 text-ui text-slate-800">{reseedModuleLabel(language, module)}</td>
+        <tr key={module} data-module={module} data-state={r.skipped ? "skipped" : r.ok ? "ok" : "failed"} className="border-b border-gray-100 last:border-0">
+          <td className="py-2 pr-3 text-ui text-gray-800">{reseedModuleLabel(language, module)}</td>
           <td className="py-2 text-right text-ui">
             {r.skipped ? (
-              <span className="text-slate-400">{tr(language, "not in this version", "nie je v tejto verzii", "ebben a verzióban nincs")}</span>
+              <span className="text-gray-400">{tr(language, "not in this version", "nie je v tejto verzii", "ebben a verzióban nincs")}</span>
             ) : r.ok ? (
               <span className="inline-flex items-center gap-1 font-semibold text-emerald-700">
                 <CircleCheck className="h-4 w-4" aria-hidden="true" /> {r.rows}
@@ -101,20 +102,20 @@ export const ReseedResultDialog: React.FC<{ result: ReseedResult; language: Lang
   const wipedRows = Object.values(result.wiped).reduce((a, b) => a + b, 0);
   const t = (en: string, sk: string, hu: string) => tr(language, en, sk, hu);
   return (
-    <div className="fixed inset-0 z-[100050] flex items-center justify-center bg-slate-900/50 p-4" data-testid="demo-reseed-result">
+    <div style={entityAccentStyle("settings") as React.CSSProperties} className="fixed inset-0 z-[100050] flex items-center justify-center bg-gray-900/50 p-4" data-testid="demo-reseed-result">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="demo-reseed-result-title"
-        className="flex max-h-[90vh] w-full max-w-2xl flex-col gap-5 overflow-y-auto rounded-3xl border border-white/60 bg-white p-6 text-left shadow-glass"
+        className="flex max-h-[90vh] w-full max-w-2xl flex-col gap-5 overflow-y-auto rounded-lg border border-gray-200 bg-white p-6 text-left shadow-xs"
       >
         <div className="flex flex-col gap-1">
-          <h2 id="demo-reseed-result-title" className="type-panel-title font-heading text-slate-900">
+          <h2 id="demo-reseed-result-title" className="type-panel-title font-heading text-gray-900">
             {result.failed.length === 0
               ? t("Demo data replaced", "Demo dáta boli nahradené", "A demó adatok lecserélődtek")
               : t("Demo data replaced, with problems", "Demo dáta boli nahradené, s problémami", "A demó adatok lecserélődtek, hibákkal")}
           </h2>
-          <p className="type-body text-slate-500">
+          <p className="type-body text-gray-500">
             {t(
               `${wipedRows} old demo rows removed; the demo is now ${result.language.toUpperCase()} / ${result.currency}. You were signed out because the demo logins were replaced.`,
               `Odstránených ${wipedRows} starých demo riadkov; demo je teraz ${result.language.toUpperCase()} / ${result.currency}. Boli ste odhlásení, pretože demo prihlásenia boli nahradené.`,
@@ -123,8 +124,8 @@ export const ReseedResultDialog: React.FC<{ result: ReseedResult; language: Lang
           </p>
         </div>
 
-        <div className="flex flex-col gap-2 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4" data-testid="demo-reseed-logins">
-          <div className="flex items-center gap-2 text-ui font-bold text-indigo-900">
+        <div className="flex flex-col gap-2 rounded-lg border border-entity-border bg-entity-soft p-4" data-testid="demo-reseed-logins">
+          <div className="flex items-center gap-2 text-ui font-bold text-entity-text">
             <KeyRound className="h-4 w-4" aria-hidden="true" /> {t("New demo logins", "Nové demo prihlásenia", "Új demó belépések")}
           </div>
           {result.logins.length === 0 ? (
@@ -134,16 +135,16 @@ export const ReseedResultDialog: React.FC<{ result: ReseedResult; language: Lang
           ) : (
             <ul className="flex flex-col gap-1">
               {result.logins.map((l) => (
-                <li key={l.email} className="flex flex-wrap items-baseline justify-between gap-x-3 text-ui text-slate-800">
+                <li key={l.email} className="flex flex-wrap items-baseline justify-between gap-x-3 text-ui text-gray-800">
                   <span className="font-semibold">{l.name}</span>
-                  <span className="font-mono text-indigo-800" data-testid="demo-reseed-login-email">{l.email}</span>
+                  <span className="font-mono text-entity-text" data-testid="demo-reseed-login-email">{l.email}</span>
                 </li>
               ))}
             </ul>
           )}
-          <p className="text-ui text-slate-600">
+          <p className="text-ui text-gray-600">
             {t("Password for all of them:", "Heslo pre všetkých:", "Jelszó mindegyikhez:")}{" "}
-            <span className="font-mono font-bold text-slate-900" data-testid="demo-reseed-password">{result.password}</span>
+            <span className="font-mono font-bold text-gray-900" data-testid="demo-reseed-password">{result.password}</span>
           </p>
         </div>
 
@@ -155,7 +156,7 @@ export const ReseedResultDialog: React.FC<{ result: ReseedResult; language: Lang
             type="button"
             onClick={onContinue}
             data-testid="demo-reseed-continue"
-            className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500"
+            className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-md bg-entity-solid px-5 text-ui font-semibold text-white shadow-xs transition-colors hover:bg-entity-solid-hover"
           >
             {t("Go to the login screen", "Prejsť na prihlásenie", "Tovább a belépéshez")}
           </button>

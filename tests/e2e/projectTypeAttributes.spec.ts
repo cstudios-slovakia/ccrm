@@ -26,7 +26,7 @@ async function openRoofTypeAttributes(page: Page) {
 }
 
 async function startEditArea(page: Page) {
-  const row = page.getByText(ATTR_NAME, { exact: true }).locator('xpath=ancestor::div[contains(@class,"rounded-2xl")][1]');
+  const row = page.getByText(ATTR_NAME, { exact: true }).locator('xpath=ancestor::div[@data-attr-row][1]');
   await row.getByRole('button', { name: EDIT_ATTR }).click();
   await expect(page.getByRole('button', { name: SAVE_CHANGES })).toBeVisible();
 }
@@ -90,7 +90,7 @@ test.describe('Project type attributes', () => {
     await expect(page.getByRole('button', { name: TEXT_TYPE })).toBeVisible();
     await page.getByRole('button', { name: SAVE_CHANGES }).click();
 
-    const row = page.getByText(ATTR_NAME, { exact: true }).locator('xpath=ancestor::div[contains(@class,"rounded-2xl")][1]');
+    const row = page.getByText(ATTR_NAME, { exact: true }).locator('xpath=ancestor::div[@data-attr-row][1]');
     await expect(row.getByText(TEXT_TYPE)).toBeVisible();
   });
 
@@ -136,7 +136,7 @@ test.describe('Project type attributes', () => {
     const nameInput = page.getByPlaceholder(/e\.g\. Dimensions|napr\. Rozmery|pl\. Méretek/);
     await nameInput.fill('Kontrola');
     // Scoped to the add-attribute form: the built-in Deadline card has its own toggle.
-    const form = nameInput.locator('xpath=ancestor::div[contains(@class,"rounded-2xl")][1]');
+    const form = nameInput.locator('xpath=ancestor::div[@data-attr-form][1]');
     // Ordinary types carry an attribute-level Required toggle.
     await expect(form.getByText(REQUIRED_FIELD)).toBeVisible();
     await page.getByRole('button', { name: TEXT_TYPE }).click();
@@ -166,7 +166,7 @@ test.describe('Project type attributes', () => {
     await newOption.fill('Fotodokumentácia');
     await page.getByRole('button', { name: /Add Attribute|Pridať atribút|Attribútum hozzáadása/ }).click();
 
-    const row = page.getByText('Kontrola', { exact: true }).locator('xpath=ancestor::div[contains(@class,"rounded-2xl")][1]');
+    const row = page.getByText('Kontrola', { exact: true }).locator('xpath=ancestor::div[@data-attr-row][1]');
     await expect(row.getByText(/1 (required boxes|povinných políčok|kötelező négyzet)/)).toBeVisible();
 
     await row.getByRole('button', { name: EDIT_ATTR }).click();

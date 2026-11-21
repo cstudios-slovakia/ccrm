@@ -262,23 +262,23 @@ const LeadAssignmentCard: React.FC<{
               disabled={!canEdit}
               onClick={() => choosePanel(m.id)}
               className={cn(
-                "text-left px-3.5 py-2.5 rounded-xl border transition-all duration-150 ease-out",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-1",
+                "text-left px-3.5 py-2.5 rounded-md border transition-all duration-150 ease-out",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-entity-solid/40 focus-visible:ring-offset-1",
                 active
-                  ? "bg-indigo-50 border-indigo-300 ring-2 ring-indigo-500/15"
-                  : "bg-white border-slate-200 hover:border-slate-300 hover:-translate-y-px",
+                  ? "bg-entity-soft border-entity-border ring-2 ring-entity-solid/25"
+                  : "bg-white border-gray-200 hover:border-gray-300 hover:-translate-y-px",
                 canEdit ? "cursor-pointer active:scale-[0.98]" : "opacity-60 cursor-not-allowed",
               )}
             >
               <span className={cn(
                 "block type-overline",
-                active ? "text-indigo-700" : "text-slate-700",
+                active ? "text-entity-text" : "text-gray-700",
               )}>
                 {m.label}
               </span>
               <span className={cn(
                 "block text-micro font-semibold mt-0.5 leading-snug",
-                active ? "text-indigo-500" : "text-slate-400",
+                active ? "text-entity-text" : "text-gray-400",
               )}>
                 {m.hint}
               </span>
@@ -296,36 +296,36 @@ const LeadAssignmentCard: React.FC<{
               onClick={toggleSelectAll}
               aria-pressed={allCurrentSelected}
               className={cn(
-                "w-full flex items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-all duration-150 ease-out",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40",
+                "w-full flex items-center gap-3 rounded-md border px-3.5 py-2.5 text-left transition-all duration-150 ease-out",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-entity-solid/40",
                 allCurrentSelected
-                  ? "bg-indigo-50/80 border-indigo-200"
-                  : "bg-white border-slate-200 hover:border-slate-300",
+                  ? "bg-entity-soft border-entity-border"
+                  : "bg-white border-gray-200 hover:border-gray-300",
                 canEdit ? "cursor-pointer active:scale-[0.995]" : "opacity-60 cursor-not-allowed",
               )}
             >
               <span
                 className={cn(
                   "h-4 w-4 shrink-0 rounded border flex items-center justify-center transition-colors",
-                  allCurrentSelected ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-slate-300",
+                  allCurrentSelected ? "bg-entity-solid border-entity-border text-white" : "bg-white border-gray-300",
                 )}
               >
                 {allCurrentSelected ? (
                   <Check className="h-3 w-3" strokeWidth={3} />
                 ) : someSelected ? (
-                  <Minus className="h-3 w-3 text-indigo-500" strokeWidth={3} />
+                  <Minus className="h-3 w-3 text-entity-text" strokeWidth={3} />
                 ) : null}
               </span>
               <span className="min-w-0">
                 <span className={cn(
                   "block type-overline",
-                  allCurrentSelected ? "text-indigo-800" : "text-slate-700",
+                  allCurrentSelected ? "text-entity-text" : "text-gray-700",
                 )}>
                   {t("Select all", "Vybrať všetkých", "Összes kijelölése")}
                 </span>
                 <span className={cn(
                   "block text-micro font-semibold mt-0.5 leading-snug",
-                  allCurrentSelected ? "text-indigo-500" : "text-slate-400",
+                  allCurrentSelected ? "text-entity-text" : "text-gray-400",
                 )}>
                   {t(
                     "Everyone, including people added later",
@@ -337,9 +337,9 @@ const LeadAssignmentCard: React.FC<{
             </button>
           )}
 
-          <div className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100 overflow-hidden">
+          <div className="rounded-md border border-gray-200 bg-white divide-y divide-gray-100 overflow-hidden">
             {users.length === 0 && (
-              <div className="px-3.5 py-3 text-micro font-semibold text-slate-400 italic">
+              <div className="px-3.5 py-3 text-micro font-semibold text-gray-400 italic">
                 {t("No users to assign to yet.", "Zatiaľ nie sú žiadni používatelia na priradenie.", "Még nincs kihez kiosztani.")}
               </div>
             )}
@@ -353,7 +353,7 @@ const LeadAssignmentCard: React.FC<{
                   key={name}
                   className={cn(
                     "flex items-center gap-1 pr-2 transition-colors duration-150",
-                    selected ? "bg-indigo-50/40" : "bg-white",
+                    selected ? "bg-entity-soft" : "bg-white",
                   )}
                 >
                   <button
@@ -364,7 +364,7 @@ const LeadAssignmentCard: React.FC<{
                     onClick={() => panel === "one" ? pickOne(name) : toggleManyUser(name)}
                     className={cn(
                       "flex-1 min-w-0 flex items-center gap-3 px-3.5 py-2.5 text-left transition-colors duration-150",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500/40",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-entity-solid/40",
                       canEdit ? "cursor-pointer" : "opacity-60 cursor-not-allowed",
                     )}
                   >
@@ -372,23 +372,23 @@ const LeadAssignmentCard: React.FC<{
                       className={cn(
                         "shrink-0 flex items-center justify-center transition-all duration-150",
                         panel === "one"
-                          ? cn("h-4 w-4 rounded-full border", selected ? "border-indigo-600" : "border-slate-300 bg-white")
-                          : cn("h-4 w-4 rounded border", selected ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-slate-300"),
+                          ? cn("h-4 w-4 rounded-full border", selected ? "border-entity-border" : "border-gray-300 bg-white")
+                          : cn("h-4 w-4 rounded border", selected ? "bg-entity-solid border-entity-border text-white" : "bg-white border-gray-300"),
                       )}
                     >
                       {panel === "one"
-                        ? (selected && <span className="h-2 w-2 rounded-full bg-indigo-600" />)
+                        ? (selected && <span className="h-2 w-2 rounded-full bg-entity-solid" />)
                         : (selected && <Check className="h-3 w-3" strokeWidth={3} />)}
                     </span>
                     {avatar(name)}
                     <span className={cn(
                       "flex-1 min-w-0 truncate text-caption font-extrabold",
-                      selected ? "text-slate-800" : "text-slate-400",
+                      selected ? "text-gray-800" : "text-gray-400",
                     )}>
                       {name}
                     </span>
                     {panel === "many" && selected && orderIndex >= 0 && (
-                      <span className="text-micro font-bold text-indigo-400 tabular-nums shrink-0">
+                      <span className="text-micro font-bold text-entity-text tabular-nums shrink-0">
                         #{orderIndex + 1}
                       </span>
                     )}
@@ -399,7 +399,7 @@ const LeadAssignmentCard: React.FC<{
                         type="button"
                         disabled={!canEdit || leadAssignment.users.indexOf(name) <= 0}
                         onClick={() => moveUser(name, -1)}
-                        className="p-1 rounded-md text-indigo-300 hover:text-indigo-700 hover:bg-indigo-100 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-indigo-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                        className="p-1 rounded-md text-entity-text hover:text-entity-text hover:bg-entity-soft disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-entity-text transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-entity-solid/40"
                         title={t("Move up", "Posunúť vyššie", "Feljebb")}
                       >
                         <ArrowUp className="h-3 w-3" />
@@ -408,7 +408,7 @@ const LeadAssignmentCard: React.FC<{
                         type="button"
                         disabled={!canEdit || leadAssignment.users.indexOf(name) >= leadAssignment.users.length - 1}
                         onClick={() => moveUser(name, 1)}
-                        className="p-1 rounded-md text-indigo-300 hover:text-indigo-700 hover:bg-indigo-100 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-indigo-300 transition-colors rotate-180 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                        className="p-1 rounded-md text-entity-text hover:text-entity-text hover:bg-entity-soft disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-entity-text transition-colors rotate-180 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-entity-solid/40"
                         title={t("Move down", "Posunúť nižšie", "Lejjebb")}
                       >
                         <ArrowUp className="h-3 w-3" />
@@ -422,7 +422,7 @@ const LeadAssignmentCard: React.FC<{
 
           {panel === "one" && (
             pool.length === 0 ? (
-              <p className="text-micro font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5">
+              <p className="text-micro font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3.5 py-2.5">
                 {t(
                   "Pick who should get every new lead.",
                   "Vyberte, kto má dostať každý nový lead.",
@@ -430,7 +430,7 @@ const LeadAssignmentCard: React.FC<{
                 )}
               </p>
             ) : (
-              <p className="text-micro font-bold text-slate-500 bg-white border border-slate-200 rounded-xl px-3.5 py-2.5">
+              <p className="text-micro font-bold text-gray-500 bg-white border border-gray-200 rounded-md px-3.5 py-2.5">
                 {t(
                   `Every new lead goes to ${pool[0]}.`,
                   `Každý nový lead dostane ${pool[0]}.`,
@@ -443,7 +443,7 @@ const LeadAssignmentCard: React.FC<{
           {panel === "many" && (
             <>
               {manyTooFew ? (
-                <div className="text-micro font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5 leading-relaxed">
+                <div className="text-micro font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3.5 py-2.5 leading-relaxed">
                   <p>
                     {t(
                       "Pick at least two people to rotate between, or switch to One person.",
@@ -455,20 +455,20 @@ const LeadAssignmentCard: React.FC<{
                     type="button"
                     disabled={!canEdit}
                     onClick={() => choosePanel("one")}
-                    className="mt-1.5 text-indigo-700 hover:text-indigo-900 underline-offset-2 hover:underline type-overline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 rounded"
+                    className="mt-1.5 text-entity-text hover:text-entity-text underline-offset-2 hover:underline type-overline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-entity-solid/40 rounded"
                   >
                     {t("Use One person", "Použiť Jednu osobu", "Egy személy használata")}
                   </button>
                 </div>
               ) : (
-                <p className="text-micro font-bold text-slate-500 bg-white border border-slate-200 rounded-xl px-3.5 py-2.5">
-                  <span className="text-slate-400 uppercase tracking-wider font-bold mr-1.5">
+                <p className="text-micro font-bold text-gray-500 bg-white border border-gray-200 rounded-md px-3.5 py-2.5">
+                  <span className="text-gray-400 uppercase tracking-wider font-bold mr-1.5">
                     {t("Order", "Poradie", "Sorrend")}:
                   </span>
                   {pool.join(" → ")}
                 </p>
               )}
-              <p className="text-micro font-semibold text-slate-400 leading-relaxed px-0.5">
+              <p className="text-micro font-semibold text-gray-400 leading-relaxed px-0.5">
                 {t(
                   "Each lead has only one assignee. With several people selected, new leads rotate through them in the order above.",
                   "Každý lead má len jedného vlastníka. Pri viacerých vybraných osobách sa nové leady striedajú v poradí vyššie.",
@@ -2337,7 +2337,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         ? { btnStyle: "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/70", icon: <Pencil className="h-3.5 w-3.5 shrink-0" />, label: getTranslation(userLanguage, "settings.rbac.state.edit") }
         : currentValue === "view"
           ? { btnStyle: "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100/70", icon: <Eye className="h-3.5 w-3.5 shrink-0" />, label: getTranslation(userLanguage, "settings.rbac.state.view") }
-          : { btnStyle: "bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100/40 hover:text-slate-500", icon: <Minus className="h-3.5 w-3.5 shrink-0" />, label: getTranslation(userLanguage, "settings.rbac.state.nothing") };
+          : { btnStyle: "bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100/40 hover:text-gray-500", icon: <Minus className="h-3.5 w-3.5 shrink-0" />, label: getTranslation(userLanguage, "settings.rbac.state.nothing") };
     const handleCycle = () => {
       if (disabled) return;
       const next: PermissionValue = currentValue === "nothing" ? "view" : currentValue === "view" ? "edit" : "nothing";
@@ -2348,7 +2348,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         type="button"
         disabled={disabled}
         onClick={handleCycle}
-        className={`mx-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border type-overline transition-all shadow-sm ${styles.btnStyle} ${
+        className={`mx-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border type-overline transition-all shadow-xs ${styles.btnStyle} ${
           disabled ? "opacity-80 cursor-not-allowed" : "cursor-pointer active:scale-95 hover:scale-[1.03]"
         }`}
         title={disabled
@@ -2385,10 +2385,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             if (disabled) return;
             updateRolePermission(roleName, def.key, on ? "nothing" : "edit");
           }}
-          className={`mx-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border type-overline transition-all shadow-sm ${
+          className={`mx-auto flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border type-overline transition-all shadow-xs ${
             on
               ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/70"
-              : "bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100/40 hover:text-slate-500"
+              : "bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100/40 hover:text-gray-500"
           } ${disabled ? "opacity-80 cursor-not-allowed" : "cursor-pointer active:scale-95 hover:scale-[1.03]"}`}
           title={!reqMet ? reqLabel : (disabled ? formatTranslation(userLanguage, "settings.rbac.locked_tip", { role: roleName }) : getTranslation(userLanguage, "settings.rbac.toggle_tip"))}
         >
@@ -2396,7 +2396,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <span>{on ? getTranslation(userLanguage, "settings.rbac.state.on") : getTranslation(userLanguage, "settings.rbac.state.off")}</span>
         </button>
         {!reqMet && reqLabel && (
-          <span className="type-overline text-slate-400 max-w-35 leading-tight">{reqLabel}</span>
+          <span className="type-overline text-gray-400 max-w-35 leading-tight">{reqLabel}</span>
         )}
       </div>
     );
@@ -2423,9 +2423,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             if (disabled) return;
             updateRoleSection(roleName, section, !fullyOn);
           }}
-          className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+          className="h-3.5 w-3.5 rounded border-gray-300 text-entity-text focus:ring-entity-solid/25"
         />
-        <span className="type-overline text-slate-500">
+        <span className="type-overline text-gray-500">
           {fullyOn
             ? getTranslation(userLanguage, "settings.rbac.state.on")
             : fullyOff
@@ -3077,7 +3077,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       || (permKey === "pm_managers" && !canAdministerUsers);
     if (!isReadOnly) return null;
     return (
-      <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-ui font-semibold flex items-center gap-2 mb-6 shadow-sm">
+      <div className="p-3.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-ui font-semibold flex items-center gap-2 mb-6 shadow-xs">
         <Lock className="h-4.5 w-4.5 text-amber-600 shrink-0" />
         <span>{getTranslation(userLanguage, "settings.general.read_only")}</span>
       </div>
@@ -3141,17 +3141,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             type="button"
                             onClick={() => setIsAddingUser(true)}
                             data-testid="settings-add-user"
-                            className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500"
+                            className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg bg-entity-solid px-5 text-ui font-bold text-white shadow-xs transition-colors hover:bg-entity-solid-hover"
                           >
                             <Plus className="h-4 w-4" aria-hidden="true" /> {getTranslation(userLanguage, "settings.managers.form_title")}
                           </button>
                         ) : undefined}
                       >
                         {isAddingUser && canAdministerUsers && (
-                          <form onSubmit={handleAddUser} data-testid="settings-add-user-form" className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
+                          <form onSubmit={handleAddUser} data-testid="settings-add-user-form" className="flex flex-col gap-4 rounded-lg border border-gray-200 bg-gray-50/60 p-5">
                             <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
                               <div className="space-y-1">
-                                <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_fullname")}</label>
+                                <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.managers.lbl_fullname")}</label>
                                 <input
                                   type="text"
                                   required
@@ -3159,32 +3159,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   value={newManager}
                                   onChange={(e) => setNewManager(e.target.value)}
                                   placeholder={t("e.g. Sara Nováková", "napr. Sara Nováková", "pl. Sara Nováková")}
-                                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                                  className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
                                 />
                               </div>
                               <div className="space-y-1">
-                                <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_email")}</label>
+                                <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.managers.lbl_email")}</label>
                                 <input
                                   type="email"
                                   required
                                   value={newUserEmail}
                                   onChange={(e) => setNewUserEmail(e.target.value)}
                                   placeholder={t("e.g. sara@crm.com", "napr. sara@crm.com", "pl. sara@crm.com")}
-                                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                                  className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
                                 />
                               </div>
                               <div className="space-y-1">
-                                <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_password")}</label>
+                                <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.managers.lbl_password")}</label>
                                 <PasswordInput
                                   required
                                   value={newUserPassword}
                                   onChange={(e) => setNewUserPassword(e.target.value)}
                                   placeholder={getTranslation(userLanguage, "settings.managers.placeholder_new_password")}
-                                  className="w-full pl-3 pr-10 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                                  className="w-full pl-3 pr-10 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
                                 />
                               </div>
                               <div className="space-y-1">
-                                <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_role_assignment")}</label>
+                                <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.managers.lbl_role_assignment")}</label>
                                 <CustomSelect
                                   value={newUserRole}
                                   onChange={(v) => setNewUserRole(v)}
@@ -3196,13 +3196,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               <button
                                 type="button"
                                 onClick={() => setIsAddingUser(false)}
-                                className="min-h-11 cursor-pointer rounded-2xl border border-slate-200 bg-white px-5 text-ui font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                                className="min-h-11 cursor-pointer rounded-lg border border-gray-200 bg-white px-5 text-ui font-semibold text-gray-600 transition-colors hover:bg-gray-50"
                               >
                                 {getTranslation(userLanguage, "common.cancel")}
                               </button>
                               <button
                                 type="submit"
-                                className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500"
+                                className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg bg-entity-solid px-5 text-ui font-bold text-white shadow-xs transition-colors hover:bg-entity-solid-hover"
                               >
                                 <Plus className="h-4 w-4" aria-hidden="true" /> {getTranslation(userLanguage, "settings.managers.btn_provision")}
                               </button>
@@ -3211,20 +3211,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         )}
 
                         {/* Users Responsive Table */}
-                        <ScrollFade axis="x" className="rounded-2xl border border-slate-200">
+                        <ScrollFade axis="x" className="rounded-lg border border-gray-200">
                           <table className="w-full text-left border-collapse text-ui">
-                            <thead className="sticky top-0 z-20 bg-slate-50">
-                              <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 type-overline">
-                                <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_user")}</th>
-                                <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_email")}</th>
-                                <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_role")}</th>
-                                <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_color")}</th>
-                                <th className="sticky top-0 z-10 bg-slate-50 py-3 px-4 text-right">{getTranslation(userLanguage, "settings.managers.th_actions")}</th>
+                            <thead className="sticky top-0 z-20 bg-gray-50">
+                              <tr className="bg-gray-50 border-b border-gray-200 text-gray-400 type-overline">
+                                <th className="sticky top-0 z-10 bg-gray-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_user")}</th>
+                                <th className="sticky top-0 z-10 bg-gray-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_email")}</th>
+                                <th className="sticky top-0 z-10 bg-gray-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_role")}</th>
+                                <th className="sticky top-0 z-10 bg-gray-50 py-3 px-4">{getTranslation(userLanguage, "settings.managers.th_color")}</th>
+                                <th className="sticky top-0 z-10 bg-gray-50 py-3 px-4 text-right">{getTranslation(userLanguage, "settings.managers.th_actions")}</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                            <tbody className="divide-y divide-gray-100 font-medium text-gray-700">
                               {users.map((u) => (
-                                <tr key={u.email} className="hover:bg-slate-50/50 transition-colors">
+                                <tr key={u.email} className="hover:bg-gray-50/50 transition-colors">
                                   <td className="py-3 px-4">
                                     <div className="flex items-center gap-3">
                                       <div 
@@ -3237,10 +3237,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       >
                                         {u.name.substring(0,2).toUpperCase()}
                                       </div>
-                                      <span className="font-extrabold text-slate-800">{u.name}</span>
+                                      <span className="font-extrabold text-gray-800">{u.name}</span>
                                     </div>
                                   </td>
-                                  <td className="py-3 px-4 text-slate-500 font-semibold select-all">{u.email}</td>
+                                  <td className="py-3 px-4 text-gray-500 font-semibold select-all">{u.email}</td>
                                   <td className="py-3 px-4">
                                     <div className="flex flex-col items-start gap-1">
                                     <span 
@@ -3268,7 +3268,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           data-testid="user-linked-employee"
                                           title={getTranslation(userLanguage, "settings.users.linked_employee")}
                                           className={`px-2 py-0.5 rounded-full border type-overline ${
-                                            linked ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-400"
+                                            linked ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-gray-200 bg-gray-50 text-gray-400"
                                           }`}
                                         >
                                           {linked ? linked.name : getTranslation(userLanguage, "settings.users.not_linked")}
@@ -3279,8 +3279,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   </td>
                                   <td className="py-3 px-4">
                                     <div className="flex items-center gap-1.5">
-                                      <span className="h-3 w-3 rounded-full border border-white shadow-sm" style={{ backgroundColor: u.color }} />
-                                      <span className="type-overline text-slate-400">{u.color}</span>
+                                      <span className="h-3 w-3 rounded-full border border-white shadow-xs" style={{ backgroundColor: u.color }} />
+                                      <span className="type-overline text-gray-400">{u.color}</span>
                                     </div>
                                   </td>
                                   <td className="py-3 px-4 text-right">
@@ -3288,7 +3288,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       <button
                                         type="button"
                                         onClick={() => { window.location.hash = `user-${encodeURIComponent(u.name)}`; }}
-                                        className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 transition-all type-overline flex items-center gap-1"
+                                        className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-entity-soft text-gray-600 hover:text-entity-text border border-gray-200 hover:border-entity-border transition-all type-overline flex items-center gap-1"
                                       >
                                         <Eye className="h-3 w-3" /> {getTranslation(userLanguage, "settings.managers.th_actions")}
                                       </button>
@@ -3298,7 +3298,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                             lang={userLanguage}
                                             what={u.name}
                                             onConfirm={() => handleRemoveUser(u.name)}
-                                            className="p-1.5 rounded-lg bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-transparent hover:border-rose-100 transition-colors"
+                                            className="p-1.5 rounded-lg bg-gray-50 hover:bg-rose-50 text-gray-400 hover:text-rose-600 border border-transparent hover:border-rose-100 transition-colors"
                                             title={userLanguage === "sk" ? `Vymazať účet používateľa ${u.name}` : userLanguage === "hu" ? `Felhasználói fiók törlése ${u.name}` : `Delete user account ${u.name}`}
                                         >
                                           <Trash2 className="h-3.5 w-3.5" />
@@ -3319,14 +3319,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <button
                             type="button"
                             onClick={() => { window.location.hash = "settings"; }}
-                            className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 type-overline shadow-sm transition-all active:scale-95 flex items-center gap-1.5"
+                            className="px-4 py-2 rounded-md bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-700 type-overline shadow-xs transition-all active:scale-95 flex items-center gap-1.5"
                           >
                             <ArrowLeft className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.managers.btn_back")}
                           </button>
-                          <div className="flex items-center gap-2 type-overline text-slate-400">
+                          <div className="flex items-center gap-2 type-overline text-gray-400">
                             <span>{getTranslation(userLanguage, "settings.managers.breadcrumbs_users")}</span>
                             <span>/</span>
-                            <span className="text-slate-700">{selectedUser.name}</span>
+                            <span className="text-gray-700">{selectedUser.name}</span>
                           </div>
                         </div>
         
@@ -3338,10 +3338,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             description={`${selectedUser.role} ${getTranslation(userLanguage, "settings.managers.profile_suffix")}`}
                           >
                             <div className="space-y-5">
-                              <div className="space-y-4 text-ui font-bold text-slate-700 text-left">
+                              <div className="space-y-4 text-ui font-bold text-gray-700 text-left">
                                 {/* Name setting */}
                                 <div className="space-y-1">
-                                  <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_fullname")}</label>
+                                  <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.managers.lbl_fullname")}</label>
                                   <CommitOnBlurInput
                                     key={`name-${selectedUser.id}`}
                                     type="text"
@@ -3350,13 +3350,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     disabled={!canAdministerUsers}
                                     value={selectedUser.name}
                                     onCommit={(name) => handleUpdateUser({ ...selectedUser, name })}
-                                    className="w-full px-3 py-2 rounded-xl bg-slate-50/50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:bg-white focus:border-indigo-500 transition-all"
+                                    className="w-full px-3 py-2 rounded-md bg-gray-50/50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:bg-white focus:border-entity-border transition-all"
                                   />
                                 </div>
         
                                 {/* Email Address */}
                                 <div className="space-y-1">
-                                  <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_email")}</label>
+                                  <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.managers.lbl_email")}</label>
                                   <CommitOnBlurInput
                                     key={`email-${selectedUser.id}`}
                                     type="email"
@@ -3365,13 +3365,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     disabled={!canAdministerUsers}
                                     value={selectedUser.email}
                                     onCommit={(email) => handleUpdateUser({ ...selectedUser, email })}
-                                    className="w-full px-3 py-2 rounded-xl bg-slate-50/50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:bg-white focus:border-indigo-500 transition-all"
+                                    className="w-full px-3 py-2 rounded-md bg-gray-50/50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:bg-white focus:border-entity-border transition-all"
                                   />
                                 </div>
         
                                 {/* Password */}
                                 <div className="space-y-1">
-                                  <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_password")}</label>
+                                  <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.managers.lbl_password")}</label>
                                   <CommitOnBlurInput
                                     key={`password-${selectedUser.id}`}
                                     type="text"
@@ -3379,13 +3379,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     disabled={!canAdministerUsers}
                                     value={selectedUser.password || ""}
                                     onCommit={(password) => handleUpdateUser({ ...selectedUser, password })}
-                                    className="w-full px-3 py-2 rounded-xl bg-slate-50/50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:bg-white focus:border-indigo-500 transition-all"
+                                    className="w-full px-3 py-2 rounded-md bg-gray-50/50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:bg-white focus:border-entity-border transition-all"
                                   />
                                 </div>
         
                                 {/* Security Access Level Role */}
                                 <div className="space-y-1">
-                                  <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_access")}</label>
+                                  <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.managers.lbl_access")}</label>
                                   {canAdministerUsers ? (
                                     <CustomSelect
                                       value={selectedUser.role}
@@ -3401,15 +3401,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       ]}
                                     />
                                   ) : (
-                                    <div className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-extrabold select-text w-full">
+                                    <div className="px-3 py-2 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-extrabold select-text w-full">
                                       <ShieldCheck className="inline h-3.5 w-3.5 align-text-bottom" aria-hidden="true" /> {selectedUser.role}
                                     </div>
                                   )}
                                 </div>
         
                                 {/* Swatches preset colors */}
-                                <div className="space-y-2 pt-2 border-t border-slate-100">
-                                  <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.managers.lbl_color")}</label>
+                                <div className="space-y-2 pt-2 border-t border-gray-100">
+                                  <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.managers.lbl_color")}</label>
                                   <div className="flex flex-wrap items-center gap-2">
                                     {[
                                       "#3b82f6", "#0ea5e9", "#6366f1", "#10b981", 
@@ -3425,7 +3425,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                             const updated = { ...selectedUser, color: colorPreset };
                                             handleUpdateUser(updated);
                                           }}
-                                          className="h-5.5 w-5.5 rounded-full border border-white hover:scale-115 active:scale-95 disabled:scale-100 disabled:cursor-not-allowed transition-all shadow-sm shrink-0"
+                                          className="h-5.5 w-5.5 rounded-full border border-white hover:scale-115 active:scale-95 disabled:scale-100 disabled:cursor-not-allowed transition-all shadow-xs shrink-0"
                                           style={{
                                             backgroundColor: colorPreset,
                                             boxShadow: isAssigned ? `0 0 0 2px ${colorPreset}` : '0 1px 2px rgba(0,0,0,0.05)'
@@ -3459,15 +3459,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           >
                             <div className="space-y-4">
                               {(!selectedUser.activityLog || selectedUser.activityLog.length === 0) ? (
-                                <div className="py-12 text-center text-slate-400">
+                                <div className="py-12 text-center text-gray-400">
                                   <Icons.ScrollText className="mx-auto mb-2 h-8 w-8" aria-hidden="true" />
-                                  <div className="font-bold text-slate-700 uppercase tracking-wider">{getTranslation(userLanguage, "settings.managers.timeline_empty")}</div>
-                                  <div className="type-overline mt-1.5 text-slate-400">{getTranslation(userLanguage, "settings.managers.timeline_empty_desc")}</div>
+                                  <div className="font-bold text-gray-700 uppercase tracking-wider">{getTranslation(userLanguage, "settings.managers.timeline_empty")}</div>
+                                  <div className="type-overline mt-1.5 text-gray-400">{getTranslation(userLanguage, "settings.managers.timeline_empty_desc")}</div>
                                 </div>
                               ) : (
                                 <div className="overflow-y-auto max-h-95 pr-2 pl-2 space-y-5 relative scrollbar-thin text-left">
                                   {/* vertical line */}
-                                  <div className="absolute left-4.25 top-2 bottom-2 w-0.5 bg-slate-100 rounded-full"></div>
+                                  <div className="absolute left-4.25 top-2 bottom-2 w-0.5 bg-gray-100 rounded-full"></div>
         
                                   {selectedUser.activityLog.map((log) => {
                                     let badgeBg = "bg-blue-50 text-blue-700 border-blue-200";
@@ -3480,7 +3480,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       <div key={log.id} className="relative flex items-start gap-4 group animate-in fade-in slide-in-from-bottom duration-200 select-text">
                                         {/* Dot icon indicator */}
                                         <div 
-                                          className="h-8.5 w-8.5 rounded-lg flex items-center justify-center border-2 shrink-0 z-10 shadow-sm"
+                                          className="h-8.5 w-8.5 rounded-lg flex items-center justify-center border-2 shrink-0 z-10 shadow-xs"
                                           style={{
                                             backgroundColor: "rgb(var(--card))",
                                             borderColor: selectedUser.color
@@ -3489,14 +3489,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           <Activity className="h-3.5 w-3.5" style={{ color: selectedUser.color }} />
                                         </div>
         
-                                        <div className="flex-1 bg-slate-50/50 p-3 rounded-2xl border border-slate-200 shadow-sm relative">
-                                          <div className="absolute -left-1.25 top-3 w-2.5 h-2.5 bg-white border-l border-b border-slate-200 transform rotate-45"></div>
+                                        <div className="flex-1 bg-gray-50/50 p-3 rounded-lg border border-gray-200 shadow-xs relative">
+                                          <div className="absolute -left-1.25 top-3 w-2.5 h-2.5 bg-white border-l border-b border-gray-200 transform rotate-45"></div>
                                           <div className="flex flex-wrap items-center justify-between gap-2">
-                                            <span className="font-extrabold text-ui text-slate-800 leading-tight block">{log.action}</span>
-                                            <span className="type-overline text-slate-400 shrink-0">{formatTimestampLocalized(log.timestamp, userLanguage)}</span>
+                                            <span className="font-extrabold text-ui text-gray-800 leading-tight block">{log.action}</span>
+                                            <span className="type-overline text-gray-400 shrink-0">{formatTimestampLocalized(log.timestamp, userLanguage)}</span>
                                           </div>
                                           {log.details && (
-                                            <p className="text-micro text-slate-500 font-semibold mt-1 leading-relaxed">{log.details}</p>
+                                            <p className="text-micro text-gray-500 font-semibold mt-1 leading-relaxed">{log.details}</p>
                                           )}
                                           <span className={`px-2 py-0.5 rounded-md type-overline border block w-fit mt-2 ${badgeBg}`}>
                                             {log.type}
@@ -3529,10 +3529,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   handleUpdateUser(updated);
                                   setSimulatedAction("");
                                 }}
-                                className="p-4 border border-slate-200 bg-slate-50/50 rounded-2xl space-y-3 mt-4 text-left"
+                                className="p-4 border border-gray-200 bg-gray-50/50 rounded-lg space-y-3 mt-4 text-left"
                               >
-                                <h4 className="type-overline text-slate-700 flex items-center gap-1.5">
-                                  <Sliders className="h-3.5 w-3.5 text-indigo-500" /> {getTranslation(userLanguage, "settings.managers.sim_title")}
+                                <h4 className="type-overline text-gray-700 flex items-center gap-1.5">
+                                  <Sliders className="h-3.5 w-3.5 text-entity-text" /> {getTranslation(userLanguage, "settings.managers.sim_title")}
                                 </h4>
                                 <div className="grid grid-cols-1 ws-sm:grid-cols-12 gap-3 text-ui">
                                   <input
@@ -3541,7 +3541,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     value={simulatedAction}
                                     onChange={(e) => setSimulatedAction(e.target.value)}
                                     placeholder={getTranslation(userLanguage, "settings.managers.sim_placeholder")}
-                                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui font-bold text-slate-800 focus:outline-none focus:border-indigo-500 ws-sm:col-span-8"
+                                    className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui font-bold text-gray-800 focus:outline-none focus:border-entity-border ws-sm:col-span-8"
                                   />
                                   <div className="ws-sm:col-span-4">
                                     <CustomSelect
@@ -3554,7 +3554,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 </div>
                                 <button
                                   type="submit"
-                                  className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white type-overline shadow-sm transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                                  className="w-full py-2.5 rounded-md bg-gray-800 hover:bg-gray-900 text-white type-overline shadow-xs transition-all active:scale-95 flex items-center justify-center gap-1.5"
                                 >
                                   <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.managers.sim_btn")}
                                 </button>
@@ -3580,16 +3580,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           type="button"
                           onClick={() => setIsAddingRole(true)}
                           data-testid="settings-add-role"
-                          className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500"
+                          className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg bg-entity-solid px-5 text-ui font-bold text-white shadow-xs transition-colors hover:bg-entity-solid-hover"
                         >
                           <Plus className="h-4 w-4" aria-hidden="true" /> {getTranslation(userLanguage, "settings.rbac.btn_create")}
                         </button>
                       ) : undefined}
                     >
                       {isAddingRole && canAdministerUsers && (
-                        <form onSubmit={handleAddRole} className="flex flex-col items-end gap-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-5 ws-sm:flex-row">
+                        <form onSubmit={handleAddRole} className="flex flex-col items-end gap-3 rounded-lg border border-gray-200 bg-gray-50/60 p-5 ws-sm:flex-row">
                           <div className="w-full flex-1 space-y-1">
-                            <label className="type-overline block pl-0.5 text-slate-500">{getTranslation(userLanguage, "settings.rbac.lbl_name")}</label>
+                            <label className="type-overline block pl-0.5 text-gray-500">{getTranslation(userLanguage, "settings.rbac.lbl_name")}</label>
                             <input
                               type="text"
                               required
@@ -3597,20 +3597,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               value={newRoleName}
                               onChange={(e) => setNewRoleName(e.target.value)}
                               placeholder={getTranslation(userLanguage, "settings.rbac.placeholder")}
-                              className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                              className="w-full px-3 py-2.5 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
                             />
                           </div>
                           <div className="flex w-full gap-2 ws-sm:w-auto">
                             <button
                               type="button"
                               onClick={() => setIsAddingRole(false)}
-                              className="min-h-11 flex-1 cursor-pointer rounded-2xl border border-slate-200 bg-white px-5 text-ui font-semibold text-slate-600 transition-colors hover:bg-slate-50 ws-sm:flex-none"
+                              className="min-h-11 flex-1 cursor-pointer rounded-lg border border-gray-200 bg-white px-5 text-ui font-semibold text-gray-600 transition-colors hover:bg-gray-50 ws-sm:flex-none"
                             >
                               {getTranslation(userLanguage, "common.cancel")}
                             </button>
                             <button
                               type="submit"
-                              className="min-h-11 flex-1 cursor-pointer rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500 ws-sm:flex-none"
+                              className="min-h-11 flex-1 cursor-pointer rounded-lg bg-entity-solid px-5 text-ui font-bold text-white shadow-xs transition-colors hover:bg-entity-solid-hover ws-sm:flex-none"
                             >
                               {getTranslation(userLanguage, "settings.rbac.btn_create")}
                             </button>
@@ -3618,27 +3618,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         </form>
                       )}
 
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-5 py-4 text-caption text-slate-600 space-y-2">
-                        <p className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.rbac.legend.title")}</p>
+                      <div className="rounded-lg border border-gray-200 bg-gray-50/70 px-5 py-4 text-caption text-gray-600 space-y-2">
+                        <p className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.rbac.legend.title")}</p>
                         <ul className="grid ws-sm:grid-cols-2 gap-x-6 gap-y-1 font-semibold">
-                          <li><span className="text-slate-400 type-overline mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.nothing")}</span>{getTranslation(userLanguage, "settings.rbac.legend.none")}</li>
+                          <li><span className="text-gray-400 type-overline mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.nothing")}</span>{getTranslation(userLanguage, "settings.rbac.legend.none")}</li>
                           <li><span className="text-blue-500 type-overline mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.view")}</span>{getTranslation(userLanguage, "settings.rbac.legend.view")}</li>
                           <li><span className="text-emerald-600 type-overline mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.edit")}</span>{getTranslation(userLanguage, "settings.rbac.legend.edit")}</li>
-                          <li><span className="text-slate-500 type-overline mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.on")}/{getTranslation(userLanguage, "settings.rbac.state.off")}</span>{getTranslation(userLanguage, "settings.rbac.legend.toggle")}</li>
-                          <li className="ws-sm:col-span-2"><span className="text-indigo-600 type-overline mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.partial")}</span>{getTranslation(userLanguage, "settings.rbac.legend.section")}</li>
+                          <li><span className="text-gray-500 type-overline mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.on")}/{getTranslation(userLanguage, "settings.rbac.state.off")}</span>{getTranslation(userLanguage, "settings.rbac.legend.toggle")}</li>
+                          <li className="ws-sm:col-span-2"><span className="text-entity-text type-overline mr-1.5">{getTranslation(userLanguage, "settings.rbac.state.partial")}</span>{getTranslation(userLanguage, "settings.rbac.legend.section")}</li>
                         </ul>
                       </div>
         
                       {/* RBAC Matrix Table (Flipped: columns are roles, rows are functions) */}
-                      <ScrollFade axis="x" className="rounded-2xl border border-slate-200 shadow-sm">
+                      <ScrollFade axis="x" className="rounded-lg border border-gray-200 shadow-xs">
                         <table className="w-full text-left border-collapse bg-white">
-                          <thead className="sticky top-0 z-20 bg-slate-50">
-                            <tr className="bg-slate-50 border-b border-slate-200 type-overline text-slate-600">
-                              <th className="sticky top-0 z-10 bg-slate-50 py-4 px-5 min-w-50">{getTranslation(userLanguage, "settings.rbac.th_permission")}</th>
+                          <thead className="sticky top-0 z-20 bg-gray-50">
+                            <tr className="bg-gray-50 border-b border-gray-200 type-overline text-gray-600">
+                              <th className="sticky top-0 z-10 bg-gray-50 py-4 px-5 min-w-50">{getTranslation(userLanguage, "settings.rbac.th_permission")}</th>
                               {roles.map((role) => {
                                 const isAdmin = isAdminRoleName(role.name);
                                 return (
-                                  <th key={role.name} className="sticky top-0 z-10 bg-slate-50 py-4 px-5 text-center min-w-35">
+                                  <th key={role.name} className="sticky top-0 z-10 bg-gray-50 py-4 px-5 text-center min-w-35">
                                     <div className="flex flex-col items-center justify-center gap-1.5">
                                       <div className="flex items-center gap-1.5 justify-center">
                                         <span 
@@ -3669,12 +3669,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           >{getTranslation(userLanguage, "common.delete")}
                                           </HoldToConfirmButton>
                                         ) : (
-                                          <span className="type-overline text-slate-400 block">{getTranslation(userLanguage, "settings.rbac.locked")}</span>
+                                          <span className="type-overline text-gray-400 block">{getTranslation(userLanguage, "settings.rbac.locked")}</span>
                                         )
                                       )}
                                       
                                       {isProtectedRoleName(role.name) && (
-                                        <span className="type-overline text-slate-400 block select-none">{getTranslation(userLanguage, "settings.rbac.protected")}</span>
+                                        <span className="type-overline text-gray-400 block select-none">{getTranslation(userLanguage, "settings.rbac.protected")}</span>
                                       )}
         
                                       {/* Employee is a native role with recommended safe defaults: Admin can restore them. */}
@@ -3684,7 +3684,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           onClick={resetEmployeeRole}
                                           data-testid="rbac-reset-employee"
                                           title={getTranslation(userLanguage, "settings.rbac.reset_defaults_tip")}
-                                          className="text-amber-700 hover:text-amber-900 hover:bg-amber-50 border border-amber-200/80 py-1 px-2.5 rounded-xl type-overline transition-colors cursor-pointer"
+                                          className="text-amber-700 hover:text-amber-900 hover:bg-amber-50 border border-amber-200/80 py-1 px-2.5 rounded-md type-overline transition-colors cursor-pointer"
                                         >
                                           {getTranslation(userLanguage, "settings.rbac.reset_defaults")}
                                         </button>
@@ -3696,7 +3696,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           <button
                                             type="button"
                                             onClick={() => triggerRoleLayoutUpload(role.name)}
-                                            className="text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 border border-indigo-200/80 py-1 px-2.5 rounded-xl type-overline flex items-center gap-1 shadow-sm transition-all cursor-pointer"
+                                            className="text-entity-text hover:text-entity-text hover:bg-entity-soft border border-entity-border py-1 px-2.5 rounded-md type-overline flex items-center gap-1 shadow-xs transition-all cursor-pointer"
                                             title={t("Upload default navigation structure", "Nahrať predvolenú štruktúru menu", "Alapértelmezett navigációs struktúra feltöltése")}
                                           >
                                             <Menu className="h-3 w-3" />
@@ -3710,13 +3710,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               })}
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-100 text-ui font-semibold text-slate-700">
+                          <tbody className="divide-y divide-gray-100 text-ui font-semibold text-gray-700">
                             {PERMISSION_SECTIONS.flatMap((section) => {
                               const rows: React.ReactNode[] = [];
                               rows.push(
-                                <tr key={`sec-${section.id}`} className="bg-slate-50 border-y border-slate-200 select-none">
+                                <tr key={`sec-${section.id}`} className="bg-gray-50 border-y border-gray-200 select-none">
                                   <td className="py-2.5 px-5 text-left">
-                                    <span className="type-overline text-indigo-900">
+                                    <span className="type-overline text-entity-text">
                                       {getTranslation(userLanguage, `settings.rbac.section.${section.id}`)}
                                     </span>
                                   </td>
@@ -3729,18 +3729,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               );
                               for (const perm of section.permissions) {
                                 rows.push(
-                                  <tr key={perm.key} className="hover:bg-slate-50/50 transition-colors">
+                                  <tr key={perm.key} className="hover:bg-gray-50/50 transition-colors">
                                     <td className="py-3 px-5 max-w-70">
                                       <div className="flex flex-col space-y-1 text-left">
                                         <div className="flex items-center gap-1.5 flex-wrap">
-                                          <span className="font-heading font-bold text-slate-800 text-ui tracking-wide">
+                                          <span className="font-heading font-bold text-gray-800 text-ui tracking-wide">
                                             {getTranslation(userLanguage, `settings.rbac.perm.${perm.key}.label`)}
                                           </span>
-                                          <code className="text-micro font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-semibold select-all">
+                                          <code className="text-micro font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-semibold select-all">
                                             {perm.key}
                                           </code>
                                         </div>
-                                        <p className="text-micro font-semibold text-slate-400 leading-normal">
+                                        <p className="text-micro font-semibold text-gray-400 leading-normal">
                                           {getTranslation(userLanguage, `settings.rbac.perm.${perm.key}.desc`)}
                                         </p>
                                       </div>
@@ -3807,21 +3807,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <label
             key={id}
             className={cn(
-              "flex min-h-12 cursor-pointer items-center justify-between gap-3 rounded-2xl border px-4 py-3 transition-colors",
-              checked ? "border-indigo-200 bg-indigo-50/60" : "border-slate-200 bg-white hover:bg-slate-50",
+              "flex min-h-12 cursor-pointer items-center justify-between gap-3 rounded-md border px-4 py-3 transition-colors",
+              checked ? "border-entity-border bg-entity-soft" : "border-gray-200 bg-white hover:bg-gray-50",
             )}
           >
-            <span className="text-ui font-bold text-slate-700">{label}</span>
+            <span className="text-ui font-bold text-gray-700">{label}</span>
             <input
               type="checkbox"
               checked={checked}
               onChange={(e) => onChange(e.target.checked)}
-              className="h-4.5 w-4.5 cursor-pointer rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              className="h-4.5 w-4.5 cursor-pointer rounded border-gray-300 text-entity-text focus:ring-entity-solid/25"
             />
           </label>
         );
-        const fieldLabel = "type-overline text-slate-500";
-        const fieldInput = "min-h-11 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-ui font-semibold text-slate-800 focus:border-indigo-500 focus:outline-none";
+        const fieldLabel = "type-overline text-gray-500";
+        const fieldInput = "min-h-11 rounded-md border border-gray-200 bg-white px-3.5 py-2.5 text-ui font-semibold text-gray-800 focus:border-entity-border focus:outline-none";
         const activeEntries = unifiedEntries.filter((ue) => !ue.archived);
 
         if (isCreatingUE) {
@@ -3841,7 +3841,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <button
                       type="button"
                       onClick={backToList}
-                      className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-ui font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                      className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-ui font-semibold text-gray-600 transition-colors hover:bg-gray-50"
                     >
                       <ArrowLeft className="h-4 w-4" aria-hidden="true" />
                       {t("Back", "Späť", "Vissza")}
@@ -3868,15 +3868,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="flex flex-col gap-1.5">
                     <span className={fieldLabel}>{t("Icon", "Ikona", "Ikon")}</span>
                     <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-700">
                         {getIconComponent(ueIcon, "h-6 w-6")}
                       </div>
                       <div className="flex flex-col items-start gap-1">
-                        <span className="text-ui font-bold text-slate-800">{ueIcon}</span>
+                        <span className="text-ui font-bold text-gray-800">{ueIcon}</span>
                         <button
                           type="button"
                           onClick={() => setIsIconPickerOpen(true)}
-                          className="min-h-9 cursor-pointer rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 text-ui font-bold text-indigo-700 transition-colors hover:bg-indigo-100"
+                          className="min-h-9 cursor-pointer rounded-md border border-entity-border bg-entity-soft px-3.5 text-ui font-bold text-entity-text transition-colors hover:bg-entity-soft"
                         >
                           {t("Choose from 1000+ icons...", "Vybrať z 1000+ ikon...", "Válasszon több mint 1000 ikon közül...")}
                         </button>
@@ -3892,10 +3892,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           type="button"
                           aria-label={colorHex}
                           onClick={() => setUeColor(colorHex)}
-                          className="relative flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-slate-200 transition-transform hover:scale-105"
+                          className="relative flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-gray-200 transition-transform hover:scale-105"
                           style={{ backgroundColor: colorHex }}
                         >
-                          {ueColor === colorHex && <span className="h-2.5 w-2.5 rounded-full border border-slate-300 bg-white shadow-sm" />}
+                          {ueColor === colorHex && <span className="h-2.5 w-2.5 rounded-full border border-gray-300 bg-white shadow-xs" />}
                         </button>
                       ))}
                       <ColorPicker variant="palette" value={ueColor} onChange={setUeColor} className="h-8 w-8 p-1" />
@@ -3917,13 +3917,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 title={t("Folders", "Priečinky", "Mappák")}
                 description={t("Allows nesting entries within grouping folders.", "Umožňuje zoskupovať záznamy do priečinkov.", "Lehetővé teszi a bejegyzések csoportosító mappákba ágyazását.")}
                 action={
-                  <label className="inline-flex min-h-11 cursor-pointer items-center gap-2.5 text-ui font-bold text-slate-700">
+                  <label className="inline-flex min-h-11 cursor-pointer items-center gap-2.5 text-ui font-bold text-gray-700">
                     {t("Enable folders", "Povoliť priečinky", "Mappák engedélyezése")}
                     <input
                       type="checkbox"
                       checked={ueFoldersEnabled}
                       onChange={(e) => setUeFoldersEnabled(e.target.checked)}
-                      className="h-5 w-5 cursor-pointer rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      className="h-5 w-5 cursor-pointer rounded border-gray-300 text-entity-text focus:ring-entity-solid/25"
                     />
                   </label>
                 }
@@ -3942,7 +3942,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     )}
                   </div>
                 ) : (
-                  <p className="type-body text-slate-500">{t("Folders are off: entries are one flat list.", "Priečinky sú vypnuté: záznamy tvoria jeden zoznam.", "A mappák ki vannak kapcsolva: a bejegyzések egy lapos listát alkotnak.")}</p>
+                  <p className="type-body text-gray-500">{t("Folders are off: entries are one flat list.", "Priečinky sú vypnuté: záznamy tvoria jeden zoznam.", "A mappák ki vannak kapcsolva: a bejegyzések egy lapos listát alkotnak.")}</p>
                 )}
               </SectionCard>
 
@@ -3951,13 +3951,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <button
                     type="button"
                     onClick={backToList}
-                    className="min-h-11 cursor-pointer rounded-2xl border border-slate-200 bg-white px-5 text-ui font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                    className="min-h-11 cursor-pointer rounded-lg border border-gray-200 bg-white px-5 text-ui font-semibold text-gray-600 transition-colors hover:bg-gray-50"
                   >
                     {t("Cancel", "Zrušiť", "Mégse")}
                   </button>
                   <button
                     type="submit"
-                    className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500"
+                    className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg bg-entity-solid px-5 text-ui font-bold text-white shadow-xs transition-colors hover:bg-entity-solid-hover"
                   >
                     <Plus className="h-4 w-4" aria-hidden="true" />
                     {t("Create record type", "Vytvoriť typ záznamu", "Rekordtípus létrehozása")}
@@ -3978,7 +3978,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => { window.location.hash = "settings/modules/records/new"; }}
-                  className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500"
+                  className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg bg-entity-solid px-5 text-ui font-bold text-white shadow-xs transition-colors hover:bg-entity-solid-hover"
                 >
                   <Plus className="h-4 w-4" aria-hidden="true" />
                   {t("New record type", "Nový typ záznamu", "Új rekordtípus")}
@@ -3987,35 +3987,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             }
           >
             {activeEntries.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-slate-400">
+              <div className="rounded-lg border border-dashed border-gray-200 p-8 text-center text-gray-400">
                 <FolderOpen className="mx-auto h-8 w-8" aria-hidden="true" />
-                <p className="mt-2 text-ui font-bold text-slate-500">{t("No record types yet", "Zatiaľ žiadne typy záznamov", "Még nincs rekordtípus")}</p>
-                <p className="mt-1 text-caption text-slate-400">{t("Create the first one with the button above.", "Vytvorte prvý tlačidlom vyššie.", "Hozza létre az elsőt a fenti gombbal.")}</p>
+                <p className="mt-2 text-ui font-bold text-gray-500">{t("No record types yet", "Zatiaľ žiadne typy záznamov", "Még nincs rekordtípus")}</p>
+                <p className="mt-1 text-caption text-gray-400">{t("Create the first one with the button above.", "Vytvorte prvý tlačidlom vyššie.", "Hozza létre az elsőt a fenti gombbal.")}</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4 ws-sm:grid-cols-2">
                 {activeEntries.map((ue) => (
-                  <div key={ue.id} className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200/80 bg-white p-4 text-left shadow-sm">
+                  <div key={ue.id} className="flex flex-col justify-between gap-4 rounded-lg border border-gray-200/80 bg-white p-4 text-left shadow-xs">
                     <div className="flex items-start gap-3">
-                      <div className="flex shrink-0 items-center justify-center rounded-xl p-3.5 text-white shadow-sm" style={{ backgroundColor: ue.color }}>
+                      <div className="flex shrink-0 items-center justify-center rounded-md p-3.5 text-white shadow-xs" style={{ backgroundColor: ue.color }}>
                         {getIconComponent(ue.icon, "h-5 w-5")}
                       </div>
                       <div className="flex min-w-0 flex-col gap-0.5">
-                        <span className="truncate text-body font-bold text-slate-800">{ue.name}</span>
-                        <span className="text-ui text-slate-500">
-                          {t("Fields", "Polia", "Mezők")}: <span className="font-semibold text-slate-700">{ue.modules.join(", ")}</span>
+                        <span className="truncate text-body font-bold text-gray-800">{ue.name}</span>
+                        <span className="text-ui text-gray-500">
+                          {t("Fields", "Polia", "Mezők")}: <span className="font-semibold text-gray-700">{ue.modules.join(", ")}</span>
                         </span>
-                        <span className="text-ui text-slate-500">
-                          {t("Folders", "Priečinky", "Mappák")}: <span className="font-semibold text-slate-700">{ue.foldersEnabled ? t("Yes", "Áno", "Igen") : t("No", "Nie", "Nem")}</span>
+                        <span className="text-ui text-gray-500">
+                          {t("Folders", "Priečinky", "Mappák")}: <span className="font-semibold text-gray-700">{ue.foldersEnabled ? t("Yes", "Áno", "Igen") : t("No", "Nie", "Nem")}</span>
                         </span>
                       </div>
                     </div>
                     {canEditRecords && (
-                      <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+                      <div className="flex justify-end gap-2 border-t border-gray-100 pt-3">
                         <button
                           type="button"
                           onClick={() => { window.location.hash = `settings/modules/records/edit/${ue.id}`; }}
-                          className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-xl px-3 text-ui font-bold text-indigo-600 transition-colors hover:bg-indigo-50"
+                          className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md px-3 text-ui font-bold text-entity-text transition-colors hover:bg-entity-soft"
                           title={t("Edit record type", "Upraviť typ záznamu", "Rekordtípus szerkesztése")}
                         >
                           <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
@@ -4026,7 +4026,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           lang={userLanguage}
                           what={ue.name}
                           onConfirm={() => handleArchiveUnifiedEntry(ue.id)}
-                          className="inline-flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-ui font-bold text-rose-600 transition-colors hover:bg-rose-50"
+                          className="inline-flex min-h-9 items-center gap-1.5 rounded-md px-3 text-ui font-bold text-rose-600 transition-colors hover:bg-rose-50"
                           title={t("Archive record type", "Archivovať typ záznamu", "Rekordtípus archiválása")}
                           icon={<Trash2 className="h-3.5 w-3.5" />}
                         >{t("Archive", "Archivovať", "Archiválás")}
@@ -4038,7 +4038,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             )}
 
-            <div className="flex flex-col gap-1.5 rounded-2xl bg-slate-50 p-4 text-ui text-slate-600">
+            <div className="flex flex-col gap-1.5 rounded-lg bg-gray-50 p-4 text-ui text-gray-600">
               <p>{t("Creating a record type adds a new table to the database.", "Vytvorenie typu záznamu pridá do databázy novú tabuľku.", "Egy rekordtípus létrehozása új táblát ad az adatbázishoz.")}</p>
               <p>{t("Archiving one only hides it from the menu — the table and its data stay untouched.", "Archivácia ho iba skryje z menu — tabuľka aj údaje v nej zostanú nedotknuté.", "Az archiválás csak elrejti a menüből — a tábla és az adatok érintetlenek maradnak.")}</p>
             </div>
@@ -4087,7 +4087,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         
                         <div className="space-y-3">
                           <div className="space-y-1">
-                            <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.ads.meta_id")}</label>
+                            <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.ads.meta_id")}</label>
                             <input
                               type="text"
                               disabled={getPermission("general_config") === "view"}
@@ -4096,12 +4096,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 setMetaAppId(e.target.value);
                               }}
                               placeholder={t("e.g. 8493029104928", "napr. 8493029104928", "pl. 8493029104928")}
-                              className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                              className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
                             />
                           </div>
         
                           <div className="space-y-1">
-                            <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.ads.meta_secret")}</label>
+                            <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.ads.meta_secret")}</label>
                             <PasswordInput
                               disabled={getPermission("general_config") === "view"}
                               value={metaAppSecret}
@@ -4109,12 +4109,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 setMetaAppSecret(e.target.value);
                               }}
                               placeholder="••••••••••••••••••••••••••••••••"
-                              className="w-full pl-3 pr-10 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                              className="w-full pl-3 pr-10 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
                             />
                           </div>
         
                           <div className="space-y-1">
-                            <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.ads.meta_token")}</label>
+                            <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.ads.meta_token")}</label>
                             <textarea
                               rows={2}
                               disabled={getPermission("general_config") === "view"}
@@ -4123,7 +4123,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 setMetaAccessToken(e.target.value);
                               }}
                               placeholder="EAAGm0PX4ZBQBO..."
-                              className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 resize-none font-mono"
+                              className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border resize-none font-mono"
                             />
                           </div>
                         </div>
@@ -4137,7 +4137,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <div className="space-y-3">
                           <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1">
-                              <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.ads.google_dev")}</label>
+                              <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.ads.google_dev")}</label>
                               <input
                                 type="text"
                                 disabled={getPermission("general_config") === "view"}
@@ -4146,12 +4146,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   setGoogleDevToken(e.target.value);
                                 }}
                                 placeholder={t("e.g. AbC12D34E5...", "napr. AbC12D34E5...", "pl. AbC12D34E5...")}
-                                className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                                className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
                               />
                             </div>
         
                             <div className="space-y-1">
-                              <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.ads.google_client")}</label>
+                              <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.ads.google_client")}</label>
                               <input
                                 type="text"
                                 disabled={getPermission("general_config") === "view"}
@@ -4160,13 +4160,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   setGoogleClientId(e.target.value);
                                 }}
                                 placeholder="84092-abc.apps.google..."
-                                className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                                className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
                               />
                             </div>
                           </div>
         
                           <div className="space-y-1">
-                            <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.ads.google_secret")}</label>
+                            <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.ads.google_secret")}</label>
                             <PasswordInput
                               disabled={getPermission("general_config") === "view"}
                               value={googleClientSecret}
@@ -4174,12 +4174,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 setGoogleClientSecret(e.target.value);
                               }}
                               placeholder="GOCSPX-••••••••••••••••"
-                              className="w-full pl-3 pr-10 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                              className="w-full pl-3 pr-10 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
                             />
                           </div>
         
                           <div className="space-y-1">
-                            <label className="type-overline text-slate-500 block">{getTranslation(userLanguage, "settings.ads.google_refresh")}</label>
+                            <label className="type-overline text-gray-500 block">{getTranslation(userLanguage, "settings.ads.google_refresh")}</label>
                             <textarea
                               rows={2}
                               disabled={getPermission("general_config") === "view"}
@@ -4188,7 +4188,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 setGoogleRefreshToken(e.target.value);
                               }}
                               placeholder="1//0gDabc..."
-                              className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 resize-none font-mono"
+                              className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border resize-none font-mono"
                             />
                           </div>
                         </div>
@@ -4205,9 +4205,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <span className={`px-3 py-1 rounded-full border type-overline flex items-center gap-1.5 ${
                             isConnected 
                               ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
-                              : "bg-slate-50 text-slate-400 border-slate-200"
+                              : "bg-gray-50 text-gray-400 border-gray-200"
                           }`}>
-                            <span className={`h-1.5 w-1.5 rounded-full ${isConnected ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
+                            <span className={`h-1.5 w-1.5 rounded-full ${isConnected ? "bg-emerald-500 animate-pulse" : "bg-gray-400"}`} />
                             {isConnected ? getTranslation(userLanguage, "settings.ads.status_online") : getTranslation(userLanguage, "settings.ads.status_offline")}
                           </span>
         
@@ -4251,7 +4251,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 );
                               }, 1200);
                             }}
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-400 type-overline text-white rounded-xl transition-all flex items-center gap-1.5 active:scale-95 disabled:scale-100 disabled:cursor-not-allowed"
+                            className="px-4 py-2 bg-entity-solid hover:bg-entity-solid-hover disabled:bg-indigo-400 type-overline text-white rounded-md transition-all flex items-center gap-1.5 active:scale-95 disabled:scale-100 disabled:cursor-not-allowed"
                           >
                             <span>{isSyncing ? getTranslation(userLanguage, "settings.ads.btn_syncing") : getTranslation(userLanguage, "settings.ads.btn_sync")}</span>
                           </button>
@@ -4261,10 +4261,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         
                       {/* Connected Active Campaign Listing */}
                       {isConnected ? (
-                        <ScrollFade axis="x" className="rounded-2xl border border-slate-200 shadow-sm">
+                        <ScrollFade axis="x" className="rounded-lg border border-gray-200 shadow-xs">
                           <table className="w-full text-left border-collapse bg-white">
                             <thead>
-                              <tr className="bg-slate-50 border-b border-slate-200 type-overline text-slate-600">
+                              <tr className="bg-gray-50 border-b border-gray-200 type-overline text-gray-600">
                                 <th className="py-3.5 px-4 min-w-32.5">{getTranslation(userLanguage, "settings.ads.th_platform")}</th>
                                 <th className="py-3.5 px-4 min-w-55">{getTranslation(userLanguage, "settings.ads.th_name")}</th>
                                 <th className="py-3.5 px-4 text-center min-w-30">{getTranslation(userLanguage, "settings.ads.th_budget")}</th>
@@ -4277,13 +4277,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 <th className="py-3.5 px-4 text-right">{getTranslation(userLanguage, "settings.ads.th_cpl")}</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100 text-ui font-semibold text-slate-700">
+                            <tbody className="divide-y divide-gray-100 text-ui font-semibold text-gray-700">
                               {campaigns.map((c) => {
                                 const ctr = c.impressions > 0 ? ((c.clicks / c.impressions) * 100).toFixed(2) : "0.00";
                                 const cpl = c.leads > 0 ? (c.spent / c.leads).toFixed(2) : "0.00";
                                 
                                 return (
-                                  <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
+                                  <tr key={c.id} className="hover:bg-gray-50/50 transition-colors">
                                     {/* Platform badge */}
                                     <td className="py-3 px-4">
                                       <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full type-overline border ${
@@ -4296,14 +4296,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     </td>
         
                                     {/* Campaign Name */}
-                                    <td className="py-3 px-4 text-slate-800 font-bold truncate max-w-62.5" title={c.name}>
+                                    <td className="py-3 px-4 text-gray-800 font-bold truncate max-w-62.5" title={c.name}>
                                       {c.name}
                                     </td>
         
                                     {/* Daily Budget (Editable) */}
                                     <td className="py-3 px-4 text-center">
                                       <div className="flex items-center justify-center gap-1">
-                                        <span className="text-slate-400 font-bold">$</span>
+                                        <span className="text-gray-400 font-bold">$</span>
                                         <input
                                           type="number"
                                           disabled={getPermission("general_config") === "view"}
@@ -4312,7 +4312,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                             const val = parseFloat(e.target.value) || 0;
                                             updateCampaign(c.id, { budget: val });
                                           }}
-                                          className="w-16 px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 focus:outline-none focus:border-indigo-500 font-bold text-center text-ui"
+                                          className="w-16 px-1.5 py-0.5 rounded bg-gray-50 border border-gray-200 focus:outline-none focus:border-entity-border font-bold text-center text-ui"
                                         />
                                       </div>
                                     </td>
@@ -4338,7 +4338,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                             ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                                             : c.status === "paused"
                                               ? "bg-rose-50 text-rose-700 border-rose-200"
-                                              : "bg-indigo-50 text-indigo-700 border-indigo-200"
+                                              : "bg-entity-soft text-entity-text border-entity-border"
                                         }`}>
                                           {c.status === "active" 
                                             ? (userLanguage === "sk" ? "Aktívne" : userLanguage === "hu" ? "Aktív" : "Active") 
@@ -4351,22 +4351,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     </td>
         
                                     {/* Impressions */}
-                                    <td className="py-3 px-4 text-right font-mono text-slate-600">
+                                    <td className="py-3 px-4 text-right font-mono text-gray-600">
                                       {c.impressions.toLocaleString()}
                                     </td>
         
                                     {/* Clicks */}
-                                    <td className="py-3 px-4 text-right font-mono text-slate-600">
+                                    <td className="py-3 px-4 text-right font-mono text-gray-600">
                                       {c.clicks.toLocaleString()}
                                     </td>
         
                                     {/* CTR */}
-                                    <td className="py-3 px-4 text-right font-mono text-indigo-600 font-bold">
+                                    <td className="py-3 px-4 text-right font-mono text-entity-text font-bold">
                                       {ctr}%
                                     </td>
         
                                     {/* Spent */}
-                                    <td className="py-3 px-4 text-right font-mono text-slate-600">
+                                    <td className="py-3 px-4 text-right font-mono text-gray-600">
                                       ${c.spent.toFixed(2)}
                                     </td>
         
@@ -4376,7 +4376,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     </td>
         
                                     {/* CPL */}
-                                    <td className="py-3 px-4 text-right font-mono text-slate-800 font-bold">
+                                    <td className="py-3 px-4 text-right font-mono text-gray-800 font-bold">
                                       ${cpl}
                                     </td>
                                   </tr>
@@ -4386,11 +4386,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </table>
                         </ScrollFade>
                       ) : (
-                        <div className="py-8 flex flex-col items-center justify-center text-center space-y-2 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                        <div className="py-8 flex flex-col items-center justify-center text-center space-y-2 border-2 border-dashed border-gray-200 rounded-lg bg-gray-50/50">
                           <Icons.Plug className="h-7 w-7" aria-hidden="true" />
                           <div className="flex flex-col">
-                            <span className="text-ui font-bold text-slate-600">{getTranslation(userLanguage, "settings.ads.empty_title")}</span>
-                            <span className="text-micro text-slate-400 max-w-sm mt-1">
+                            <span className="text-ui font-bold text-gray-600">{getTranslation(userLanguage, "settings.ads.empty_title")}</span>
+                            <span className="text-micro text-gray-400 max-w-sm mt-1">
                               {getTranslation(userLanguage, "settings.ads.empty_desc")}
                             </span>
                           </div>
@@ -4482,7 +4482,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               )}
                       action={
                         <div className="flex flex-wrap items-center gap-3">
-                          <span className="inline-flex min-h-9 items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3.5 text-ui font-bold text-slate-700">
+                          <span className="inline-flex min-h-9 items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3.5 text-ui font-bold text-gray-700">
                             <span className={`h-2.5 w-2.5 rounded-full ${(zernioTestResult ? zernioTestResult.success : !!integrationsConfig?.zernioConnected) ? "bg-emerald-500" : "bg-amber-400"}`} />
                             {(zernioTestResult ? zernioTestResult.success : !!integrationsConfig?.zernioConnected)
                               ? (userLanguage === "sk" ? "Pripojené & Aktívne" : userLanguage === "hu" ? "Csatlakoztatva & Aktív" : "Connected & Active")
@@ -4492,7 +4492,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             <button
                               type="button"
                               onClick={() => setIsEditingZernioKey(!isEditingZernioKey)}
-                              className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-ui font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                              className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-ui font-semibold text-gray-700 transition-colors hover:bg-gray-50"
                             >
                               <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                               {isEditingZernioKey
@@ -4503,10 +4503,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         </div>
                       }
                     >
-                      <div className="flex flex-wrap items-center gap-2 text-ui font-semibold text-slate-600">
-                        <span className="type-overline mr-1 text-slate-500">{t("Supported Platforms:", "Podporované platformy:", "Támogatott platformok:")}</span>
+                      <div className="flex flex-wrap items-center gap-2 text-ui font-semibold text-gray-600">
+                        <span className="type-overline mr-1 text-gray-500">{t("Supported Platforms:", "Podporované platformy:", "Támogatott platformok:")}</span>
                         {["Twitter / X", "Instagram", "TikTok", "LinkedIn", "YouTube", "Facebook", "Threads", "Bluesky", "Pinterest", "Reddit", "WhatsApp", "Google Business"].map((plat) => (
-                          <span key={plat} className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-700">
+                          <span key={plat} className="rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
                             {plat}
                           </span>
                         ))}
@@ -4524,16 +4524,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               type="button"
                               onClick={() => handleTestZernio()}
                               disabled={isTestingZernio || getPermission("general_config") === "view"}
-                              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-ui font-bold transition-all border border-slate-200 cursor-pointer flex items-center gap-2"
+                              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-ui font-bold transition-all border border-gray-200 cursor-pointer flex items-center gap-2"
                             >
-                              <Icons.RefreshCw className={`h-3.5 w-3.5 ${isTestingZernio ? "animate-spin text-indigo-600" : "text-slate-500"}`} />
+                              <Icons.RefreshCw className={`h-3.5 w-3.5 ${isTestingZernio ? "animate-spin text-entity-text" : "text-gray-500"}`} />
                               {t("Refresh Accounts", "Obnoviť účty", "Fiókok frissítése")}
                             </button>
                             {getPermission("general_config") === "edit" && (
                               <button
                                 type="button"
                                 onClick={handleResetZernioKey}
-                                className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 border border-rose-200 rounded-xl text-ui font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                                className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 border border-rose-200 rounded-md text-ui font-bold transition-all cursor-pointer flex items-center gap-1.5"
                               >
                                 <Trash2 className="h-3.5 w-3.5 text-rose-600" />
                                 {t("Reset Key", "Resetovať kľúč", "Kulcs visszaállítása")}
@@ -4545,13 +4545,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
-                            <span className="text-ui font-extrabold text-slate-700">
+                            <span className="text-ui font-extrabold text-gray-700">
                               {t("Connected Social Accounts:", "Pripojené účty sociálnych sietí:", "Csatlakoztatott közösségi fiókok:")} ({zernioTestResult?.count || integrationsConfig?.zernioAccounts?.length || 0})
                             </span>
                           </div>
         
                           {(!zernioTestResult?.accounts || zernioTestResult.accounts.length === 0) && (!integrationsConfig?.zernioAccounts || integrationsConfig.zernioAccounts.length === 0) ? (
-                            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 text-ui text-slate-600 flex items-center justify-between flex-wrap gap-3">
+                            <div className="p-4 rounded-lg bg-gray-50 border border-gray-200/80 text-ui text-gray-600 flex items-center justify-between flex-wrap gap-3">
                               <span>
                                 {t(
                                   "No connected social accounts found on this Zernio key yet. You can connect your social accounts in the Zernio dashboard.",
@@ -4563,7 +4563,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 href="https://zernio.com"
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-ui font-bold transition-all flex items-center gap-1.5"
+                                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-md text-ui font-bold transition-all flex items-center gap-1.5"
                               >
                                 zernio.com <Icons.ExternalLink className="h-3 w-3" />
                               </a>
@@ -4571,13 +4571,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           ) : (
                             <div className="grid grid-cols-1 ws-sm:grid-cols-2 ws-md:grid-cols-3 gap-3">
                               {(zernioTestResult?.accounts || integrationsConfig?.zernioAccounts || []).map((acc: any, i: number) => (
-                                <div key={acc.id || i} className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 shadow-sm flex items-center gap-3">
-                                  <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-ui shrink-0">
+                                <div key={acc.id || i} className="p-3.5 rounded-lg bg-gray-50 border border-gray-200/80 shadow-xs flex items-center gap-3">
+                                  <div className="w-9 h-9 rounded-md bg-gray-900 text-white flex items-center justify-center font-bold text-ui shrink-0">
                                     {(acc.platform || "SOC").substring(0, 3)}
                                   </div>
                                   <div className="truncate min-w-0">
-                                    <span className="text-ui font-bold text-slate-900 truncate block">{acc.name || acc.username || acc.platform}</span>
-                                    <span className="text-micro text-slate-500 font-mono capitalize block">{acc.platform} • {acc.id || "Active"}</span>
+                                    <span className="text-ui font-bold text-gray-900 truncate block">{acc.name || acc.username || acc.platform}</span>
+                                    <span className="text-micro text-gray-500 font-mono capitalize block">{acc.platform} • {acc.id || "Active"}</span>
                                   </div>
                                 </div>
                               ))}
@@ -4599,7 +4599,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               type="button"
                               onClick={handleStartDeviceAuth}
                               disabled={isInitiatingDeviceAuth || getPermission("general_config") === "view"}
-                              className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-orange-600 hover:from-rose-500 hover:to-orange-500 text-white rounded-2xl text-ui font-bold shadow-lg shadow-rose-500/20 active:scale-95 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                              className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-orange-600 hover:from-rose-500 hover:to-orange-500 text-white rounded-lg text-ui font-bold shadow-xs shadow-rose-500/20 active:scale-95 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
                             >
                               {isInitiatingDeviceAuth ? (
                                 <Icons.RefreshCw className="h-4 w-4 animate-spin" />
@@ -4612,7 +4612,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         >
         
                           {deviceAuthInfo && (
-                            <div className="p-5 rounded-2xl bg-rose-50/60 border border-rose-200/80 space-y-4 animate-fade-in">
+                            <div className="p-5 rounded-lg bg-rose-50/60 border border-rose-200/80 space-y-4 animate-fade-in">
                               <div className="flex flex-col ws-sm:flex-row items-start ws-sm:items-center justify-between gap-3">
                                 <div>
                                   <span className="type-overline text-rose-800 block">{t("Authorization Code:", "Autorizačný kód:", "Hitelesítési kód:")}</span>
@@ -4622,7 +4622,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   href={deviceAuthInfo.browserUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-ui font-bold transition-all shadow flex items-center gap-1.5"
+                                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-md text-ui font-bold transition-all shadow flex items-center gap-1.5"
                                 >
                                   {t("Open Zernio Auth Page", "Otvoriť Zernio overenie", "Zernio hitelesítési oldal megnyitása")} <Icons.ExternalLink className="h-3.5 w-3.5" />
                                 </a>
@@ -4644,7 +4644,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         >
         
                           <div className="space-y-2">
-                            <label className="block text-ui font-extrabold text-slate-700">
+                            <label className="block text-ui font-extrabold text-gray-700">
                               {t("Zernio API Secret Key", "Zernio API Tajný Kľúč", "Zernio API Titkos Kulcs")}
                             </label>
                             <SecretInput
@@ -4654,7 +4654,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               onChange={setZernioApiKey}
                               placeholder="sk_live_..."
                             />
-                            <p className="text-caption text-slate-500">
+                            <p className="text-caption text-gray-500">
                               {t(
                                 "Obtain your Zernio API key from your Zernio Dashboard at https://zernio.com or via 1-click device auth above.",
                                 "Získajte váš Zernio API kľúč z prehľadu na https://zernio.com alebo cez 1-click autorizáciu vyššie.",
@@ -4664,15 +4664,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
         
                           {/* Action Buttons */}
-                          <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-slate-100">
+                          <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-gray-100">
                             <button
                               type="button"
                               onClick={() => handleTestZernio()}
                               disabled={isTestingZernio || !zernioApiKey || getPermission("general_config") === "view"}
-                              className="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl text-ui font-bold transition-all border border-slate-200 cursor-pointer active:scale-95 disabled:opacity-50 flex items-center gap-2"
+                              className="px-5 py-3 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-ui font-bold transition-all border border-gray-200 cursor-pointer active:scale-95 disabled:opacity-50 flex items-center gap-2"
                             >
                               {isTestingZernio ? (
-                                <Icons.RefreshCw className="h-4 w-4 animate-spin text-slate-600" />
+                                <Icons.RefreshCw className="h-4 w-4 animate-spin text-gray-600" />
                               ) : (
                                 <ShieldCheck className="h-4 w-4 text-emerald-600" />
                               )}
@@ -4707,7 +4707,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <button
                             type="button"
                             onClick={fetchErrorLogs}
-                            className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-xl type-overline flex items-center gap-1 cursor-pointer"
+                            className="px-3.5 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-md type-overline flex items-center gap-1 cursor-pointer"
                           >
                             <Icons.RefreshCw className="h-3.5 w-3.5" /> {t("Refresh", "Obnoviť", "Frissítés")}
                           </button>
@@ -4716,7 +4716,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               lang={asLang(userLanguage)}
                               what={t("error logs", "chybové záznamy", "hibanaplók")}
                               onConfirm={clearErrorLogs}
-                              className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl type-overline flex items-center gap-1"
+                              className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-md type-overline flex items-center gap-1"
                           >
                             {t("Clear Logs", "Vymazať záznamy", "Naplók törlése")}
                           </HoldToConfirmButton>
@@ -4726,17 +4726,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         
                       {isLoadingLogs ? (
                         <div className="flex justify-center py-12">
-                          <Icons.RefreshCw className="h-6 w-6 animate-spin text-slate-400" />
+                          <Icons.RefreshCw className="h-6 w-6 animate-spin text-gray-400" />
                         </div>
                       ) : errorLogs.length === 0 ? (
-                        <div className="text-center py-12 text-slate-500 font-bold text-ui">
+                        <div className="text-center py-12 text-gray-500 font-bold text-ui">
                           {t("No system errors found.", "Nenašli sa žiadne systémové chyby.", "Nem található rendszerhiba.")}
                         </div>
                       ) : (
                         <ScrollFade axis="x" className="">
                           <table className="w-full text-left text-ui border-collapse">
                             <thead>
-                              <tr className="border-b border-slate-200 text-slate-500 type-overline">
+                              <tr className="border-b border-gray-200 text-gray-500 type-overline">
                                 <th className="py-3 px-4">{t("Timestamp", "Čas", "Időbélyeg")}</th>
                                 <th className="py-3 px-4">{t("Method", "Metóda", "Metódus")}</th>
                                 <th className="py-3 px-4">URI</th>
@@ -4748,21 +4748,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 <tr
                                   key={log.id}
                                   onClick={() => setSelectedLog(log)}
-                                  className="border-b border-slate-100 hover:bg-red-50/40 transition-all cursor-pointer font-medium text-slate-700"
+                                  className="border-b border-gray-100 hover:bg-red-50/40 transition-all cursor-pointer font-medium text-gray-700"
                                 >
-                                  <td className="py-3 px-4 font-mono text-micro whitespace-nowrap text-slate-500">
+                                  <td className="py-3 px-4 font-mono text-micro whitespace-nowrap text-gray-500">
                                     {log.created_at}
                                   </td>
                                   <td className="py-3 px-4 whitespace-nowrap">
                                     <span className={`px-2 py-0.5 rounded-md type-overline ${
                                       log.request_method === 'POST' 
                                         ? 'bg-blue-50 text-blue-700' 
-                                        : 'bg-slate-50 text-slate-700'
+                                        : 'bg-gray-50 text-gray-700'
                                     }`}>
                                       {log.request_method}
                                     </span>
                                   </td>
-                                  <td className="py-3 px-4 font-mono text-micro text-slate-600 truncate max-w-xs">
+                                  <td className="py-3 px-4 font-mono text-micro text-gray-600 truncate max-w-xs">
                                     {log.request_uri}
                                   </td>
                                   <td className="py-3 px-4 font-bold text-red-600 truncate max-w-sm">
@@ -4801,7 +4801,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <div className="flex justify-end pt-2">
                           <button
                             onClick={handleWipeDemo}
-                            className="w-fit px-6 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-ui font-bold shadow-lg shadow-amber-600/25 transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer hover:scale-[1.01]"
+                            className="w-fit px-6 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-md text-ui font-bold shadow-xs shadow-amber-600/25 transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer hover:scale-[1.01]"
                           >
                             <Trash2 className="h-4 w-4" /> 
                             {userLanguage === "sk" ? "Vymazať demo údaje" : userLanguage === "hu" ? "Demo adatok törlése" : "Wipe Demo Records"}
@@ -4820,7 +4820,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <div className="flex justify-end pt-2">
                           <button
                             onClick={handleReset}
-                            className="w-fit px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-ui font-bold shadow-lg shadow-rose-600/25 transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
+                            className="w-fit px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-md text-ui font-bold shadow-xs shadow-rose-600/25 transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
                           >
                             <Trash2 className="h-4 w-4" /> {getTranslation(userLanguage, "settings.danger.btn")}
                           </button>
@@ -5050,7 +5050,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       {/* SLA limits need saying out loud: the column is a number box with
                           no obvious meaning, and where the warning turns up is the whole
                           point of setting one. */}
-                      <p className="text-micro text-slate-400 font-semibold tracking-wide text-left leading-relaxed">
+                      <p className="text-micro text-gray-400 font-semibold tracking-wide text-left leading-relaxed">
                         {t(
                           "SLA limit — the most days a lead may sit in a phase without moving on. Past the limit it is flagged in the leads list and on the lead itself. Leave it empty for no limit; closed phases are the end of the pipeline and have none.",
                           "Limit SLA — najviac dní, ktoré môže lead stráviť vo fáze bez posunu ďalej. Po prekročení limitu ho označíme v zozname leadov aj priamo na leade. Prázdne pole znamená bez limitu; uzavreté fázy sú koniec pipeline a limit nemajú.",
@@ -5058,16 +5058,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         )}
                       </p>
         
-                      <ScrollFade axis="x" className="border border-slate-200/80 rounded-2xl shadow-inner bg-white/50">
+                      <ScrollFade axis="x" className="border border-gray-200/80 rounded-lg shadow-inner bg-white">
                         <table className="w-full text-left border-collapse">
                           <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
-                              <th className="py-3 px-4 type-overline text-slate-500 w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
-                              <th className="py-3 px-4 type-overline text-slate-500 w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
-                              <th className="py-3 px-4 type-overline text-slate-500">{getTranslation(userLanguage, "settings.states.th_name")}</th>
-                              <th className="py-3 px-4 type-overline text-slate-500 w-36">{getTranslation(userLanguage, "settings.states.th_group")}</th>
+                            <tr className="bg-gray-50 border-b border-gray-200/60 select-none">
+                              <th className="py-3 px-4 type-overline text-gray-500 w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500">{getTranslation(userLanguage, "settings.states.th_name")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-36">{getTranslation(userLanguage, "settings.states.th_group")}</th>
                               <th
-                                className="py-3 px-4 type-overline text-slate-500 w-32"
+                                className="py-3 px-4 type-overline text-gray-500 w-32"
                                 title={t(
                                   "Maximum days a lead may stay in this phase before it is flagged as overdue.",
                                   "Maximálny počet dní, ktoré môže lead stráviť v tejto fáze, kým bude označený ako po termíne.",
@@ -5076,8 +5076,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               >
                                 {t("SLA limit", "Limit SLA", "SLA-határidő")}
                               </th>
-                              <th className="py-3 px-4 type-overline text-slate-500 w-28 text-center">{t("Follow-up", "Follow-up", "Follow-up")}</th>
-                              <th className="py-3 px-4 type-overline text-slate-500 w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-28 text-center">{t("Follow-up", "Follow-up", "Follow-up")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -5142,17 +5142,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           setDraggedStatus(null);
                                         }
                                       }}
-                                      className={`transition-all border-b border-slate-200/60 duration-200 ${
-                                        isDragOver ? "bg-indigo-50/60 scale-[0.99] border-2 border-dashed border-indigo-300" : "bg-slate-100/70"
+                                      className={`transition-all border-b border-gray-200/60 duration-200 ${
+                                        isDragOver ? "bg-entity-soft scale-[0.99] border-2 border-dashed border-entity-border" : "bg-gray-100/70"
                                       }`}
                                     >
-                                      <td colSpan={7} className="py-3 px-4 font-bold uppercase text-slate-800 tracking-wide select-none">
+                                      <td colSpan={7} className="py-3 px-4 font-bold uppercase text-gray-800 tracking-wide select-none">
                                         <div className="flex items-center justify-between">
                                           <div className="flex items-center gap-2">
-                                            <span className="type-overline text-slate-900">{item.name}</span>
-                                            <span className="text-micro text-slate-400 font-bold block ml-1">{item.desc}</span>
+                                            <span className="type-overline text-gray-900">{item.name}</span>
+                                            <span className="text-micro text-gray-400 font-bold block ml-1">{item.desc}</span>
                                           </div>
-                                          <span className="text-micro text-indigo-500 font-extrabold bg-indigo-50 border border-indigo-200/50 px-2 py-0.5 rounded-full">
+                                          <span className="text-micro text-entity-text font-extrabold bg-entity-soft border border-entity-border px-2 py-0.5 rounded-full">
                                             {getTranslation(userLanguage, "settings.states.boundary")}
                                           </span>
                                         </div>
@@ -5196,8 +5196,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                         setDraggedStatus(null);
                                       }
                                     }}
-                                    className={`border-b border-slate-200/60 hover:bg-slate-50/50 transition-all duration-200 ${
-                                      isDragOver ? "bg-indigo-50/55 scale-[0.99] border-y-2 border-dashed border-indigo-300" : ""
+                                    className={`border-b border-gray-200/60 hover:bg-gray-50/50 transition-all duration-200 ${
+                                      isDragOver ? "bg-entity-soft scale-[0.99] border-y-2 border-dashed border-entity-border" : ""
                                     }`}
                                   >
                                     {/* 1. GRIP HANDLE + INDENT CONTROLS */}
@@ -5205,13 +5205,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       <div className="flex items-center justify-center gap-2">
                                         {getPermission("pipeline_stages") === "edit" ? (
                                           <>
-                                            <GripVertical className="h-4 w-4 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing inline-block" />
+                                            <GripVertical className="h-4 w-4 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing inline-block" />
                                             <div className="flex items-center gap-1 select-none shrink-0">
                                               <button
                                                 type="button"
                                                 onClick={() => handleToggleIndent(state, true)}
                                                 disabled={isSub}
-                                                className="text-micro text-slate-400 hover:text-indigo-600 disabled:opacity-20 cursor-pointer p-0.5 font-bold hover:scale-110 active:scale-90 transition-all"
+                                                className="text-micro text-gray-400 hover:text-entity-text disabled:opacity-20 cursor-pointer p-0.5 font-bold hover:scale-110 active:scale-90 transition-all"
                                                 title={t("Indent as Substate", "Odsadiť ako podstav", "Behúzás alállapotként")}
                                               >
                                                 ➔
@@ -5220,7 +5220,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                                 type="button"
                                                 onClick={() => handleToggleIndent(state, false)}
                                                 disabled={!isSub}
-                                                className="text-micro text-slate-400 hover:text-indigo-600 disabled:opacity-20 cursor-pointer p-0.5 font-bold hover:scale-110 active:scale-90 transition-all"
+                                                className="text-micro text-gray-400 hover:text-entity-text disabled:opacity-20 cursor-pointer p-0.5 font-bold hover:scale-110 active:scale-90 transition-all"
                                                 title={t("Outdent to Major State", "Vysunúť na hlavný stav", "Kihúzás fő állapottá")}
                                               >
                                                 ⬅
@@ -5228,7 +5228,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                             </div>
                                           </>
                                         ) : (
-                                          <Lock className="h-3 w-3 text-slate-300 inline-block" />
+                                          <Lock className="h-3 w-3 text-gray-300 inline-block" />
                                         )}
                                       </div>
                                     </td>
@@ -5244,9 +5244,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                             title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
                                           />
                                         ) : (
-                                          <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: color }} />
+                                          <span className="h-3 w-3 rounded-full border border-gray-200 inline-block" style={{ backgroundColor: color }} />
                                         )}
-                                        <span className="type-overline text-slate-400">{color}</span>
+                                        <span className="type-overline text-gray-400">{color}</span>
                                       </div>
                                     </td>
         
@@ -5254,7 +5254,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     <td className={`py-3 px-4 align-middle transition-all duration-200 ${isSub ? "pl-10" : ""}`}>
                                       <div className="flex items-center gap-1.5">
                                         {isSub && (
-                                          <span className="text-slate-400 font-extrabold text-body ml-2 mr-1 select-none">↳</span>
+                                          <span className="text-gray-400 font-extrabold text-body ml-2 mr-1 select-none">↳</span>
                                         )}
                                         <InlineRenameName
                                           value={state}
@@ -5302,7 +5302,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                         if (resolvedGroup === "closed") {
                                           return (
                                             <span
-                                              className="type-overline text-slate-300 cursor-help"
+                                              className="type-overline text-gray-300 cursor-help"
                                               title={t(
                                                 "Closed phases end the pipeline — there is nothing left to move on to.",
                                                 "Uzavreté fázy sú koncom pipeline — nie je kam sa posunúť ďalej.",
@@ -5342,9 +5342,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                                 "Maximálny počet dní v tejto fáze. Prázdne = bez limitu.",
                                                 "Legfeljebb hány nap ebben a fázisban. Üres = nincs határidő.",
                                               )}
-                                              className={`w-16 px-2.5 py-1.5 rounded-lg bg-white border text-ui font-bold text-slate-700 text-center focus:outline-none focus:border-indigo-500 transition-colors ${days ? "border-amber-300 bg-amber-50/60" : "border-slate-200"} ${canEdit ? "" : "opacity-50 cursor-not-allowed"}`}
+                                              className={`w-16 px-2.5 py-1.5 rounded-lg bg-white border text-ui font-bold text-gray-700 text-center focus:outline-none focus:border-entity-border transition-colors ${days ? "border-amber-300 bg-amber-50/60" : "border-gray-200"} ${canEdit ? "" : "opacity-50 cursor-not-allowed"}`}
                                             />
-                                            <span className={`type-overline ${days ? "text-amber-600" : "text-slate-300"}`}>
+                                            <span className={`type-overline ${days ? "text-amber-600" : "text-gray-300"}`}>
                                               {t("days", "dní", "nap")}
                                             </span>
                                           </div>
@@ -5368,7 +5368,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                               "Zobraziť follow-up zaškrtávacie pole pri leadoch v tomto stave",
                                               "Follow-up jelölőnégyzet megjelenítése az ebben az állapotban lévő leadeknél",
                                             )}
-                                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${enabled ? "bg-indigo-600" : "bg-slate-300"} ${canEdit ? "cursor-pointer hover:opacity-90" : "opacity-50 cursor-not-allowed"}`}
+                                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${enabled ? "bg-entity-solid" : "bg-gray-300"} ${canEdit ? "cursor-pointer hover:opacity-90" : "opacity-50 cursor-not-allowed"}`}
                                           >
                                             <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${enabled ? "translate-x-4" : "translate-x-0.5"}`} />
                                           </button>
@@ -5384,13 +5384,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                             lang={userLanguage}
                                             what={state}
                                             onConfirm={() => handleRemoveState(state)}
-                                            className="text-slate-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
+                                            className="text-gray-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
                                             title={getTranslation(userLanguage, "settings.states.remove_title")}
                                         >
                                           <X className="h-3.5 w-3.5" />
                                         </HoldToConfirmButton>
                                       ) : (
-                                        <span className="type-overline text-slate-300 block select-none">{getTranslation(userLanguage, "settings.states.locked")}</span>
+                                        <span className="type-overline text-gray-300 block select-none">{getTranslation(userLanguage, "settings.states.locked")}</span>
                                       )}
                                     </td>
                                   </tr>
@@ -5410,7 +5410,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             value={newState}
                             onChange={(e) => setNewState(e.target.value)}
                             placeholder={getTranslation(userLanguage, "settings.states.placeholder")}
-                            className="flex-1 min-w-37.5 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                            className="flex-1 min-w-37.5 px-4 py-2.5 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
                           />
                           <div className="max-w-37.5">
                             <CustomSelect
@@ -5425,7 +5425,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <button
                             type="submit"
                             disabled={!newState.trim()}
-                            className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 flex items-center gap-1 shrink-0"
+                            className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
                           >
                             <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.states.btn_add")}
                           </button>
@@ -5450,14 +5450,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       description={getTranslation(userLanguage, "settings.sources.desc")}
                     >
         
-                      <ScrollFade axis="x" className="border border-slate-200/80 rounded-2xl shadow-inner bg-white/50">
+                      <ScrollFade axis="x" className="border border-gray-200/80 rounded-lg shadow-inner bg-white">
                         <table className="w-full text-left border-collapse">
                           <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
-                              <th className="py-3 px-4 type-overline text-slate-500 w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
-                              <th className="py-3 px-4 type-overline text-slate-500 w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
-                              <th className="py-3 px-4 type-overline text-slate-500">{getTranslation(userLanguage, "settings.sources.th_name")}</th>
-                              <th className="py-3 px-4 type-overline text-slate-500 w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
+                            <tr className="bg-gray-50 border-b border-gray-200/60 select-none">
+                              <th className="py-3 px-4 type-overline text-gray-500 w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500">{getTranslation(userLanguage, "settings.sources.th_name")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -5493,16 +5493,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       setDraggedSource(null);
                                     }
                                   }}
-                                  className={`border-b border-slate-200/60 hover:bg-slate-50/50 transition-all duration-200 ${
+                                  className={`border-b border-gray-200/60 hover:bg-gray-50/50 transition-all duration-200 ${
                                     isDragOver ? "bg-emerald-50/50 scale-[0.99] border-y-2 border-dashed border-emerald-300" : ""
                                   }`}
                                 >
                                   {/* 1. GRIP HANDLE */}
                                   <td className="py-3 px-4 text-center align-middle">
                                     {getPermission("traffic_sources") === "edit" ? (
-                                      <GripVertical className="h-4 w-4 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing inline-block" />
+                                      <GripVertical className="h-4 w-4 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing inline-block" />
                                     ) : (
-                                      <Lock className="h-3 w-3 text-slate-300 inline-block" />
+                                      <Lock className="h-3 w-3 text-gray-300 inline-block" />
                                     )}
                                   </td>
         
@@ -5517,9 +5517,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
                                         />
                                       ) : (
-                                        <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: color }} />
+                                        <span className="h-3 w-3 rounded-full border border-gray-200 inline-block" style={{ backgroundColor: color }} />
                                       )}
-                                      <span className="type-overline text-slate-400">{color}</span>
+                                      <span className="type-overline text-gray-400">{color}</span>
                                       {getPermission("traffic_sources") === "edit" && <ListIconPicker kind="leadSources" itemKey={source} className="ml-1" />}
                                     </div>
                                   </td>
@@ -5528,7 +5528,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   <td className="py-3 px-4 align-middle">
                                     <div className="flex items-center gap-3">
                                       <span
-                                        className="text-micro font-mono font-bold bg-slate-100 text-slate-500 border border-slate-200/60 px-2 py-0.5 rounded-md"
+                                        className="text-micro font-mono font-bold bg-gray-100 text-gray-500 border border-gray-200/60 px-2 py-0.5 rounded-md"
                                         title={t(
                                           "Permanent ID — web forms send it, and it never changes when you reorder or rename",
                                           "Trvalé ID — posielajú ho webové formuláre a nemení sa pri zmene poradia ani premenovaní",
@@ -5564,13 +5564,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           lang={userLanguage}
                                           what={source}
                                           onConfirm={() => handleRemoveSource(source)}
-                                          className="text-slate-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
+                                          className="text-gray-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
                                           title={userLanguage === "sk" ? "Odstrániť zdroj" : userLanguage === "hu" ? "Forrás törlése" : "Remove source"}
                                       >
                                         <X className="h-3.5 w-3.5" />
                                       </HoldToConfirmButton>
                                     ) : (
-                                      <span className="type-overline text-slate-300 block select-none">{getTranslation(userLanguage, "settings.states.locked")}</span>
+                                      <span className="type-overline text-gray-300 block select-none">{getTranslation(userLanguage, "settings.states.locked")}</span>
                                     )}
                                   </td>
                                 </tr>
@@ -5589,12 +5589,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             value={newSource}
                             onChange={(e) => setNewSource(e.target.value)}
                             placeholder={getTranslation(userLanguage, "settings.sources.placeholder")}
-                            className="flex-1 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                            className="flex-1 px-4 py-2.5 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
                           />
                           <button
                             type="submit"
                             disabled={!newSource.trim()}
-                            className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-emerald-600/10 flex items-center gap-1 shrink-0"
+                            className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-ui font-bold transition-all shadow-xs shadow-emerald-600/10 flex items-center gap-1 shrink-0"
                           >
                             <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.sources.btn_add")}
                           </button>
@@ -5609,14 +5609,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       description={getTranslation(userLanguage, "settings.sources.categories_desc")}
                     >
         
-                      <ScrollFade axis="x" className="border border-slate-200/80 rounded-2xl shadow-inner bg-white/50">
+                      <ScrollFade axis="x" className="border border-gray-200/80 rounded-lg shadow-inner bg-white">
                         <table className="w-full text-left border-collapse">
                           <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
-                              <th className="py-3 px-4 type-overline text-slate-500 w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
-                              <th className="py-3 px-4 type-overline text-slate-500 w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
-                              <th className="py-3 px-4 type-overline text-slate-500">{getTranslation(userLanguage, "settings.sources.th_category_name")}</th>
-                              <th className="py-3 px-4 type-overline text-slate-500 w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
+                            <tr className="bg-gray-50 border-b border-gray-200/60 select-none">
+                              <th className="py-3 px-4 type-overline text-gray-500 w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500">{getTranslation(userLanguage, "settings.sources.th_category_name")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -5652,16 +5652,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       setDraggedCategory(null);
                                     }
                                   }}
-                                  className={`border-b border-slate-200/60 hover:bg-slate-50/50 transition-all duration-200 ${
-                                    isDragOver ? "bg-indigo-50/50 scale-[0.99] border-y-2 border-dashed border-indigo-300" : ""
+                                  className={`border-b border-gray-200/60 hover:bg-gray-50/50 transition-all duration-200 ${
+                                    isDragOver ? "bg-entity-soft scale-[0.99] border-y-2 border-dashed border-entity-border" : ""
                                   }`}
                                 >
                                   {/* 1. GRIP HANDLE */}
                                   <td className="py-3 px-4 text-center align-middle">
                                     {getPermission("traffic_sources") === "edit" ? (
-                                      <GripVertical className="h-4 w-4 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing inline-block" />
+                                      <GripVertical className="h-4 w-4 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing inline-block" />
                                     ) : (
-                                      <Lock className="h-3 w-3 text-slate-300 inline-block" />
+                                      <Lock className="h-3 w-3 text-gray-300 inline-block" />
                                     )}
                                   </td>
         
@@ -5676,9 +5676,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
                                         />
                                       ) : (
-                                        <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: color }} />
+                                        <span className="h-3 w-3 rounded-full border border-gray-200 inline-block" style={{ backgroundColor: color }} />
                                       )}
-                                      <span className="type-overline text-slate-400">{color}</span>
+                                      <span className="type-overline text-gray-400">{color}</span>
                                       {getPermission("traffic_sources") === "edit" && <ListIconPicker kind="leadCategories" itemKey={cat} className="ml-1" />}
                                     </div>
                                   </td>
@@ -5687,7 +5687,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   <td className="py-3 px-4 align-middle">
                                     <div className="flex items-center gap-3">
                                       <span
-                                        className="text-micro font-mono font-bold bg-slate-100 text-slate-500 border border-slate-200/60 px-2 py-0.5 rounded-md"
+                                        className="text-micro font-mono font-bold bg-gray-100 text-gray-500 border border-gray-200/60 px-2 py-0.5 rounded-md"
                                         title={t(
                                           "Permanent ID — web forms send it, and it never changes when you reorder or rename",
                                           "Trvalé ID — posielajú ho webové formuláre a nemení sa pri zmene poradia ani premenovaní",
@@ -5723,13 +5723,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           lang={userLanguage}
                                           what={cat}
                                           onConfirm={() => handleRemoveCategory(cat)}
-                                          className="text-slate-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
+                                          className="text-gray-400 hover:text-rose-600 transition-colors p-1.5 hover:bg-rose-50 rounded-lg inline-block"
                                           title={userLanguage === "sk" ? "Odstrániť kategóriu" : userLanguage === "hu" ? "Kategória törlése" : "Remove category"}
                                       >
                                         <X className="h-3.5 w-3.5" />
                                       </HoldToConfirmButton>
                                     ) : (
-                                      <span className="type-overline text-slate-300 block select-none">{getTranslation(userLanguage, "settings.states.locked")}</span>
+                                      <span className="type-overline text-gray-300 block select-none">{getTranslation(userLanguage, "settings.states.locked")}</span>
                                     )}
                                   </td>
                                 </tr>
@@ -5748,12 +5748,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             value={newCategory}
                             onChange={(e) => setNewCategory(e.target.value)}
                             placeholder={getTranslation(userLanguage, "settings.sources.placeholder_category")}
-                            className="flex-1 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                            className="flex-1 px-4 py-2.5 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
                           />
                           <button
                             type="submit"
                             disabled={!newCategory.trim()}
-                            className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 flex items-center gap-1 shrink-0"
+                            className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
                           >
                             <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.sources.btn_add_category")}
                           </button>
@@ -5768,14 +5768,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       description={getTranslation(userLanguage, "settings.sources.divisions_desc")}
                     >
         
-                      <ScrollFade axis="x" className="border border-slate-200/80 rounded-2xl shadow-inner bg-white/50">
+                      <ScrollFade axis="x" className="border border-gray-200/80 rounded-lg shadow-inner bg-white">
                         <table className="w-full text-left border-collapse">
                           <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
-                              <th className="py-3 px-4 type-overline text-slate-500 w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
-                              <th className="py-3 px-4 type-overline text-slate-500 w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
-                              <th className="py-3 px-4 type-overline text-slate-500">{getTranslation(userLanguage, "settings.sources.th_division_name")}</th>
-                              <th className="py-3 px-4 type-overline text-slate-500 w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
+                            <tr className="bg-gray-50 border-b border-gray-200/60 select-none">
+                              <th className="py-3 px-4 type-overline text-gray-500 w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500">{getTranslation(userLanguage, "settings.sources.th_division_name")}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -5811,16 +5811,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       setDraggedDivision(null);
                                     }
                                   }}
-                                  className={`border-b border-slate-200/60 hover:bg-slate-50/50 transition-all duration-200 ${
-                                    isDragOver ? "bg-blue-50/50 scale-[0.99] border-y-2 border-dashed border-blue-300" : ""
+                                  className={`border-b border-gray-200/60 hover:bg-gray-50/50 transition-all duration-200 ${
+                                    isDragOver ? "bg-entity-soft scale-[0.99] border-y-2 border-dashed border-entity-border" : ""
                                   }`}
                                 >
                                   {/* 1. GRIP HANDLE */}
                                   <td className="py-3 px-4 text-center align-middle">
                                     {getPermission("traffic_sources") === "edit" ? (
-                                      <GripVertical className="h-4 w-4 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing inline-block" />
+                                      <GripVertical className="h-4 w-4 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing inline-block" />
                                     ) : (
-                                      <Lock className="h-3 w-3 text-slate-300 inline-block" />
+                                      <Lock className="h-3 w-3 text-gray-300 inline-block" />
                                     )}
                                   </td>
         
@@ -5835,9 +5835,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
                                         />
                                       ) : (
-                                        <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: color }} />
+                                        <span className="h-3 w-3 rounded-full border border-gray-200 inline-block" style={{ backgroundColor: color }} />
                                       )}
-                                      <span className="type-overline text-slate-400">{color}</span>
+                                      <span className="type-overline text-gray-400">{color}</span>
                                       {getPermission("traffic_sources") === "edit" && <ListIconPicker kind="divisions" itemKey={div} className="ml-1" />}
                                     </div>
                                   </td>
@@ -5872,13 +5872,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           lang={userLanguage}
                                           what={div}
                                           onConfirm={() => handleRemoveDivision(div)}
-                                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                          className="p-1.5 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                                           title={t("Delete division", "Odstrániť divíziu", "Divízió törlése")}
                                       >
                                         <Trash2 className="h-4 w-4" />
                                       </HoldToConfirmButton>
                                     ) : (
-                                      <span className="text-micro text-slate-300">—</span>
+                                      <span className="text-micro text-gray-300">—</span>
                                     )}
                                   </td>
                                 </tr>
@@ -5897,12 +5897,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             value={newDivision}
                             onChange={(e) => setNewDivision(e.target.value)}
                             placeholder={getTranslation(userLanguage, "settings.sources.placeholder_division")}
-                            className="flex-1 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-blue-500"
+                            className="flex-1 px-4 py-2.5 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-solid"
                           />
                           <button
                             type="submit"
                             disabled={!newDivision.trim()}
-                            className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-blue-600/10 flex items-center gap-1 shrink-0"
+                            className="disabled:cursor-not-allowed disabled:opacity-50 px-4 py-2.5 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-bold transition-all shadow-xs flex items-center gap-1 shrink-0"
                           >
                             <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.sources.btn_add_division")}
                           </button>
@@ -5917,20 +5917,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       description={userLanguage === "sk" ? "Definujte rôzne stavy pre úlohy, priraďte im farby a prispôsobte si pracovný postup." : userLanguage === "hu" ? "Határozzon meg különböző állapotokat a feladatokhoz, rendeljen hozzájuk színeket, és szabja személyre a munkafolyamatot." : "Define different states for tasks, assign colors to them, and customize your workflow."}
                     >
         
-                      <ScrollFade axis="x" className="border border-slate-200/80 rounded-2xl shadow-inner bg-white/50">
+                      <ScrollFade axis="x" className="border border-gray-200/80 rounded-lg shadow-inner bg-white">
                         <table className="w-full text-left border-collapse">
                           <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
-                              <th className="py-3 px-4 type-overline text-slate-500 w-44">{userLanguage === "sk" ? "Farba" : userLanguage === "hu" ? "Szín" : "Color"}</th>
-                              <th className="py-3 px-4 type-overline text-slate-500">{userLanguage === "sk" ? "Názov" : userLanguage === "hu" ? "Név" : "Name"}</th>
-                              <th className="py-3 px-4 type-overline text-slate-500 w-16 text-center">{userLanguage === "sk" ? "Odstrániť" : userLanguage === "hu" ? "Törlés" : "Delete"}</th>
+                            <tr className="bg-gray-50 border-b border-gray-200/60 select-none">
+                              <th className="py-3 px-4 type-overline text-gray-500 w-44">{userLanguage === "sk" ? "Farba" : userLanguage === "hu" ? "Szín" : "Color"}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500">{userLanguage === "sk" ? "Názov" : userLanguage === "hu" ? "Név" : "Name"}</th>
+                              <th className="py-3 px-4 type-overline text-gray-500 w-16 text-center">{userLanguage === "sk" ? "Odstrániť" : userLanguage === "hu" ? "Törlés" : "Delete"}</th>
                             </tr>
                           </thead>
                           <tbody>
                             {taskStates.map((state) => {
                               const color = taskStateColors[state] || "#64748b";
                               return (
-                                <tr key={state} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
+                                <tr key={state} className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
                                   {/* COLOR PICKER */}
                                   <td className="py-3 px-4 align-middle">
                                     <div className="flex items-center gap-2">
@@ -5942,14 +5942,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
                                         />
                                       ) : (
-                                        <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: color }} />
+                                        <span className="h-3 w-3 rounded-full border border-gray-200 inline-block" style={{ backgroundColor: color }} />
                                       )}
-                                      <span className="type-overline text-slate-400">{color}</span>
+                                      <span className="type-overline text-gray-400">{color}</span>
                                     </div>
                                   </td>
         
                                   {/* STATE NAME */}
-                                  <td className="py-3 px-4 align-middle font-bold text-slate-800 text-ui">
+                                  <td className="py-3 px-4 align-middle font-bold text-gray-800 text-ui">
                                     <InlineRenameName
                                       value={state}
                                       canEdit={getPermission("traffic_sources") === "edit"}
@@ -6008,12 +6008,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                             },
                                           });
                                         }}
-                                          className="text-slate-400 hover:text-rose-600 transition-colors p-1"
+                                          className="text-gray-400 hover:text-rose-600 transition-colors p-1"
                                       >
                                         <Trash2 className="h-4.5 w-4.5" />
                                       </HoldToConfirmButton>
                                     ) : (
-                                      <Lock className="h-4 w-4 text-slate-300 inline-block" />
+                                      <Lock className="h-4 w-4 text-gray-300 inline-block" />
                                     )}
                                   </td>
                                 </tr>
@@ -6025,10 +6025,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         
                       {/* Add New Task State Form */}
                       {getPermission("traffic_sources") === "edit" && (
-                        <div className="pt-4 border-t border-slate-200/80">
+                        <div className="pt-4 border-t border-gray-200/80">
                           <div className="flex items-end gap-3 max-w-md">
                             <div className="flex-1 space-y-1">
-                              <label className="type-overline text-slate-500 block">
+                              <label className="type-overline text-gray-500 block">
                                 {t("New Task State", "Nový stav úlohy", "Új feladatállapot")}
                               </label>
                               <input 
@@ -6036,7 +6036,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 value={newTaskState}
                                 onChange={(e) => setNewTaskState(e.target.value)}
                                 placeholder={t("e.g. Pending review", "napr. Čaká na kontrolu", "pl. Ellenőrzésre vár")}
-                                className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none font-bold text-ui"
+                                className="w-full px-3.5 py-2 rounded-md bg-gray-50 border-2 border-gray-200 focus:bg-white focus:outline-none font-bold text-ui"
                               />
                             </div>
                             <button
@@ -6058,7 +6058,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 }));
                                 setNewTaskState("");
                               }}
-                              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-ui font-bold shadow-md transition-all active:scale-95 flex items-center justify-center gap-1 shrink-0"
+                              className="px-4 py-2.5 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-bold shadow-xs transition-all active:scale-95 flex items-center justify-center gap-1 shrink-0"
                             >
                               <Plus className="h-4 w-4 stroke-[2.5]" /> {t("Add", "Pridať", "Hozzáadás")}
                             </button>
@@ -6080,12 +6080,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             type={showKey ? "text" : "password"}
                             readOnly
                             value={apiKey || (userLanguage === "sk" ? "Generovanie tajného kľúča..." : userLanguage === "hu" ? "Titkos kulcs generálása..." : "Generating secret key...")}
-                            className="w-full pl-4 pr-10 py-3 rounded-xl bg-slate-50 border border-slate-200 text-ui font-mono font-bold text-slate-700 focus:outline-none"
+                            className="w-full pl-4 pr-10 py-3 rounded-md bg-gray-50 border border-gray-200 text-ui font-mono font-bold text-gray-700 focus:outline-none"
                           />
                           <button
                             type="button"
                             onClick={() => setShowKey(!showKey)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-1"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer p-1"
                             title={showKey 
                               ? (userLanguage === "sk" ? "Skryť tajný kľúč" : userLanguage === "hu" ? "Titkos kulcs elrejtése" : "Hide Secret Key") 
                               : (userLanguage === "sk" ? "Zobraziť tajný kľúč" : userLanguage === "hu" ? "Titkos kulcs megjelenítése" : "Show Secret Key")}
@@ -6102,7 +6102,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               (window as any).showToast(userLanguage === "sk" ? "API kľúč bol skopírovaný do schránky!" : userLanguage === "hu" ? "Az API kulcs másolva a vágólapra!" : "API Key copied to clipboard!");
                             }}
                             disabled={!apiKey}
-                            className="flex-1 ws-sm:flex-none px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-ui font-bold transition-all border border-slate-200 cursor-pointer active:scale-95 disabled:opacity-50"
+                            className="flex-1 ws-sm:flex-none px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-ui font-bold transition-all border border-gray-200 cursor-pointer active:scale-95 disabled:opacity-50"
                           >
                             {userLanguage === "sk" ? "Kopírovať kľúč" : userLanguage === "hu" ? "Kulcs másolása" : "Copy Key"}
                           </button>
@@ -6110,7 +6110,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             type="button"
                             onClick={handleResetApiKey}
                             disabled={isApiKeyLoading || getPermission("general_config") === "view"}
-                            className="flex-1 ws-sm:flex-none px-4 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 cursor-pointer active:scale-95 disabled:opacity-50"
+                            className="flex-1 ws-sm:flex-none px-4 py-3 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-bold transition-all shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
                           >
                             {userLanguage === "sk" ? "Resetovať kľúč" : userLanguage === "hu" ? "Kulcs visszaállítása" : "Reset Key"}
                           </button>
@@ -6126,23 +6126,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }
                     >
         
-                      <p className="text-ui text-slate-600 leading-relaxed">
+                      <p className="text-ui text-gray-600 leading-relaxed">
                         {userLanguage === "sk" 
                           ? "Pripojte svoje externé webové stránky, landing pages alebo kontaktné formuláre priamo do pipeline odoslaním požiadavky POST na:" 
                           : userLanguage === "hu" 
                             ? "Csatlakoztassa külső weboldalait, céloldalait vagy kapcsolatfelvételi űrlapjait közvetlenül a pipeline-hoz egy POST kérés küldésével a következő címre:" 
                             : "Connect your external websites, landing pages, or contact forms directly to the pipeline by sending a POST request to:"
                         }{" "}
-                        <code className="bg-slate-100 text-slate-800 px-2 py-1 rounded-md text-caption font-mono border border-slate-200">
+                        <code className="bg-gray-100 text-gray-800 px-2 py-1 rounded-md text-caption font-mono border border-gray-200">
                           /api/pipeline.php
                         </code>
                       </p>
         
                       {/* Monospace Curl Box */}
-                      <div className="p-5 rounded-2xl bg-slate-900 text-slate-100 font-mono text-caption overflow-x-auto shadow-lg relative border border-slate-800">
-                        <div className="text-slate-400 select-none pb-2 border-b border-slate-800 mb-3 flex justify-between items-center">
+                      <div className="p-5 rounded-lg bg-gray-900 text-gray-100 font-mono text-caption overflow-x-auto shadow-xs relative border border-gray-800">
+                        <div className="text-gray-400 select-none pb-2 border-b border-gray-800 mb-3 flex justify-between items-center">
                           <span>{getTranslation(userLanguage, "settings.api.curl_example")}</span>
-                          <span className="type-overline bg-slate-800 text-slate-300 px-2 py-0.5 rounded">POST</span>
+                          <span className="type-overline bg-gray-800 text-gray-300 px-2 py-0.5 rounded">POST</span>
                         </div>
                         <pre className="whitespace-pre overflow-x-auto leading-relaxed text-emerald-400">
         {`curl -X POST ${typeof window !== "undefined" ? window.location.origin : "https://yourdomain.com"}/api/pipeline.php \\
@@ -6165,9 +6165,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         </pre>
                       </div>
         </SectionCard>
-        <p className="flex flex-wrap items-center gap-3 text-ui text-slate-500">
+        <p className="flex flex-wrap items-center gap-3 text-ui text-gray-500">
           <span>{navT("settings.nav.ui.api_link_note")}</span>
-          <a href={"#" + settingsPath("leads", "intake")} className="font-semibold text-indigo-600 hover:text-indigo-800">{navT("settings.nav.ui.api_link_btn")}</a>
+          <a href={"#" + settingsPath("leads", "intake")} className="font-semibold text-entity-text hover:text-entity-text">{navT("settings.nav.ui.api_link_btn")}</a>
         </p>
         </>
         );
@@ -6176,16 +6176,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <SectionCard
           title={navT(sectionKey("leads", "intake", "title"))}
           description={navT("settings.nav.ui.intake_link_note")}
-          action={<a href={"#" + settingsPath("integrations", "api")} className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-ui font-semibold text-indigo-700 no-underline transition-colors hover:bg-indigo-50">{navT("settings.nav.ui.intake_link_btn")}</a>}
+          action={<a href={"#" + settingsPath("integrations", "api")} className="inline-flex min-h-11 items-center gap-2 rounded-md border border-gray-200 bg-white px-4 text-ui font-semibold text-entity-text no-underline transition-colors hover:bg-entity-soft">{navT("settings.nav.ui.intake_link_btn")}</a>}
         >
                       <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6 pt-2">
-                        <div className="p-4 rounded-2xl border border-slate-100 bg-slate-50/50">
-                          <span className="type-overline text-slate-400 block mb-2">{getTranslation(userLanguage, "settings.api.required_fields")}</span>
+                        <div className="p-4 rounded-lg border border-gray-100 bg-gray-50/50">
+                          <span className="type-overline text-gray-400 block mb-2">{getTranslation(userLanguage, "settings.api.required_fields")}</span>
                           <div className="space-y-2">
-                            <div className="text-ui text-slate-700 leading-relaxed font-bold">
-                              <code>company_name</code> <span className="text-micro text-slate-400 font-normal">{userLanguage === "sk" ? "alebo" : userLanguage === "hu" ? "vagy" : "or"}</span> <code>contact_name</code>
+                            <div className="text-ui text-gray-700 leading-relaxed font-bold">
+                              <code>company_name</code> <span className="text-micro text-gray-400 font-normal">{userLanguage === "sk" ? "alebo" : userLanguage === "hu" ? "vagy" : "or"}</span> <code>contact_name</code>
                             </div>
-                            <p className="text-micro text-slate-500 leading-relaxed">
+                            <p className="text-micro text-gray-500 leading-relaxed">
                               {userLanguage === "sk"
                                 ? "Aspoň jedno z týchto dvoch polí musí byť v tele JSON. company_name sa stane názvom klienta a lead sa založí ako firma; contact_name sa uloží ako kontaktná osoba — alebo ako samotný klient, ak firma nie je uvedená."
                                 : userLanguage === "hu"
@@ -6196,16 +6196,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
                         </div>
         
-                        <div className="p-4 rounded-2xl border border-slate-100 bg-slate-50/50">
-                          <span className="type-overline text-slate-400 block mb-2">{getTranslation(userLanguage, "settings.api.optional_fields")}</span>
-                          <ul className="text-ui text-slate-700 space-y-2 leading-relaxed font-semibold">
-                            <li><code>email</code>, <code>phone</code>, <code>city</code>, <code>country</code> <span className="text-micro text-slate-400 font-normal">({userLanguage === "sk" ? "Osobné údaje" : userLanguage === "hu" ? "Személyes adatok" : "Personal info"})</span></li>
-                            <li><code>message</code> <span className="text-micro text-slate-400 font-normal">({userLanguage === "sk" ? "Uloží sa do časovej osi leadu aj do poľa „Záujem klienta“. Označené riadky v ňom (Firma:, Budget:) sa načítajú, ak dané pole chýba" : userLanguage === "hu" ? "A lead idővonalára és az „Ügyfél érdeklődése” mezőbe kerül. A benne lévő címkézett sorokat (Firma:, Budget:) beolvassuk, ha a mező hiányzik" : "Saved to the lead timeline and to \"Client interest\". Labelled lines inside it (Firma:, Budget:) are read when the matching field is missing"})</span></li>
-                            <li><code>value</code> <span className="text-micro text-slate-400 font-normal">{userLanguage === "sk" ? "alebo" : userLanguage === "hu" ? "vagy" : "or"}</span> <code>budget</code> <span className="text-micro text-slate-400 font-normal">({userLanguage === "sk" ? "Hodnota leadu v EUR - z rozsahu ako 3500€-5000€ sa vezme dolná hranica, predvolene 0" : userLanguage === "hu" ? "Lead értéke EUR-ban - a 3500€-5000€ tartományból az alsó határ kerül be, alapértelmezetten 0" : "Lead worth in EUR - a range like 3500€-5000€ is read as its lower bound, defaults to 0"})</span></li>
-                            <li><code>source_id</code>, <code>category_id</code> <span className="text-micro text-slate-400 font-normal">({userLanguage === "sk" ? "ID zdroja návštevnosti a kategórie záujmu - nájdete ich v stĺpci ID v Nastaveniach → Zdroje leadov. Sú trvalé: zmena poradia ani premenovanie ich nemení" : userLanguage === "hu" ? "A forgalmi csatorna és az érdeklődési kategória azonosítója - a Beállítások → Lead források ID oszlopában találhatók. Állandóak: sem az átrendezés, sem az átnevezés nem változtatja meg őket" : "IDs of the traffic channel and the interest category - read them from the ID column in Settings → Lead sources. They are permanent: neither reordering nor renaming changes them"})</span></li>
-                            <li><code>category_ids</code> <span className="text-micro text-slate-400 font-normal">({userLanguage === "sk" ? "Viac kategórií naraz, keď formulár ponúka zaškrtávacie políčka - pole [2, 3] alebo reťazec \"2,3\". Lead dostane všetky a ku každej vznikne jeho projekt" : userLanguage === "hu" ? "Több kategória egyszerre, ha az űrlapon jelölőnégyzetek vannak - [2, 3] tömb vagy \"2,3\" szöveg. A lead mindegyiket megkapja, és mindegyikhez külön projekt jön létre" : "Several categories at once, for a form with checkboxes - an array [2, 3] or the string \"2,3\". The lead gets all of them, and each one opens its own project"})</span></li>
-                            <li><code>traffic_origin</code>, <code>traffic_origin_detail</code> <span className="text-micro text-slate-400 font-normal">({userLanguage === "sk" ? "Odkiaľ návštevník prišiel na web ešte pred formulárom (facebook, instagram, google, direct...) a voľný detail (médium, kampaň, odkazujúca doména, vstupná stránka). Voľný text, nič sa nevaliduje; zobrazí sa v profile leadu ako Pôvod návštevy a ďalší dopyt ho nikdy neprepíše" : userLanguage === "hu" ? "Honnan érkezett a látogató az oldalra még az űrlap előtt (facebook, instagram, google, direct...) és szabad részlet (médium, kampány, hivatkozó domain, céloldal). Szabad szöveg, nincs ellenőrzés; a lead profiljában Látogatás eredeteként jelenik meg, és későbbi megkeresés sosem írja felül" : "Where the visitor came from before the form (facebook, instagram, google, direct...) plus a free-text detail (medium, campaign, referring host, landing page). Free text, nothing is validated; shown on the lead as Traffic Origin and never overwritten by a later inquiry"})</span></li>
-                            <li><span className="text-micro text-slate-400 font-normal">{userLanguage === "sk" ? "Akékoľvek ďalšie polia" : userLanguage === "hu" ? "Bármely további mező" : "Any other field"}</span> <span className="text-micro text-slate-400 font-normal">({userLanguage === "sk" ? "Neprázdne textové polia (a zoznamy, spojené čiarkou) sa uložia do „Záujem klienta“ aj do časovej osi ako riadky „Názov: hodnota“. Nepovinné pole " : userLanguage === "hu" ? "A nem üres szöveges mezők (és a vesszővel összefűzött listák) „Név: érték” sorokként kerülnek az „Ügyfél érdeklődése” mezőbe és az idővonalra. Az opcionális " : "Non-empty text fields (and lists, joined with commas) are saved to \"Client interest\" and the timeline as \"Label: value\" lines. The optional "}<code>field_labels</code>{userLanguage === "sk" ? " (napr. {\"area_size\": \"Plocha (m²)\"}) určí názov riadku, inak sa použije názov poľa. Tokeny, honeypoty a vnorené objekty sa ignorujú. Pri existujúcom aktívnom leade idú tieto riadky len do časovej osi" : userLanguage === "hu" ? " (pl. {\"area_size\": \"Terület (m²)\"}) adja meg a sor nevét, különben a mező neve szerepel. A tokeneket, honeypotokat és a beágyazott objektumokat figyelmen kívül hagyjuk. Meglévő aktív lead esetén ezek a sorok csak az idővonalra kerülnek" : " (e.g. {\"area_size\": \"Area (m²)\"}) names a line, otherwise the field name is used. Tokens, honeypots and nested objects are ignored. For an existing active lead these lines go to the timeline only"})</span></li>
+                        <div className="p-4 rounded-lg border border-gray-100 bg-gray-50/50">
+                          <span className="type-overline text-gray-400 block mb-2">{getTranslation(userLanguage, "settings.api.optional_fields")}</span>
+                          <ul className="text-ui text-gray-700 space-y-2 leading-relaxed font-semibold">
+                            <li><code>email</code>, <code>phone</code>, <code>city</code>, <code>country</code> <span className="text-micro text-gray-400 font-normal">({userLanguage === "sk" ? "Osobné údaje" : userLanguage === "hu" ? "Személyes adatok" : "Personal info"})</span></li>
+                            <li><code>message</code> <span className="text-micro text-gray-400 font-normal">({userLanguage === "sk" ? "Uloží sa do časovej osi leadu aj do poľa „Záujem klienta“. Označené riadky v ňom (Firma:, Budget:) sa načítajú, ak dané pole chýba" : userLanguage === "hu" ? "A lead idővonalára és az „Ügyfél érdeklődése” mezőbe kerül. A benne lévő címkézett sorokat (Firma:, Budget:) beolvassuk, ha a mező hiányzik" : "Saved to the lead timeline and to \"Client interest\". Labelled lines inside it (Firma:, Budget:) are read when the matching field is missing"})</span></li>
+                            <li><code>value</code> <span className="text-micro text-gray-400 font-normal">{userLanguage === "sk" ? "alebo" : userLanguage === "hu" ? "vagy" : "or"}</span> <code>budget</code> <span className="text-micro text-gray-400 font-normal">({userLanguage === "sk" ? "Hodnota leadu v EUR - z rozsahu ako 3500€-5000€ sa vezme dolná hranica, predvolene 0" : userLanguage === "hu" ? "Lead értéke EUR-ban - a 3500€-5000€ tartományból az alsó határ kerül be, alapértelmezetten 0" : "Lead worth in EUR - a range like 3500€-5000€ is read as its lower bound, defaults to 0"})</span></li>
+                            <li><code>source_id</code>, <code>category_id</code> <span className="text-micro text-gray-400 font-normal">({userLanguage === "sk" ? "ID zdroja návštevnosti a kategórie záujmu - nájdete ich v stĺpci ID v Nastaveniach → Zdroje leadov. Sú trvalé: zmena poradia ani premenovanie ich nemení" : userLanguage === "hu" ? "A forgalmi csatorna és az érdeklődési kategória azonosítója - a Beállítások → Lead források ID oszlopában találhatók. Állandóak: sem az átrendezés, sem az átnevezés nem változtatja meg őket" : "IDs of the traffic channel and the interest category - read them from the ID column in Settings → Lead sources. They are permanent: neither reordering nor renaming changes them"})</span></li>
+                            <li><code>category_ids</code> <span className="text-micro text-gray-400 font-normal">({userLanguage === "sk" ? "Viac kategórií naraz, keď formulár ponúka zaškrtávacie políčka - pole [2, 3] alebo reťazec \"2,3\". Lead dostane všetky a ku každej vznikne jeho projekt" : userLanguage === "hu" ? "Több kategória egyszerre, ha az űrlapon jelölőnégyzetek vannak - [2, 3] tömb vagy \"2,3\" szöveg. A lead mindegyiket megkapja, és mindegyikhez külön projekt jön létre" : "Several categories at once, for a form with checkboxes - an array [2, 3] or the string \"2,3\". The lead gets all of them, and each one opens its own project"})</span></li>
+                            <li><code>traffic_origin</code>, <code>traffic_origin_detail</code> <span className="text-micro text-gray-400 font-normal">({userLanguage === "sk" ? "Odkiaľ návštevník prišiel na web ešte pred formulárom (facebook, instagram, google, direct...) a voľný detail (médium, kampaň, odkazujúca doména, vstupná stránka). Voľný text, nič sa nevaliduje; zobrazí sa v profile leadu ako Pôvod návštevy a ďalší dopyt ho nikdy neprepíše" : userLanguage === "hu" ? "Honnan érkezett a látogató az oldalra még az űrlap előtt (facebook, instagram, google, direct...) és szabad részlet (médium, kampány, hivatkozó domain, céloldal). Szabad szöveg, nincs ellenőrzés; a lead profiljában Látogatás eredeteként jelenik meg, és későbbi megkeresés sosem írja felül" : "Where the visitor came from before the form (facebook, instagram, google, direct...) plus a free-text detail (medium, campaign, referring host, landing page). Free text, nothing is validated; shown on the lead as Traffic Origin and never overwritten by a later inquiry"})</span></li>
+                            <li><span className="text-micro text-gray-400 font-normal">{userLanguage === "sk" ? "Akékoľvek ďalšie polia" : userLanguage === "hu" ? "Bármely további mező" : "Any other field"}</span> <span className="text-micro text-gray-400 font-normal">({userLanguage === "sk" ? "Neprázdne textové polia (a zoznamy, spojené čiarkou) sa uložia do „Záujem klienta“ aj do časovej osi ako riadky „Názov: hodnota“. Nepovinné pole " : userLanguage === "hu" ? "A nem üres szöveges mezők (és a vesszővel összefűzött listák) „Név: érték” sorokként kerülnek az „Ügyfél érdeklődése” mezőbe és az idővonalra. Az opcionális " : "Non-empty text fields (and lists, joined with commas) are saved to \"Client interest\" and the timeline as \"Label: value\" lines. The optional "}<code>field_labels</code>{userLanguage === "sk" ? " (napr. {\"area_size\": \"Plocha (m²)\"}) určí názov riadku, inak sa použije názov poľa. Tokeny, honeypoty a vnorené objekty sa ignorujú. Pri existujúcom aktívnom leade idú tieto riadky len do časovej osi" : userLanguage === "hu" ? " (pl. {\"area_size\": \"Terület (m²)\"}) adja meg a sor nevét, különben a mező neve szerepel. A tokeneket, honeypotokat és a beágyazott objektumokat figyelmen kívül hagyjuk. Meglévő aktív lead esetén ezek a sorok csak az idővonalra kerülnek" : " (e.g. {\"area_size\": \"Area (m²)\"}) names a line, otherwise the field name is used. Tokens, honeypots and nested objects are ignored. For an existing active lead these lines go to the timeline only"})</span></li>
                           </ul>
                         </div>
                       </div>
@@ -6220,15 +6220,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         
                         {/* Provider Selector Switch */}
                         <div className="space-y-2">
-                          <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.protocol")}</label>
-                          <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200/60 gap-1 w-full ws-sm:max-w-md">
+                          <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.protocol")}</label>
+                          <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200/60 gap-1 w-full ws-sm:max-w-md">
                             <button
                               type="button"
                               onClick={() => setEmailProvider("smtp")}
-                              className={`flex-1 py-2.5 rounded-xl text-ui font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                              className={`flex-1 py-2.5 rounded-md text-ui font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
                                 emailProvider === "smtp"
-                                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20 font-bold"
-                                  : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
+                                  ? "bg-entity-solid text-white shadow-xs font-bold"
+                                  : "text-gray-500 hover:text-gray-800 hover:bg-white"
                               }`}
                             >
                               {getTranslation(userLanguage, "settings.email.provider_smtp")}
@@ -6236,10 +6236,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             <button
                               type="button"
                               onClick={() => setEmailProvider("exchange")}
-                              className={`flex-1 py-2.5 rounded-xl text-ui font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                              className={`flex-1 py-2.5 rounded-md text-ui font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
                                 emailProvider === "exchange"
-                                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20 font-bold"
-                                  : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
+                                  ? "bg-entity-solid text-white shadow-xs font-bold"
+                                  : "text-gray-500 hover:text-gray-800 hover:bg-white"
                               }`}
                             >
                               {getTranslation(userLanguage, "settings.email.provider_exch")}
@@ -6251,7 +6251,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         {emailProvider === "smtp" && (
                           <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-5 pt-2">
                             <div className="space-y-1.5 ws-md:col-span-2">
-                              <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.smtp_host")}</label>
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.smtp_host")}</label>
                               <input
                                 type="text"
                                 required
@@ -6259,12 +6259,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 value={smtpHost}
                                 onChange={(e) => setSmtpHost(e.target.value)}
                                 placeholder="smtp.mail.example.com"
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
+                                className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all"
                               />
                             </div>
         
                             <div className="space-y-1.5">
-                              <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.smtp_port")}</label>
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.smtp_port")}</label>
                               <input
                                 type="text"
                                 required
@@ -6272,12 +6272,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 value={smtpPort}
                                 onChange={(e) => setSmtpPort(e.target.value)}
                                 placeholder="465"
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
+                                className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all"
                               />
                             </div>
         
                             <div className="space-y-1.5">
-                              <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.smtp_secure")}</label>
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.smtp_secure")}</label>
                               <CustomSelect
                                 disabled={getPermission("general_config") === "view"}
                                 value={smtpSecure}
@@ -6290,10 +6290,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               />
                             </div>
         
-                            <div className="space-y-1.5 ws-md:col-span-2 border-t border-slate-100 pt-3 flex items-center justify-between">
+                            <div className="space-y-1.5 ws-md:col-span-2 border-t border-gray-100 pt-3 flex items-center justify-between">
                               <div className="flex flex-col">
-                                <span className="text-caption font-bold text-slate-800">{getTranslation(userLanguage, "settings.email.smtp_auth")}</span>
-                                <span className="text-micro text-slate-400">
+                                <span className="text-caption font-bold text-gray-800">{getTranslation(userLanguage, "settings.email.smtp_auth")}</span>
+                                <span className="text-micro text-gray-400">
                                   {userLanguage === "sk" ? "SMTP server vyžaduje prihlasovacie meno a heslo" : userLanguage === "hu" ? "Az SMTP szerver felhasználónevet és jelszót igényel" : "SMTP server demands username and password logins"}
                                 </span>
                               </div>
@@ -6302,14 +6302,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 disabled={getPermission("general_config") === "view"}
                                 checked={smtpAuth}
                                 onChange={(e) => setSmtpAuth(e.target.checked)}
-                                className="h-4.5 w-4.5 text-indigo-600 rounded border-slate-200 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
+                                className="h-4.5 w-4.5 text-entity-text rounded border-gray-200 focus:ring-entity-solid/25 focus:ring-offset-0 cursor-pointer"
                               />
                             </div>
         
                             {smtpAuth && (
                               <>
                                 <div className="space-y-1.5">
-                                  <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.smtp_user")}</label>
+                                  <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.smtp_user")}</label>
                                   <input
                                     type="text"
                                     required
@@ -6317,12 +6317,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     value={smtpUser}
                                     onChange={(e) => setSmtpUser(e.target.value)}
                                     placeholder="user@domain.com"
-                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
+                                    className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all"
                                   />
                                 </div>
         
                                 <div className="space-y-1.5">
-                                  <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.smtp_pass")}</label>
+                                  <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.smtp_pass")}</label>
                                   <SecretInput
                                     language={userLanguage}
                                     mono={false}
@@ -6336,8 +6336,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               </>
                             )}
         
-                            <div className="space-y-1.5 ws-md:col-span-2 border-t border-slate-100 pt-3">
-                              <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.sender_name")}</label>
+                            <div className="space-y-1.5 ws-md:col-span-2 border-t border-gray-100 pt-3">
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.sender_name")}</label>
                               <input
                                 type="text"
                                 required
@@ -6345,12 +6345,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 value={senderName}
                                 onChange={(e) => setSenderName(e.target.value)}
                                 placeholder={`Geely ${PRODUCT_NAME} Portal`}
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
+                                className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all"
                               />
                             </div>
         
                             <div className="space-y-1.5 ws-md:col-span-2">
-                              <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.sender_email")}</label>
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.sender_email")}</label>
                               <input
                                 type="email"
                                 required
@@ -6358,7 +6358,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 value={senderEmail}
                                 onChange={(e) => setSenderEmail(e.target.value)}
                                 placeholder="crm@example.com"
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
+                                className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all"
                               />
                             </div>
                           </div>
@@ -6368,7 +6368,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         {emailProvider === "exchange" && (
                           <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-5 pt-2">
                             <div className="space-y-1.5 ws-md:col-span-2">
-                              <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.exch_url")}</label>
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.exch_url")}</label>
                               <input
                                 type="text"
                                 required
@@ -6376,12 +6376,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 value={exchUrl}
                                 onChange={(e) => setExchUrl(e.target.value)}
                                 placeholder="https://outlook.office365.com/EWS/Exchange.asmx"
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all font-mono"
+                                className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all font-mono"
                               />
                             </div>
         
                             <div className="space-y-1.5">
-                              <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.exch_domain")}</label>
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.exch_domain")}</label>
                               <input
                                 type="text"
                                 required
@@ -6389,12 +6389,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 value={exchDomain}
                                 onChange={(e) => setExchDomain(e.target.value)}
                                 placeholder="COMPANY"
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
+                                className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all"
                               />
                             </div>
         
                             <div className="space-y-1.5">
-                              <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.exch_auth")}</label>
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.exch_auth")}</label>
                               <CustomSelect
                                 disabled={getPermission("general_config") === "view"}
                                 value={exchAuth}
@@ -6410,8 +6410,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             {/* OAuth specific fields */}
                             {exchAuth === "oauth" && (
                               <>
-                                <div className="space-y-1.5 ws-md:col-span-2 border-t border-slate-100 pt-3">
-                                  <label className="type-overline text-slate-500">{userLanguage === "sk" ? "ID klienta (aplikácie)" : userLanguage === "hu" ? "Kliens (alkalmazás) azonosító" : "Client (Application) ID"}</label>
+                                <div className="space-y-1.5 ws-md:col-span-2 border-t border-gray-100 pt-3">
+                                  <label className="type-overline text-gray-500">{userLanguage === "sk" ? "ID klienta (aplikácie)" : userLanguage === "hu" ? "Kliens (alkalmazás) azonosító" : "Client (Application) ID"}</label>
                                   <input
                                     type="text"
                                     required
@@ -6419,12 +6419,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     value={exchClientId}
                                     onChange={(e) => setExchClientId(e.target.value)}
                                     placeholder="00000000-0000-0000-0000-000000000000"
-                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all font-mono"
+                                    className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all font-mono"
                                   />
                                 </div>
         
                                 <div className="space-y-1.5 ws-md:col-span-2">
-                                  <label className="type-overline text-slate-500">{userLanguage === "sk" ? "ID adresára (tenanta)" : userLanguage === "hu" ? "Könyvtár (bérlő) azonosító" : "Directory (Tenant) ID"}</label>
+                                  <label className="type-overline text-gray-500">{userLanguage === "sk" ? "ID adresára (tenanta)" : userLanguage === "hu" ? "Könyvtár (bérlő) azonosító" : "Directory (Tenant) ID"}</label>
                                   <input
                                     type="text"
                                     required
@@ -6432,12 +6432,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     value={exchTenantId}
                                     onChange={(e) => setExchTenantId(e.target.value)}
                                     placeholder="00000000-0000-0000-0000-000000000000"
-                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all font-mono"
+                                    className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all font-mono"
                                   />
                                 </div>
         
                                 <div className="space-y-1.5 ws-md:col-span-2">
-                                  <label className="type-overline text-slate-500">{userLanguage === "sk" ? "Klientsky kľúč (Client Secret)" : userLanguage === "hu" ? "Kliens titkos kulcs (Client Secret)" : "Client Secret"}</label>
+                                  <label className="type-overline text-gray-500">{userLanguage === "sk" ? "Klientsky kľúč (Client Secret)" : userLanguage === "hu" ? "Kliens titkos kulcs (Client Secret)" : "Client Secret"}</label>
                                   <SecretInput
                                     language={userLanguage}
                                     required
@@ -6452,8 +6452,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         
                             {/* Basic / NTLM password field */}
                             {(exchAuth === "basic" || exchAuth === "ntlm") && (
-                              <div className="space-y-1.5 ws-md:col-span-2 border-t border-slate-100 pt-3">
-                                <label className="type-overline text-slate-500">{userLanguage === "sk" ? "Exchange Heslo" : userLanguage === "hu" ? "Exchange Jelszó" : "Exchange Password"}</label>
+                              <div className="space-y-1.5 ws-md:col-span-2 border-t border-gray-100 pt-3">
+                                <label className="type-overline text-gray-500">{userLanguage === "sk" ? "Exchange Heslo" : userLanguage === "hu" ? "Exchange Jelszó" : "Exchange Password"}</label>
                                 <SecretInput
                                   language={userLanguage}
                                   required
@@ -6465,8 +6465,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               </div>
                             )}
         
-                            <div className="space-y-1.5 ws-md:col-span-2 border-t border-slate-100 pt-3">
-                              <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.exch_mailbox")}</label>
+                            <div className="space-y-1.5 ws-md:col-span-2 border-t border-gray-100 pt-3">
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.exch_mailbox")}</label>
                               <input
                                 type="email"
                                 required
@@ -6474,7 +6474,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 value={exchMailbox}
                                 onChange={(e) => setExchMailbox(e.target.value)}
                                 placeholder="crm@example.com"
-                                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
+                                className="w-full px-4 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border focus:bg-white transition-all"
                               />
                             </div>
                           </div>
@@ -6492,25 +6492,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <form onSubmit={handleSendTestEmail} className="flex flex-col gap-4">
                           <div className="space-y-3 pt-1">
                             <div className="space-y-1.5">
-                              <label className="type-overline text-slate-500">{getTranslation(userLanguage, "settings.email.test_recipient")}</label>
+                              <label className="type-overline text-gray-500">{getTranslation(userLanguage, "settings.email.test_recipient")}</label>
                               <input
                                 type="email"
                                 required
                                 value={testRecipient}
                                 onChange={(e) => setTestRecipient(e.target.value)}
                                 placeholder="test@example.com"
-                                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+                                className="w-full px-3.5 py-2.5 rounded-md bg-gray-50 border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
                               />
                             </div>
         
                             <button
                               type="submit"
                               disabled={isSendingTest || !testRecipient}
-                              className="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-ui font-bold transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-55"
+                              className="w-full py-3 bg-gray-800 hover:bg-gray-900 text-white rounded-md text-ui font-bold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-55"
                             >
                               {isSendingTest ? (
                                 <>
-                                  <span className="h-3.5 w-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                  <span className="h-3.5 w-3.5 border-2 border-gray-200 border-t-white rounded-full animate-spin" />
                                   <span>{getTranslation(userLanguage, "settings.email.testing_handshake")}</span>
                                 </>
                               ) : (
@@ -6521,7 +6521,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         
                           {/* Diagnostic Results Block */}
                           {testResult && (
-                            <div className={`p-4 rounded-2xl border text-micro leading-relaxed font-bold transition-all animate-fade-in ${
+                            <div className={`p-4 rounded-lg border text-micro leading-relaxed font-bold transition-all animate-fade-in ${
                               testResult.status === "success" 
                                 ? "bg-emerald-50 border-emerald-200 text-emerald-800" 
                                 : "bg-rose-50 border-rose-200 text-rose-800"
@@ -6545,7 +6545,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         >
         <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6">
                         <div className="space-y-1.5">
-                          <label className="type-overline text-slate-500">
+                          <label className="type-overline text-gray-500">
                             {getTranslation(userLanguage, "settings.general.system_lang")}
                           </label>
                           <CustomSelect
@@ -6558,12 +6558,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               { value: "hu", label: "Magyar" },
                             ]}
                           />
-                          <p className="text-micro text-slate-400">
+                          <p className="text-micro text-gray-400">
                             {getTranslation(userLanguage, "settings.general.system_lang_desc")}
                           </p>
                         </div>
                         <div className="space-y-1.5">
-                          <label className="type-overline text-slate-500">
+                          <label className="type-overline text-gray-500">
                             {getTranslation(userLanguage, "settings.general.currency")}
                           </label>
                           <CustomSelect
@@ -6578,7 +6578,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               ...CURRENCY_OPTIONS.map((c) => ({ value: c.code, label: c.label })),
                             ]}
                           />
-                          <p className="text-micro text-slate-400">
+                          <p className="text-micro text-gray-400">
                             {getTranslation(userLanguage, "settings.general.currency_desc")}
                           </p>
                         </div>
@@ -6592,32 +6592,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         title={getTranslation(userLanguage, "settings.general.db_title")}
                       >
         
-                        <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6 text-ui text-slate-600 font-bold">
+                        <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6 text-ui text-gray-600 font-bold">
                           <div className="space-y-2">
-                            <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                              <span className="text-slate-400 type-overline">{getTranslation(userLanguage, "settings.general.db_host")}</span>
-                              <span className="text-slate-800">{dbInfo?.host || "—"}</span>
+                            <div className="flex justify-between border-b border-gray-100 pb-1.5">
+                              <span className="text-gray-400 type-overline">{getTranslation(userLanguage, "settings.general.db_host")}</span>
+                              <span className="text-gray-800">{dbInfo?.host || "—"}</span>
                             </div>
-                            <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                              <span className="text-slate-400 type-overline">{getTranslation(userLanguage, "settings.general.db_port")}</span>
+                            <div className="flex justify-between border-b border-gray-100 pb-1.5">
+                              <span className="text-gray-400 type-overline">{getTranslation(userLanguage, "settings.general.db_port")}</span>
                               <span>{dbInfo?.port || "—"}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-slate-400 type-overline">{getTranslation(userLanguage, "settings.general.db_type")}</span>
+                              <span className="text-gray-400 type-overline">{getTranslation(userLanguage, "settings.general.db_type")}</span>
                               <span className="text-rose-500 font-extrabold uppercase">{dbInfo?.type || "MariaDB"}</span>
                             </div>
                           </div>
                           <div className="space-y-2">
-                            <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                              <span className="text-slate-400 type-overline">{getTranslation(userLanguage, "settings.general.db_name")}</span>
-                              <span className="text-slate-800">{dbInfo?.name || "—"}</span>
+                            <div className="flex justify-between border-b border-gray-100 pb-1.5">
+                              <span className="text-gray-400 type-overline">{getTranslation(userLanguage, "settings.general.db_name")}</span>
+                              <span className="text-gray-800">{dbInfo?.name || "—"}</span>
                             </div>
-                            <div className="flex justify-between border-b border-slate-100 pb-1.5">
-                              <span className="text-slate-400 type-overline">{getTranslation(userLanguage, "settings.general.db_user")}</span>
+                            <div className="flex justify-between border-b border-gray-100 pb-1.5">
+                              <span className="text-gray-400 type-overline">{getTranslation(userLanguage, "settings.general.db_user")}</span>
                               <span>{dbInfo?.user || "—"}</span>
                             </div>
                             <div className="flex justify-between font-bold">
-                              <span className="text-slate-400 type-overline">{getTranslation(userLanguage, "settings.general.db_integrity")}</span>
+                              <span className="text-gray-400 type-overline">{getTranslation(userLanguage, "settings.general.db_integrity")}</span>
                               <span className="text-emerald-600 font-extrabold flex items-center gap-1">
                                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> {getTranslation(userLanguage, "settings.general.db_connected")}
                               </span>
@@ -6629,20 +6629,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         title={getTranslation(userLanguage, "settings.general.host_title")}
                       >
                         
-                        <div className="text-ui space-y-3 font-semibold text-slate-600">
+                        <div className="text-ui space-y-3 font-semibold text-gray-600">
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-400">{getTranslation(userLanguage, "settings.general.host_status")}</span>
+                            <span className="text-gray-400">{getTranslation(userLanguage, "settings.general.host_status")}</span>
                             <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 type-overline">
                               {getTranslation(userLanguage, "settings.general.host_connected")}
                             </span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-400">{getTranslation(userLanguage, "settings.general.host_deployment")}</span>
-                            <span className="font-extrabold text-indigo-600">{typeof window !== "undefined" ? window.location.host : ""}</span>
+                            <span className="text-gray-400">{getTranslation(userLanguage, "settings.general.host_deployment")}</span>
+                            <span className="font-extrabold text-entity-text">{typeof window !== "undefined" ? window.location.host : ""}</span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-400">{getTranslation(userLanguage, "settings.general.host_laravel")}</span>
-                            <span className="text-slate-400 italic">{getTranslation(userLanguage, "settings.general.host_laravel_desc")}</span>
+                            <span className="text-gray-400">{getTranslation(userLanguage, "settings.general.host_laravel")}</span>
+                            <span className="text-gray-400 italic">{getTranslation(userLanguage, "settings.general.host_laravel_desc")}</span>
                           </div>
                         </div>
                       </SectionCard>
@@ -6657,8 +6657,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         >
           <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-6 items-start">
                           {/* Logo Upload Box */}
-                          <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl flex flex-col items-center justify-center text-center space-y-3">
-                            <div className="type-overline text-slate-600">
+                          <div className="p-4 bg-gray-50 border border-gray-200/80 rounded-lg flex flex-col items-center justify-center text-center space-y-3">
+                            <div className="type-overline text-gray-600">
                               {t("Company Logo (PDF & Quotes)", "Firemné logo na dokladoch", "Céglogó")}
                             </div>
                             {billingForm.companyLogoUrl ? (
@@ -6666,7 +6666,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 <img
                                   src={billingForm.companyLogoUrl}
                                   alt="Company Logo"
-                                  className="h-16 w-auto max-w-50 object-contain bg-white p-2 rounded-xl border border-slate-200 shadow-sm"
+                                  className="h-16 w-auto max-w-50 object-contain bg-white p-2 rounded-md border border-gray-200 shadow-xs"
                                 />
                                 <button
                                   type="button"
@@ -6677,12 +6677,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 </button>
                               </div>
                             ) : (
-                              <div className="h-16 w-32 border-2 border-dashed border-slate-300 rounded-xl flex items-center justify-center text-slate-400 text-ui font-semibold">
+                              <div className="h-16 w-32 border-2 border-dashed border-gray-300 rounded-md flex items-center justify-center text-gray-400 text-ui font-semibold">
                                 {t("No logo", "Bez loga", "Nincs logó")}
                               </div>
                             )}
         
-                            <label className="px-4 py-2 bg-white border border-slate-300 hover:border-indigo-500 rounded-xl text-ui font-bold text-slate-700 shadow-sm cursor-pointer transition-all flex items-center gap-1.5">
+                            <label className="px-4 py-2 bg-white border border-gray-300 hover:border-entity-border rounded-md text-ui font-bold text-gray-700 shadow-xs cursor-pointer transition-all flex items-center gap-1.5">
                               <Plus className="h-3.5 w-3.5" />
                               {isUploadingLogo ? t("Uploading...", "Nahrávam...", "Feltöltés...") : t("Upload Logo (PNG / SVG / JPG)", "Nahrať logo (PNG/SVG/JPG)", "Logó feltöltése")}
                               <input
@@ -6698,7 +6698,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
             <div className="ws-md:col-span-2 space-y-3">
                         <div className="space-y-1.5">
-                          <label className="type-overline text-slate-500" htmlFor="settings-system-name">
+                          <label className="type-overline text-gray-500" htmlFor="settings-system-name">
                             {getTranslation(userLanguage, "settings.general.system_name")}
                           </label>
                           <input
@@ -6707,16 +6707,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             disabled={getPermission("general_config") === "view"}
                             value={tempName}
                             onChange={(e) => setTempName(e.target.value)}
-                            className="w-full min-h-12 ws-lg:min-h-0 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-heading font-bold focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
+                            className="w-full min-h-[3rem] ws-lg:min-h-0 px-4 py-2.5 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-heading font-bold focus:outline-none focus:border-entity-border focus:ring-1 focus:ring-entity-solid/25 disabled:bg-gray-50 disabled:text-gray-400"
                             placeholder={PRODUCT_NAME}
                           />
-                          <p className="text-micro text-slate-500">
+                          <p className="text-micro text-gray-500">
                             {getTranslation(userLanguage, "settings.general.system_name_desc")}
                           </p>
                         </div>
                             <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
                               <div className="relative">
-                                <label className="type-overline text-slate-500 block mb-1">
+                                <label className="type-overline text-gray-500 block mb-1">
                                   {t("Company Name", "Obchodné meno spoločnosti", "Cégnév")}
                                 </label>
                                 <div className="relative">
@@ -6728,7 +6728,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       searchBillingRegistry("name", e.target.value);
                                     }}
                                     placeholder={t("Type a name or IČO to load from the register", "Začnite písať názov alebo IČO — údaje sa načítajú z registra", "Írjon nevet vagy adószámot a cégregiszterből való betöltéshez")}
-                                    className="w-full min-h-12 ws-lg:min-h-0 p-2.5 pr-9 bg-white border border-slate-200 rounded-xl text-ui font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                    className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 pr-9 bg-white border border-gray-200 rounded-md text-ui font-bold focus:ring-2 focus:ring-entity-solid/25 focus:outline-none"
                                   />
                                   <CompanyLookupSpinner visible={billingLookup.isLoading && billingLookup.activeField === "name"} />
                                 </div>
@@ -6742,14 +6742,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               </div>
         
                               <div>
-                                <label className="type-overline text-slate-500 block mb-1">
+                                <label className="type-overline text-gray-500 block mb-1">
                                   {t("Subtitle / Slogan", "Podtitul / Špecializácia", "Szlogen")}
                                 </label>
                                 <input
                                   type="text"
                                   value={billingForm.companySubtitle || ""}
                                   onChange={e => setBillingForm(prev => ({ ...prev, companySubtitle: e.target.value }))}
-                                  className="w-full min-h-12 ws-lg:min-h-0 p-2.5 bg-white border border-slate-200 rounded-xl text-ui focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                  className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui focus:ring-2 focus:ring-entity-solid/25 focus:outline-none"
                                 />
                               </div>
                             </div>
@@ -6757,50 +6757,50 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
                         <div className="grid grid-cols-2 ws-sm:grid-cols-4 gap-3">
                           <div className="col-span-2 ws-sm:col-span-1">
-                            <label className="type-overline text-slate-500 block mb-1">
+                            <label className="type-overline text-gray-500 block mb-1">
                               {t("Email", "Fakturačný e-mail", "E-mail")}
                             </label>
                             <input
                               type="email"
                               value={billingForm.email || ""}
                               onChange={e => setBillingForm(prev => ({ ...prev, email: e.target.value }))}
-                              className="w-full min-h-12 ws-lg:min-h-0 p-2.5 bg-white border border-slate-200 rounded-xl text-ui"
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui"
                             />
                           </div>
         
                           <div>
-                            <label className="type-overline text-slate-500 block mb-1">
+                            <label className="type-overline text-gray-500 block mb-1">
                               {t("Phone", "Telefónne číslo", "Telefonszám")}
                             </label>
                             <input
                               type="tel"
                               value={billingForm.phone || ""}
                               onChange={e => setBillingForm(prev => ({ ...prev, phone: e.target.value }))}
-                              className="w-full min-h-12 ws-lg:min-h-0 p-2.5 bg-white border border-slate-200 rounded-xl text-ui"
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui"
                             />
                           </div>
         
                           <div>
-                            <label className="type-overline text-slate-500 block mb-1">
+                            <label className="type-overline text-gray-500 block mb-1">
                               {t("Secondary Phone", "Záložný telefón", "Másodlagos telefon")}
                             </label>
                             <input
                               type="tel"
                               value={billingForm.phoneSecondary || ""}
                               onChange={e => setBillingForm(prev => ({ ...prev, phoneSecondary: e.target.value }))}
-                              className="w-full min-h-12 ws-lg:min-h-0 p-2.5 bg-white border border-slate-200 rounded-xl text-ui"
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui"
                             />
                           </div>
         
                           <div className="col-span-2 ws-sm:col-span-1">
-                            <label className="type-overline text-slate-500 block mb-1">
+                            <label className="type-overline text-gray-500 block mb-1">
                               {t("Website", "Webová stránka", "Weboldal")}
                             </label>
                             <input
                               type="url"
                               value={billingForm.website || ""}
                               onChange={e => setBillingForm(prev => ({ ...prev, website: e.target.value }))}
-                              className="w-full min-h-12 ws-lg:min-h-0 p-2.5 bg-white border border-slate-200 rounded-xl text-ui"
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui"
                             />
                           </div>
                         </div>
@@ -6815,7 +6815,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         >
                             <div className="grid grid-cols-2 ws-sm:grid-cols-3 gap-3">
                               <div className="relative">
-                                <label className="type-overline text-slate-500 block mb-1">IČO</label>
+                                <label className="type-overline text-gray-500 block mb-1">IČO</label>
                                 <div className="relative">
                                   <input
                                     type="text"
@@ -6825,7 +6825,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       setBillingForm(prev => ({ ...prev, companyId: e.target.value }));
                                       searchBillingRegistry("companyId", e.target.value);
                                     }}
-                                    className="w-full min-h-12 ws-lg:min-h-0 p-2.5 pr-9 bg-white border border-slate-200 rounded-xl text-ui font-mono font-semibold focus:outline-none"
+                                    className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 pr-9 bg-white border border-gray-200 rounded-md text-ui font-mono font-semibold focus:outline-none"
                                   />
                                   <CompanyLookupSpinner visible={billingLookup.isLoading && billingLookup.activeField === "companyId"} />
                                 </div>
@@ -6838,7 +6838,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 />
                               </div>
                               <div className="relative">
-                                <label className="type-overline text-slate-500 block mb-1">DIČ</label>
+                                <label className="type-overline text-gray-500 block mb-1">DIČ</label>
                                 <div className="relative">
                                   <input
                                     type="text"
@@ -6848,7 +6848,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       setBillingForm(prev => ({ ...prev, taxId: e.target.value }));
                                       searchBillingRegistry("taxId", e.target.value);
                                     }}
-                                    className="w-full min-h-12 ws-lg:min-h-0 p-2.5 pr-9 bg-white border border-slate-200 rounded-xl text-ui font-mono font-semibold focus:outline-none"
+                                    className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 pr-9 bg-white border border-gray-200 rounded-md text-ui font-mono font-semibold focus:outline-none"
                                   />
                                   <CompanyLookupSpinner visible={billingLookup.isLoading && billingLookup.activeField === "taxId"} />
                                 </div>
@@ -6861,7 +6861,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 />
                               </div>
                               <div className="relative col-span-2 ws-sm:col-span-1">
-                                <label className="type-overline text-slate-500 block mb-1">IČ DPH</label>
+                                <label className="type-overline text-gray-500 block mb-1">IČ DPH</label>
                                 <div className="relative">
                                   <input
                                     type="text"
@@ -6870,7 +6870,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       setBillingForm(prev => ({ ...prev, vatId: e.target.value }));
                                       searchBillingRegistry("vatId", e.target.value);
                                     }}
-                                    className="w-full min-h-12 ws-lg:min-h-0 p-2.5 pr-9 bg-white border border-slate-200 rounded-xl text-ui font-mono font-semibold focus:outline-none"
+                                    className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 pr-9 bg-white border border-gray-200 rounded-md text-ui font-mono font-semibold focus:outline-none"
                                   />
                                   <CompanyLookupSpinner visible={billingLookup.isLoading && billingLookup.activeField === "vatId"} />
                                 </div>
@@ -6885,43 +6885,43 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             </div>
                         <div className="grid grid-cols-2 ws-sm:grid-cols-4 gap-3">
                           <div className="col-span-2">
-                            <label className="type-overline text-slate-500 block mb-1">
+                            <label className="type-overline text-gray-500 block mb-1">
                               {t("Street & Number", "Ulica a číslo", "Utca és házszám")}
                             </label>
                             <input
                               type="text"
                               value={billingForm.street || ""}
                               onChange={e => setBillingForm(prev => ({ ...prev, street: e.target.value }))}
-                              className="w-full min-h-12 ws-lg:min-h-0 p-2.5 bg-white border border-slate-200 rounded-xl text-ui"
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui"
                             />
                           </div>
         
                           <div>
-                            <label className="type-overline text-slate-500 block mb-1">
+                            <label className="type-overline text-gray-500 block mb-1">
                               {t("City", "Mesto", "Város")}
                             </label>
                             <input
                               type="text"
                               value={billingForm.city || ""}
                               onChange={e => setBillingForm(prev => ({ ...prev, city: e.target.value }))}
-                              className="w-full min-h-12 ws-lg:min-h-0 p-2.5 bg-white border border-slate-200 rounded-xl text-ui"
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui"
                             />
                           </div>
         
                           <div>
-                            <label className="type-overline text-slate-500 block mb-1">
+                            <label className="type-overline text-gray-500 block mb-1">
                               {t("Postal Code", "PSČ", "Irányítószám")}
                             </label>
                             <input
                               type="text"
                               value={billingForm.postalCode || ""}
                               onChange={e => setBillingForm(prev => ({ ...prev, postalCode: e.target.value }))}
-                              className="w-full min-h-12 ws-lg:min-h-0 p-2.5 bg-white border border-slate-200 rounded-xl text-ui font-mono"
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui font-mono"
                             />
                           </div>
         
                           <div className="col-span-2 ws-sm:col-span-1">
-                            <label className="type-overline text-slate-500 block mb-1">
+                            <label className="type-overline text-gray-500 block mb-1">
                               {t("Country", "Krajina", "Ország")}
                             </label>
                             <CustomSelect
@@ -6942,23 +6942,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         >
           <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
                           <div>
-                            <label className="type-overline text-slate-500 block mb-1">IBAN</label>
+                            <label className="type-overline text-gray-500 block mb-1">IBAN</label>
                             <input
                               type="text"
                               value={billingForm.iban || ""}
                               onChange={e => setBillingForm(prev => ({ ...prev, iban: e.target.value }))}
                               placeholder="SK00 0000 0000 0000 0000 0000"
-                              className="w-full min-h-12 ws-lg:min-h-0 p-2.5 bg-white border border-slate-200 rounded-xl text-ui font-mono font-semibold"
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui font-mono font-semibold"
                             />
                           </div>
                           <div>
-                            <label className="type-overline text-slate-500 block mb-1">SWIFT / BIC</label>
+                            <label className="type-overline text-gray-500 block mb-1">SWIFT / BIC</label>
                             <input
                               type="text"
                               value={billingForm.swift || ""}
                               onChange={e => setBillingForm(prev => ({ ...prev, swift: e.target.value }))}
                               placeholder="TATRSKBX"
-                              className="w-full min-h-12 ws-lg:min-h-0 p-2.5 bg-white border border-slate-200 rounded-xl text-ui font-mono"
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui font-mono"
                             />
                           </div>
           </div>
@@ -6974,14 +6974,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         >
           <div className="max-w-xs">
                           <div>
-                            <label className="type-overline text-slate-500 block mb-1">
+                            <label className="type-overline text-gray-500 block mb-1">
                               {t("Default Payment Due (Days)", "Predvolená splatnosť (Dni)", "Fizetési határidő (napok)")}
                             </label>
                             <input
                               type="number"
                               value={billingForm.defaultPaymentDueDays || 14}
                               onChange={e => setBillingForm(prev => ({ ...prev, defaultPaymentDueDays: parseInt(e.target.value) || 14 }))}
-                              className="w-full min-h-12 ws-lg:min-h-0 p-2.5 bg-white border border-slate-200 rounded-xl text-ui font-bold"
+                              className="w-full min-h-[3rem] ws-lg:min-h-0 p-2.5 bg-white border border-gray-200 rounded-md text-ui font-bold"
                             />
                           </div>
           </div>
@@ -6998,10 +6998,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 <button
                               type="button"
                               onClick={handleResetVatRates}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-micro font-medium text-slate-600 hover:text-slate-800 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg shadow-2xs transition-colors cursor-pointer"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-micro font-medium text-gray-600 hover:text-gray-800 bg-white hover:bg-gray-100 border border-gray-200 rounded-lg shadow-2xs transition-colors cursor-pointer"
                               title={t("Reset to default rates (23%, 19%, 10%, 5%, 0%)", "Obnoviť predvolené sadzby (23%, 19%, 10%, 5%, 0%)", "Alapértelmezett kulcsok visszaállítása (23%, 19%, 10%, 5%, 0%)")}
                             >
-                              <RotateCcw className="size-3 text-slate-400" />
+                              <RotateCcw className="size-3 text-gray-400" />
                               <span>{t("Reset to defaults (23, 19, 10, 5, 0)", "Obnoviť predvolené (23, 19, 10, 5, 0)", "Alapértelmezés (23, 19, 10, 5, 0)")}</span>
                             </button>
 }
@@ -7009,7 +7009,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         
                           {/* Active VAT rates pills */}
                           <div className="space-y-1.5">
-                            <label className="type-overline text-slate-500 block">
+                            <label className="type-overline text-gray-500 block">
                               {t("Active VAT Rates", "Aktívne sadzby DPH", "Aktív ÁFA kulcsok")}
                             </label>
                             <div className="flex flex-wrap items-center gap-2">
@@ -7019,22 +7019,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   <div
                                     key={rate}
                                     className={cn(
-                                      "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-ui font-mono font-bold transition-all shadow-2xs",
+                                      "inline-flex items-center gap-2 px-3 py-1.5 rounded-md border text-ui font-mono font-bold transition-all shadow-2xs",
                                       isDefault
-                                        ? "bg-indigo-50 border-indigo-300 text-indigo-700 ring-2 ring-indigo-200"
-                                        : "bg-white border-slate-200 text-slate-700 hover:border-slate-300"
+                                        ? "bg-entity-soft border-entity-border text-entity-text ring-2 ring-entity-solid/25"
+                                        : "bg-white border-gray-200 text-gray-700 hover:border-gray-300"
                                     )}
                                   >
                                     <span>{rate}%</span>
                                     {isDefault ? (
-                                      <span className="px-1.5 py-0.5 rounded-md bg-indigo-600 text-white text-micro font-sans font-semibold tracking-wide uppercase">
+                                      <span className="px-1.5 py-0.5 rounded-md bg-entity-solid text-white text-micro font-sans font-semibold tracking-wide uppercase">
                                         {t("Default", "Predvolená", "Alapértelmezett")}
                                       </span>
                                     ) : (
                                       <button
                                         type="button"
                                         onClick={() => setBillingForm(prev => ({ ...prev, defaultVatRate: rate }))}
-                                        className="text-micro font-sans font-medium text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer"
+                                        className="text-micro font-sans font-medium text-gray-400 hover:text-entity-text transition-colors cursor-pointer"
                                         title={t("Set as default", "Nastaviť ako predvolenú", "Beállítás alapértelmezettként")}
                                       >
                                         {t("Set default", "Zvoliť", "Kiválaszt")}
@@ -7045,7 +7045,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       <button
                                         type="button"
                                         onClick={() => handleRemoveVatRate(rate)}
-                                        className="p-0.5 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                        className="p-0.5 rounded hover:bg-rose-50 text-gray-400 hover:text-rose-600 transition-colors cursor-pointer"
                                         title={t("Remove VAT rate", "Odstrániť sadzbu", "ÁFA kulcs törlése")}
                                       >
                                         <X className="size-3.5" />
@@ -7058,9 +7058,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
         
                           {/* Add rate & Default rate picker in 2 columns */}
-                          <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200/60">
+                          <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3 pt-2 border-t border-gray-200/60">
                             <div>
-                              <label className="type-overline text-slate-500 block mb-1">
+                              <label className="type-overline text-gray-500 block mb-1">
                                 {t("Add Custom VAT Rate", "Pridať ďalšiu sadzbu DPH", "Új ÁFA kulcs hozzáadása")}
                               </label>
                               <div className="flex items-center gap-2">
@@ -7079,16 +7079,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       }
                                     }}
                                     placeholder="e.g. 21"
-                                    className="w-full pr-8 pl-3 py-2 bg-white border border-slate-200 rounded-xl text-ui font-mono focus:border-indigo-500 focus:outline-none"
+                                    className="w-full pr-8 pl-3 py-2 bg-white border border-gray-200 rounded-md text-ui font-mono focus:border-entity-border focus:outline-none"
                                   />
-                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-ui font-mono font-bold pointer-events-none">
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-ui font-mono font-bold pointer-events-none">
                                     %
                                   </span>
                                 </div>
                                 <button
                                   type="button"
                                   onClick={handleAddVatRate}
-                                  className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-ui font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                                  className="px-3 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-md text-ui font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
                                 >
                                   <Plus className="size-3.5" />
                                   <span>{t("Add", "Pridať", "Hozzáadás")}</span>
@@ -7097,7 +7097,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             </div>
         
                             <div>
-                              <label className="type-overline text-slate-500 block mb-1">
+                              <label className="type-overline text-gray-500 block mb-1">
                                 {t("Default VAT Rate", "Predvolená sadzba DPH", "Alapértelmezett ÁFA kulcs")}
                               </label>
                               <select
@@ -7108,7 +7108,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     defaultVatRate: parseFloat(e.target.value) || 0
                                   }))
                                 }
-                                className="w-full p-2 bg-white border border-slate-200 rounded-xl text-ui font-mono font-bold text-slate-800 focus:border-indigo-500 focus:outline-none"
+                                className="w-full p-2 bg-white border border-gray-200 rounded-md text-ui font-mono font-bold text-gray-800 focus:border-entity-border focus:outline-none"
                               >
                                 {activeVatRates.map(r => (
                                   <option key={r} value={r}>
@@ -7167,7 +7167,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     return (
       <>
         {def && !def.linkOnly && renderReadOnlyBanner(def.permKey)}
-        {body ?? <p className="type-body text-slate-500">{navT("settings.nav.ui.not_available")}</p>}
+        {body ?? <p className="type-body text-gray-500">{navT("settings.nav.ui.not_available")}</p>}
       </>
     );
   };
@@ -7245,7 +7245,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           />
         );
     } else if (catalog.length === 0) {
-      shell = <p className="type-body text-slate-500" data-testid="settings-none">{navT("settings.nav.ui.not_available")}</p>;
+      shell = <p className="type-body text-gray-500" data-testid="settings-none">{navT("settings.nav.ui.not_available")}</p>;
     } else {
       shell = (
         <SettingsHome
@@ -7269,55 +7269,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   }
 
   return (
-    <div ref={wideRef} className="select-none text-slate-800 animate-fade-in" data-testid="settings-root" data-layout={layout}>
+    <div ref={wideRef} className="select-none text-gray-800 animate-fade-in" data-testid="settings-root" data-layout={layout}>
       {shell}
 
         {/* Exception Detail Popup Modal */}
         {selectedLog && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="glass-panel w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh] text-left">
-              <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+          <div className="fixed inset-0 bg-gray-900/60 z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-3xl bg-white rounded-lg shadow-xs border border-gray-200 overflow-hidden flex flex-col max-h-[85vh] text-left">
+              <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50">
                 <div className="flex items-center gap-2 text-red-600">
                   <Icons.AlertOctagon className="h-5 w-5 shrink-0" />
-                  <h3 className="font-heading font-extrabold text-slate-900 text-ui">
+                  <h3 className="font-heading font-extrabold text-gray-900 text-ui">
                     {t("Exception / Error Details", "Detail výnimky / chyby", "Kivétel / hiba részletei")}
                   </h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSelectedLog(null)}
-                  className="text-slate-400 hover:text-slate-800 p-1.5 hover:bg-slate-100 rounded-xl transition-all cursor-pointer font-bold text-body"
+                  className="text-gray-400 hover:text-gray-800 p-1.5 hover:bg-gray-100 rounded-md transition-all cursor-pointer font-bold text-body"
                 >
                   ✕
                 </button>
               </div>
-              <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-700 text-ui">
-                <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-4 border-b border-slate-100 pb-4">
+              <div className="p-6 overflow-y-auto space-y-4 font-medium text-gray-700 text-ui">
+                <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-4 border-b border-gray-100 pb-4">
                   <div>
-                    <span className="type-overline text-slate-400 block">{t("Date & Time", "Dátum a čas", "Dátum és idő")}</span>
-                    <span className="font-mono text-micro text-slate-700 font-bold">{selectedLog.created_at}</span>
+                    <span className="type-overline text-gray-400 block">{t("Date & Time", "Dátum a čas", "Dátum és idő")}</span>
+                    <span className="font-mono text-micro text-gray-700 font-bold">{selectedLog.created_at}</span>
                   </div>
                   <div>
-                    <span className="type-overline text-slate-400 block">{t("Method & URI", "Metóda & URI", "Metódus & URI")}</span>
-                    <span className="font-mono text-micro text-slate-700 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
+                    <span className="type-overline text-gray-400 block">{t("Method & URI", "Metóda & URI", "Metódus & URI")}</span>
+                    <span className="font-mono text-micro text-gray-700 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
                   </div>
                   <div>
-                    <span className="type-overline text-slate-400 block">{t("File & Line", "Súbor a riadok", "Fájl és sor")}</span>
-                    <span className="font-mono text-micro text-slate-700 font-bold">{selectedLog.file ? `${selectedLog.file.split('/').pop()}:${selectedLog.line}` : 'N/A'}</span>
+                    <span className="type-overline text-gray-400 block">{t("File & Line", "Súbor a riadok", "Fájl és sor")}</span>
+                    <span className="font-mono text-micro text-gray-700 font-bold">{selectedLog.file ? `${selectedLog.file.split('/').pop()}:${selectedLog.line}` : 'N/A'}</span>
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <span className="type-overline text-slate-400 block">{t("Error Message", "Chybová správa", "Hibaüzenet")}</span>
-                  <div className="p-3 bg-red-50 text-red-800 rounded-xl font-mono text-caption font-bold border border-red-100 whitespace-pre-wrap leading-relaxed">
+                  <span className="type-overline text-gray-400 block">{t("Error Message", "Chybová správa", "Hibaüzenet")}</span>
+                  <div className="p-3 bg-red-50 text-red-800 rounded-md font-mono text-caption font-bold border border-red-100 whitespace-pre-wrap leading-relaxed">
                     {selectedLog.message}
                   </div>
                 </div>
 
                 {selectedLog.file && (
                   <div className="space-y-1">
-                    <span className="type-overline text-slate-400 block">{t("Full File Path", "Úplná cesta k súboru", "Teljes fájlútvonal")}</span>
-                    <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl font-mono text-micro border border-slate-100">
+                    <span className="type-overline text-gray-400 block">{t("Full File Path", "Úplná cesta k súboru", "Teljes fájlútvonal")}</span>
+                    <div className="p-2.5 bg-gray-50 text-gray-600 rounded-md font-mono text-micro border border-gray-100">
                       {selectedLog.file} ({t("Line", "Riadok", "Sor")} {selectedLog.line})
                     </div>
                   </div>
@@ -7325,8 +7325,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 {selectedLog.trace && (
                   <div className="space-y-1">
-                    <span className="type-overline text-slate-400 block">{t("Stack Trace", "Zásobník volaní", "Hívási verem")}</span>
-                    <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-micro overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-64">
+                    <span className="type-overline text-gray-400 block">{t("Stack Trace", "Zásobník volaní", "Hívási verem")}</span>
+                    <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg font-mono text-micro overflow-x-auto whitespace-pre leading-relaxed border border-gray-800 max-h-64">
                       {selectedLog.trace}
                     </pre>
                   </div>
@@ -7334,8 +7334,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 {selectedLog.payload && (
                   <div className="space-y-1">
-                    <span className="type-overline text-slate-400 block">{t("Request Payload", "Telo požiadavky", "Kérés tartalma")}</span>
-                    <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-micro overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-48">
+                    <span className="type-overline text-gray-400 block">{t("Request Payload", "Telo požiadavky", "Kérés tartalma")}</span>
+                    <pre className="p-4 bg-gray-900 text-gray-100 rounded-lg font-mono text-micro overflow-x-auto whitespace-pre leading-relaxed border border-gray-800 max-h-48">
                       {selectedLog.payload}
                     </pre>
                   </div>
@@ -7346,15 +7346,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         )}
       {/* Icon Picker Modal */}
       {isIconPickerOpen && (
-        <div className="fixed inset-0 z-[5000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col text-left overflow-hidden m-4 animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[5000] flex items-center justify-center bg-gray-900/60 animate-in fade-in duration-200">
+          <div className="bg-white rounded-lg border border-gray-200 shadow-xs w-full max-w-3xl max-h-[85vh] flex flex-col text-left overflow-hidden m-4 animate-in zoom-in-95 duration-200">
             {/* Modal Header */}
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
               <div>
-                <h3 className="text-title font-heading font-extrabold text-slate-800">
+                <h3 className="text-title font-heading font-extrabold text-gray-800">
                   {t("Select Icon", "Výber ikony", "Ikon kiválasztása")}
                 </h3>
-                <p className="text-ui font-bold text-slate-400 mt-0.5">
+                <p className="text-ui font-bold text-gray-400 mt-0.5">
                   {t("Browse and search from over 1000+ icons", "Prehliadajte a hľadajte z viac ako 1000+ ikon", "Böngésszen és keressen több mint 1000 ikon között")}
                 </p>
               </div>
@@ -7364,29 +7364,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   setIsIconPickerOpen(false);
                   setIconSearchQuery("");
                 }}
-                className="p-2 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                className="p-2 rounded-md hover:bg-gray-50 border border-transparent hover:border-gray-100 text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             {/* Search Bar */}
-            <div className="p-6 bg-slate-50/50 border-b border-slate-100 flex gap-3">
+            <div className="p-6 bg-gray-50/50 border-b border-gray-100 flex gap-3">
               <div className="relative flex-1">
                 <input
                   type="text"
                   value={iconSearchQuery}
                   onChange={(e) => setIconSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-800 text-ui font-semibold focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all shadow-sm"
+                  className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 bg-white text-gray-800 text-ui font-semibold focus:outline-none focus:border-entity-border focus:ring-4 focus:ring-entity-solid/25 transition-all shadow-xs"
                   placeholder={t("Search icons (e.g. settings, user, card)...", "Vyhľadajte ikonu (napr. settings, user, card)...", "Ikonok keresése (pl. settings, user, card)...")}
                   autoFocus
                 />
-                <Search className="h-5 w-5 text-slate-400 absolute left-3.5 top-3.5" />
+                <Search className="h-5 w-5 text-gray-400 absolute left-3.5 top-3.5" />
                 {iconSearchQuery && (
                   <button
                     type="button"
                     onClick={() => setIconSearchQuery("")}
-                    className="absolute right-3.5 top-3.5 text-slate-400 hover:text-slate-600"
+                    className="absolute right-3.5 top-3.5 text-gray-400 hover:text-gray-600"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -7403,8 +7403,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 if (displayed.length === 0) {
                   return (
-                    <div className="py-12 text-center text-slate-400">
-                      <Search className="h-8 w-8 mx-auto mb-2 text-slate-300" />
+                    <div className="py-12 text-center text-gray-400">
+                      <Search className="h-8 w-8 mx-auto mb-2 text-gray-300" />
                       <p className="text-ui font-semibold">
                         {t("No icons found", "Nenašli sa žiadne ikony", "Nem található ikon")}
                       </p>
@@ -7427,10 +7427,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               setIsIconPickerOpen(false);
                               setIconSearchQuery("");
                             }}
-                            className={`p-3 rounded-2xl flex flex-col items-center justify-center gap-2 border transition-all cursor-pointer group ${
+                            className={`p-3 rounded-lg flex flex-col items-center justify-center gap-2 border transition-all cursor-pointer group ${
                               isSelected
-                                ? "bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-100"
-                                : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:border-slate-300 hover:scale-[1.03]"
+                                ? "bg-entity-solid border-entity-border text-white shadow-xs "
+                                : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300 hover:scale-[1.03]"
                             }`}
                             title={name}
                           >
@@ -7438,7 +7438,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               {IconComponent ? <IconComponent className="h-6 w-6" /> : null}
                             </div>
                             <span className={`text-micro font-bold text-center truncate w-full ${
-                              isSelected ? "text-indigo-100" : "text-slate-400 group-hover:text-slate-600"
+                              isSelected ? "text-white/90" : "text-gray-400 group-hover:text-gray-600"
                             }`}>
                               {name}
                             </span>
@@ -7447,7 +7447,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       })}
                     </div>
                     {filtered.length > 150 && (
-                      <p className="text-micro text-center text-slate-400 font-semibold pt-4">
+                      <p className="text-micro text-center text-gray-400 font-semibold pt-4">
                         {userLanguage === "sk" 
                           ? `Zobrazuje sa prvých 150 výsledkov z ${filtered.length}. Upresnite vyhľadávanie.` 
                           : `Showing first 150 results out of ${filtered.length}. Refine your search to see more.`}

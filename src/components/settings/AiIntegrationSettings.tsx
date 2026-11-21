@@ -161,13 +161,13 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                     >
                       {/* AI Source Mode Switcher */}
                       <div className="space-y-2">
-                        <label className="type-overline text-slate-500 block">
+                        <label className="type-overline text-gray-500 block">
                           {t("AI Source", "Zdroj AI", "AI forrás")}
                         </label>
                         <div
                           role="tablist"
                           aria-label={t("AI Source", "Zdroj AI", "AI forrás")}
-                          className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200/60 gap-1 w-full ws-sm:max-w-md"
+                          className="flex bg-gray-100 p-1 rounded-lg border border-gray-200/60 gap-1 w-full ws-sm:max-w-md"
                         >
                           <button
                             type="button"
@@ -175,10 +175,10 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                             aria-selected={aiSourceMode === "manual"}
                             disabled={aiReadOnly}
                             onClick={() => setAiSourceMode("manual")}
-                            className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-ui transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                            className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-ui transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                               aiSourceMode === "manual"
-                                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20 font-bold"
-                                : "text-slate-500 hover:text-slate-800 hover:bg-white/60 font-semibold"
+                                ? "bg-entity-solid text-white shadow-xs font-bold"
+                                : "text-gray-500 hover:text-gray-800 hover:bg-white font-semibold"
                             }`}
                           >
                             <Key className="h-3.5 w-3.5 shrink-0" />
@@ -190,10 +190,10 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                             aria-selected={aiSourceMode === "connector"}
                             disabled={aiReadOnly}
                             onClick={() => setAiSourceMode("connector")}
-                            className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-ui transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                            className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-ui transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
                               aiSourceMode === "connector"
-                                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20 font-bold"
-                                : "text-slate-500 hover:text-slate-800 hover:bg-white/60 font-semibold"
+                                ? "bg-entity-solid text-white shadow-xs font-bold"
+                                : "text-gray-500 hover:text-gray-800 hover:bg-white font-semibold"
                             }`}
                           >
                             <Bot className="h-3.5 w-3.5 shrink-0" />
@@ -205,7 +205,7 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                       {aiSourceMode === "connector" ? (
                         <div className="space-y-4">
                           <div className="flex flex-wrap items-center justify-between gap-2 max-w-2xl">
-                            <label className="type-overline text-slate-500">
+                            <label className="type-overline text-gray-500">
                               {t("Selected LLM Connector", "Vybratý LLM konektor", "Kiválasztott LLM csatlakozó")}
                             </label>
                             <button
@@ -214,7 +214,7 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                               onClick={() => {
                                 window.location.hash = "settings/email/mailboxes";
                               }}
-                              className="inline-flex items-center gap-1.5 text-micro font-bold text-indigo-600 hover:text-indigo-700 cursor-pointer"
+                              className="inline-flex items-center gap-1.5 text-micro font-bold text-entity-text hover:text-entity-text cursor-pointer"
                             >
                               <span>{t("Manage Connectors", "Spravovať konektory", "Csatlakozók kezelése")}</span>
                               <ExternalLink className="h-3.5 w-3.5" />
@@ -224,12 +224,12 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                           {!llmConnectorsLoading && llmConnectors.length === 0 ? (
                             <div
                               data-testid="ai-connectors-empty"
-                              className="max-w-2xl p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-2"
+                              className="max-w-2xl p-4 rounded-lg border border-gray-200 bg-gray-50/70 space-y-2"
                             >
-                              <p className="text-ui font-bold text-slate-800">
+                              <p className="text-ui font-bold text-gray-800">
                                 {t("No LLM connectors configured yet", "Zatiaľ nie sú nastavené žiadne LLM konektory", "Még nincs beállított LLM csatlakozó")}
                               </p>
-                              <p className="text-micro font-medium text-slate-500 leading-relaxed">
+                              <p className="text-micro font-medium text-gray-500 leading-relaxed">
                                 {t(
                                   "Add an OpenAI API, Claude API, Gemini API, Claude, Antigravity, or ChatGPT connector in Connectors settings, then select it here.",
                                   "Pridajte konektor OpenAI API, Claude API, Gemini API, Claude, Antigravity alebo ChatGPT v nastaveniach Konektorov a následne ho vyberte tu.",
@@ -276,16 +276,16 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                           {selectedConnector ? (
                             <div
                               data-testid="ai-connector-status"
-                              className="max-w-2xl p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-2"
+                              className="max-w-2xl p-4 rounded-lg border border-gray-200 bg-gray-50/70 space-y-2"
                             >
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <span className="text-ui font-bold text-slate-800">{selectedConnector.name}</span>
-                                  <span className="px-2 py-0.5 rounded-full text-micro font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/70">
+                                  <span className="text-ui font-bold text-gray-800">{selectedConnector.name}</span>
+                                  <span className="px-2 py-0.5 rounded-full text-micro font-bold bg-entity-soft text-entity-text border border-entity-border">
                                     {getAgentConnectorTypeLabel(selectedConnector.connectorType, userLanguage)}
                                   </span>
                                   {selectedConnector.agentModel && (
-                                    <span className="px-2 py-0.5 rounded-full text-micro font-mono font-semibold bg-white text-slate-600 border border-slate-200">
+                                    <span className="px-2 py-0.5 rounded-full text-micro font-mono font-semibold bg-white text-gray-600 border border-gray-200">
                                       {selectedConnector.agentModel}
                                     </span>
                                   )}
@@ -307,7 +307,7 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                                   </span>
                                 )}
                               </div>
-                              <p className="text-micro font-medium text-slate-500 leading-relaxed">
+                              <p className="text-micro font-medium text-gray-500 leading-relaxed">
                                 {t(
                                   `${PRODUCT_NAME} AI features inherit this connector's configured model automatically.`,
                                   `AI funkcie v ${PRODUCT_NAME} automaticky preberajú model nakonfigurovaný v tomto konektore.`,
@@ -318,7 +318,7 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                           ) : aiConnectorId && !llmConnectorsLoading ? (
                             <div
                               data-testid="ai-connector-missing"
-                              className="max-w-2xl p-4 rounded-2xl border border-amber-200 bg-amber-50/70 flex items-start gap-2.5 text-amber-900"
+                              className="max-w-2xl p-4 rounded-lg border border-amber-200 bg-amber-50/70 flex items-start gap-2.5 text-amber-900"
                             >
                               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
                               <div className="space-y-0.5">
@@ -335,7 +335,7 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                               </div>
                             </div>
                           ) : !aiConnectorId ? (
-                            <p className="text-micro text-slate-400 font-semibold leading-relaxed max-w-2xl">
+                            <p className="text-micro text-gray-400 font-semibold leading-relaxed max-w-2xl">
                               {t(
                                 "Select a connector above to activate AI summaries, chat, reports, dashboards, routing, and agents without entering a separate OpenAI API key.",
                                 "Vyberte konektor vyššie a aktivujte AI zhrnutia, chat, reporty, dashboardy, smerovanie a agentov bez zadávania samostatného OpenAI API kľúča.",
@@ -347,16 +347,16 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                           {aiConnectorId && effectiveConnectorType && effectiveConnectorType !== "openai_api" && (
                             <div
                               data-testid="ai-fallback-openai-key"
-                              className="space-y-3 pt-4 border-t border-slate-100 max-w-2xl"
+                              className="space-y-3 pt-4 border-t border-gray-100 max-w-2xl"
                             >
-                              <label className="type-overline text-slate-500 block">
+                              <label className="type-overline text-gray-500 block">
                                 {t(
                                   "Optional OpenAI Fallback Key (Embeddings, Realtime Voice & WAAI)",
                                   "Voliteľný záložný OpenAI kľúč (Vektorové indexy, Hlas v reálnom čase a WAAI)",
                                   "Opcionális tartalék OpenAI kulcs (Vektoros indexelés, Valós idejű hang és WAAI)"
                                 )}
                               </label>
-                              <p className="text-micro text-slate-400 font-semibold leading-relaxed">
+                              <p className="text-micro text-gray-400 font-semibold leading-relaxed">
                                 {t(
                                   "Your selected connector handles chat, summaries, reports, dashboards, routing, and agents (and Gemini connectors also cover audio transcription). Add an OpenAI key below only if you use MariaDB 768-d Vector Search, Live Realtime Voice, or WAAI.",
                                   "Vybratý konektor zabezpečuje chat, zhrnutia, reporty, dashboardy, smerovanie a agentov (Gemini konektory podporujú aj prepis zvuku). OpenAI kľúč doplňte nižšie iba ak používate vektorové vyhľadávanie MariaDB, živý hlas v reálnom čase alebo WAAI.",
@@ -377,7 +377,7 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                           {aiConnectorId && effectiveConnectorType === "openai_api" && (
                             <div
                               data-testid="ai-openai-connector-all-modalities"
-                              className="max-w-2xl px-4 py-3 rounded-2xl bg-indigo-50/70 border border-indigo-100 text-micro font-semibold text-indigo-800 leading-relaxed"
+                              className="max-w-2xl px-4 py-3 rounded-lg bg-entity-soft border border-entity-border text-micro font-semibold text-entity-text leading-relaxed"
                             >
                               {t(
                                 "This OpenAI API connector automatically supplies credentials for 768-d Vector DB embeddings, audio transcription, Live Realtime Voice, and WAAI as well.",
@@ -390,7 +390,7 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                       ) : (
                         <>
                           <div className="space-y-2">
-                            <label className="type-overline text-slate-500 block">
+                            <label className="type-overline text-gray-500 block">
                               {t("OpenAI API Secret Key", "Tajný API kľúč OpenAI", "OpenAI API titkos kulcs")}
                             </label>
                             <SecretInput
@@ -403,8 +403,8 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                             />
                           </div>
             
-                          <div className="space-y-4 pt-4 border-t border-slate-100">
-                            <p className="text-micro text-slate-400 font-semibold leading-relaxed max-w-2xl">
+                          <div className="space-y-4 pt-4 border-t border-gray-100">
+                            <p className="text-micro text-gray-400 font-semibold leading-relaxed max-w-2xl">
                               {t(
                                 `Optional — these providers are only used by AI agent nodes in Automations & Workflows. Every other AI feature in ${PRODUCT_NAME} runs on OpenAI unless an External LLM Connector is selected above.`,
                                 `Voliteľné — títo poskytovatelia sa používajú iba v uzloch AI agenta v Automatizáciách a workflowoch. Všetky ostatné AI funkcie v ${PRODUCT_NAME} používajú OpenAI, pokiaľ vyššie nezvolíte externý LLM konektor.`,
@@ -413,7 +413,7 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                             </p>
             
                             <div className="space-y-2">
-                              <label className="type-overline text-slate-500 block">
+                              <label className="type-overline text-gray-500 block">
                                 {t("Anthropic API Secret Key", "Tajný API kľúč Anthropic", "Anthropic API titkos kulcs")}
                               </label>
                               <SecretInput
@@ -427,7 +427,7 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                             </div>
             
                             <div className="space-y-2">
-                              <label className="type-overline text-slate-500 block">
+                              <label className="type-overline text-gray-500 block">
                                 {t("Google Gemini API Secret Key", "Tajný API kľúč Google Gemini", "Google Gemini API titkos kulcs")}
                               </label>
                               <SecretInput
@@ -443,22 +443,22 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                         </>
                       )}
 
-                      <div className="space-y-2 pt-4 border-t border-slate-100">
-                        <label className="type-overline text-slate-500 block">
+                      <div className="space-y-2 pt-4 border-t border-gray-100">
+                        <label className="type-overline text-gray-500 block">
                           {t("Meeting transcription with speakers (Soniox)", "Prepis stretnutí s rozlíšením hovoriacich (Soniox)", "Megbeszélés-átirat beszélőkkel (Soniox)")}
                         </label>
                         {/* Permanent: recording works with either source, this says what the Soniox key adds. */}
                         <div
                           className={cn(
-                            "max-w-2xl flex items-start gap-2.5 px-3.5 py-3 rounded-xl border text-ui",
+                            "max-w-2xl flex items-start gap-2.5 px-3.5 py-3 rounded-md border text-ui",
                             sonioxApiKey.trim() !== ""
                               ? "border-emerald-200 bg-emerald-50/60 text-emerald-800"
-                              : "border-indigo-100 bg-indigo-50/60 text-slate-600",
+                              : "border-entity-border bg-entity-soft text-gray-600",
                           )}
                         >
                           {sonioxApiKey.trim() !== ""
                             ? <Icons.Users className="h-4 w-4 mt-0.5 shrink-0 text-emerald-600" />
-                            : <Icons.Info className="h-4 w-4 mt-0.5 shrink-0 text-indigo-500" />}
+                            : <Icons.Info className="h-4 w-4 mt-0.5 shrink-0 text-entity-text" />}
                           <p className="leading-relaxed">
                             {sonioxApiKey.trim() !== ""
                               ? t(
@@ -473,7 +473,7 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                                 )}
                           </p>
                         </div>
-                        <label className="type-overline text-slate-500 block">
+                        <label className="type-overline text-gray-500 block">
                           {t("Soniox API key", "API kľúč Soniox", "Soniox API-kulcs")}
                         </label>
                         <SecretInput
@@ -487,9 +487,9 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                       </div>
 
                       {!vectorDbValidated && canConfigureVectorDb && (
-                        <div className="space-y-4 pt-4 border-t border-slate-100 animate-slide-up">
+                        <div className="space-y-4 pt-4 border-t border-gray-100 animate-slide-up">
                           <div className="space-y-2">
-                            <label className="type-overline text-slate-500 block">
+                            <label className="type-overline text-gray-500 block">
                               {t("Vector Database Backend", "Backend vektorovej databázy", "Vektoradatbázis backend")}
                             </label>
                             <CustomSelect
@@ -521,58 +521,58 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                           </div>
         
                           {vectorDb === "mariadb" && (
-                            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-4 max-w-2xl animate-fade-in">
-                              <h4 className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
+                            <div className="p-5 rounded-lg bg-gray-50 border border-gray-100 space-y-4 max-w-2xl animate-fade-in">
+                              <h4 className="text-ui font-bold text-gray-800 flex items-center gap-1.5">
                                 <Database className="h-4 w-4 text-emerald-500" /> {t("MariaDB Vector Connection Settings", "Nastavenia pripojenia MariaDB Vector", "MariaDB vektorkapcsolat beállításai")}
                               </h4>
                               <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                  <label className="type-overline text-slate-500 block">{t("Database Host", "Hostiteľ databázy", "Adatbázis-kiszolgáló")}</label>
+                                  <label className="type-overline text-gray-500 block">{t("Database Host", "Hostiteľ databázy", "Adatbázis-kiszolgáló")}</label>
                                   <input
                                     type="text"
                                     value={mariaDbHost}
                                     onChange={(e) => setMariaDbHost(e.target.value)}
                                     placeholder={t("e.g. localhost or vector_db", "napr. localhost alebo vector_db", "pl. localhost vagy vector_db")}
-                                    className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3.5 py-2 rounded-lg bg-white border border-gray-200 text-ui text-gray-700 focus:outline-none focus:border-entity-border"
                                   />
                                 </div>
                                 <div className="space-y-1">
-                                  <label className="type-overline text-slate-500 block">{t("Port", "Port", "Port")}</label>
+                                  <label className="type-overline text-gray-500 block">{t("Port", "Port", "Port")}</label>
                                   <input
                                     type="text"
                                     value={mariaDbPort}
                                     onChange={(e) => setMariaDbPort(e.target.value)}
                                     placeholder={t("3306 or 3307", "3306 alebo 3307", "3306 vagy 3307")}
-                                    className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3.5 py-2 rounded-lg bg-white border border-gray-200 text-ui text-gray-700 focus:outline-none focus:border-entity-border"
                                   />
                                 </div>
                                 <div className="space-y-1">
-                                  <label className="type-overline text-slate-500 block">{t("Username", "Používateľské meno", "Felhasználónév")}</label>
+                                  <label className="type-overline text-gray-500 block">{t("Username", "Používateľské meno", "Felhasználónév")}</label>
                                   <input
                                     type="text"
                                     value={mariaDbUser}
                                     onChange={(e) => setMariaDbUser(e.target.value)}
                                     placeholder={t("e.g. vector_user", "napr. vector_user", "pl. vector_user")}
-                                    className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3.5 py-2 rounded-lg bg-white border border-gray-200 text-ui text-gray-700 focus:outline-none focus:border-entity-border"
                                   />
                                 </div>
                                 <div className="space-y-1">
-                                  <label className="type-overline text-slate-500 block">{t("Password", "Heslo", "Jelszó")}</label>
+                                  <label className="type-overline text-gray-500 block">{t("Password", "Heslo", "Jelszó")}</label>
                                   <PasswordInput
                                     value={mariaDbPassword}
                                     onChange={(e) => setMariaDbPassword(e.target.value)}
                                     placeholder="••••••••"
-                                    className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
+                                    className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-gray-200 text-ui text-gray-700 focus:outline-none focus:border-entity-border"
                                   />
                                 </div>
                                 <div className="space-y-1 ws-md:col-span-2">
-                                  <label className="type-overline text-slate-500 block">{t("Database Name", "Názov databázy", "Adatbázis neve")}</label>
+                                  <label className="type-overline text-gray-500 block">{t("Database Name", "Názov databázy", "Adatbázis neve")}</label>
                                   <input
                                     type="text"
                                     value={mariaDbName}
                                     onChange={(e) => setMariaDbName(e.target.value)}
                                     placeholder={t("e.g. vector_db", "napr. vector_db", "pl. vector_db")}
-                                    className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3.5 py-2 rounded-lg bg-white border border-gray-200 text-ui text-gray-700 focus:outline-none focus:border-entity-border"
                                   />
                                 </div>
                               </div>
@@ -580,28 +580,28 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                           )}
         
                           {vectorDb === "qdrant" && (
-                            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-4 max-w-2xl animate-fade-in">
-                              <h4 className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
+                            <div className="p-5 rounded-lg bg-gray-50 border border-gray-100 space-y-4 max-w-2xl animate-fade-in">
+                              <h4 className="text-ui font-bold text-gray-800 flex items-center gap-1.5">
                                 <Sliders className="h-4 w-4 text-purple-500" /> {t("Qdrant Sidecar Settings", "Nastavenia Qdrant Sidecar", "Qdrant Sidecar beállítások")}
                               </h4>
                               <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
                                 <div className="space-y-1 ws-md:col-span-2">
-                                  <label className="type-overline text-slate-500 block">{t("Server URL", "URL servera", "Szerver URL")}</label>
+                                  <label className="type-overline text-gray-500 block">{t("Server URL", "URL servera", "Szerver URL")}</label>
                                   <input
                                     type="text"
                                     value={qdrantUrl}
                                     onChange={(e) => setQdrantUrl(e.target.value)}
                                     placeholder={t("e.g. http://localhost:6333", "napr. http://localhost:6333", "pl. http://localhost:6333")}
-                                    className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3.5 py-2 rounded-lg bg-white border border-gray-200 text-ui text-gray-700 focus:outline-none focus:border-entity-border"
                                   />
                                 </div>
                                 <div className="space-y-1 ws-md:col-span-2">
-                                  <label className="type-overline text-slate-500 block">{t("API Key (Optional)", "API kľúč (Voliteľné)", "API kulcs (Opcionális)")}</label>
+                                  <label className="type-overline text-gray-500 block">{t("API Key (Optional)", "API kľúč (Voliteľné)", "API kulcs (Opcionális)")}</label>
                                   <PasswordInput
                                     value={qdrantApiKey}
                                     onChange={(e) => setQdrantApiKey(e.target.value)}
                                     placeholder={t("Leave blank if unsecured", "Ponechajte prázdne, ak je nezabezpečené", "Hagyja üresen, ha nincs védve")}
-                                    className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
+                                    className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-gray-200 text-ui text-gray-700 focus:outline-none focus:border-entity-border"
                                   />
                                 </div>
                               </div>
@@ -609,28 +609,28 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                           )}
         
                           {vectorDb === "pinecone" && (
-                            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-4 max-w-2xl animate-fade-in">
-                              <h4 className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
-                                <Globe className="h-4 w-4 text-indigo-500" /> {t("Pinecone Cloud Settings", "Nastavenia Pinecone Cloud", "Pinecone felhő beállítások")}
+                            <div className="p-5 rounded-lg bg-gray-50 border border-gray-100 space-y-4 max-w-2xl animate-fade-in">
+                              <h4 className="text-ui font-bold text-gray-800 flex items-center gap-1.5">
+                                <Globe className="h-4 w-4 text-entity-text" /> {t("Pinecone Cloud Settings", "Nastavenia Pinecone Cloud", "Pinecone felhő beállítások")}
                               </h4>
                               <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
                                 <div className="space-y-1 ws-md:col-span-2">
-                                  <label className="type-overline text-slate-500 block">{t("API Key", "API kľúč", "API kulcs")}</label>
+                                  <label className="type-overline text-gray-500 block">{t("API Key", "API kľúč", "API kulcs")}</label>
                                   <PasswordInput
                                     value={pineconeApiKey}
                                     onChange={(e) => setPineconeApiKey(e.target.value)}
                                     placeholder="pcsk_..."
-                                    className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
+                                    className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-gray-200 text-ui text-gray-700 focus:outline-none focus:border-entity-border"
                                   />
                                 </div>
                                 <div className="space-y-1 ws-md:col-span-2">
-                                  <label className="type-overline text-slate-500 block">{t("Index Name", "Názov indexu", "Index neve")}</label>
+                                  <label className="type-overline text-gray-500 block">{t("Index Name", "Názov indexu", "Index neve")}</label>
                                   <input
                                     type="text"
                                     value={pineconeIndex}
                                     onChange={(e) => setPineconeIndex(e.target.value)}
                                     placeholder={t("e.g. company-kb", "napr. firemny-index", "pl. ceges-index")}
-                                    className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-ui text-slate-700 focus:outline-none focus:border-indigo-500"
+                                    className="w-full px-3.5 py-2 rounded-lg bg-white border border-gray-200 text-ui text-gray-700 focus:outline-none focus:border-entity-border"
                                   />
                                 </div>
                               </div>
@@ -643,13 +643,13 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                                 type="button"
                                 disabled={isValidating}
                                 onClick={handleValidateConnection}
-                                className="w-fit px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-ui font-bold transition-all shadow-md cursor-pointer active:scale-95 disabled:opacity-50"
+                                className="w-fit px-5 py-2.5 bg-entity-solid hover:bg-entity-solid text-white rounded-md text-ui font-bold transition-all shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
                               >
                                 {isValidating ? t("Validating Connection...", "Overuje sa pripojenie...", "Kapcsolat ellenőrzése...") : t("Test Vector DB Connection", "Otestovať pripojenie k vektorovej DB", "Vektoradatbázis-kapcsolat tesztelése")}
                               </button>
         
                               {validationResult && (
-                                <div className={`p-4 rounded-xl border text-ui font-semibold leading-relaxed animate-fade-in ${
+                                <div className={`p-4 rounded-md border text-ui font-semibold leading-relaxed animate-fade-in ${
                                   validationResult.success
                                     ? "bg-emerald-50 border-emerald-100 text-emerald-800"
                                     : "bg-rose-50 border-rose-100 text-rose-800"
@@ -660,7 +660,7 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                                       <span className="font-bold block mb-0.5">
                                         {validationResult.success ? t("Validation Succeeded", "Overenie úspešné", "Az ellenőrzés sikeres") : t("Validation Failed", "Overenie zlyhalo", "Az ellenőrzés sikertelen")}
                                       </span>
-                                      <p className="text-micro text-slate-500">{validationResult.message}</p>
+                                      <p className="text-micro text-gray-500">{validationResult.message}</p>
                                     </div>
                                   </div>
                                 </div>
@@ -695,41 +695,41 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                                   }));
                                 }
                               }}
-                              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-xl text-ui font-bold transition-all cursor-pointer active:scale-95"
+                              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900 rounded-md text-ui font-bold transition-all cursor-pointer active:scale-95"
                             >
                               {t("Reset Configuration", "Resetovať konfiguráciu", "Konfiguráció visszaállítása")}
                             </button>
                         ) : undefined}
                       >
                         {/* Active database info summary */}
-                        <div className="text-ui font-semibold text-slate-700 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                          <span className="type-overline text-slate-400 block mb-2">{t("Active Backend Details", "Aktívne detaily backendu", "Aktív backend részletei")}</span>
+                        <div className="text-ui font-semibold text-gray-700 bg-gray-50 p-4 rounded-lg border border-gray-100">
+                          <span className="type-overline text-gray-400 block mb-2">{t("Active Backend Details", "Aktívne detaily backendu", "Aktív backend részletei")}</span>
                           <div className="grid grid-cols-2 gap-4">
                             <div>
-                              <span className="text-micro text-slate-400 block">{t("DB Type:", "Typ DB:", "DB típus:")}</span>
-                              <span className="font-mono text-ui text-indigo-600 font-bold">{vectorDb}</span>
+                              <span className="text-micro text-gray-400 block">{t("DB Type:", "Typ DB:", "DB típus:")}</span>
+                              <span className="font-mono text-ui text-entity-text font-bold">{vectorDb}</span>
                             </div>
                             {vectorDb === "mariadb" && (
                               <>
                                 <div>
-                                  <span className="text-micro text-slate-400 block">{t("Host:", "Hostiteľ:", "Kiszolgáló:")}</span>
+                                  <span className="text-micro text-gray-400 block">{t("Host:", "Hostiteľ:", "Kiszolgáló:")}</span>
                                   <span className="font-mono text-ui">{mariaDbHost}:{mariaDbPort}</span>
                                 </div>
                                 <div>
-                                  <span className="text-micro text-slate-400 block">{t("Database Name:", "Názov databázy:", "Adatbázis neve:")}</span>
+                                  <span className="text-micro text-gray-400 block">{t("Database Name:", "Názov databázy:", "Adatbázis neve:")}</span>
                                   <span className="font-mono text-ui">{mariaDbName}</span>
                                 </div>
                               </>
                             )}
                             {vectorDb === "qdrant" && (
                               <div>
-                                <span className="text-micro text-slate-400 block">Host:</span>
+                                <span className="text-micro text-gray-400 block">Host:</span>
                                 <span className="font-mono text-ui">{qdrantUrl}</span>
                               </div>
                             )}
                             {vectorDb === "pinecone" && (
                               <div>
-                                <span className="text-micro text-slate-400 block">{t("Index Name:", "Názov indexu:", "Index neve:")}</span>
+                                <span className="text-micro text-gray-400 block">{t("Index Name:", "Názov indexu:", "Index neve:")}</span>
                                 <span className="font-mono text-ui">{pineconeIndex}</span>
                               </div>
                             )}
@@ -738,47 +738,47 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
         
                         {/* Training widget block */}
                         <div className="space-y-4 pt-4">
-                          <h4 className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
+                          <h4 className="text-ui font-bold text-gray-800 flex items-center gap-1.5">
                             <Database className="h-4 w-4 text-purple-500 animate-pulse" /> {t("RAG Knowledge Index Ingestion", "Indexovanie znalostnej bázy RAG", "RAG tudásbázis indexelése")}
                           </h4>
         
                           {trainingStats ? (
                             <div className="grid grid-cols-2 ws-sm:grid-cols-4 gap-3">
-                              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                                <span className="type-overline text-slate-400 block">{t("Leads Chunks", "Časti leadov", "Lead darabok")}</span>
-                                <span className="text-title-sm font-extrabold text-slate-800">{trainingStats.leads}</span>
+                              <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                <span className="type-overline text-gray-400 block">{t("Leads Chunks", "Časti leadov", "Lead darabok")}</span>
+                                <span className="text-title-sm font-extrabold text-gray-800">{trainingStats.leads}</span>
                               </div>
-                              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                                <span className="type-overline text-slate-400 block">{t("Clients Chunks", "Časti klientov", "Ügyfél darabok")}</span>
-                                <span className="text-title-sm font-extrabold text-slate-800">{trainingStats.clients}</span>
+                              <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                <span className="type-overline text-gray-400 block">{t("Clients Chunks", "Časti klientov", "Ügyfél darabok")}</span>
+                                <span className="text-title-sm font-extrabold text-gray-800">{trainingStats.clients}</span>
                               </div>
-                              <div className="p-3 bg-blue-50/70 rounded-2xl border border-blue-100">
+                              <div className="p-3 bg-blue-50/70 rounded-lg border border-blue-100">
                                 <span className="type-overline text-blue-900 block">{t("Products / Stock", "Skladový tovar", "Termékek / Készlet")}</span>
                                 <span className="text-title-sm font-extrabold text-blue-950">{trainingStats.products || 0}</span>
                               </div>
-                              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                                <span className="type-overline text-slate-400 block">{t("Emails Indexed", "Indexované e-maily", "Indexelt e-mailek")}</span>
-                                <span className="text-title-sm font-extrabold text-slate-800">{trainingStats.emails}</span>
+                              <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                <span className="type-overline text-gray-400 block">{t("Emails Indexed", "Indexované e-maily", "Indexelt e-mailek")}</span>
+                                <span className="text-title-sm font-extrabold text-gray-800">{trainingStats.emails}</span>
                               </div>
-                              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                                <span className="type-overline text-slate-400 block">{t("Chats / Notes", "Chaty / Poznámky", "Csevegések / Jegyzetek")}</span>
-                                <span className="text-title-sm font-extrabold text-slate-800">{trainingStats.chats}</span>
+                              <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                <span className="type-overline text-gray-400 block">{t("Chats / Notes", "Chaty / Poznámky", "Csevegések / Jegyzetek")}</span>
+                                <span className="text-title-sm font-extrabold text-gray-800">{trainingStats.chats}</span>
                               </div>
-                              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                                <span className="type-overline text-slate-400 block">{t("Meeting Notes", "Zápisy zo stretnutí", "Megbeszélések")}</span>
-                                <span className="text-title-sm font-extrabold text-slate-800">{trainingStats.meeting_notes || 0}</span>
+                              <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                <span className="type-overline text-gray-400 block">{t("Meeting Notes", "Zápisy zo stretnutí", "Megbeszélések")}</span>
+                                <span className="text-title-sm font-extrabold text-gray-800">{trainingStats.meeting_notes || 0}</span>
                               </div>
-                              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                                <span className="type-overline text-slate-400 block">{t("Unified Entries", "Univerzálne záznamy", "Egységes bejegyzések")}</span>
-                                <span className="text-title-sm font-extrabold text-slate-800">{trainingStats.unified_entries || 0}</span>
+                              <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                <span className="type-overline text-gray-400 block">{t("Unified Entries", "Univerzálne záznamy", "Egységes bejegyzések")}</span>
+                                <span className="text-title-sm font-extrabold text-gray-800">{trainingStats.unified_entries || 0}</span>
                               </div>
-                              <div className="p-3 bg-purple-50 rounded-2xl border border-purple-100">
+                              <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
                                 <span className="type-overline text-purple-700 block">{t("Total Items", "Celkovo entít", "Összes elem")}</span>
                                 <span className="text-title-sm font-extrabold text-purple-900">{trainingStats.total_items || 0}</span>
                               </div>
                             </div>
                           ) : (
-                            <div className="h-12 flex items-center justify-center text-ui text-slate-400 font-semibold">
+                            <div className="h-12 flex items-center justify-center text-ui text-gray-400 font-semibold">
                               {t("Loading data statistics...", "Načítavajú sa štatistiky údajov...", "Adatstatisztikák betöltése...")}
                             </div>
                           )}
@@ -786,11 +786,11 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                           {/* Progress bar */}
                           {isTraining && (
                             <div className="space-y-2 animate-pulse">
-                              <div className="flex items-center justify-between type-overline text-indigo-600">
+                              <div className="flex items-center justify-between type-overline text-entity-text">
                                 <span>{t("Ingestion in Progress...", "Prebieha indexovanie...", "Indexelés folyamatban...")}</span>
                                 <span>{trainingProgress}%</span>
                               </div>
-                              <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                              <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden border border-gray-200">
                                 <div className="h-full bg-gradient-to-r from-purple-500 to-indigo-600 rounded-full transition-all duration-300" style={{ width: `${trainingProgress}%` }}></div>
                               </div>
                             </div>
@@ -802,14 +802,14 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                               <button
                                 type="button"
                                 onClick={handleStartTraining}
-                                className="px-5 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-ui font-bold shadow-lg shadow-purple-600/20 active:scale-95 transition-all cursor-pointer"
+                                className="px-5 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-md text-ui font-bold shadow-xs shadow-purple-600/20 active:scale-95 transition-all cursor-pointer"
                               >
                                 {t("Train Existing Data", "Trénovať existujúce dáta", "Meglévő adatok betanítása")}
                               </button>
                               <button
                                 type="button"
                                 onClick={fetchTrainingStats}
-                                className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-ui font-bold active:scale-95 transition-all cursor-pointer"
+                                className="px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-ui font-bold active:scale-95 transition-all cursor-pointer"
                               >
                                 {t("Refresh Statistics", "Obnoviť štatistiky", "Statisztikák frissítése")}
                               </button>
@@ -819,8 +819,8 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                           {/* Logs widget */}
                           {trainingLogs.length > 0 && (
                             <div className="space-y-1.5">
-                              <span className="type-overline text-slate-400 block">{t("Indexation logs", "Záznamy indexovania", "Indexelési naplók")}</span>
-                              <div className="bg-slate-950 text-slate-300 p-4 rounded-2xl font-mono text-micro leading-relaxed max-h-48 overflow-y-auto space-y-1 scrollbar-thin border border-slate-900 shadow-inner">
+                              <span className="type-overline text-gray-400 block">{t("Indexation logs", "Záznamy indexovania", "Indexelési naplók")}</span>
+                              <div className="bg-gray-950 text-gray-300 p-4 rounded-lg font-mono text-micro leading-relaxed max-h-48 overflow-y-auto space-y-1 scrollbar-thin border border-gray-900 shadow-inner">
                                 {trainingLogs.map((log, idx) => (
                                   <div key={idx} className={log.includes("[ERROR]") ? "text-rose-400 font-bold" : log.includes("[SUCCESS]") ? "text-emerald-400 font-bold" : ""}>
                                     {log}
@@ -831,15 +831,15 @@ export const AiIntegrationSettings: React.FC<AiIntegrationSettingsProps> = ({
                           )}
         
                           {/* Autonomous Agents Cron Link */}
-                          <div className="pt-4 border-t border-slate-100 space-y-3">
-                            <h4 className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
-                              <Clock className="h-4 w-4 text-indigo-500 animate-pulse" /> {t("Autonomous Agents Cron Link", "Cron odkaz pre autonómne agenty", "Autonóm ügynökök Cron hivatkozása")}
+                          <div className="pt-4 border-t border-gray-100 space-y-3">
+                            <h4 className="text-ui font-bold text-gray-800 flex items-center gap-1.5">
+                              <Clock className="h-4 w-4 text-entity-text animate-pulse" /> {t("Autonomous Agents Cron Link", "Cron odkaz pre autonómne agenty", "Autonóm ügynökök Cron hivatkozása")}
                             </h4>
-                            <div className="p-4 rounded-2xl bg-indigo-50/40 border border-indigo-100/50 text-ui font-semibold leading-relaxed text-slate-700 space-y-2.5">
-                              <p className="text-caption text-slate-500">
+                            <div className="p-4 rounded-lg bg-entity-soft border border-entity-border text-ui font-semibold leading-relaxed text-gray-700 space-y-2.5">
+                              <p className="text-caption text-gray-500">
                                 {t("To run autonomous agents automatically, configure your server cron manager (e.g. crontab or a webhook runner) to trigger the endpoint URL below:", "Ak chcete autonómne agenty spúšťať automaticky, nastavte cron manažér na serveri (napr. crontab alebo webhook runner), aby spúšťal nižšie uvedenú URL adresu endpointu:", "Az autonóm ügynökök automatikus futtatásához állítsa be a szerver cron-kezelőjét (pl. crontab vagy webhook futtató), hogy meghívja az alábbi végpont URL-t:")}
                               </p>
-                              <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm font-mono text-micro break-all select-all text-slate-800">
+                              <div className="flex items-center gap-2 bg-white p-2.5 rounded-md border border-gray-200 shadow-xs font-mono text-micro break-all select-all text-gray-800">
                                 <span>{window.location.origin}/api/cron_agents.php</span>
                               </div>
                             </div>

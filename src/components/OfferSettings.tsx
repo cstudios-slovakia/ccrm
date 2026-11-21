@@ -96,7 +96,7 @@ const AiTemplateCardHeader: React.FC<{
   return (
     <div className="flex items-start justify-between gap-2">
       <div className="min-w-0">
-        <div className="font-bold text-ui text-slate-900 truncate">
+        <div className="font-bold text-ui text-gray-900 truncate">
           <InlineRenameName
             value={template.name}
             canEdit={canEdit}
@@ -108,7 +108,7 @@ const AiTemplateCardHeader: React.FC<{
             <span data-testid="ai-template-name">{template.name}</span>
           </InlineRenameName>
         </div>
-        <div className="text-caption text-slate-500">{description}</div>
+        <div className="text-caption text-gray-500">{description}</div>
       </div>
       {canEdit && onDelete && (
         <div className="flex items-center gap-1 shrink-0">
@@ -430,10 +430,10 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
               <>
           {/* SECTION 1: Default offer texts */}
           <div className="space-y-4">
-            <h4 className="text-ui font-bold text-slate-800">
+            <h4 className="text-ui font-bold text-gray-800">
               {t("Default offer texts", "Predvolené texty ponuky", "Alapértelmezett ajánlatszövegek")}
             </h4>
-            <p className="text-ui text-slate-500 -mt-2">
+            <p className="text-ui text-gray-500 -mt-2">
               {t(
                 "Every new offer starts with these. Leaving one blank simply omits that block from the printed offer.",
                 "Každá nová ponuka začína s týmito textami. Prázdne pole znamená, že sa blok na ponuke nevytlačí.",
@@ -806,11 +806,11 @@ export const OfferSettings: React.FC<OfferSettingsProps> = ({
                           : undefined
                       }
                     />
-                    <div className="flex items-center gap-2 pt-1 border-t border-slate-200/70">
-                      <span className="type-overline text-slate-400">{t("Palette:", "Paleta:", "Paletta:")}</span>
+                    <div className="flex items-center gap-2 pt-1 border-t border-gray-200/70">
+                      <span className="type-overline text-gray-400">{t("Palette:", "Paleta:", "Paletta:")}</span>
                       <div className="flex items-center gap-1">
                         {[template.colors.primary, template.colors.accent, template.colors.secondary].map((color, i) => (
-                          <span key={i} className="h-3 w-3 rounded-full border border-slate-300" style={{ backgroundColor: color }}></span>
+                          <span key={i} className="h-3 w-3 rounded-full border border-gray-300" style={{ backgroundColor: color }}></span>
                         ))}
                       </div>
                     </div>

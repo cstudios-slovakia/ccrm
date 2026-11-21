@@ -54,15 +54,15 @@ export const MobileSectionMenu: React.FC<{
         aria-controls={menuId}
         data-testid="settings-section-menu"
         onClick={() => setOpen((v) => !v)}
-        className="flex min-h-13 w-full cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3.5 text-left text-slate-900"
+        className="flex min-h-13 w-full cursor-pointer items-center gap-3 rounded-lg border border-gray-200 bg-white px-3.5 text-left text-gray-900"
       >
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="text-caption font-semibold text-slate-500">
+          <span className="text-caption font-semibold text-gray-500">
             {formatTranslation(lang, "settings.nav.ui.section_of", { n: index + 1, m: sectionIds.length })}
           </span>
           <span className="truncate text-body font-bold">{t(sectionKey(categoryId, sectionIds[index] ?? "", "title"))}</span>
         </span>
-        {open ? <ChevronUp className="size-4.5 shrink-0 text-slate-500" aria-hidden="true" /> : <ChevronDown className="size-4.5 shrink-0 text-slate-500" aria-hidden="true" />}
+        {open ? <ChevronUp className="size-4.5 shrink-0 text-gray-500" aria-hidden="true" /> : <ChevronDown className="size-4.5 shrink-0 text-gray-500" aria-hidden="true" />}
       </button>
 
       {open && (
@@ -70,7 +70,7 @@ export const MobileSectionMenu: React.FC<{
           id={menuId}
           aria-label={t("settings.nav.ui.sections")}
           data-testid="settings-section-menu-list"
-          className="settings-menu-in absolute inset-x-0 top-[calc(100%+0.375rem)] z-30 rounded-3xl border border-slate-200 bg-white p-1.5 shadow-2xl"
+          className="settings-menu-in absolute inset-x-0 top-[calc(100%+0.375rem)] z-30 rounded-lg border border-gray-200 bg-white p-1.5 shadow-xs"
         >
           <ScrollFade axis="y" className="max-h-[60vh]">
             <ul className="flex flex-col gap-0.5">
@@ -87,12 +87,12 @@ export const MobileSectionMenu: React.FC<{
                         onPick(id);
                       }}
                       className={cn(
-                        "flex min-h-11.5 items-center gap-2.5 rounded-xl px-3 text-body no-underline",
-                        current ? "bg-indigo-50 font-bold text-indigo-900" : "font-semibold text-slate-700 hover:bg-slate-50",
+                        "flex min-h-11.5 items-center gap-2.5 rounded-md px-3 text-body no-underline",
+                        current ? "bg-entity-soft font-bold text-entity-text" : "font-semibold text-gray-700 hover:bg-gray-50",
                       )}
                     >
                       <span className="flex-1">{t(sectionKey(categoryId, id, "title"))}</span>
-                      {current && <Check className="size-4.5 text-indigo-600" aria-hidden="true" />}
+                      {current && <Check className="size-4.5 text-entity-text" aria-hidden="true" />}
                     </a>
                   </li>
                 );

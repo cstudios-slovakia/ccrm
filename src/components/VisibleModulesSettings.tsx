@@ -128,8 +128,8 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
   const categories = useMemo(() => getModuleCategories(language), [language]);
 
   const pill = (active: boolean) =>
-    `inline-flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-xl px-3.5 text-ui font-bold transition-colors ${
-      active ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+    `inline-flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md px-3.5 text-ui font-bold transition-colors ${
+      active ? "bg-entity-solid text-white shadow-xs " : "bg-gray-100 text-gray-600 hover:bg-gray-200"
     }`;
 
   return (
@@ -139,12 +139,12 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
         description={getTranslation(language, "settings.modules.subtitle")}
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-emerald-200/80 bg-emerald-50 px-3 text-ui font-bold text-emerald-800">
+            <span className="inline-flex min-h-9 items-center gap-2 rounded-md border border-emerald-200/80 bg-emerald-50 px-3 text-ui font-bold text-emerald-800">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
               {activeCount} {getTranslation(language, "settings.modules.active_stats")}
             </span>
             {hiddenCount > 0 && (
-              <span className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-amber-200/80 bg-amber-50 px-3 text-ui font-bold text-amber-800">
+              <span className="inline-flex min-h-9 items-center gap-2 rounded-md border border-amber-200/80 bg-amber-50 px-3 text-ui font-bold text-amber-800">
                 <EyeOff className="h-3.5 w-3.5 text-amber-600" aria-hidden="true" />
                 {hiddenCount} {getTranslation(language, "settings.modules.hidden_stats")}
               </span>
@@ -154,20 +154,20 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
       >
         <div className="flex flex-col gap-3 ws-sm:flex-row ws-sm:items-center ws-sm:justify-between">
           <div className="relative max-w-md flex-1">
-            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={getTranslation(language, "settings.modules.search_placeholder")}
-              className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2 pl-10 pr-9 text-ui font-medium text-slate-800 placeholder-slate-400 transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              className="min-h-11 w-full rounded-md border border-gray-200 bg-gray-50 py-2 pl-10 pr-9 text-ui font-medium text-gray-800 placeholder-gray-400 transition-all focus:border-entity-border focus:outline-none focus:ring-2 focus:ring-entity-solid/25"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
                 aria-label={t("Clear search", "Vymazať hľadanie", "Keresés törlése")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer rounded-md p-1 text-slate-400 hover:text-slate-600"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer rounded-md p-1 text-gray-400 hover:text-gray-600"
               >
                 <X className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
@@ -180,7 +180,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
                 type="button"
                 data-testid="run-module-setup-wizard"
                 onClick={onRunSetupWizard}
-                className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg bg-entity-solid px-5 text-ui font-bold text-white shadow-xs transition-colors hover:bg-entity-solid-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-entity-solid/40 focus-visible:ring-offset-2"
               >
                 <WandSparkles className="h-4 w-4" aria-hidden="true" />
                 <span>{t("Run module setup wizard", "Spustiť sprievodcu modulmi", "Modulvarázsló indítása")}</span>
@@ -191,9 +191,9 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
                 type="button"
                 disabled={!canEdit}
                 onClick={handleEnableAll}
-                className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-ui font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-ui font-bold text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <CheckCheck className="h-4 w-4 text-indigo-600" aria-hidden="true" />
+                <CheckCheck className="h-4 w-4 text-entity-text" aria-hidden="true" />
                 <span>{getTranslation(language, "settings.modules.enable_all")}</span>
               </button>
             )}
@@ -212,7 +212,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
               return (
                 <button key={cat.id} type="button" onClick={() => setActiveCategoryFilter(cat.id)} className={pill(isSelected)}>
                   <span>{cat.title}</span>
-                  <span className={`rounded-md px-1.5 text-micro ${isSelected ? "bg-white/20 text-white" : "bg-slate-200 text-slate-600"}`}>{countInCat}</span>
+                  <span className={`rounded-md px-1.5 text-micro ${isSelected ? "bg-white/20 text-white" : "bg-gray-200 text-gray-600"}`}>{countInCat}</span>
                   {hiddenInCat > 0 && !isSelected && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
                 </button>
               );
@@ -241,7 +241,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
                     <button
                       type="button"
                       onClick={() => handleToggleCategory(category.id, true)}
-                      className="min-h-9 cursor-pointer rounded-xl px-3 text-ui font-bold text-indigo-600 transition-colors hover:bg-indigo-50"
+                      className="min-h-9 cursor-pointer rounded-md px-3 text-ui font-bold text-entity-text transition-colors hover:bg-entity-soft"
                     >
                       {getTranslation(language, "settings.modules.show_category")}
                     </button>
@@ -250,7 +250,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
                     <button
                       type="button"
                       onClick={() => handleToggleCategory(category.id, false)}
-                      className="min-h-9 cursor-pointer rounded-xl px-3 text-ui font-bold text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                      className="min-h-9 cursor-pointer rounded-md px-3 text-ui font-bold text-gray-500 transition-colors hover:bg-rose-50 hover:text-rose-600"
                     >
                       {getTranslation(language, "settings.modules.hide_category")}
                     </button>
@@ -267,16 +267,16 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
                 return (
                   <div
                     key={module.id}
-                    className={`flex select-none items-center justify-between gap-3 rounded-2xl border p-4 transition-all duration-200 ${
+                    className={`flex select-none items-center justify-between gap-3 rounded-lg border p-4 transition-all duration-200 ${
                       isVisible
-                        ? "border-slate-200/90 bg-white hover:border-indigo-300 hover:shadow-md hover:shadow-indigo-500/5"
-                        : "border-dashed border-slate-300 bg-slate-50/70 opacity-60 hover:opacity-90"
+                        ? "border-gray-200/90 bg-white hover:border-entity-border hover:shadow-xs hover:"
+                        : "border-dashed border-gray-300 bg-gray-50/70 opacity-60 hover:opacity-90"
                     }`}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3.5">
                       <div
-                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition-transform ${
-                          isVisible ? "scale-100 shadow-sm" : "grayscale"
+                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-transform ${
+                          isVisible ? "scale-100 shadow-xs" : "grayscale"
                         }`}
                         style={{ backgroundColor: module.bgColor || `${module.color}18`, color: module.color }}
                       >
@@ -285,13 +285,13 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
 
                       <div className="min-w-0 flex-1 space-y-0.5">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className={`truncate text-ui font-bold ${isVisible ? "text-slate-900" : "text-slate-600 line-through decoration-slate-400"}`}>
+                          <span className={`truncate text-ui font-bold ${isVisible ? "text-gray-900" : "text-gray-600 line-through decoration-gray-400"}`}>
                             {module.title}
                           </span>
                           {module.badge && (
                             <span
                               className={`type-overline rounded px-1.5 py-0.5 ${
-                                module.isCustom ? "border border-indigo-200 bg-indigo-50 text-indigo-700" : "border border-slate-200 bg-slate-100 text-slate-600"
+                                module.isCustom ? "border border-entity-border bg-entity-soft text-entity-text" : "border border-gray-200 bg-gray-100 text-gray-600"
                               }`}
                             >
                               {module.badge}
@@ -304,7 +304,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
                             </span>
                           )}
                         </div>
-                        <p className="truncate text-caption leading-tight text-slate-500">{module.description}</p>
+                        <p className="truncate text-caption leading-tight text-gray-500">{module.description}</p>
                       </div>
                     </div>
 
@@ -315,8 +315,8 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
                         aria-checked={isVisible}
                         disabled={!canEdit}
                         onClick={() => handleToggleModule(module.id, isVisible, module.title)}
-                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
-                          isVisible ? "bg-indigo-600" : "bg-slate-300"
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-entity-solid/25 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+                          isVisible ? "bg-entity-solid" : "bg-gray-300"
                         }`}
                       >
                         <span className="sr-only">Toggle {module.title}</span>
@@ -326,7 +326,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
                             isVisible ? "translate-x-5" : "translate-x-0"
                           }`}
                         >
-                          {isVisible ? <Check className="h-3 w-3 stroke-[3] text-indigo-600" /> : <X className="h-3 w-3 stroke-[2.5] text-slate-400" />}
+                          {isVisible ? <Check className="h-3 w-3 stroke-[3] text-entity-text" /> : <X className="h-3 w-3 stroke-[2.5] text-gray-400" />}
                         </span>
                       </button>
                     </div>
@@ -341,14 +341,14 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
       {filteredModules.length === 0 && (
         <SectionCard title={getTranslation(language, "settings.modules.no_results")}>
           <div className="flex items-center gap-4">
-            <Filter className="h-8 w-8 shrink-0 text-slate-300" aria-hidden="true" />
+            <Filter className="h-8 w-8 shrink-0 text-gray-300" aria-hidden="true" />
             <button
               type="button"
               onClick={() => {
                 setSearchQuery("");
                 setActiveCategoryFilter("all");
               }}
-              className="min-h-11 cursor-pointer rounded-2xl bg-indigo-50 px-5 text-ui font-bold text-indigo-700 transition-colors hover:bg-indigo-100"
+              className="min-h-11 cursor-pointer rounded-lg bg-entity-soft px-5 text-ui font-bold text-entity-text transition-colors hover:bg-entity-soft"
             >
               {t("Clear filters", "Zrušiť filtre", "Szűrők törlése")}
             </button>

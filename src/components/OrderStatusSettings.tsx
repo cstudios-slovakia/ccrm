@@ -218,17 +218,17 @@ export const OrderStatusSettings: React.FC<OrderStatusSettingsProps> = ({
           "Húzza az állapotokat a csoportelválasztókhoz képest a fázis módosításához. A színes pontra kattintva módosíthatja a színt."
         )}
     >
-      <div className="border border-slate-200/80 rounded-2xl overflow-x-auto shadow-inner bg-white/50">
+      <div className="border border-gray-200/80 rounded-lg overflow-x-auto shadow-inner bg-white">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
-              <th className="py-3 px-4 type-overline text-slate-500 w-12 text-center">{t("Drag", "Ťahať", "Húzás")}</th>
-              <th className="py-3 px-4 type-overline text-slate-500 w-44">{t("Colour", "Farba", "Szín")}</th>
-              <th className="py-3 px-4 type-overline text-slate-500">{t("Status name", "Názov stavu", "Állapot neve")}</th>
-              <th className="py-3 px-4 type-overline text-slate-500 w-36">{t("Group", "Skupina", "Csoport")}</th>
-              <th className="py-3 px-4 type-overline text-slate-500 w-28 text-center">{t("Orders", "Objednávky", "Rendelések")}</th>
-              <th className="py-3 px-4 type-overline text-slate-500 w-28 text-center">{t("Terminal", "Uzavretý", "Záró")}</th>
-              <th className="py-3 px-4 type-overline text-slate-500 w-16 text-center">{t("Delete", "Zmazať", "Törlés")}</th>
+            <tr className="bg-gray-50 border-b border-gray-200/60 select-none">
+              <th className="py-3 px-4 type-overline text-gray-500 w-12 text-center">{t("Drag", "Ťahať", "Húzás")}</th>
+              <th className="py-3 px-4 type-overline text-gray-500 w-44">{t("Colour", "Farba", "Szín")}</th>
+              <th className="py-3 px-4 type-overline text-gray-500">{t("Status name", "Názov stavu", "Állapot neve")}</th>
+              <th className="py-3 px-4 type-overline text-gray-500 w-36">{t("Group", "Skupina", "Csoport")}</th>
+              <th className="py-3 px-4 type-overline text-gray-500 w-28 text-center">{t("Orders", "Objednávky", "Rendelések")}</th>
+              <th className="py-3 px-4 type-overline text-gray-500 w-28 text-center">{t("Terminal", "Uzavretý", "Záró")}</th>
+              <th className="py-3 px-4 type-overline text-gray-500 w-16 text-center">{t("Delete", "Zmazať", "Törlés")}</th>
             </tr>
           </thead>
           <tbody>
@@ -256,14 +256,14 @@ export const OrderStatusSettings: React.FC<OrderStatusSettingsProps> = ({
                     onDragOver={onDragOver}
                     onDragLeave={() => setDragOverIndex(null)}
                     onDrop={onDrop}
-                    className={`transition-all border-b border-slate-200/60 duration-200 ${
-                      isDragOver ? "bg-indigo-50/60 scale-[0.99] border-2 border-dashed border-indigo-300" : "bg-slate-100/70"
+                    className={`transition-all border-b border-gray-200/60 duration-200 ${
+                      isDragOver ? "bg-entity-soft scale-[0.99] border-2 border-dashed border-entity-border" : "bg-gray-100/70"
                     }`}
                   >
                     <td colSpan={7} className="py-3 px-4 select-none">
                       <div className="flex items-center gap-2">
-                        <span className="type-overline text-slate-900 font-semibold">{info.name}</span>
-                        <span className="text-micro text-slate-400 font-bold ml-1">{info.desc}</span>
+                        <span className="type-overline text-gray-900 font-semibold">{info.name}</span>
+                        <span className="text-micro text-gray-400 font-bold ml-1">{info.desc}</span>
                       </div>
                     </td>
                   </tr>
@@ -289,11 +289,11 @@ export const OrderStatusSettings: React.FC<OrderStatusSettingsProps> = ({
                   onDragOver={onDragOver}
                   onDragLeave={() => setDragOverIndex(null)}
                   onDrop={onDrop}
-                  className={`border-b border-slate-200/40 transition-colors hover:bg-slate-50/80 ${
+                  className={`border-b border-gray-200/40 transition-colors hover:bg-gray-50 ${
                     draggedKey === def.key ? "opacity-30" : ""
-                  } ${isDragOver ? "border-t-2 border-indigo-400 bg-indigo-50/30" : ""}`}
+                  } ${isDragOver ? "border-t-2 border-entity-border bg-entity-soft" : ""}`}
                 >
-                  <td className="py-2.5 px-4 text-center cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600">
+                  <td className="py-2.5 px-4 text-center cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600">
                     {canEdit && <GripVertical className="h-4 w-4 mx-auto" />}
                   </td>
                   <td className="py-2.5 px-4">
@@ -304,7 +304,7 @@ export const OrderStatusSettings: React.FC<OrderStatusSettingsProps> = ({
                       title={label}
                     />
                   </td>
-                  <td className="py-2.5 px-4 font-medium text-slate-800">
+                  <td className="py-2.5 px-4 font-medium text-gray-800">
                     {canEdit ? (
                       <InlineRenameName
                         value={label}
@@ -325,7 +325,7 @@ export const OrderStatusSettings: React.FC<OrderStatusSettingsProps> = ({
                   </td>
                   <td className="py-2.5 px-4 text-center">
                     <span className={`inline-block px-2 py-0.5 rounded-full text-micro font-bold ${
-                      count > 0 ? "bg-slate-100 text-slate-700" : "text-slate-400"
+                      count > 0 ? "bg-gray-100 text-gray-700" : "text-gray-400"
                     }`}>
                       {count}
                     </span>
@@ -336,7 +336,7 @@ export const OrderStatusSettings: React.FC<OrderStatusSettingsProps> = ({
                       onClick={() => handleToggleTerminal(def.key)}
                       disabled={!canEdit}
                       className={`p-1 rounded-md transition-colors ${
-                        isTerm ? "text-emerald-600 bg-emerald-50" : "text-slate-300 hover:text-slate-500"
+                        isTerm ? "text-emerald-600 bg-emerald-50" : "text-gray-300 hover:text-gray-500"
                       }`}
                       title={t("Marks order as complete/closed", "Označí objednávku ako ukončenú", "Lezártnak jelöli a rendelést")}
                     >
@@ -348,7 +348,7 @@ export const OrderStatusSettings: React.FC<OrderStatusSettingsProps> = ({
                       <button
                         type="button"
                         onClick={() => handleRemove(def)}
-                        className="text-slate-400 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 transition-colors"
+                        className="text-gray-400 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 transition-colors"
                         title={t("Remove status", "Odstrániť stav", "Állapot törlése")}
                       >
                         <X className="h-4 w-4 mx-auto" />
@@ -369,7 +369,7 @@ export const OrderStatusSettings: React.FC<OrderStatusSettingsProps> = ({
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder={t("New order status name...", "Názov nového stavu objednávky...", "Új rendelés állapot neve...")}
-            className="flex-1 min-w-50 px-3.5 py-2 text-input border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white"
+            className="flex-1 min-w-50 px-3.5 py-2 text-input border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-entity-solid/25 focus:border-entity-border bg-white"
           />
           <div className="w-48">
             <CustomSelect
@@ -384,7 +384,7 @@ export const OrderStatusSettings: React.FC<OrderStatusSettingsProps> = ({
           <button
             type="submit"
             disabled={!newName.trim()}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-input font-medium transition-colors shadow-sm"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-entity-solid hover:bg-entity-solid disabled:opacity-50 text-white rounded-md text-input font-medium transition-colors shadow-xs"
           >
             <Plus className="h-4 w-4" />
             {t("Add status", "Pridať stav", "Állapot hozzáadása")}
