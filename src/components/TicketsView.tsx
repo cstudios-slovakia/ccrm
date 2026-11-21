@@ -112,6 +112,8 @@ import { useTimeTracking } from "../hooks/useTimeTracking";
 import { clampDeadline, todayStr } from "../utils/taskDeadline";
 import { createEntry, deleteEntry, listProjectUsage, updateEntry, type UsageEntry } from "../utils/timeTrackingApi";
 import { PRODUCT_NAME } from "../utils/brand";
+import { EntityBadge } from "./tremor/EntityBadge";
+import { entityAccentStyle } from "../utils/entityAccent";
 
 /** Single time input in H:MM format (e.g. 1:30 for 90 minutes) with a permanent preset ":" */
 const ColonTimeInput: React.FC<{
@@ -1411,7 +1413,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   }}
                   autoFocus
                   maxLength={220}
-                  className="select-text min-w-0 flex-1 max-w-xl px-2.5 py-0.5 -my-1 rounded-xl border border-indigo-300 bg-white type-entity-title text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="select-text min-w-0 flex-1 max-w-xl px-2.5 py-0.5 -my-1 rounded-md border border-entity-border bg-white type-entity-title text-gray-900 focus:outline-none focus:border-entity-solid"
                 />
               ) : (
                 <>
@@ -1423,7 +1425,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         setSubjectDraft(selectedTicket.subject);
                         setIsEditingSubject(true);
                       }}
-                      className="shrink-0 p-1.5 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all active:scale-95 cursor-pointer"
+                      className="shrink-0 p-1.5 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-subtle transition-all active:scale-95 cursor-pointer"
                       title={t(
                         "Rename ticket subject",
                         "Premenovať predmet tiketu",
@@ -1520,7 +1522,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                           ),
                     );
                   }}
-                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-amber-600 font-heading font-bold text-ui hover:bg-amber-50 hover:text-amber-800 transition-all active:scale-95 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-md text-amber-600 font-heading font-semibold text-ui hover:bg-amber-50 hover:text-amber-800 transition-all active:scale-95 cursor-pointer"
                   title={
                     selectedTicket.archived
                       ? t(
@@ -1563,7 +1565,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       handleSelectTicket(null);
                     }
                   }}
-                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-rose-500 font-heading font-bold text-ui hover:bg-rose-50 hover:text-rose-700 transition-all active:scale-95 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-md text-rose-500 font-heading font-semibold text-ui hover:bg-rose-50 hover:text-rose-700 transition-all active:scale-95 cursor-pointer"
                   title={t("Delete Ticket", "Vymazať tiket", "Jegy törlése")}
                 >
                   <Trash2 className="h-4 w-4 shrink-0" />
@@ -1608,9 +1610,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               3. Client Relationship Card (bottom) */}
           <div className="ws-lg:col-span-4 flex flex-col h-auto ws-lg:h-full min-h-0 ws-lg:overflow-y-auto gap-4 ws-lg:pr-1 scrollbar-thin text-left">
             {/* 1. TICKET CARD DETAILS (TOP) */}
-            <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
-              <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-4">
-                <h4 className="text-ui font-heading font-bold text-slate-900">
+            <div className="shrink-0 bg-white border border-gray-200 rounded-lg p-5 shadow-xs">
+              <div className="flex items-center justify-between gap-2 pb-3 border-b border-gray-200 mb-4">
+                <h4 className="text-ui font-heading font-semibold text-gray-900">
                   {t(
                     "Ticket Card Details",
                     "Detaily karty tiketu",
@@ -1656,8 +1658,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               <div className="space-y-4">
                 {/* 1. Ticket Creation Date */}
                 <div>
-                  <label className="type-overline text-slate-400 mb-1 flex items-center gap-1.5">
-                    <Calendar className="h-3.5 w-3.5 text-indigo-500" />
+                  <label className="type-overline text-gray-400 mb-1 flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5 text-entity-text" />
                     <span>
                       {t(
                         "Ticket Creation Date",
@@ -1666,8 +1668,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       )}
                     </span>
                   </label>
-                  <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-50/80 border border-slate-200/80">
-                    <span className="text-caption font-bold text-slate-800 font-mono">
+                  <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-md bg-gray-50 border border-gray-200">
+                    <span className="text-caption font-semibold text-gray-800 font-mono">
                       {formatTimestampLocalized(
                         selectedTicket.createdAt,
                         userLanguage,
@@ -1700,16 +1702,16 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                           "Zmeniť dátum vytvorenia tiketu",
                           "Jegy létrehozási dátumának módosítása",
                         )}
-                        className="px-2 py-0.5 rounded-lg border border-slate-200 bg-white text-micro font-bold text-slate-600 cursor-pointer"
+                        className="px-2 py-0.5 rounded-md border border-gray-200 bg-white text-micro font-semibold text-gray-700 cursor-pointer"
                       />
                     )}
                   </div>
                 </div>
 
                 {/* 2. Description & Files (HTML Formatted + Editable + Addable) */}
-                <div className="pt-3 border-t border-slate-100 space-y-2">
+                <div className="pt-3 border-t border-gray-200 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="type-overline text-slate-400">
+                    <span className="type-overline text-gray-400">
                       {t(
                         "Description & Files",
                         "Popis a súbory",
@@ -1726,7 +1728,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                           );
                           setIsEditingDescription(true);
                         }}
-                        className="text-micro font-bold text-indigo-600 hover:underline flex items-center gap-1 cursor-pointer"
+                        className="text-micro font-semibold text-entity-text hover:underline flex items-center gap-1 cursor-pointer"
                       >
                         {effectiveDescription ? (
                           <>
@@ -1758,8 +1760,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   {isEditingDescription ? (
                     <div className="space-y-2">
                       {effectiveDescription && (
-                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
-                          <span className="block type-overline text-slate-400">
+                        <div className="p-2.5 rounded-md bg-gray-50 border border-gray-200 space-y-1">
+                          <span className="block type-overline text-gray-400">
                             {t(
                               "Current Description",
                               "Pôvodný popis",
@@ -1768,7 +1770,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                           </span>
                           <TicketHtmlContent
                             content={effectiveDescription}
-                            className="text-slate-600"
+                            className="text-gray-600"
                           />
                         </div>
                       )}
@@ -1789,14 +1791,14 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setIsEditingDescription(false)}
-                          className="px-3 py-1.5 rounded-xl border border-slate-200 text-micro font-bold text-slate-600 cursor-pointer"
+                          className="px-3 py-1.5 rounded-md border border-gray-200 text-micro font-semibold text-gray-600 cursor-pointer"
                         >
                           {t("Cancel", "Zrušiť", "Mégse")}
                         </button>
                         <button
                           type="button"
                           onClick={commitDescription}
-                          className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-micro font-bold flex items-center gap-1 cursor-pointer"
+                          className="px-3.5 py-1.5 rounded-md bg-entity-solid hover:opacity-90 text-white text-micro font-semibold flex items-center gap-1 cursor-pointer"
                         >
                           <Check className="w-3.5 h-3.5" />
                           <span>{t("Save", "Uložiť", "Mentés")}</span>
@@ -1806,11 +1808,11 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   ) : effectiveDescription ||
                     (selectedTicket.attachments &&
                       selectedTicket.attachments.length > 0) ? (
-                    <div className="p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-2">
+                    <div className="p-3 rounded-lg bg-gray-50 border border-gray-200 space-y-2">
                       {effectiveDescription && (
                         <TicketHtmlContent
                           content={effectiveDescription}
-                          className="text-slate-700"
+                          className="text-gray-700"
                         />
                       )}
                       <TicketAttachmentsList
@@ -1829,9 +1831,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         );
                         setIsEditingDescription(true);
                       }}
-                      className="w-full p-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50/50 hover:bg-indigo-50/40 hover:border-indigo-300 text-left flex items-center justify-between gap-2 transition-colors cursor-pointer disabled:cursor-default"
+                      className="w-full p-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 hover:bg-entity-subtle hover:border-entity-border text-left flex items-center justify-between gap-2 transition-colors cursor-pointer disabled:cursor-default"
                     >
-                      <span className="text-micro italic text-slate-400">
+                      <span className="text-micro italic text-gray-400">
                         {t(
                           "No description provided. Click to add description...",
                           "Bez popisu. Kliknutím pridáte popis...",
@@ -1839,7 +1841,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         )}
                       </span>
                       {canEdit && (
-                        <span className="inline-flex items-center gap-1 text-micro font-bold text-indigo-600 shrink-0">
+                        <span className="inline-flex items-center gap-1 text-micro font-semibold text-entity-text shrink-0">
                           <Plus className="w-3.5 h-3.5" />
                           <span>
                             {t("Add", "Pridať", "Hozzáadás")}
@@ -1851,7 +1853,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                 </div>
 
                 {/* 3. Priority & 4. Ticket Type */}
-                <div className="pt-3 border-t border-slate-100 grid grid-cols-2 gap-2.5">
+                <div className="pt-3 border-t border-gray-200 grid grid-cols-2 gap-2.5">
                   <div className="min-w-0">
                     <label className="block type-overline text-slate-400 mb-1">
                       {t("Priority", "Priorita", "Prioritás")}
@@ -1908,10 +1910,10 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                 </div>
 
                 {/* 6. Linked CRM Tasks */}
-                <div className="pt-3 border-t border-slate-100 space-y-2">
+                <div style={entityAccentStyle("tasks")} className="pt-3 border-t border-gray-200 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="type-overline text-slate-500 flex items-center gap-1">
-                      <CheckSquare className="w-3.5 h-3.5 text-indigo-600" />
+                    <span className="type-overline text-gray-500 flex items-center gap-1">
+                      <CheckSquare className="w-3.5 h-3.5 text-entity-text" />
                       {t(
                         `Linked ${PRODUCT_NAME} Tasks`,
                         "Prepojené úlohy",
@@ -1931,7 +1933,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                           );
                           setShowTaskForm((v) => !v);
                         }}
-                        className="text-micro font-bold text-indigo-600 hover:underline cursor-pointer"
+                        className="text-micro font-semibold text-entity-text hover:underline cursor-pointer"
                       >
                         {t(
                           "+ Create Task",
@@ -1945,7 +1947,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   {showTaskForm && (
                     <form
                       onSubmit={handleCreateTaskFromTicket}
-                      className="p-2.5 rounded-xl bg-slate-50 border border-indigo-200 space-y-2"
+                      className="p-2.5 rounded-lg bg-gray-50 border border-entity-border space-y-2"
                     >
                       <input
                         type="text"
@@ -1957,10 +1959,10 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                           "Názov úlohy...",
                           "Feladat címe...",
                         )}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-caption font-semibold"
+                        className="w-full px-2.5 py-1.5 rounded-md border border-gray-200 bg-white text-caption font-medium focus:outline-none focus:border-entity-solid"
                       />
                       <div className="space-y-1">
-                        <label className="block type-overline text-slate-400">
+                        <label className="block type-overline text-gray-400">
                           {t(
                             "Assign Employee",
                             "Priradiť zamestnanca",
@@ -1971,7 +1973,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                           <select
                             value={newTaskAssignee}
                             onChange={(e) => setNewTaskAssignee(e.target.value)}
-                            className="flex-1 px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-micro font-semibold text-slate-700"
+                            className="flex-1 px-2 py-1.5 rounded-md border border-gray-200 bg-white text-micro font-semibold text-gray-700"
                           >
                             <option value="">
                               {t(
@@ -1988,7 +1990,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                           </select>
                           <button
                             type="submit"
-                            className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-micro font-bold cursor-pointer shrink-0"
+                            className="px-3 py-1.5 rounded-md bg-entity-solid hover:opacity-90 text-white text-micro font-semibold cursor-pointer shrink-0"
                           >
                             {t("Create", "Vytvoriť", "Létrehozás")}
                           </button>
@@ -1998,7 +2000,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   )}
 
                   {mergedTicketTaskLinks.length === 0 ? (
-                    <div className="text-micro text-slate-400">
+                    <div className="text-micro text-gray-400">
                       {t(
                         "No linked tasks yet.",
                         "Zatiaľ žiadne prepojené úlohy.",
@@ -2020,7 +2022,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         return (
                           <div
                             key={link.id || `${link.ticketId}:${link.taskId}`}
-                            className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5 text-micro hover:border-indigo-300 transition-colors"
+                            className="p-2.5 rounded-lg bg-gray-50 border border-gray-200 space-y-1.5 text-micro hover:border-entity-border transition-colors"
                           >
                             <div className="flex items-center justify-between gap-2">
                               <button
@@ -2028,28 +2030,28 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                 onClick={() => {
                                   window.location.hash = "tasks";
                                 }}
-                                className={`font-bold truncate text-left cursor-pointer hover:underline ${
+                                className={`font-semibold truncate text-left cursor-pointer hover:underline ${
                                   done
-                                    ? "line-through text-slate-400"
-                                    : "text-slate-700"
+                                    ? "line-through text-gray-400"
+                                    : "text-gray-800 hover:text-entity-text"
                                 }`}
                               >
                                 {tsk ? tsk.title : link.taskId}
                               </button>
                               <span
-                                className={`px-1.5 py-0.5 rounded font-bold shrink-0 ${
+                                className={`px-1.5 py-0.5 rounded font-semibold shrink-0 ${
                                   done
                                     ? "bg-emerald-100 text-emerald-700"
-                                    : "bg-indigo-50 text-indigo-700"
+                                    : "bg-entity-subtle text-entity-text border border-entity-border"
                                 }`}
                               >
                                 {tsk ? tsk.status : "Linked"}
                               </span>
                             </div>
                             {tsk && (
-                              <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-200/60">
-                                <span className="text-slate-400 font-semibold flex items-center gap-1 shrink-0">
-                                  <User className="w-3 h-3 text-indigo-500" />
+                              <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-200">
+                                <span className="text-gray-500 font-medium flex items-center gap-1 shrink-0">
+                                  <User className="w-3 h-3 text-entity-text" />
                                   {t("Employee:", "Riešiteľ:", "Felelős:")}
                                 </span>
                                 <select
@@ -2107,9 +2109,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               if (!pairedProject || pickingProject) {
                 if (!canEdit || !pickingProject) {
                   return (
-                    <div className="shrink-0 bg-white border border-dashed border-slate-300 rounded-3xl p-5 shadow-sm text-center">
-                      <Briefcase className="h-5 w-5 text-slate-300 mx-auto mb-2" />
-                      <p className="text-caption font-bold text-slate-500 leading-snug">
+                    <div style={entityAccentStyle("projects")} className="shrink-0 bg-white border border-dashed border-gray-300 rounded-lg p-5 shadow-2xs text-center">
+                      <Briefcase className="h-5 w-5 text-gray-300 mx-auto mb-2" />
+                      <p className="text-caption font-semibold text-gray-500 leading-snug">
                         {t(
                           "This ticket is not linked to any project.",
                           "Tento tiket nie je priradený k žiadnemu projektu.",
@@ -2120,7 +2122,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setPickingProject(true)}
-                          className="mt-2.5 px-3 py-1.5 rounded-xl type-overline text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                          className="mt-2.5 px-3 py-1.5 rounded-md type-overline text-entity-text hover:bg-entity-subtle transition-colors cursor-pointer"
                         >
                           {t(
                             "Link Project",
@@ -2134,8 +2136,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                 }
 
                 return (
-                  <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-2">
-                    <label className="block type-overline text-slate-400">
+                  <div style={entityAccentStyle("projects")} className="shrink-0 bg-white border border-gray-200 rounded-lg p-5 shadow-2xs space-y-2">
+                    <label className="block type-overline text-gray-400">
                       {t(
                         "Attached Project",
                         "Priradený projekt",
@@ -2164,7 +2166,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setPickingProject(false)}
-                        className="type-overline text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                        className="type-overline text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
                       >
                         {t(
                           "Keep current project",
@@ -2190,10 +2192,10 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               );
 
               return (
-                <div className="shrink-0 rounded-3xl border-2 border-indigo-300 bg-indigo-50/60 shadow-sm p-4 space-y-3 text-indigo-950">
-                  <div className="border-b-2 border-indigo-200/60 pb-2 flex items-center justify-between gap-2 flex-wrap">
-                    <span className="type-overline text-indigo-700 flex items-center gap-1.5 min-w-0">
-                      <Briefcase className="h-4 w-4 text-indigo-600 stroke-[2.5] shrink-0" />
+                <div style={entityAccentStyle("projects")} className="shrink-0 rounded-lg border border-entity-border border-t-2 border-t-entity-solid bg-white shadow-xs p-4 space-y-3">
+                  <div className="border-b border-gray-200 pb-2 flex items-center justify-between gap-2 flex-wrap">
+                    <span className="type-overline text-entity-text flex items-center gap-1.5 min-w-0">
+                      <Briefcase className="h-4 w-4 text-entity-text shrink-0" />
                       <span>
                         {t(
                           "Project Card",
@@ -2202,54 +2204,54 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         )}
                       </span>
                     </span>
-                    <span className="px-2 py-0.5 rounded-full type-overline bg-indigo-100 text-indigo-800 border border-indigo-200 shrink-0">
+                    <span className="px-2 py-0.5 rounded-md type-overline bg-entity-subtle text-entity-text border border-entity-border shrink-0">
                       {pairedProject.status}
                     </span>
                   </div>
 
                   <div className="flex items-center gap-3">
                     <div
-                      className="h-10 w-10 rounded-xl text-white flex items-center justify-center font-heading font-bold text-body shadow shrink-0"
+                      className="h-10 w-10 rounded-md text-white flex items-center justify-center font-heading font-bold text-body shadow-2xs shrink-0"
                       style={{
                         backgroundColor:
-                          pairedProjectType?.color || "#4f46e5",
+                          pairedProjectType?.color || "var(--entity-accent-solid)",
                       }}
                     >
                       <Briefcase className="h-5 w-5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h4 className="text-body font-bold text-slate-800 line-clamp-1">
+                      <h4 className="text-body font-bold text-gray-900 line-clamp-1">
                         {projDisplayName}
                       </h4>
-                      <span className="type-overline text-indigo-700">
+                      <span className="type-overline text-entity-text">
                         {pairedProjectType?.name ||
                           t("Project", "Projekt", "Projekt")}
                       </span>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 text-caption bg-white/80 p-3 rounded-xl border border-indigo-200/60">
+                  <div className="grid grid-cols-2 gap-3 text-caption bg-gray-50 p-3 rounded-md border border-gray-200">
                     <div>
-                      <span className="type-overline text-indigo-700/60 block">
+                      <span className="type-overline text-gray-500 block">
                         {t(
                           "Open Tickets",
                           "Otvorené tikety",
                           "Nyitott jegyek",
                         )}
                       </span>
-                      <span className="font-extrabold text-slate-800">
+                      <span className="font-bold text-gray-900 tabular-nums">
                         {openProjectTickets.length} / {allProjectTickets.length}
                       </span>
                     </div>
                     <div>
-                      <span className="type-overline text-indigo-700/60 block">
+                      <span className="type-overline text-gray-500 block">
                         {t(
                           "Project Owner",
                           "Zodpovedný",
                           "Projekt felelős",
                         )}
                       </span>
-                      <span className="font-extrabold text-slate-800 truncate block">
+                      <span className="font-semibold text-gray-900 truncate block">
                         {(pairedProject.managers || []).join(", ") || "—"}
                       </span>
                     </div>
@@ -2265,9 +2267,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     );
                     if (!projRetainer.enabled) return null;
                     return (
-                      <div className="bg-white/90 p-3 rounded-xl border border-indigo-200/60 space-y-1.5">
+                      <div className="bg-gray-50 p-3 rounded-md border border-gray-200 space-y-1.5">
                         <div className="flex items-center justify-between gap-2 text-micro">
-                          <span className="font-bold text-indigo-900 flex items-center gap-1">
+                          <span className="font-semibold text-gray-900 flex items-center gap-1">
                             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                             <span>
                               {projRetainer.name ||
@@ -2278,13 +2280,13 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                 )}
                             </span>
                           </span>
-                          <span className="font-mono font-extrabold text-slate-800">
+                          <span className="font-mono font-bold text-gray-900">
                             {formatDurationMinutes(projRetainer.usedMinutes)} /{" "}
                             {formatDurationMinutes(projRetainer.monthlyMinutes)} h (
                             {projRetainer.rawPercent}%)
                           </span>
                         </div>
-                        <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                        <div className="h-1.5 rounded-full bg-gray-200 overflow-hidden">
                           <div
                             className={`h-full rounded-full ${
                               projRetainer.rawPercent >= 90
@@ -2296,7 +2298,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                             style={{ width: `${projRetainer.percent}%` }}
                           />
                         </div>
-                        <div className="flex items-center justify-between text-micro text-slate-500">
+                        <div className="flex items-center justify-between text-micro text-gray-500">
                           <span>
                             {t(
                               `Reset day: ${projRetainer.resetDay}.`,
@@ -2319,7 +2321,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setPickingProject(true)}
-                          className="px-2.5 py-1.5 rounded-lg type-overline text-indigo-700 hover:bg-indigo-100 transition-colors cursor-pointer flex items-center gap-1"
+                          className="px-2.5 py-1.5 rounded-md type-overline text-entity-text hover:bg-entity-subtle transition-colors cursor-pointer flex items-center gap-1"
                         >
                           <Repeat className="h-3 w-3" />
                           {t("Change", "Zmeniť", "Módosítás")}
@@ -2330,7 +2332,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                             updateSelectedTicket({ projectId: null });
                             setPickingProject(false);
                           }}
-                          className="px-2.5 py-1.5 rounded-lg type-overline text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex items-center gap-1"
+                          className="px-2.5 py-1.5 rounded-md type-overline text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex items-center gap-1"
                         >
                           <Unlink className="h-3 w-3" />
                           {t("Unpair", "Odpojiť", "Leválasztás")}
@@ -2347,7 +2349,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                           setKpiBucket("all");
                           handleSelectTicket(null);
                         }}
-                        className="px-3 py-1.5 rounded-xl bg-white hover:bg-indigo-100 text-indigo-700 type-overline border border-indigo-200 shadow-2xs transition-all cursor-pointer flex items-center gap-1"
+                        className="px-3 py-1.5 rounded-md bg-white hover:bg-entity-subtle text-entity-text type-overline border border-entity-border shadow-2xs transition-all cursor-pointer flex items-center gap-1"
                       >
                         <TicketIcon className="h-3.5 w-3.5" />
                         <span>
@@ -2365,7 +2367,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         onClick={() => {
                           window.location.hash = `projects/${pairedProject.id}?tab=tickets`;
                         }}
-                        className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white type-overline shadow transition-all active:scale-95 flex items-center gap-1 border border-indigo-700 cursor-pointer"
+                        className="px-3 py-1.5 rounded-md bg-entity-solid hover:opacity-90 text-white type-overline shadow-2xs transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
                       >
                         <span>
                           {t("Open Project", "Otvoriť projekt", "Projekt")}
@@ -2379,10 +2381,10 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
             })()}
 
             {(agencyEnabled || Boolean(selectedTicket.agencyWorkerId)) && (
-              <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-4 shadow-sm space-y-2">
+              <div style={entityAccentStyle("agency_workers")} className="shrink-0 bg-white border border-gray-200 rounded-lg p-4 shadow-2xs space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="type-overline text-teal-700 flex items-center gap-1.5">
-                    <UserCheck className="h-3.5 w-3.5 text-teal-600" />
+                  <span className="type-overline text-entity-text flex items-center gap-1.5">
+                    <UserCheck className="h-3.5 w-3.5 text-entity-text" />
                     {t("Rented Employee / Agency Worker", "Agentúrny pracovník", "Kölcsönzött dolgozó")}
                   </span>
                   {selectedTicket.agencyWorkerId && agencyEnabled && (
@@ -2423,9 +2425,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               if (!pairedLead || pickingClient) {
                 if (!canEdit || !pickingClient) {
                   return (
-                    <div className="shrink-0 bg-white border border-dashed border-slate-300 rounded-3xl p-5 shadow-sm text-center">
-                      <Unlink className="h-5 w-5 text-slate-300 mx-auto mb-2" />
-                      <p className="text-caption font-bold text-slate-500 leading-snug">
+                    <div style={entityAccentStyle("clients")} className="shrink-0 bg-white border border-dashed border-gray-300 rounded-lg p-5 shadow-2xs text-center">
+                      <Unlink className="h-5 w-5 text-gray-300 mx-auto mb-2" />
+                      <p className="text-caption font-semibold text-gray-500 leading-snug">
                         {t(
                           "This ticket is not paired with any lead or client.",
                           "Tento tiket nie je spárovaný so žiadnym leadom ani klientom.",
@@ -2436,7 +2438,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setPickingClient(true)}
-                          className="mt-2.5 px-3 py-1.5 rounded-xl type-overline text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                          className="mt-2.5 px-3 py-1.5 rounded-md type-overline text-entity-text hover:bg-entity-subtle transition-colors cursor-pointer"
                         >
                           {t("Pair now", "Spárovať", "Párosítás")}
                         </button>
@@ -2446,8 +2448,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                 }
 
                 return (
-                  <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
-                    <label className="block type-overline text-slate-400 mb-1">
+                  <div style={entityAccentStyle("clients")} className="shrink-0 bg-white border border-gray-200 rounded-lg p-5 shadow-2xs">
+                    <label className="block type-overline text-gray-400 mb-1">
                       {t(
                         "Paired Lead / Client",
                         "Spárovaný lead / klient",
@@ -2473,7 +2475,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setPickingClient(false)}
-                        className="mt-1.5 type-overline text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                        className="mt-1.5 type-overline text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
                       >
                         {t(
                           "Keep current pairing",
@@ -2505,16 +2507,16 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                 [addr?.street, city].filter(Boolean).join(", ") +
                 (addr?.postalCode ? ` (${addr.postalCode})` : "");
               const noneAdded = (
-                <span className="text-slate-300 italic">
+                <span className="text-gray-300 italic">
                   {getTranslation(userLanguage, "profile.none_added")}
                 </span>
               );
 
               return (
-                <div className="shrink-0 rounded-3xl border-2 border-emerald-400 bg-emerald-50/70 shadow-md p-4 space-y-3 text-emerald-950">
-                  <div className="border-b-2 border-emerald-200/50 pb-2 flex items-center justify-between gap-2 flex-wrap">
-                    <span className="type-overline text-emerald-700 flex items-center gap-1.5 min-w-0">
-                      <Briefcase className="h-4 w-4 text-emerald-600 stroke-[2.5] shrink-0" />
+                <div style={entityAccentStyle("clients")} className="shrink-0 rounded-lg border border-entity-border border-t-2 border-t-entity-solid bg-white shadow-xs p-4 space-y-3">
+                  <div className="border-b border-gray-200 pb-2 flex items-center justify-between gap-2 flex-wrap">
+                    <span className="type-overline text-entity-text flex items-center gap-1.5 min-w-0">
+                      <Briefcase className="h-4 w-4 text-entity-text shrink-0" />
                       <span>
                         {getTranslation(
                           userLanguage,
@@ -2522,34 +2524,34 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         )}
                       </span>
                     </span>
-                    <span className="px-2 py-0.5 rounded-full type-overline bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                    <span className="px-2 py-0.5 rounded-md type-overline bg-entity-subtle text-entity-text border border-entity-border shrink-0">
                       {getTranslation(userLanguage, "common.synced_profile")}
                     </span>
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-bold text-body shadow shrink-0">
+                    <div className="h-10 w-10 rounded-md bg-entity-solid text-white flex items-center justify-center font-heading font-bold text-body shadow-2xs shrink-0">
                       {initials}
                     </div>
                     <div className="min-w-0">
-                      <h4 className="text-body font-bold text-slate-800 line-clamp-1">
+                      <h4 className="text-body font-bold text-gray-900 line-clamp-1">
                         {pairedLead.name}
                       </h4>
-                      <span className="type-overline text-emerald-700">
+                      <span className="type-overline text-entity-text">
                         {clientTypeLabel}
                       </span>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 text-caption bg-white/70 p-3 rounded-xl border border-emerald-200/50">
+                  <div className="grid grid-cols-2 gap-3 text-caption bg-gray-50 p-3 rounded-md border border-gray-200">
                     <div className="space-y-0.5 min-w-0">
-                      <span className="type-overline text-emerald-700/60 block">
+                      <span className="type-overline text-gray-500 block">
                         {getTranslation(userLanguage, "profile.phone_number")}
                       </span>
-                      <span className="font-extrabold text-slate-700 block truncate">
+                      <span className="font-semibold text-gray-800 block truncate">
                         {pairedLead.phone ? (
                           <span className="flex items-center gap-1">
-                            <Phone className="h-3 w-3 text-emerald-600 shrink-0" />
+                            <Phone className="h-3 w-3 text-entity-text shrink-0" />
                             {pairedLead.phone}
                           </span>
                         ) : (
@@ -2558,13 +2560,13 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       </span>
                     </div>
                     <div className="space-y-0.5 min-w-0">
-                      <span className="type-overline text-emerald-700/60 block">
+                      <span className="type-overline text-gray-500 block">
                         {getTranslation(userLanguage, "profile.email_address")}
                       </span>
-                      <span className="font-extrabold text-slate-700 block truncate">
+                      <span className="font-semibold text-gray-800 block truncate">
                         {pairedLead.email ? (
                           <span className="flex items-center gap-1">
-                            <Mail className="h-3 w-3 text-emerald-600 shrink-0" />
+                            <Mail className="h-3 w-3 text-entity-text shrink-0" />
                             <span className="truncate">{pairedLead.email}</span>
                           </span>
                         ) : (
@@ -2572,17 +2574,17 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         )}
                       </span>
                     </div>
-                    <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
-                      <span className="type-overline text-emerald-700/60 block">
+                    <div className="space-y-0.5 col-span-2 border-t border-gray-200 pt-2 mt-1">
+                      <span className="type-overline text-gray-500 block">
                         {getTranslation(
                           userLanguage,
                           "profile.location_address",
                         )}
                       </span>
-                      <span className="font-extrabold text-slate-700 block">
+                      <span className="font-semibold text-gray-800 block">
                         {addressText ? (
                           <span className="flex items-center gap-1">
-                            <MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                            <MapPin className="h-3.5 w-3.5 text-entity-text shrink-0" />
                             <span className="line-clamp-1">{addressText}</span>
                           </span>
                         ) : (
@@ -2591,17 +2593,17 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       </span>
                     </div>
                     {pairedLead.website && (
-                      <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
-                        <span className="type-overline text-emerald-700/60 block">
+                      <div className="space-y-0.5 col-span-2 border-t border-gray-200 pt-2 mt-1">
+                        <span className="type-overline text-gray-500 block">
                           {getTranslation(userLanguage, "profile.website_link")}
                         </span>
                         <a
                           href={`https://${pairedLead.website.replace(/^https?:\/\//, "")}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="font-extrabold text-blue-600 hover:underline flex items-center gap-1"
+                          className="font-semibold text-entity-text hover:underline flex items-center gap-1"
                         >
-                          <Globe className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                          <Globe className="h-3.5 w-3.5 text-entity-text shrink-0" />
                           <span className="truncate">{pairedLead.website}</span>
                         </a>
                       </div>
@@ -2614,7 +2616,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setPickingClient(true)}
-                          className="px-2.5 py-1.5 rounded-lg type-overline text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer flex items-center gap-1"
+                          className="px-2.5 py-1.5 rounded-md type-overline text-entity-text hover:bg-entity-subtle transition-colors cursor-pointer flex items-center gap-1"
                         >
                           <Repeat className="h-3 w-3" />
                           {t("Change", "Zmeniť", "Módosítás")}
@@ -2628,7 +2630,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                             });
                             setPickingClient(false);
                           }}
-                          className="px-2.5 py-1.5 rounded-lg type-overline text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex items-center gap-1"
+                          className="px-2.5 py-1.5 rounded-md type-overline text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex items-center gap-1"
                         >
                           <Unlink className="h-3 w-3" />
                           {t("Unpair", "Odpojiť", "Leválasztás")}
@@ -2640,7 +2642,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       onClick={() => {
                         window.location.hash = `client-${encodeURIComponent(pairedLead.name)}`;
                       }}
-                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white type-overline shadow transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-emerald-700 cursor-pointer ml-auto"
+                      className="px-3.5 py-2 rounded-md bg-entity-solid hover:opacity-90 text-white type-overline shadow-2xs transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer ml-auto"
                     >
                       {getTranslation(userLanguage, "common.view_full_profile")}
                       <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
@@ -2652,7 +2654,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
           </div>
 
           {/* RIGHT COLUMN (8 cols): Leads-Style History & Timeline + Tasks + Time Logged */}
-          <div className="ws-lg:col-span-8 flex flex-col h-auto ws-lg:h-full ws-lg:overflow-hidden bg-white border border-slate-200 rounded-3xl p-4 ws-sm:p-6 shadow-sm text-left">
+          <div className="ws-lg:col-span-8 flex flex-col h-auto ws-lg:h-full ws-lg:overflow-hidden bg-white border border-gray-200 rounded-lg p-4 ws-sm:p-6 shadow-xs text-left">
             {/* Top Tabs (matches Leads Right Panel + Time Logged tab) */}
             <div className="mb-4 shrink-0">
               <Tabs
@@ -2696,11 +2698,11 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               <div className="flex-1 flex flex-col min-h-0 ws-lg:overflow-hidden">
                 {/* ACTIONS / EVENT LOGGER OVER THE TIMELINE (matches Leads Event Logger — closable) */}
                 {canEdit && (
-                  <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80 mb-5 shrink-0">
+                  <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-5 shrink-0">
                     {/* Header Row: Title + Close button when expanded */}
                     <div className="flex items-center justify-between gap-2 mb-2.5">
-                      <span className="type-overline text-slate-600 flex items-center gap-1.5">
-                        <PencilLine className="h-3.5 w-3.5 text-indigo-600" />
+                      <span className="type-overline text-gray-600 flex items-center gap-1.5">
+                        <PencilLine className="h-3.5 w-3.5 text-entity-text" />
                         {t(
                           "Log Event to Timeline",
                           "Zaznamenať udalosť na časovú os",
@@ -2713,7 +2715,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                           type="button"
                           onClick={() => setTimelineEventType(null)}
                           title={t("Close", "Zavrieť", "Bezárás")}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-micro font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-200/70 transition-colors cursor-pointer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-micro font-semibold text-gray-500 hover:text-gray-900 hover:bg-gray-200/70 transition-colors cursor-pointer"
                         >
                           <X className="h-3.5 w-3.5" />
                           <span>{t("Close", "Zavrieť", "Bezárás")}</span>
@@ -2723,10 +2725,10 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
 
                     {/* Event Type Segmented Bar (Public Reply + Internal Note + Call + Email + Appointment + Time Logged) */}
                     <div>
-                      <span className="block type-overline text-slate-400 mb-1">
+                      <span className="block type-overline text-gray-400 mb-1">
                         {t("Event Type", "Typ udalosti", "Esemény típusa")}
                       </span>
-                      <div className="flex flex-wrap items-center gap-1 bg-slate-200/75 p-1 rounded-xl border border-slate-200/60 shadow-inner">
+                      <div className="flex flex-wrap items-center gap-1 bg-gray-200/80 p-1 rounded-md border border-gray-200">
                         {(
                           [
                             {
@@ -2737,7 +2739,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                 "Nyilvános válasz",
                               ),
                               icon: Send,
-                              activeIconClass: "text-indigo-600",
+                              activeIconClass: "text-entity-text",
                             },
                             {
                               id: "internal_note" as const,
@@ -3071,12 +3073,12 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                       replyAttachments.length === 0)
                                   }
                                   onClick={() => handleSendReply()}
-                                  className={`px-4 py-2 rounded-xl text-white text-caption font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all active:scale-95 disabled:opacity-40 ${
+                                  className={`px-4 py-2 rounded-md text-white text-caption font-semibold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-all active:scale-95 disabled:opacity-40 ${
                                     timelineEventType === "internal_note"
                                       ? "bg-amber-600 hover:bg-amber-700"
                                       : timelineEventType === "public_reply"
-                                        ? "bg-indigo-600 hover:bg-indigo-700"
-                                        : "bg-slate-900 hover:bg-slate-800"
+                                        ? "bg-entity-solid hover:opacity-90"
+                                        : "bg-gray-900 hover:bg-gray-800"
                                   }`}
                                 >
                                   {timelineEventType === "public_reply" ? (
@@ -3282,16 +3284,16 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
 
                       let iconNode = <Send className="h-4 w-4" />;
                       let iconBadgeClass =
-                        "border-indigo-200 text-indigo-600 bg-indigo-50/40";
+                        "border-entity-border text-entity-text bg-entity-subtle";
                       let cardToneClass =
-                        "bg-white border-slate-200/90 hover:border-indigo-200";
+                        "bg-white border-gray-200 hover:border-entity-border";
                       let badgeLabel = t(
                         "Public Reply",
                         "Verejná odpoveď",
                         "Nyilvános válasz",
                       );
                       let badgePillClass =
-                        "bg-indigo-50 text-indigo-700 border-indigo-200";
+                        "bg-entity-subtle text-entity-text border-entity-border";
                       let eventTitle = t(
                         "Public Reply to Client",
                         "Verejná odpoveď klientovi",
@@ -3470,11 +3472,11 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                           {/* 3. Right Column: Event Card */}
                           <div className="flex-1 min-w-0 pb-4 pt-1">
                             <div
-                              className={`rounded-2xl border p-4 shadow-2xs transition-all space-y-2.5 ${cardToneClass}`}
+                              className={`rounded-lg border p-4 shadow-2xs transition-all space-y-2.5 ${cardToneClass}`}
                             >
-                              <div className="flex items-start justify-between gap-2 flex-wrap border-b border-slate-100 pb-2">
+                              <div className="flex items-start justify-between gap-2 flex-wrap border-b border-gray-200 pb-2">
                                 <div className="flex items-center gap-2 flex-wrap min-w-0">
-                                  <span className="font-heading font-bold text-caption text-slate-900">
+                                  <span className="font-heading font-semibold text-caption text-gray-900">
                                     {msg.title || eventTitle}
                                   </span>
                                   <span
@@ -3485,14 +3487,14 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                 </div>
 
                                 <div className="flex items-center gap-1.5 ml-auto">
-                                  <span className="ws-sm:hidden text-micro font-bold text-slate-400">
+                                  <span className="ws-sm:hidden text-micro font-semibold text-gray-400">
                                     {formatTimestampLocalized(
                                       msg.createdAt,
                                       userLanguage,
                                     )}
                                   </span>
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 border border-slate-200/80 text-micro font-bold">
-                                    <User className="h-3 w-3 text-slate-500" />
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 border border-gray-200 text-micro font-semibold">
+                                    <User className="h-3 w-3 text-gray-500" />
                                     {msg.authorName ||
                                       (isClient ? "Client" : "Support")}
                                   </span>
@@ -3516,7 +3518,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                             msg.body || "",
                                           );
                                         }}
-                                        className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                                        className="p-1 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-subtle transition-colors cursor-pointer"
                                         title={t(
                                           "Edit time entry",
                                           "Upraviť časový záznam",
@@ -3532,7 +3534,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                             msg.timeEntryId!,
                                           )
                                         }
-                                        className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                        className="p-1 rounded-md text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                                         title={t(
                                           "Delete time entry",
                                           "Odstrániť časový záznam",
@@ -3557,7 +3559,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                               msg.attachments || [],
                                             );
                                           }}
-                                          className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                                          className="p-1 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-subtle transition-colors cursor-pointer"
                                           title={t(
                                             "Edit event",
                                             "Upraviť záznam",
@@ -3647,7 +3649,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => setEditingMsgId(null)}
-                                      className="px-3 py-1.5 rounded-xl border border-slate-200 text-micro font-bold text-slate-600 cursor-pointer"
+                                      className="px-3 py-1.5 rounded-md border border-gray-200 text-micro font-semibold text-gray-600 cursor-pointer"
                                     >
                                       {t("Cancel", "Zrušiť", "Mégse")}
                                     </button>
@@ -3656,7 +3658,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                       onClick={() =>
                                         handleUpdateTimelineMessage(msg.id)
                                       }
-                                      className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-micro font-bold flex items-center gap-1 cursor-pointer"
+                                      className="px-3.5 py-1.5 rounded-md bg-entity-solid hover:opacity-90 text-white text-micro font-semibold flex items-center gap-1 cursor-pointer"
                                     >
                                       <Check className="w-3.5 h-3.5" />
                                       <span>
@@ -3696,15 +3698,15 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               </div>
             ) : detailRightTab === "tasks" ? (
               /* TASKS TAB (Create & Assign Employee to Ticket Tasks) */
-              <div className="flex-1 flex flex-col min-h-0 ws-lg:overflow-y-auto space-y-4">
+              <div style={entityAccentStyle("tasks")} className="flex-1 flex flex-col min-h-0 ws-lg:overflow-y-auto space-y-4">
                 {canEdit && (
                   <form
                     onSubmit={handleCreateTaskFromTicket}
-                    className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80 space-y-3 shrink-0"
+                    className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3 shrink-0"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="type-overline text-slate-600 flex items-center gap-1.5">
-                        <CheckSquare className="h-3.5 w-3.5 text-indigo-600" />
+                      <span className="type-overline text-gray-700 flex items-center gap-1.5">
+                        <CheckSquare className="h-3.5 w-3.5 text-entity-text" />
                         {t(
                           "Create & Assign Task for Ticket",
                           "Vytvoriť a priradiť úlohu k tiketu",
@@ -3715,7 +3717,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
 
                     <div className="grid grid-cols-1 ws-sm:grid-cols-12 gap-2.5">
                       <div className="ws-sm:col-span-5">
-                        <label className="block type-overline text-slate-400 mb-1">
+                        <label className="block type-overline text-gray-500 mb-1">
                           {t("Task Title", "Názov úlohy", "Feladat címe")}
                         </label>
                         <input
@@ -3731,12 +3733,12 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                               "Adja meg a feladat címét...",
                             )
                           }
-                          className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-caption font-semibold text-slate-800"
+                          className="w-full h-9 px-3 rounded-md border border-gray-200 bg-white text-caption font-medium text-gray-900 focus:outline-none focus:border-entity-solid"
                         />
                       </div>
 
                       <div className="ws-sm:col-span-4">
-                        <label className="block type-overline text-slate-400 mb-1">
+                        <label className="block type-overline text-gray-500 mb-1">
                           {t(
                             "Assigned Employee",
                             "Priradený zamestnanec",
@@ -3746,7 +3748,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         <select
                           value={newTaskAssignee}
                           onChange={(e) => setNewTaskAssignee(e.target.value)}
-                          className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-caption font-bold text-slate-700 cursor-pointer"
+                          className="w-full h-9 px-3 rounded-md border border-gray-200 bg-white text-caption font-semibold text-gray-700 cursor-pointer focus:outline-none focus:border-entity-solid"
                         >
                           <option value="">
                             {t(
@@ -3764,7 +3766,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       </div>
 
                       <div className="ws-sm:col-span-3">
-                        <label className="block type-overline text-slate-400 mb-1">
+                        <label className="block type-overline text-gray-500 mb-1">
                           {t("Deadline", "Termín", "Határidő")}
                         </label>
                         <input
@@ -3772,7 +3774,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                           value={newTaskDeadline}
                           min={todayStr()}
                           onChange={(e) => setNewTaskDeadline(clampDeadline(e.target.value, todayStr()))}
-                          className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-caption font-bold text-slate-700"
+                          className="w-full h-9 px-3 rounded-md border border-gray-200 bg-white text-caption font-semibold text-gray-700 focus:outline-none focus:border-entity-solid"
                         />
                       </div>
                     </div>
@@ -3780,7 +3782,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     <div className="flex justify-end">
                       <button
                         type="submit"
-                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-caption font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                        className="px-4 py-2 rounded-md bg-entity-solid hover:opacity-90 text-white text-caption font-semibold flex items-center gap-1.5 cursor-pointer shadow-2xs"
                       >
                         <Plus className="w-4 h-4" />
                         <span>
@@ -3796,7 +3798,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                 )}
 
                 {mergedTicketTaskLinks.length === 0 ? (
-                  <div className="p-8 rounded-2xl border border-dashed border-slate-200 text-center space-y-2">
+                  <div className="p-8 rounded-lg border border-dashed border-gray-200 text-center space-y-2">
                     <CheckSquare className="w-8 h-8 text-slate-300 mx-auto" />
                     <p className="text-caption font-bold text-slate-500">
                       {t(
@@ -3821,7 +3823,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       return (
                         <div
                           key={link.id || `${link.ticketId}:${link.taskId}`}
-                          className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3 hover:border-indigo-300 transition-colors"
+                          style={entityAccentStyle("tasks")}
+                          className="p-4 rounded-lg bg-white border border-gray-200 shadow-2xs flex flex-wrap items-center justify-between gap-3 hover:border-entity-border transition-colors"
                         >
                           <div className="flex items-center gap-3 min-w-0 flex-1">
                             {tsk && canEdit && (
@@ -3829,7 +3832,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                 type="checkbox"
                                 checked={done}
                                 onChange={() => handleToggleTaskDone(tsk)}
-                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 cursor-pointer shrink-0"
+                                className="h-4 w-4 rounded border-gray-300 text-entity-text accent-entity-solid cursor-pointer shrink-0"
                               />
                             )}
                             <div className="min-w-0">
@@ -3838,16 +3841,16 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                 onClick={() => {
                                   window.location.hash = "tasks";
                                 }}
-                                className={`font-heading font-bold text-caption text-left hover:underline cursor-pointer block truncate ${
+                                className={`font-heading font-semibold text-caption text-left hover:underline cursor-pointer block truncate ${
                                   done
-                                    ? "line-through text-slate-400"
-                                    : "text-slate-900"
+                                    ? "line-through text-gray-400"
+                                    : "text-gray-900 hover:text-entity-text"
                                 }`}
                               >
                                 {tsk ? tsk.title : link.taskId}
                               </button>
                               {tsk?.deadline && (
-                                <span className="text-micro text-slate-400 font-semibold">
+                                <span className="text-micro text-gray-400 font-semibold">
                                   {t("Due:", "Termín:", "Határidő:")}{" "}
                                   {tsk.deadline}
                                 </span>
@@ -3858,7 +3861,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                           <div className="flex items-center gap-2.5 flex-wrap">
                             {tsk && (
                               <div className="flex items-center gap-1.5">
-                                <User className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                <User className="w-3.5 h-3.5 text-entity-text shrink-0" />
                                 <select
                                   value={currentAssignee}
                                   disabled={!canEdit}
@@ -3868,7 +3871,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                       e.target.value,
                                     )
                                   }
-                                  className="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-white text-micro font-bold text-slate-700 cursor-pointer"
+                                  className="px-2.5 py-1.5 rounded-md border border-gray-200 bg-gray-50 hover:bg-white text-micro font-semibold text-gray-700 cursor-pointer"
                                 >
                                   <option value="">
                                     {t(
@@ -3887,10 +3890,10 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                             )}
 
                             <span
-                              className={`px-2.5 py-1 rounded-full text-micro font-bold ${
+                              className={`px-2.5 py-1 rounded-md text-micro font-semibold ${
                                 done
                                   ? "bg-emerald-100 text-emerald-700"
-                                  : "bg-indigo-50 text-indigo-700"
+                                  : "bg-entity-subtle text-entity-text border border-entity-border"
                               }`}
                             >
                               {tsk ? tsk.status : "Linked"}
@@ -3904,26 +3907,26 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               </div>
             ) : (
               /* TIME LOGGED TAB (Total Time + Log Time Form + Chronological Time Entries) */
-              <div className="flex-1 flex flex-col min-h-0 ws-lg:overflow-y-auto space-y-4">
+              <div style={entityAccentStyle("time_tracking")} className="flex-1 flex flex-col min-h-0 ws-lg:overflow-y-auto space-y-4">
                 {(() => {
                   const totalLoggedMins = shownTimeEntries.reduce((acc, e) => acc + (e.minutes || 0), 0);
                   const formattedTotal = formatDurationMinutes(totalLoggedMins);
 
                   return (
-                    <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-200/80 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                    <div className="bg-entity-subtle p-4 rounded-lg border border-entity-border flex flex-wrap items-center justify-between gap-3 shrink-0">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center border border-emerald-200">
+                        <div className="w-10 h-10 rounded-md bg-white text-entity-text flex items-center justify-center border border-entity-border">
                           <Timer className="h-5 w-5" />
                         </div>
                         <div>
-                          <span className="block type-overline text-emerald-700/80">
+                          <span className="block type-overline text-entity-text">
                             {t(
                               "Total Time Logged",
                               "Celkový zaznamenaný čas",
                               "Összes rögzített idő",
                             )}
                           </span>
-                          <span className="text-micro text-slate-500">
+                          <span className="text-micro text-gray-500">
                             {t(
                               "Hours:Minutes format (e.g. 1:30 = 90 min)",
                               "Formát Hodiny:Minúty (napr. 1:30 = 90 min)",
@@ -3945,12 +3948,12 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                 "Celkový čas vo formáte H:MM (napr. 1:30 pre 90 min)",
                                 "Összes idő Ó:PP formátumban (pl. 1:30 = 90 perc)",
                               )}
-                              className="w-20 px-2.5 py-1.5 rounded-xl border border-emerald-400 bg-white text-body font-mono font-extrabold text-slate-800 text-center"
+                              className="w-20 px-2.5 py-1.5 rounded-md border border-entity-solid bg-white text-body font-mono font-bold text-gray-900 text-center"
                             />
                             <button
                               type="button"
                               onClick={handleSaveTotalLoggedTime}
-                              className="p-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                              className="p-2 rounded-md bg-entity-solid hover:opacity-90 text-white cursor-pointer"
                               title={t("Save", "Uložiť", "Mentés")}
                             >
                               <Check className="w-4 h-4" />
@@ -3958,7 +3961,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                             <button
                               type="button"
                               onClick={() => setIsEditingTotalTime(false)}
-                              className="p-2 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-slate-700 cursor-pointer"
+                              className="p-2 rounded-md border border-gray-200 bg-white text-gray-500 hover:text-gray-700 cursor-pointer"
                               title={t("Cancel", "Zrušiť", "Mégse")}
                             >
                               <X className="w-4 h-4" />
@@ -3976,13 +3979,13 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                               "Kliknutím upravíte celkový zaznamenaný čas (H:MM)",
                               "Kattintson az összes rögzített idő szerkesztéséhez (Ó:PP)",
                             )}
-                            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white hover:bg-emerald-100/70 border border-emerald-200 text-body font-mono font-extrabold text-emerald-800 transition-colors cursor-pointer shadow-2xs"
+                            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-md bg-white hover:bg-gray-50 border border-entity-border text-body font-mono font-bold text-entity-text transition-colors cursor-pointer shadow-2xs"
                           >
                             <span>{formattedTotal}</span>
-                            <Edit3 className="w-3.5 h-3.5 text-emerald-600" />
+                            <Edit3 className="w-3.5 h-3.5 text-entity-text" />
                           </button>
                         ) : (
-                          <span className="px-3.5 py-1.5 rounded-xl bg-white border border-emerald-200 text-body font-mono font-extrabold text-emerald-800">
+                          <span className="px-3.5 py-1.5 rounded-md bg-white border border-entity-border text-body font-mono font-bold text-entity-text">
                             {formattedTotal}
                           </span>
                         )}
@@ -3995,8 +3998,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                               if (onThis) void timeTracker.stop();
                               else void timeTracker.start({ ticketId: selectedTicket.id, projectId: selectedTicket.projectId || null, description: null, originType: "ticket", originId: selectedTicket.id });
                             }}
-                            className={`inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-ui font-semibold text-white transition-all active:scale-95 cursor-pointer ${
-                              timeTracker.running?.ticketId === selectedTicket.id ? "bg-rose-600" : "bg-primary"
+                            className={`inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-ui font-semibold text-white transition-all active:scale-95 cursor-pointer ${
+                              timeTracker.running?.ticketId === selectedTicket.id ? "bg-rose-600" : "bg-entity-solid hover:opacity-90"
                             }`}
                           >
                             <Timer className="h-4 w-4" />
@@ -4013,11 +4016,11 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                 {canEdit && (
                   <form
                     onSubmit={(e) => handleLogTime(e, false)}
-                    className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80 space-y-3 shrink-0"
+                    className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3 shrink-0"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="type-overline text-slate-600 flex items-center gap-1.5">
-                        <Timer className="h-3.5 w-3.5 text-emerald-600" />
+                      <span className="type-overline text-gray-600 flex items-center gap-1.5">
+                        <Timer className="h-3.5 w-3.5 text-entity-text" />
                         {t(
                           "Log Time Entry",
                           "Zaznamenať čas",
@@ -4043,12 +4046,12 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                             "Hodiny:Minúty (napr. 1:30 pre 90 minút)",
                             "Óra:Perc (pl. 1:30 = 90 perc)",
                           )}
-                          className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-caption font-mono font-bold text-slate-800 text-center"
+                          className="w-full h-9 px-3 rounded-md border border-gray-200 bg-white text-caption font-mono font-bold text-gray-800 text-center"
                         />
                       </div>
 
                       <div className="ws-sm:col-span-6">
-                        <label className="block type-overline text-slate-400 mb-1">
+                        <label className="block type-overline text-gray-400 mb-1">
                           {t(
                             "Work Description / Note",
                             "Popis práce / Poznámka",
@@ -4064,14 +4067,14 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                             "Popíšte vykonanú prácu...",
                             "Írja le az elvégzett munkát...",
                           )}
-                          className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-caption font-semibold text-slate-800"
+                          className="w-full h-9 px-3 rounded-md border border-gray-200 bg-white text-caption font-medium text-gray-800"
                         />
                       </div>
 
                       <div className="ws-sm:col-span-3 flex items-end">
                         <button
                           type="submit"
-                          className="w-full h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-caption font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                          className="w-full h-9 px-4 rounded-md bg-entity-solid hover:opacity-90 text-white text-caption font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
                         >
                           <Plus className="w-4 h-4" />
                           <span>
@@ -4084,9 +4087,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                 )}
 
                 {shownTimeEntries.length === 0 ? (
-                  <div className="p-8 rounded-2xl border border-dashed border-slate-200 text-center space-y-2">
-                    <Timer className="w-8 h-8 text-slate-300 mx-auto" />
-                    <p className="text-caption font-bold text-slate-500">
+                  <div className="p-8 rounded-lg border border-dashed border-gray-200 text-center space-y-2">
+                    <Timer className="w-8 h-8 text-gray-300 mx-auto" />
+                    <p className="text-caption font-semibold text-gray-500">
                       {t(
                         "No time entries logged on this ticket yet.",
                         "K tomuto tiketu zatiaľ nie je zaznamenaný žiadny čas.",
@@ -4112,7 +4115,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         return (
                           <div
                             key={te.id}
-                            className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3 hover:border-emerald-300 transition-colors"
+                            className="p-4 rounded-lg bg-white border border-gray-200 shadow-2xs flex flex-wrap items-center justify-between gap-3 hover:border-entity-border transition-colors"
                           >
                             {isEditingTe && isAdminUser ? (
                               <div className="flex flex-wrap items-center gap-2 w-full">
@@ -4120,7 +4123,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                   autoFocus
                                   value={editingTimeEntryDuration}
                                   onChange={setEditingTimeEntryDuration}
-                                  className="w-20 px-2.5 py-1.5 rounded-xl border border-emerald-400 bg-white text-caption font-mono font-bold text-center"
+                                  className="w-20 px-2.5 py-1.5 rounded-md border border-entity-solid bg-white text-caption font-mono font-bold text-center"
                                 />
                                 <input
                                   type="text"
@@ -4133,19 +4136,19 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                     "Poznámka...",
                                     "Megjegyzés...",
                                   )}
-                                  className="flex-1 min-w-44 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-caption"
+                                  className="flex-1 min-w-44 px-3 py-1.5 rounded-md border border-gray-200 bg-white text-caption"
                                 />
                                 <button
                                   type="button"
                                   onClick={() => setEditingTimeEntryId(null)}
-                                  className="px-3 py-1.5 rounded-xl border border-slate-200 text-micro font-bold text-slate-600 cursor-pointer"
+                                  className="px-3 py-1.5 rounded-md border border-gray-200 text-micro font-semibold text-gray-600 cursor-pointer"
                                 >
                                   {t("Cancel", "Zrušiť", "Mégse")}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleSaveTimeEntry(te.id)}
-                                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-micro font-bold flex items-center gap-1 cursor-pointer"
+                                  className="px-3.5 py-1.5 rounded-md bg-entity-solid hover:opacity-90 text-white text-micro font-semibold flex items-center gap-1 cursor-pointer"
                                 >
                                   <Check className="w-3.5 h-3.5" />
                                   <span>{t("Save", "Uložiť", "Mentés")}</span>
@@ -4154,11 +4157,11 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                             ) : (
                               <>
                                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                                  <span className="px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-caption font-extrabold shrink-0">
+                                  <span className="px-2.5 py-1 rounded-md bg-entity-subtle border border-entity-border text-entity-text font-mono text-caption font-bold shrink-0">
                                     {formatDurationMinutes(te.minutes)}
                                   </span>
                                   <div className="min-w-0">
-                                    <p className="text-caption font-semibold text-slate-800 truncate">
+                                    <p className="text-caption font-semibold text-gray-800 truncate">
                                       {entryNote ||
                                         t(
                                           "Support work",
@@ -4166,7 +4169,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                           "Támogatási munka",
                                         )}
                                     </p>
-                                    <span className="text-micro text-slate-400 font-semibold">
+                                    <span className="text-micro text-gray-400 font-semibold">
                                       {te.userName || "Agent"} •{" "}
                                       {stamp.slice(0, 16) || "—"}
                                     </span>
@@ -4184,7 +4187,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                                         );
                                         setEditingTimeEntryNote(entryNote);
                                       }}
-                                      className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                                      className="p-1.5 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-subtle transition-colors cursor-pointer"
                                       title={t(
                                         "Edit time entry",
                                         "Upraviť časový záznam",
@@ -4247,7 +4250,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowCreateModal(true)}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-heading font-bold text-ui shadow-sm transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-entity-solid hover:opacity-90 text-white font-heading font-semibold text-ui shadow-2xs transition-all cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>{t("New Ticket", "Nový tiket", "Új jegy")}</span>
@@ -4257,7 +4260,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               type="button"
               onClick={handlePollImap}
               disabled={isPollingImap}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-heading font-bold text-ui transition-all cursor-pointer disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 font-heading font-semibold text-ui shadow-2xs transition-all cursor-pointer disabled:opacity-50"
               title={t(
                 "Poll Support IMAP Mailbox Now",
                 "Skontrolovať e-mailovú schránku podpory",
@@ -4265,7 +4268,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               )}
             >
               <RefreshCw
-                className={`w-4 h-4 text-indigo-600 ${
+                className={`w-4 h-4 text-entity-text ${
                   isPollingImap ? "animate-spin" : ""
                 }`}
               />
@@ -4279,7 +4282,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                 onClick={() => {
                   window.location.hash = "settings/tickets";
                 }}
-                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-slate-500 hover:bg-slate-100 hover:text-slate-800 font-heading font-bold text-ui transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-md text-gray-600 hover:bg-gray-100 hover:text-gray-900 font-heading font-semibold text-ui transition-all cursor-pointer"
                 title={t(
                   "Ticket Settings",
                   "Nastavenia tiketov",
@@ -4304,13 +4307,13 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               key: "all_open",
               label: t("All Open", "Všetky otvorené", "Összes nyitott"),
               count: kpiCounts.allOpen,
-              tone: "border-indigo-200 bg-indigo-50/60 text-indigo-700",
+              tone: "border-entity-border bg-entity-subtle text-entity-text",
             },
             {
               key: "unassigned",
               label: t("Unassigned", "Nepriradené", "Nincs felelős"),
               count: kpiCounts.unassigned,
-              tone: "border-amber-200 bg-amber-50/60 text-amber-700",
+              tone: "border-amber-200 bg-amber-50/70 text-amber-700",
             },
             {
               key: "waiting_client",
@@ -4320,7 +4323,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                 "Ügyfélre vár",
               ),
               count: kpiCounts.waitingClient,
-              tone: "border-purple-200 bg-purple-50/60 text-purple-700",
+              tone: "border-purple-200 bg-purple-50/70 text-purple-700",
             },
             {
               key: "sla_risk",
@@ -4330,7 +4333,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                 "SLA kockázat / lejárt",
               ),
               count: kpiCounts.slaRisk,
-              tone: "border-rose-200 bg-rose-50/60 text-rose-700",
+              tone: "border-rose-200 bg-rose-50/70 text-rose-700",
             },
             {
               key: "resolved",
@@ -4340,7 +4343,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                 "Megoldva / Lezárva",
               ),
               count: kpiCounts.resolved,
-              tone: "border-emerald-200 bg-emerald-50/60 text-emerald-700",
+              tone: "border-emerald-200 bg-emerald-50/70 text-emerald-700",
             },
           ] as const
         ).map((card) => {
@@ -4353,16 +4356,16 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                 setStatusFilter("all");
                 setKpiBucket(card.key);
               }}
-              className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+              className={`p-3.5 rounded-lg border text-left transition-all cursor-pointer ${
                 active
-                  ? `${card.tone} ring-2 ring-indigo-500/30 shadow-sm`
-                  : "bg-white border-slate-200 hover:border-slate-300 text-slate-700"
+                  ? `${card.tone} ring-2 ring-entity-ring shadow-xs`
+                  : "bg-white border-gray-200 hover:border-gray-300 text-gray-800"
               }`}
             >
-              <div className="font-heading font-extrabold text-title-md tabular-nums">
+              <div className="font-heading font-bold text-title-md tabular-nums">
                 {card.count}
               </div>
-              <div className="type-overline text-slate-500 mt-0.5">
+              <div className="type-overline text-gray-500 mt-0.5">
                 {card.label}
               </div>
             </button>
@@ -4371,9 +4374,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       </div>
 
       {/* Filter Bar */}
-      <div className="glass-panel flex flex-col ws-sm:flex-row ws-sm:flex-wrap items-stretch ws-sm:items-center gap-2.5 p-3 rounded-3xl border border-slate-200 bg-white/95 shadow-2xs">
+      <div className="flex flex-col ws-sm:flex-row ws-sm:flex-wrap items-stretch ws-sm:items-center gap-2.5 p-3 rounded-lg border border-gray-200 bg-white shadow-xs">
         <div className="relative flex-1 min-w-50">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
             value={searchQuery}
@@ -4383,7 +4386,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               "Hľadať číslo tiketu, predmet, e-mail, projekt, klienta...",
               "Jegy #, tárgy, e-mail, projekt, ügyfél keresése...",
             )}
-            className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 text-ui font-semibold bg-white"
+            className="w-full h-9 pl-9 pr-3 rounded-md border border-gray-200 text-ui font-medium bg-white focus:outline-none focus:border-entity-solid"
           />
         </div>
 
@@ -4475,7 +4478,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
           <button
             type="button"
             onClick={() => setProjectFilter("all")}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 text-micro font-bold cursor-pointer"
+            style={entityAccentStyle("projects")}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-entity-subtle border border-entity-border text-entity-text text-micro font-semibold cursor-pointer"
           >
             <Briefcase className="w-3.5 h-3.5" />
             <span>{getProjectName(projectFilter) || projectFilter}</span>
@@ -4489,10 +4493,10 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
             onClick={() =>
               setArchiveScope((s) => (s === "active" ? "archived" : "active"))
             }
-            className={`px-3 h-10 rounded-xl border text-caption font-bold flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3 h-9 rounded-md border text-caption font-semibold flex items-center gap-1.5 cursor-pointer ${
               archiveScope === "archived"
                 ? "bg-amber-50 border-amber-300 text-amber-700"
-                : "bg-white border-slate-200 text-slate-500 hover:text-slate-800"
+                : "bg-white border-gray-200 text-gray-600 hover:text-gray-900"
             }`}
           >
             <Archive className="w-4 h-4" />
@@ -4503,14 +4507,14 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
             </span>
           </button>
 
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200">
+          <div className="flex items-center gap-1 p-1 rounded-md bg-gray-100 border border-gray-200">
             <button
               type="button"
               onClick={() => setViewMode("table")}
-              className={`p-2 rounded-lg cursor-pointer ${
+              className={`p-1.5 rounded-md cursor-pointer ${
                 viewMode === "table"
-                  ? "bg-white text-indigo-600 shadow-2xs"
-                  : "text-slate-400"
+                  ? "bg-white text-entity-text shadow-2xs"
+                  : "text-gray-400 hover:text-gray-700"
               }`}
               title={t("Table view", "Tabuľka", "Táblázat")}
             >
@@ -4519,10 +4523,10 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
             <button
               type="button"
               onClick={() => setViewMode("board")}
-              className={`p-2 rounded-lg cursor-pointer ${
+              className={`p-1.5 rounded-md cursor-pointer ${
                 viewMode === "board"
-                  ? "bg-white text-indigo-600 shadow-2xs"
-                  : "text-slate-400"
+                  ? "bg-white text-entity-text shadow-2xs"
+                  : "text-gray-400 hover:text-gray-700"
               }`}
               title={t("Kanban board", "Kanban tabuľa", "Kanban tábla")}
             >
@@ -4535,7 +4539,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       {/* Main Content: Full-Width Table or Kanban Board */}
       <div>
         {viewMode === "table" ? (
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xs overflow-hidden">
+          <div className="bg-white rounded-lg border border-gray-200 shadow-xs overflow-clip">
             {filteredTickets.length === 0 ? (
               <div className="p-12 text-center text-slate-400 text-ui font-semibold">
                 {t(
@@ -4636,19 +4640,21 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         {tk.subject}
                       </div>
 
-                      <div className="flex flex-wrap items-center justify-between gap-2 text-micro text-slate-500">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-micro text-gray-500">
                         <div className="flex items-center gap-2 flex-wrap">
                           {projName && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 font-bold">
-                              <Briefcase className="w-3 h-3" />
-                              {projName}
-                            </span>
+                            <EntityBadge
+                              entity="projects"
+                              label={projName}
+                              showIcon
+                            />
                           )}
                           {client && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
-                              <User className="w-3 h-3" />
-                              {client.name}
-                            </span>
+                            <EntityBadge
+                              entity="clients"
+                              label={client.name}
+                              showIcon
+                            />
                           )}
                           <span>{tk.reporterEmail || tk.reporterName}</span>
                         </div>
@@ -4717,10 +4723,10 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       handleMoveTicketStatus(tkId, stKey);
                     }
                   }}
-                  className={`w-72 shrink-0 rounded-2xl border p-3 space-y-2.5 transition-all ${
+                  className={`w-72 shrink-0 rounded-lg border p-3 space-y-2.5 transition-all ${
                     isDropTarget
-                      ? "bg-indigo-50/70 border-indigo-500 ring-2 ring-indigo-500/25"
-                      : "bg-slate-50/90 border-slate-200"
+                      ? "bg-entity-subtle border-entity-solid ring-2 ring-entity-ring"
+                      : "bg-gray-50 border-gray-200"
                   }`}
                 >
                   <div className="flex items-center justify-between px-1">
@@ -4775,14 +4781,14 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                             setDragOverStatusKey(null);
                           }}
                           onClick={() => handleSelectTicket(tk.id)}
-                          className={`p-3 rounded-xl bg-white border shadow-2xs transition-all space-y-1.5 ${
+                          className={`p-3 rounded-md bg-white border shadow-2xs transition-all space-y-1.5 ${
                             canEdit
                               ? "cursor-grab active:cursor-grabbing"
                               : "cursor-pointer"
                           } ${
                             isDragging
-                              ? "opacity-50 border-indigo-400 ring-2 ring-indigo-500/20"
-                              : "border-slate-200 hover:border-indigo-300"
+                              ? "opacity-50 border-entity-solid ring-2 ring-entity-ring"
+                              : "border-gray-200 hover:border-entity-border"
                           }`}
                         >
                           <div className="flex items-center justify-between gap-1 flex-wrap">
@@ -4819,12 +4825,16 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                               </span>
                             </div>
                           </div>
-                          <div className="font-bold text-caption text-slate-800 line-clamp-2">
+                          <div className="font-semibold text-caption text-gray-900 line-clamp-2">
                             {tk.subject}
                           </div>
                           {projName && (
-                            <div className="text-micro font-bold text-purple-700 truncate">
-                              {projName}
+                            <div>
+                              <EntityBadge
+                                entity="projects"
+                                label={projName}
+                                showIcon
+                              />
                             </div>
                           )}
                           {canEdit && (
@@ -4879,9 +4889,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       {/* Create Ticket Modal (with Rich HTML Formatting + Image & File Upload) */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg border border-gray-200 shadow-lg max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h3 className="font-heading font-bold text-title-sm text-slate-900">
+              <h3 className="font-heading font-semibold text-title-sm text-gray-900">
                 {t(
                   "Create Support Ticket",
                   "Vytvoriť podporný tiket",
@@ -4891,7 +4901,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 cursor-pointer"
+                className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -5079,13 +5089,13 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 text-caption font-bold text-slate-600 cursor-pointer"
+                  className="px-4 py-2 rounded-md border border-gray-200 text-caption font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer"
                 >
                   {t("Cancel", "Zrušiť", "Mégse")}
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-caption font-bold cursor-pointer"
+                  className="px-5 py-2 rounded-md bg-entity-solid hover:opacity-90 text-white text-caption font-semibold cursor-pointer"
                 >
                   {t("Create Ticket", "Vytvoriť tiket", "Jegy létrehozása")}
                 </button>
@@ -5098,9 +5108,9 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
       {/* Support Contracts (Retainers) Modal */}
       {showContractsModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 space-y-4 max-h-[85vh] overflow-y-auto">
+          <div className="bg-white rounded-lg border border-gray-200 shadow-lg max-w-2xl w-full p-6 space-y-4 max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h3 className="font-heading font-bold text-title-sm text-slate-900 flex items-center gap-2">
+              <h3 className="font-heading font-semibold text-title-sm text-gray-900 flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-emerald-600" />
                 <span>
                   {t(
@@ -5113,7 +5123,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowContractsModal(false)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 cursor-pointer"
+                className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -5122,7 +5132,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
             {canEdit && (
               <form
                 onSubmit={handleCreateContract}
-                className="p-4 rounded-2xl bg-slate-50 border border-slate-200 grid grid-cols-1 ws-sm:grid-cols-4 gap-2.5"
+                className="p-4 rounded-lg bg-gray-50 border border-gray-200 grid grid-cols-1 ws-sm:grid-cols-4 gap-2.5"
               >
                 <input
                   type="text"
@@ -5134,12 +5144,12 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     "Názov paušálu...",
                     "Szerződés neve...",
                   )}
-                  className="ws-sm:col-span-2 h-9 px-3 rounded-xl border border-slate-200 bg-white text-caption font-semibold"
+                  className="ws-sm:col-span-2 h-9 px-3 rounded-md border border-gray-200 bg-white text-caption font-medium"
                 />
                 <select
                   value={contractProjectId}
                   onChange={(e) => setContractProjectId(e.target.value)}
-                  className="h-9 px-2.5 rounded-xl border border-slate-200 bg-white text-caption font-semibold"
+                  className="h-9 px-2.5 rounded-md border border-gray-200 bg-white text-caption font-semibold"
                 >
                   <option value="">
                     {t(
@@ -5162,7 +5172,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     onChange={(e) =>
                       setContractHours(Number(e.target.value) || 10)
                     }
-                    className="w-20 h-9 px-2.5 rounded-xl border border-slate-200 bg-white text-caption font-bold"
+                    className="w-20 h-9 px-2.5 rounded-md border border-gray-200 bg-white text-caption font-semibold"
                     title={t(
                       "Monthly hours",
                       "Hodiny mesačne",
@@ -5171,7 +5181,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   />
                   <button
                     type="submit"
-                    className="flex-1 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-caption font-bold cursor-pointer"
+                    className="flex-1 h-9 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-caption font-semibold cursor-pointer"
                   >
                     {t("Add", "Pridať", "Hozzáadás")}
                   </button>
@@ -5181,7 +5191,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
 
             <div className="space-y-2.5">
               {supportContracts.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 text-caption">
+                <div className="p-8 text-center text-gray-400 text-caption">
                   {t(
                     "No support contracts configured yet.",
                     "Zatiaľ žiadne servisné zmluvy.",
@@ -5200,7 +5210,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                   return (
                     <div
                       key={c.id}
-                      className="p-4 rounded-2xl border border-slate-200 bg-white space-y-2"
+                      className="p-4 rounded-lg border border-gray-200 bg-white space-y-2"
                     >
                       <div className="flex items-center justify-between">
                         <div>

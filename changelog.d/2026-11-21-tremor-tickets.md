@@ -1,0 +1,1 @@
+- Remake Support Tickets board, KPI filter tiles, ticket list & Kanban view, ticket detail panel, cross-entity Project (`#0284c7`), Client (`#115e59`), and Task (`#c2410c`) cards/badges, and the public ticket status portal in the Tremor Blocks design system with purple (`#7e22ce`) entity accents.
