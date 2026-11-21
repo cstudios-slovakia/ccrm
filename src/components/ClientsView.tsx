@@ -3368,7 +3368,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         />
 
         {(!isOpenAiConfigured || localSummary || isGeneratingSummary) && (
-          <div className="flex flex-wrap items-center gap-3" style={entityAccentStyle("ai")}>
+          <div className="flex flex-wrap items-center gap-3" style={entityAccentStyle("rag_ai")}>
             {/* AI Summary Card */}
             {(!isOpenAiConfigured && !localSummary) ? (
               <div className="flex items-center gap-2.5 bg-entity-subtle/50 border border-entity-border p-2.5 px-3.5 rounded-lg max-w-md text-ui font-semibold text-entity-text shadow-2xs">
@@ -3986,9 +3986,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           const comp = companyByIdMap.get(profileCompanyClientId);
                           if (comp) window.location.hash = `client-${encodeURIComponent(comp.name)}`;
                         }}
-                        className="inline-flex items-center gap-1.5 text-ui font-bold text-sky-700 hover:underline cursor-pointer pt-0.5"
+                        className="inline-flex items-center gap-1.5 text-ui font-semibold text-entity-text hover:underline cursor-pointer pt-0.5"
                       >
-                        <Building2 className="h-3.5 w-3.5 text-sky-600" />
+                        <Building2 className="h-3.5 w-3.5 text-entity-text" />
                         <span>{companyByIdMap.get(profileCompanyClientId)!.name}</span>
                         <ExternalLink className="h-3 w-3 opacity-60" />
                       </button>
@@ -4161,11 +4161,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 onChange={handleDetailTabChange}
                 items={[
                   { key: "timeline", icon: <Clock className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.history_timeline") },
-                  { key: "tasks", icon: <CheckSquare className="h-4.5 w-4.5" />, label: t("Tasks", "Úlohy", "Feladatok"), count: clientOpenTasksCount },
-                  { key: "orders", icon: <SectionIcon id="orders" className="h-4.5 w-4.5" />, label: t("Orders", "Objednávky", "Rendelések"), count: clientOrders.length },
-                  { key: "invoices", icon: <Coins className="h-4.5 w-4.5" />, label: t("Invoices & Billing", "Faktúry a platby", "Számlák és fizetések"), count: clientInvoices.length },
+                  { key: "tasks", entity: "tasks", icon: <CheckSquare className="h-4.5 w-4.5" />, label: t("Tasks", "Úlohy", "Feladatok"), count: clientOpenTasksCount },
+                  { key: "orders", entity: "orders", icon: <SectionIcon id="orders" className="h-4.5 w-4.5" />, label: t("Orders", "Objednávky", "Rendelések"), count: clientOrders.length },
+                  { key: "invoices", entity: "invoices", icon: <Coins className="h-4.5 w-4.5" />, label: t("Invoices & Billing", "Faktúry a platby", "Számlák és fizetések"), count: clientInvoices.length },
                   {
                     key: "leads",
+                    entity: "leads",
                     icon: <Layers className="h-4.5 w-4.5" />,
                     label: systemLanguage === "sk" ? "Aktívne Leady" : systemLanguage === "hu" ? "Aktív leadek" : "Active Leads",
                     count: (activeClient.associatedLeads || []).filter((l: any) => l.status.toLowerCase() !== "won" && l.status.toLowerCase() !== "lost").length,
@@ -4182,14 +4183,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   },
                   {
                     key: "agency_workers",
+                    entity: "agency",
                     testId: "client-tab-agency-workers",
                     hidden: !agencyEnabled || activeClient.clientType === "person",
                     icon: <UserCheck className="h-4.5 w-4.5" />,
                     label: t("Rented Employees", "Prenajatí zamestnanci", "Kölcsönzött dolgozók"),
                   },
-                  { key: "financial_status", hidden: activeClient.clientType === "person", icon: <TrendingUp className="h-4.5 w-4.5" />, label: t("Financial Report", "Finančný report", "Pénzügyi jelentés") },
-                  { key: "files", icon: <FileText className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.attached_files"), count: (activeClient.timeline || []).reduce((n, event) => n + timelineEventFiles(event).length, 0) },
-                  { key: "tickets", icon: <TicketIcon className="h-4.5 w-4.5" />, label: t("Tickets", "Tikety", "Jegyek"), count: clientTickets.length || undefined },
+                  { key: "financial_status", entity: "rag_ai", hidden: activeClient.clientType === "person", icon: <TrendingUp className="h-4.5 w-4.5" />, label: t("Financial Report", "Finančný report", "Pénzügyi jelentés") },
+                  { key: "files", entity: "files", icon: <FileText className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.attached_files"), count: (activeClient.timeline || []).reduce((n, event) => n + timelineEventFiles(event).length, 0) },
+                  { key: "tickets", entity: "tickets", icon: <TicketIcon className="h-4.5 w-4.5" />, label: t("Tickets", "Tikety", "Jegyek"), count: clientTickets.length || undefined },
                 ]}
               />
 
@@ -4812,14 +4814,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               )}
 
               {activeDetailTab === "tasks" && (
-                <div className="space-y-4 text-left animate-in fade-in duration-150">
-                  <div className="flex items-center justify-between border-b-2 border-slate-100 pb-3">
+                <div style={entityAccentStyle("tasks")} className="space-y-4 text-left animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between border-b border-gray-200 pb-3">
                     <div>
-                      <h3 className="text-ui font-bold text-slate-800 flex items-center gap-2">
-                        <CheckSquare className="h-4.5 w-4.5 text-orange-600 stroke-[2.5]" />
+                      <h3 className="text-ui font-semibold text-gray-900 flex items-center gap-2">
+                        <CheckSquare className="h-4.5 w-4.5 text-entity-text" />
                         {t("Client Tasks", "Úlohy klienta", "Ügyfél feladatai")}
                       </h3>
-                      <p className="text-caption text-slate-500 mt-0.5">
+                      <p className="text-caption text-gray-500 mt-0.5">
                         {t(
                           `Tasks associated with ${activeClient.name}`,
                           `Úlohy priradené ku klientovi ${activeClient.name}`,
@@ -4827,7 +4829,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         )}
                       </p>
                     </div>
-                    <span className="px-2.5 py-1 rounded-xl bg-orange-50 text-orange-700 border border-orange-200 text-ui font-bold">
+                    <span className="px-2.5 py-1 rounded-md bg-entity-subtle text-entity-text border border-entity-border text-ui font-semibold">
                       {clientOpenTasksCount} {t("open", "otvorených", "nyitott")}
                     </span>
                   </div>
@@ -4856,7 +4858,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               )}
 
               {activeDetailTab === "files" && (
-                <div className="space-y-6">
+                <div style={entityAccentStyle("files")} className="space-y-6">
                   {/* Attach New Document Form */}
                   <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
                     <h3 className="text-ui font-semibold text-entity-text mb-4 flex items-center gap-1.5 border-b border-gray-200 pb-2">
@@ -4868,7 +4870,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         <div className="space-y-1">
                           <label className="type-overline text-slate-500 block pl-0.5">{t("Upload File", "Nahrať súbor", "Fájl feltöltése")} *</label>
                           <div className="flex items-center gap-2">
-                            <label className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100/80 text-amber-800 border-2 border-amber-300 transition-all cursor-pointer type-overline shadow-sm select-none shrink-0">
+                            <label className="flex items-center gap-1.5 px-3 py-2 rounded-md bg-entity-subtle hover:bg-entity-muted text-entity-text border border-entity-border transition-all cursor-pointer type-overline shadow-2xs select-none shrink-0">
                               <FolderOpen className="h-4 w-4" />
                               <span>{t("Select File", "Vybrať súbor", "Fájl kiválasztása")}</span>
                               <input 
@@ -4916,16 +4918,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                         <div className="space-y-1">
                           <label className="type-overline text-slate-500 block pl-0.5">{t("Document Category", "Kategória dokumentu", "Dokumentum kategória")} *</label>
-                          <div className="grid grid-cols-3 gap-2 bg-white p-1 rounded-xl border-2 border-slate-200">
+                          <div className="grid grid-cols-3 gap-2 bg-white p-1 rounded-md border border-gray-200">
                             {(["offer", "contract", "invoice"] as const).map(type => (
                               <button
                                 key={type}
                                 type="button"
                                 onClick={() => setUploadFileType(type)}
-                                className={`py-2 rounded-lg type-overline transition-all text-center flex items-center justify-center gap-1.5 ${
+                                className={`py-2 rounded-md type-overline transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
                                   uploadFileType === type 
-                                    ? "bg-amber-600 text-white border border-amber-700 shadow" 
-                                    : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200/50"
+                                    ? "bg-entity-solid text-white border border-entity-solid shadow-2xs" 
+                                    : "text-gray-500 hover:text-gray-800 bg-white hover:bg-gray-50 border border-gray-200/70"
                                 }`}
                               >
                                 <span>
@@ -5086,9 +5088,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               )}
 
               {activeDetailTab === "leads" && (
-                <div className="space-y-4 text-left">
-                  <h3 className="text-ui font-bold text-slate-400 flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
-                    <Layers className="h-4.5 w-4.5 text-blue-600 stroke-[2.5]" /> {systemLanguage === "sk" ? "Aktívne obchodné prípady (Leady)" : systemLanguage === "hu" ? "Aktív leadek" : "Active Leads / Deals"}
+                <div style={entityAccentStyle("leads")} className="space-y-4 text-left">
+                  <h3 className="text-ui font-semibold text-gray-500 flex items-center gap-1.5 pb-2 border-b border-gray-200">
+                    <Layers className="h-4.5 w-4.5 text-entity-text" /> {systemLanguage === "sk" ? "Aktívne obchodné prípady (Leady)" : systemLanguage === "hu" ? "Aktív leadek" : "Active Leads / Deals"}
                   </h3>
                   {((activeClient.associatedLeads || []).filter((l: any) => l.status.toLowerCase() !== "won" && l.status.toLowerCase() !== "lost")).length === 0 ? (
                     <div className="py-8 text-center text-slate-400 text-ui font-bold">
@@ -5172,7 +5174,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               )}
 
               {activeDetailTab === "financial_status" && (
-                <div style={entityAccentStyle("ai")} className="space-y-4 text-left">
+                <div style={entityAccentStyle("rag_ai")} className="space-y-4 text-left">
                   <div className="flex items-center justify-between border-b border-gray-200 pb-2">
                     <h3 className="text-ui font-semibold text-gray-500 flex items-center gap-1.5">
                       <TrendingUp className="h-4.5 w-4.5 text-entity-text" /> 
@@ -5209,7 +5211,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <FinancialReportView summary={activeClient.financialSummary} systemLanguage={systemLanguage} />
                   ) : (
                     <div
-                      style={entityAccentStyle("ai")}
+                      style={entityAccentStyle("rag_ai")}
                       className="py-10 text-center text-gray-500 text-ui font-semibold flex flex-col items-center justify-center gap-3 bg-gray-50 rounded-lg border border-dashed border-gray-300"
                     >
                       <Brain className="h-8 w-8 text-entity-text animate-pulse" />
@@ -5437,7 +5439,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                       type="button"
                                       onClick={() => handleOpenClientInvoiceModal(inv)}
                                       disabled={inv.isRecurring}
-                                      className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors cursor-pointer disabled:opacity-40 disabled:hover:text-slate-400 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                                      className="p-1.5 text-gray-400 hover:text-entity-text rounded-md hover:bg-entity-subtle transition-colors cursor-pointer disabled:opacity-40 disabled:hover:text-gray-400 disabled:hover:bg-transparent disabled:cursor-not-allowed"
                                       title={inv.isRecurring ? t("This is a recurring rule — edit it from Financial Management → Recurring.", "Toto je opakovaná platba — upravte ju v Finančnom prehľade → Opakované platby.", "Ez egy ismétlődő szabály — szerkessze a Pénzügyek → Ismétlődők nézetben.") : t("Edit invoice", "Upraviť faktúru", "Számla szerkesztése")}
                                     >
                                       <PencilLine className="h-3.5 w-3.5" />
@@ -5739,7 +5741,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => handleOpenEditOrder(order)}
-                                  className="p-2 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all cursor-pointer"
+                                  className="p-2 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-subtle transition-all cursor-pointer"
                                   title={t("Edit order", "Upraviť objednávku", "Rendelés szerkesztése")}
                                 >
                                   <PencilLine className="w-4 h-4" />

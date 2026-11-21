@@ -134,7 +134,7 @@ export const ClientCompanyContacts: React.FC<ClientCompanyContactsProps> = ({
                               setAttachExistingRole("");
                               (window as any).showToast?.(t("Contact attached to company", "Kontakt priradený k firme", "Kapcsolattartó hozzárendelve"));
                             }}
-                            className="w-full h-10 px-3 rounded-md bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 text-white text-ui font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                            className="w-full h-10 px-3 rounded-md bg-entity-solid hover:bg-entity-solid-hover disabled:bg-gray-300 text-white text-ui font-semibold flex items-center justify-center gap-1.5 shadow-xs cursor-pointer disabled:cursor-not-allowed transition-all"
                           >
                             <Link2 className="h-3.5 w-3.5" />
                             <span>{t("Attach", "Priradiť", "Csatolás")}</span>

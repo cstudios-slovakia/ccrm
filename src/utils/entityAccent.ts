@@ -26,6 +26,8 @@ export type EntityAlias =
   | "user"
   | "salaries"
   | "vacations"
+  | "ai"
+  | "time_tracking"
   | "settings"
   | "personal-settings"
   | "unified_entry";
@@ -49,6 +51,8 @@ export const ENTITY_ALIAS_TO_SECTION: Record<EntityAlias, SectionVisualId> = {
   user: "employees",
   salaries: "employees",
   vacations: "employees",
+  ai: "rag_ai",
+  time_tracking: "time-tracking",
   settings: "dashboard",
   "personal-settings": "dashboard",
   unified_entry: "projects",

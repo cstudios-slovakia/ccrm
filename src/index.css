@@ -35,15 +35,7 @@
   --color-sidebar: rgb(var(--sidebar));
   --color-sidebar-foreground: rgb(var(--sidebar-foreground));
 
-  /* Entity-scoped accent tokens driven by --entity-accent-* */
-  --color-entity: var(--entity-accent);
-  --color-entity-solid: var(--entity-accent-solid);
-  --color-entity-solid-hover: var(--entity-accent-solid-hover);
-  --color-entity-text: var(--entity-accent-text);
-  --color-entity-subtle: var(--entity-accent-subtle);
-  --color-entity-muted: var(--entity-accent-muted);
-  --color-entity-border: var(--entity-accent-border);
-  --color-entity-ring: var(--entity-accent-ring);
+  /* Entity-scoped accent tokens are declared below in @theme inline */
   
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
@@ -161,6 +153,19 @@
     from { opacity: 0; transform: translateX(0); }
     to { opacity: 1; transform: translateX(100%); }
   }
+}
+
+/* Inline entity-scoped tokens so Tailwind utilities emit var(--entity-accent-*)
+   directly and react dynamically to <EntityScope> / entityAccentStyle(...) subtrees. */
+@theme inline {
+  --color-entity: var(--entity-accent);
+  --color-entity-solid: var(--entity-accent-solid);
+  --color-entity-solid-hover: var(--entity-accent-solid-hover);
+  --color-entity-text: var(--entity-accent-text);
+  --color-entity-subtle: var(--entity-accent-subtle);
+  --color-entity-muted: var(--entity-accent-muted);
+  --color-entity-border: var(--entity-accent-border);
+  --color-entity-ring: var(--entity-accent-ring);
 }
 
 /* Lift applied to database-configured colours (pipeline states, lead sources,

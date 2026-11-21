@@ -1,10 +1,13 @@
-import { useState, useRef, useEffect, type ReactNode } from "react";
+import { useState, useRef, useEffect, type ReactNode, type CSSProperties } from "react";
 import { ChevronLeft, ChevronRight, Pin } from "lucide-react";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
 export interface TabItem<K extends string = string> {
   key: K;
   label: ReactNode;
   icon?: ReactNode;
+  /** Optional entity accent id (for foreign-entity tabs inside another entity's detail view). */
+  entity?: string;
   /** Count badge (`text-micro`). */
   count?: number;
   /** Free-form badge (e.g. a coloured amount), shown in place of `count`. */
@@ -113,6 +116,7 @@ export function Tabs<K extends string>({
                 role="tab"
                 data-testid={i.testId}
                 aria-selected={active}
+                style={i.entity ? (entityAccentStyle(i.entity) as CSSProperties) : undefined}
                 onClick={() => onChange(i.key)}
                 className={`h-8 shrink-0 whitespace-nowrap inline-flex items-center gap-2 rounded-md px-3 text-ui font-semibold transition-all cursor-pointer active:scale-[0.98] ${
                   active

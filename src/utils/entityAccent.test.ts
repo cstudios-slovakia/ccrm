@@ -29,6 +29,8 @@ test("singular entity aliases and dynamic routes resolve to canonical section co
   assert.equal(resolveEntityHex("employee"), SECTION_PALETTE.employees.color);
   assert.equal(resolveEntityHex("agency_worker"), SECTION_PALETTE.agency.color);
   assert.equal(resolveEntityHex("newsletter"), SECTION_PALETTE.newsletter.color);
+  assert.equal(resolveEntityHex("ai"), SECTION_PALETTE.rag_ai.color);
+  assert.equal(resolveEntityHex("time_tracking"), SECTION_PALETTE["time-tracking"].color);
 
   assert.equal(resolveRouteEntityHex("leads/lead-123"), SECTION_PALETTE.leads.color);
   assert.equal(resolveRouteEntityHex("project-abc"), SECTION_PALETTE.projects.color);

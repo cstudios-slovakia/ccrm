@@ -1,0 +1,1 @@
+- Fix CSS `--color-entity*` custom property scoping (`@theme inline`) and apply canonical foreign-entity accents across Client Detail tabs, headers, and action buttons (`tasks`, `orders`, `invoices`, `leads`, `agency`, `rag_ai`, `files`, `tickets`).
