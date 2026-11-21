@@ -1087,6 +1087,7 @@ export async function installBackendMocks(
   const pushedListColumns = new Map<string, unknown>();
   /** dashboard id -> dashboard pushed by the app. */
   const pushedCustomDashboards = new Map<string, any>();
+  let pushedWarehouseItems: unknown[] | undefined;
   /**
    * The workspace's integrationsConfig as the app last pushed it. Settings ->
    * Visible Modules (and the module setup wizard) store `disabledModules` in
@@ -1128,6 +1129,7 @@ export async function installBackendMocks(
             pushedListColumns.has(pt.id) ? { ...pt, listColumns: pushedListColumns.get(pt.id) } : pt,
           ),
           customDashboards: Array.from(pushedCustomDashboards.values()),
+          ...(pushedWarehouseItems !== undefined ? { warehouseItems: pushedWarehouseItems } : {}),
         }),
       });
     }
@@ -1136,6 +1138,7 @@ export async function installBackendMocks(
         users?: { email?: string; metadata_json?: unknown }[];
         projectTypes?: { id?: string; listColumns?: unknown }[];
         customDashboards?: { id?: string }[];
+        warehouseItems?: unknown[];
         settings?: { integrationsConfig?: unknown };
         tasks?: { id?: string; title?: string }[];
         tickets?: { id?: string; title?: string; subject?: string }[];
@@ -1159,6 +1162,7 @@ export async function installBackendMocks(
       for (const cd of body?.customDashboards ?? []) {
         if (cd?.id) pushedCustomDashboards.set(cd.id, cd);
       }
+      if (Array.isArray(body?.warehouseItems)) pushedWarehouseItems = body.warehouseItems;
     } catch {
       /* not JSON — nothing to remember */
     }
