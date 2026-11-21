@@ -51,7 +51,7 @@ const roiText = (roi: number | null) => (roi === null ? "—" : `${roi.toFixed(0
 const RoiBadge: React.FC<{ roi: number | null; t: T }> = ({ roi, t }) => (
   <span
     className={`text-ui font-bold px-3 py-1 rounded-full border ${
-      roi === null ? "text-slate-500 bg-slate-50 border-slate-200" : roi >= 0 ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-rose-700 bg-rose-50 border-rose-200"
+      roi === null ? "text-gray-500 bg-gray-50 border-gray-200" : roi >= 0 ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-rose-700 bg-rose-50 border-rose-200"
     }`}
     title={roi === null ? t("No cost recorded for this period", "Za toto obdobie nie sú zapísané žiadne náklady", "Ebben az időszakban nincs rögzített költség") : undefined}
   >
@@ -59,9 +59,9 @@ const RoiBadge: React.FC<{ roi: number | null; t: T }> = ({ roi, t }) => (
   </span>
 );
 
-const Figure: React.FC<{ label: string; value: React.ReactNode; tone?: string }> = ({ label, value, tone = "text-slate-800" }) => (
-  <div className="p-3 bg-white rounded-2xl border border-slate-100 min-w-0">
-    <span className="type-overline text-slate-400 block">{label}</span>
+const Figure: React.FC<{ label: string; value: React.ReactNode; tone?: string }> = ({ label, value, tone = "text-gray-800" }) => (
+  <div className="p-3 bg-white rounded-lg border border-gray-100 min-w-0">
+    <span className="type-overline text-gray-400 block">{label}</span>
     <span className={`text-title-sm font-bold block mt-1 truncate ${tone}`}>{value}</span>
   </div>
 );
@@ -69,13 +69,13 @@ const Figure: React.FC<{ label: string; value: React.ReactNode; tone?: string }>
 const ChannelCard: React.FC<{ icon: React.ReactNode; title: string; caption: string; roi: number | null; t: T; children: React.ReactNode }> = ({
   icon, title, caption, roi, t, children,
 }) => (
-  <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-4">
-    <div className="flex justify-between items-center gap-3 border-b border-slate-200 pb-3">
+  <div className=" p-6 rounded-lg border border-gray-200 bg-white shadow-sm space-y-4">
+    <div className="flex justify-between items-center gap-3 border-b border-gray-200 pb-3">
       <div className="flex items-center gap-2 min-w-0">
         {icon}
         <div className="flex flex-col min-w-0">
-          <h3 className="text-ui font-heading font-bold text-slate-800">{title}</h3>
-          <span className="type-overline text-slate-400 truncate">{caption}</span>
+          <h3 className="text-ui font-heading font-bold text-gray-800">{title}</h3>
+          <span className="type-overline text-gray-400 truncate">{caption}</span>
         </div>
       </div>
       <RoiBadge roi={roi} t={t} />
@@ -131,7 +131,7 @@ export const useMarketingRoiFigures = (
 const SetupHint: React.FC<{ t: T; error: boolean }> = ({ t, error }) => (
   <a
     href={SETTINGS_HREF}
-    className="flex items-start gap-3 p-4 rounded-2xl border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors"
+    className="flex items-start gap-3 p-4 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 transition-colors"
   >
     <Settings2 className="h-5 w-5 shrink-0 mt-0.5" />
     <span className="text-ui">
@@ -162,15 +162,15 @@ export const MarketingRoiSummary: React.FC<Props & { onOpen: () => void }> = ({ 
           key={row.key}
           type="button"
           onClick={onOpen}
-          className="w-full text-left p-3.5 rounded-2xl border border-slate-100 space-y-2 hover:border-slate-200 hover:shadow-sm transition-all cursor-pointer"
+          className="w-full text-left p-3.5 rounded-lg border border-gray-100 space-y-2 hover:border-gray-200 hover:shadow-sm transition-all cursor-pointer"
         >
           <div className="flex justify-between items-center">
-            <span className="text-ui font-bold text-slate-800">{row.name}</span>
+            <span className="text-ui font-bold text-gray-800">{row.name}</span>
             <span className={`px-2.5 py-0.5 rounded-full type-overline border ${row.badge}`}>ROI: {roiText(row.roi)}</span>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-caption font-semibold text-slate-500">
-            <div>{t("Cost", "Náklady", "Költség")}: <strong className="text-slate-800">{money(row.cost)}</strong></div>
-            <div>{t("Revenue", "Tržby", "Bevétel")}: <strong className="text-slate-800">{money(row.revenue)}</strong></div>
+          <div className="grid grid-cols-2 gap-2 text-caption font-semibold text-gray-500">
+            <div>{t("Cost", "Náklady", "Költség")}: <strong className="text-gray-800">{money(row.cost)}</strong></div>
+            <div>{t("Revenue", "Tržby", "Bevétel")}: <strong className="text-gray-800">{money(row.revenue)}</strong></div>
           </div>
         </button>
       ))}
@@ -193,25 +193,25 @@ export const MarketingRoiTab: React.FC<Props> = ({ t, money, ...input }) => {
       {!data.loading && (notConfigured || data.error) && <SetupHint t={t} error={!!data.error} />}
 
       {/* Totals */}
-      <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-4">
-        <h3 className="text-ui font-heading font-bold text-slate-900 flex items-center gap-1.5">
-          <Compass className="h-4 w-4 text-indigo-600" /> {t("Marketing across all channels", "Marketing naprieč kanálmi", "Marketing az összes csatornán")}
+      <div className=" p-6 rounded-lg border border-gray-200 bg-white shadow-sm space-y-4">
+        <h3 className="text-ui font-heading font-bold text-gray-900 flex items-center gap-1.5">
+          <Compass className="h-4 w-4 text-entity-text" /> {t("Marketing across all channels", "Marketing naprieč kanálmi", "Marketing az összes csatornán")}
         </h3>
         <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-4 text-center">
-          <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-            <span className="type-overline text-slate-400 block">{t("Marketing costs", "Náklady na marketing", "Marketingköltségek")}</span>
-            <span className="text-title font-bold text-slate-800 block mt-1">{money(totalCost)}</span>
+          <div className="p-4 bg-gray-50 border border-gray-100 rounded-lg">
+            <span className="type-overline text-gray-400 block">{t("Marketing costs", "Náklady na marketing", "Marketingköltségek")}</span>
+            <span className="text-title font-bold text-gray-800 block mt-1">{money(totalCost)}</span>
           </div>
-          <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-            <span className="type-overline text-slate-400 block">{t("Revenue credited to marketing", "Tržby pripísané marketingu", "Marketingnek tulajdonított bevétel")}</span>
-            <span className="text-title font-bold text-slate-800 block mt-1">{money(totalRevenue)}</span>
+          <div className="p-4 bg-gray-50 border border-gray-100 rounded-lg">
+            <span className="type-overline text-gray-400 block">{t("Revenue credited to marketing", "Tržby pripísané marketingu", "Marketingnek tulajdonított bevétel")}</span>
+            <span className="text-title font-bold text-gray-800 block mt-1">{money(totalRevenue)}</span>
           </div>
-          <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-            <span className="type-overline text-slate-400 block">{t("Total ROI", "Celkové ROI", "Teljes ROI")}</span>
+          <div className="p-4 bg-gray-50 border border-gray-100 rounded-lg">
+            <span className="type-overline text-gray-400 block">{t("Total ROI", "Celkové ROI", "Teljes ROI")}</span>
             {(() => {
               const roi = roiPct(totalRevenue, totalCost);
               return (
-                <span className={`text-title font-bold block mt-1 ${roi === null ? "text-slate-400" : roi >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                <span className={`text-title font-bold block mt-1 ${roi === null ? "text-gray-400" : roi >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                   {roiText(roi)}
                 </span>
               );
@@ -275,11 +275,11 @@ export const MarketingRoiTab: React.FC<Props> = ({ t, money, ...input }) => {
               ["Meta", metaSpent, channels.meta_ads],
               ["Google", googleSpent, channels.google_ads],
             ] as const).map(([name, spent, ch]) => (
-              <div key={name} className="grid grid-cols-4 gap-2 items-center p-3 bg-white rounded-2xl border border-slate-100 text-micro font-semibold text-slate-500">
-                <span className="text-ui font-bold text-slate-800 flex items-center gap-1"><Globe className="h-3.5 w-3.5" />{name}</span>
-                <div>{t("Spent", "Minuté", "Elköltött")}<strong className="text-slate-800 block">{money(spent)}</strong></div>
-                <div>{t("Leads · won", "Leady · vyhraté", "Leadek · megnyert")}<strong className="text-slate-800 block">{ch.leads} · {ch.won}</strong></div>
-                <div>ROI<strong className="text-slate-800 block">{roiText(adsInTotals ? roiPct(ch.wonValue, spent) : null)}</strong></div>
+              <div key={name} className="grid grid-cols-4 gap-2 items-center p-3 bg-white rounded-lg border border-gray-100 text-micro font-semibold text-gray-500">
+                <span className="text-ui font-bold text-gray-800 flex items-center gap-1"><Globe className="h-3.5 w-3.5" />{name}</span>
+                <div>{t("Spent", "Minuté", "Elköltött")}<strong className="text-gray-800 block">{money(spent)}</strong></div>
+                <div>{t("Leads · won", "Leady · vyhraté", "Leadek · megnyert")}<strong className="text-gray-800 block">{ch.leads} · {ch.won}</strong></div>
+                <div>ROI<strong className="text-gray-800 block">{roiText(adsInTotals ? roiPct(ch.wonValue, spent) : null)}</strong></div>
               </div>
             ))}
           </div>
@@ -287,14 +287,14 @@ export const MarketingRoiTab: React.FC<Props> = ({ t, money, ...input }) => {
       </div>
 
       {newsletter.campaigns.length > 0 && (
-        <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-4">
-          <h3 className="text-ui font-heading font-bold text-slate-900 flex items-center gap-1.5">
+        <div className=" p-6 rounded-lg border border-gray-200 bg-white shadow-sm space-y-4">
+          <h3 className="text-ui font-heading font-bold text-gray-900 flex items-center gap-1.5">
             <Mail className="h-4 w-4 text-sky-600" /> {t("Newsletter campaigns", "Newsletterové kampane", "Hírlevélkampányok")}
           </h3>
           <div className="overflow-x-auto">
             <table className="w-full text-ui">
               <thead>
-                <tr className="text-left type-overline text-slate-400 border-b border-slate-100">
+                <tr className="text-left type-overline text-gray-400 border-b border-gray-100">
                   <th className="py-2 pr-3">{t("Campaign", "Kampaň", "Kampány")}</th>
                   <th className="py-2 px-3">{t("Sent", "Odoslaná", "Kiküldve")}</th>
                   <th className="py-2 px-3 text-right">{t("Recipients", "Príjemcovia", "Címzettek")}</th>
@@ -304,9 +304,9 @@ export const MarketingRoiTab: React.FC<Props> = ({ t, money, ...input }) => {
               </thead>
               <tbody>
                 {[...newsletter.campaigns].sort((a, b) => b.sentAt.localeCompare(a.sentAt)).map((c) => (
-                  <tr key={c.id} className="border-b border-slate-50 last:border-0">
-                    <td className="py-2 pr-3 font-bold text-slate-800">{c.name}</td>
-                    <td className="py-2 px-3 text-slate-500">{dateLabel(c.sentAt)}</td>
+                  <tr key={c.id} className="border-b border-gray-50 last:border-0">
+                    <td className="py-2 pr-3 font-bold text-gray-800">{c.name}</td>
+                    <td className="py-2 px-3 text-gray-500">{dateLabel(c.sentAt)}</td>
                     <td className="py-2 px-3 text-right font-mono">{c.recipients}</td>
                     <td className="py-2 px-3 text-right font-mono">{c.invoices}</td>
                     <td className="py-2 pl-3 text-right font-bold text-emerald-600">{money(c.revenue)}</td>
@@ -319,25 +319,25 @@ export const MarketingRoiTab: React.FC<Props> = ({ t, money, ...input }) => {
       )}
 
       {adCampaigns.length > 0 && (
-        <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-4">
-          <h3 className="text-ui font-heading font-bold text-slate-900 flex items-center gap-1.5">
-            <BarChart3 className="h-4 w-4 text-indigo-600" /> {t("Paid campaign breakdown", "Rozpis platených kampaní", "Fizetett kampányok bontása")}
+        <div className=" p-6 rounded-lg border border-gray-200 bg-white shadow-sm space-y-4">
+          <h3 className="text-ui font-heading font-bold text-gray-900 flex items-center gap-1.5">
+            <BarChart3 className="h-4 w-4 text-entity-text" /> {t("Paid campaign breakdown", "Rozpis platených kampaní", "Fizetett kampányok bontása")}
           </h3>
           <div className="grid grid-cols-1 ws-lg:grid-cols-2 gap-3">
             {adCampaigns.map((c) => {
               const ctr = c.impressions > 0 ? ((c.clicks / c.impressions) * 100).toFixed(2) : "0.00";
               return (
-                <div key={c.id} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 space-y-2">
+                <div key={c.id} className="p-4 bg-gray-50/50 rounded-lg border border-gray-100 space-y-2">
                   <div className="flex justify-between items-start gap-3">
-                    <span className="text-ui font-bold text-slate-800 leading-tight">{c.name}</span>
-                    <span className="px-2 py-0.5 rounded type-overline border shrink-0 bg-slate-100 text-slate-500 border-slate-200">
+                    <span className="text-ui font-bold text-gray-800 leading-tight">{c.name}</span>
+                    <span className="px-2 py-0.5 rounded type-overline border shrink-0 bg-gray-100 text-gray-500 border-gray-200">
                       {c.platform === "meta" ? "Meta" : "Google"} · {c.status}
                     </span>
                   </div>
-                  <div className="grid grid-cols-4 gap-2 text-micro font-semibold text-slate-500 pt-2 border-t border-slate-100">
-                    <div>{t("Spent", "Minuté", "Elköltött")}<strong className="text-slate-800 block mt-0.5">{money(c.spent)}</strong></div>
-                    <div>{t("Clicks", "Kliknutia", "Kattintások")}<strong className="text-slate-800 block mt-0.5">{c.clicks}</strong></div>
-                    <div>CTR<strong className="text-indigo-600 block mt-0.5">{ctr} %</strong></div>
+                  <div className="grid grid-cols-4 gap-2 text-micro font-semibold text-gray-500 pt-2 border-t border-gray-100">
+                    <div>{t("Spent", "Minuté", "Elköltött")}<strong className="text-gray-800 block mt-0.5">{money(c.spent)}</strong></div>
+                    <div>{t("Clicks", "Kliknutia", "Kattintások")}<strong className="text-gray-800 block mt-0.5">{c.clicks}</strong></div>
+                    <div>CTR<strong className="text-entity-text block mt-0.5">{ctr} %</strong></div>
                     <div>{t("Leads", "Leady", "Leadek")}<strong className="text-emerald-600 block mt-0.5">{c.leads}</strong></div>
                   </div>
                 </div>

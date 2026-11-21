@@ -36,6 +36,7 @@ export const WidgetCard: React.FC<{
   className?: string;
 }> = ({ icon: Icon, accent, title, titleTooltip, actions, flush, children, className }) => (
   <div
+    data-widget-card=""
     className={cn(
       "h-full bg-white border border-gray-200 rounded-lg shadow-xs box-border flex flex-col overflow-clip",
       flush ? "px-5 pt-4 pb-3 gap-3" : "px-5 py-4 gap-4",
@@ -137,7 +138,7 @@ export const StatusBadge: React.FC<{ label: string; color: string }> = ({ label,
 
 /** A person: a dot in their colour, their name, on a faint indigo chip. */
 export const PersonPill: React.FC<{ name: string; color?: string }> = ({ name, color = "#6366f1" }) => (
-  <span className="inline-flex items-center gap-1.5 h-6 max-w-full px-2 rounded-lg bg-indigo-50 text-indigo-700 text-ui font-bold">
+  <span className="inline-flex items-center gap-1.5 h-6 max-w-full px-2 rounded-lg bg-indigo-50 text-entity-text text-ui font-bold">
     <span className="w-1.25 h-1.25 rounded-full shrink-0" style={{ backgroundColor: color }} />
     <span className="truncate">{name}</span>
   </span>
@@ -149,7 +150,7 @@ export const BigNumber: React.FC<{ children: React.ReactNode; className?: string
   className
 }) => (
   <div
-    className={cn("text-display font-bold tracking-[-0.02em] leading-[1.05] text-slate-900", className)}
+    className={cn("text-display font-bold tracking-[-0.02em] leading-[1.05] text-gray-900", className)}
     style={{ fontVariantNumeric: "tabular-nums" }}
   >
     {children}
@@ -195,7 +196,7 @@ export const useFillRows = (min: number, available: number, baseRowHeight: numbe
 export const FILL_ROWS_LAYER = "absolute inset-x-0 top-0 flex flex-col";
 
 export const CardFooter: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="flex items-center justify-between border-t border-slate-100 px-3 pt-3 pb-1 shrink-0">
+  <div className="flex items-center justify-between border-t border-gray-100 px-3 pt-3 pb-1 shrink-0">
     {children}
   </div>
 );
@@ -207,7 +208,7 @@ export const SegmentBar: React.FC<{
 }> = ({ segments, thickness = 6 }) => {
   const live = segments.filter((s) => s.value > 0);
   if (live.length === 0) {
-    return <span className="block rounded-full bg-slate-100" style={{ height: thickness }} />;
+    return <span className="block rounded-full bg-gray-100" style={{ height: thickness }} />;
   }
   return (
     <div className="flex gap-0.5 rounded-full overflow-hidden" style={{ height: thickness }}>
@@ -259,7 +260,7 @@ export const labelForStatus = (status: any, known: string[]): string => {
 };
 
 export const EmptyWidgetRows: React.FC<{ t: Translate }> = ({ t }) => (
-  <div className="flex-1 flex items-center justify-center py-6 text-ui text-slate-400 font-semibold">
+  <div className="flex-1 flex items-center justify-center py-6 text-ui text-gray-400 font-semibold">
     {t("No records found", "Žiadne záznamy", "Nincs találat")}
   </div>
 );

@@ -22,6 +22,7 @@ import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { GroupedStatusValueEquationStats, type StatusStatGroup, type StatusStatItem, type StatusStatDetailRow } from "./GroupedStatusValueEquationStats";
 import { useUserPref } from "../utils/userPrefs";
 import { StatGrid, PageHeader, Tabs } from "./layout";
+import { entityAccentStyle } from "../utils/entityAccent";
 import { PRODUCT_NAME } from "../utils/brand";
 
 interface DashboardProps {
@@ -142,14 +143,14 @@ export const CalendarPane: React.FC<{
   return (
     <div className="flex-1 flex flex-col space-y-2 select-none">
       <div className="flex justify-between items-center px-1">
-        <span className="type-overline font-heading text-slate-800">{title}</span>
+        <span className="type-overline font-heading text-gray-800">{title}</span>
       </div>
       
       <div className="grid grid-cols-8 gap-y-1 text-center items-center">
         {/* Week column header */}
-        <span className="type-overline text-slate-300">{getTranslation(systemLanguage, "dashboard.picker.week_label")}</span>
+        <span className="type-overline text-gray-300">{getTranslation(systemLanguage, "dashboard.picker.week_label")}</span>
         {getDayNames().map(d => (
-          <span key={d} className="type-overline text-slate-400">{d}</span>
+          <span key={d} className="type-overline text-gray-400">{d}</span>
         ))}
 
         {/* Calendar Grid */}
@@ -157,7 +158,7 @@ export const CalendarPane: React.FC<{
           return (
             <React.Fragment key={weekIdx}>
               {/* Week Number Label */}
-              <span className="text-micro font-bold text-slate-400 py-1 bg-slate-50/50 rounded-lg">{weekNumbers[weekIdx]}</span>
+              <span className="text-micro font-bold text-gray-400 py-1 bg-gray-50/50 rounded-lg">{weekNumbers[weekIdx]}</span>
 
               {/* 7 Days of the Week */}
               {Array.from({ length: 7 }).map((_, dayIdx) => {
@@ -186,7 +187,7 @@ export const CalendarPane: React.FC<{
                 } else if (inRange) {
                   dayClass += "bg-purple-100/60 text-purple-800 rounded-none h-7 w-full";
                 } else {
-                  dayClass += "text-slate-700 hover:text-purple-600";
+                  dayClass += "text-gray-700 hover:text-entity-text";
                 }
 
                 if (isToday && !isStart && !isEnd && !inRange) {
@@ -936,7 +937,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
 
   return (
-    <div className="space-y-8 select-none animate-fade-in text-slate-800 relative">
+    <div className="space-y-8 select-none animate-fade-in text-gray-800 relative">
       {/* Title Header */}
       <PageHeader
         icon={<SectionIcon id="overview" />}
@@ -948,12 +949,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <button
               type="button"
               onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-slate-200 hover:border-purple-500 rounded-2xl type-overline font-heading text-slate-800 transition-all shadow-sm cursor-pointer select-none"
+              className="flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-gray-200 hover:border-entity rounded-lg type-overline font-heading text-gray-800 transition-all shadow-sm cursor-pointer select-none"
             >
               <Compass className="h-4 w-4 text-purple-600 animate-spin-slow" />
               {getTranslation(systemLanguage, "dashboard.analyze_interval")} <span className="text-purple-600 font-bold">{getTranslation(systemLanguage, getPresetTranslationKey(filterPresetName) as any) || (filterPresetName === "Custom Range" ? t("Custom Range", "Vlastný rozsah", "Egyéni tartomány") : filterPresetName)}</span>
               {filterStartDate && (
-                <span className="text-slate-400 font-bold ml-1">
+                <span className="text-gray-400 font-bold ml-1">
                   ({filterStartDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                   {filterEndDate ? ` - ${filterEndDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : t(" - Ongoing", " - Prebieha", " - Folyamatban")}
                 </span>
@@ -961,11 +962,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </button>
 
             {isDatePickerOpen && (
-              <div className="absolute top-12 right-0 bg-white border-2 border-slate-100 shadow-2xl rounded-[32px] p-6 flex flex-col ws-md:flex-row gap-6 z-[999] animate-in fade-in slide-in-from-top-4 duration-200 w-full ws-md:w-210">
+              <div className="absolute top-12 right-0 bg-white border-2 border-gray-100 shadow-xl rounded-lg p-6 flex flex-col ws-md:flex-row gap-6 z-[999] animate-in fade-in slide-in-from-top-4 duration-200 w-full ws-md:w-210">
           
                 {/* Left sidebar: Preset quick intervals */}
-                <div className="w-full ws-md:w-65 border-r border-slate-100 pr-4 flex flex-col space-y-1.5 justify-start text-left shrink-0">
-                  <span className="type-overline text-slate-400 mb-1 pl-1">{getTranslation(systemLanguage, "dashboard.quick_intervals")}</span>
+                <div className="w-full ws-md:w-65 border-r border-gray-100 pr-4 flex flex-col space-y-1.5 justify-start text-left shrink-0">
+                  <span className="type-overline text-gray-400 mb-1 pl-1">{getTranslation(systemLanguage, "dashboard.quick_intervals")}</span>
                   <div className="grid grid-cols-2 gap-1.5">
                     {[
                       { name: "Today", getRange: () => { const d = new Date(); return { start: d, end: d }; } },
@@ -1050,12 +1051,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             setFilterPresetName(preset.name);
                             setIsDatePickerOpen(false);
                           }}
-          className={`text-left px-2.5 py-1.5 rounded-xl type-overline transition-all cursor-pointer border ${
+          className={`text-left px-2.5 py-1.5 rounded-md type-overline transition-all cursor-pointer border ${
                             preset.fullWidth ? "col-span-2 text-center" : ""
                           } ${
                             isSelected 
                               ? "bg-purple-50 text-purple-700 border-purple-200" 
-                              : "text-slate-500 hover:text-slate-800 hover:bg-slate-50 border-transparent"
+                              : "text-gray-500 hover:text-gray-800 hover:bg-gray-50 border-transparent"
                           }`}
                         >
                           {getTranslation(systemLanguage, getPresetTranslationKey(preset.name) as any)}
@@ -1106,7 +1107,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </div>
 
                   {/* Actions bottom block */}
-                  <div className="flex justify-between items-center border-t border-slate-100 pt-4 text-micro font-bold text-slate-400">
+                  <div className="flex justify-between items-center border-t border-gray-100 pt-4 text-micro font-bold text-gray-400">
                     <span>{getTranslation(systemLanguage, "dashboard.picker.info")}</span>
                     <div className="flex gap-2">
                       <button 
@@ -1117,14 +1118,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           setFilterPresetName("All Time");
                           setIsDatePickerOpen(false);
                         }}
-                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold uppercase tracking-wider transition-colors cursor-pointer border border-slate-200"
+                        className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-md font-bold uppercase tracking-wider transition-colors cursor-pointer border border-gray-200"
                       >
                         {getTranslation(systemLanguage, "dashboard.picker.reset")}
                       </button>
                       <button 
                         type="button"
                         onClick={() => setIsDatePickerOpen(false)}
-                        className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold uppercase tracking-wider transition-colors cursor-pointer shadow-md shadow-purple-600/10"
+                        className="px-3.5 py-1.5 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md font-bold uppercase tracking-wider transition-colors cursor-pointer shadow-md shadow-purple-600/10"
                       >
                         {getTranslation(systemLanguage, "dashboard.picker.apply")}
                       </button>
@@ -1172,14 +1173,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <StatGrid count={5} className="animate-in slide-in-from-bottom duration-300">
             <div 
               onClick={() => handleInspectChart("revenue")}
-              className="glass-panel p-5 rounded-3xl border-2 border-emerald-400 bg-gradient-to-br from-emerald-500/10 to-teal-500/5 shadow-md shadow-emerald-500/5 flex items-center gap-4 hover:scale-[1.03] active:scale-[0.98] cursor-pointer transition-all duration-200 relative overflow-hidden group"
+              className="bg-white p-5 rounded-lg border border-gray-200 shadow-xs flex items-center gap-4 hover:border-emerald-300 cursor-pointer transition-colors relative overflow-hidden group"
             >
-              <div className="h-12 w-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center text-title shadow-lg shadow-emerald-500/20 animate-pulse relative z-20">
-                <Coins className="h-6 w-6" />
+              <div className="h-11 w-11 rounded-md bg-emerald-600 text-white flex items-center justify-center text-title shadow-2xs relative z-20 shrink-0">
+                <Coins className="h-5 w-5" />
               </div>
-              <div className="flex flex-col relative z-20">
+              <div className="flex flex-col relative z-20 min-w-0">
                 <span className="type-overline text-emerald-700">{getTranslation(systemLanguage, "dashboard.kpi.won_value")}</span>
-                <span className="type-metric text-slate-900">{money(wonValue)}</span>
+                <span className="type-metric text-gray-900">{money(wonValue)}</span>
                 <span className="text-micro text-emerald-600 font-bold flex items-center gap-0.5 mt-0.5">
                   {kpis.won.count} {t("won deals", "vyhratých obchodov", "megnyert üzlet")}
                 </span>
@@ -1188,19 +1189,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* Real revenue: paid income from Finance, not lead values. */}
-            <div className="glass-panel p-5 rounded-3xl border-2 border-teal-400 bg-gradient-to-br from-teal-500/10 to-cyan-500/5 shadow-md shadow-teal-500/5 flex items-center gap-4 relative overflow-hidden">
-              <div className="h-12 w-12 rounded-2xl bg-teal-500 text-white flex items-center justify-center text-title shadow-lg shadow-teal-500/20 relative z-20">
-                <Landmark className="h-6 w-6" />
+            <div style={entityAccentStyle("financial") as React.CSSProperties} className="bg-white p-5 rounded-lg border border-gray-200 shadow-xs flex items-center gap-4 relative overflow-hidden">
+              <div className="h-11 w-11 rounded-md bg-entity-solid text-white flex items-center justify-center text-title shadow-2xs relative z-20 shrink-0">
+                <Landmark className="h-5 w-5" />
               </div>
               <div className="flex flex-col relative z-20 min-w-0">
-                <span className="type-overline text-teal-700">{getTranslation(systemLanguage, "dashboard.kpi.revenue")}</span>
-                <span className="type-metric text-slate-900">{money(financeIncome.paid)}</span>
-                <span className="text-micro text-teal-600 font-bold mt-0.5">
+                <span className="type-overline text-entity-text">{getTranslation(systemLanguage, "dashboard.kpi.revenue")}</span>
+                <span className="type-metric text-gray-900">{money(financeIncome.paid)}</span>
+                <span className="text-micro text-entity-text font-semibold mt-0.5">
                   {financialMode === "simplified"
                     ? t("Income from the Finance table", "Príjmy z tabuľky Financií", "Bevételek a Pénzügyek táblából")
                     : t("Paid income in Finance", "Zaplatené príjmy vo Financiách", "Befolyt bevételek a Pénzügyekben")}
                   {financeIncome.expected > 0 && (
-                    <span className="block text-teal-500 font-semibold">
+                    <span className="block text-gray-500 font-semibold">
                       + {money(financeIncome.expected)} {t("still expected", "ešte očakávané", "még várható")}
                     </span>
                   )}
@@ -1210,49 +1211,51 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
             <div 
               onClick={() => handleInspectChart("pipeline")}
-              className="glass-panel p-5 rounded-3xl border-2 border-indigo-400 bg-gradient-to-br from-indigo-500/10 to-purple-500/5 shadow-md shadow-indigo-500/5 flex items-center gap-4 hover:scale-[1.03] active:scale-[0.98] cursor-pointer transition-all duration-200 relative overflow-hidden group"
+              style={entityAccentStyle("leads") as React.CSSProperties}
+              className="bg-white p-5 rounded-lg border border-gray-200 shadow-xs flex items-center gap-4 hover:border-entity-border cursor-pointer transition-colors relative overflow-hidden group"
             >
-              <div className="h-12 w-12 rounded-2xl bg-indigo-500 text-white flex items-center justify-center text-title shadow-lg shadow-indigo-500/20 relative z-20">
-                <TrendingUp className="h-6 w-6" />
+              <div className="h-11 w-11 rounded-md bg-entity-solid text-white flex items-center justify-center text-title shadow-2xs relative z-20 shrink-0">
+                <TrendingUp className="h-5 w-5" />
               </div>
-              <div className="flex flex-col relative z-20">
-                <span className="type-overline text-indigo-700">{t("Active Pipeline", "Aktívny pipeline", "Aktív pipeline")}</span>
-                <span className="type-metric text-slate-900">{money(activePipelineValue)}</span>
-                <span className="text-micro text-indigo-600 font-bold flex items-center gap-0.5 mt-0.5">
+              <div className="flex flex-col relative z-20 min-w-0">
+                <span className="type-overline text-entity-text">{t("Active Pipeline", "Aktívny pipeline", "Aktív pipeline")}</span>
+                <span className="type-metric text-gray-900">{money(activePipelineValue)}</span>
+                <span className="text-micro text-entity-text font-semibold flex items-center gap-0.5 mt-0.5">
                   {activePipelineLeads.length} {t("Ongoing Deals", "Prebiehajúce obchody", "Folyamatban lévő üzletek")}
                 </span>
               </div>
-              <Sparkline points={pipelinePoints} color="#6366f1" />
+              <Sparkline points={pipelinePoints} color="#4f46e5" />
             </div>
 
             <div 
               onClick={() => handleInspectChart("leads")}
-              className="glass-panel p-5 rounded-3xl border-2 border-blue-400 bg-gradient-to-br from-blue-500/10 to-cyan-500/5 shadow-md shadow-blue-500/5 flex items-center gap-4 hover:scale-[1.03] active:scale-[0.98] cursor-pointer transition-all duration-200 relative overflow-hidden group"
+              style={entityAccentStyle("clients") as React.CSSProperties}
+              className="bg-white p-5 rounded-lg border border-gray-200 shadow-xs flex items-center gap-4 hover:border-entity-border cursor-pointer transition-colors relative overflow-hidden group"
             >
-              <div className="h-12 w-12 rounded-2xl bg-blue-500 text-white flex items-center justify-center text-title shadow-lg shadow-blue-500/20 relative z-20">
-                <Users className="h-6 w-6" />
+              <div className="h-11 w-11 rounded-md bg-entity-solid text-white flex items-center justify-center text-title shadow-2xs relative z-20 shrink-0">
+                <Users className="h-5 w-5" />
               </div>
-              <div className="flex flex-col relative z-20">
-                <span className="type-overline text-blue-700">{getTranslation(systemLanguage, "dashboard.kpi.leads")}</span>
-                <span className="type-metric text-slate-900">{kpis.active.count}</span>
-                <span className="text-micro text-blue-600 font-bold flex items-center gap-0.5 mt-0.5">
+              <div className="flex flex-col relative z-20 min-w-0">
+                <span className="type-overline text-entity-text">{getTranslation(systemLanguage, "dashboard.kpi.leads")}</span>
+                <span className="type-metric text-gray-900">{kpis.active.count}</span>
+                <span className="text-micro text-gray-500 font-semibold flex items-center gap-0.5 mt-0.5">
                   {t("Open in the pipeline, clients excluded", "Otvorené v pipeline, bez klientov", "Nyitott a pipeline-ban, ügyfelek nélkül")}
                 </span>
               </div>
-              <Sparkline points={leadCountPoints} color="#3b82f6" />
+              <Sparkline points={leadCountPoints} color="#059669" />
             </div>
 
             <div 
               onClick={() => handleInspectChart("conversion")}
-              className="glass-panel p-5 rounded-3xl border-2 border-rose-400 bg-gradient-to-br from-rose-500/10 to-pink-500/5 shadow-md shadow-rose-500/5 flex items-center gap-4 hover:scale-[1.03] active:scale-[0.98] cursor-pointer transition-all duration-200 relative overflow-hidden group"
+              className="bg-white p-5 rounded-lg border border-gray-200 shadow-xs flex items-center gap-4 hover:border-rose-300 cursor-pointer transition-colors relative overflow-hidden group"
             >
-              <div className="h-12 w-12 rounded-2xl bg-rose-500 text-white flex items-center justify-center text-title shadow-lg shadow-rose-500/20 relative z-20">
-                <Target className="h-6 w-6" />
+              <div className="h-11 w-11 rounded-md bg-rose-600 text-white flex items-center justify-center text-title shadow-2xs relative z-20 shrink-0">
+                <Target className="h-5 w-5" />
               </div>
-              <div className="flex flex-col relative z-20">
+              <div className="flex flex-col relative z-20 min-w-0">
                 <span className="type-overline text-rose-700">{getTranslation(systemLanguage, "dashboard.kpi.conversion")}</span>
-                <span className="type-metric text-slate-900">{kpis.conversionPct.toFixed(1)} %</span>
-                <span className="text-micro text-rose-600 font-bold flex items-center gap-0.5 mt-0.5">
+                <span className="type-metric text-gray-900">{kpis.conversionPct.toFixed(1)} %</span>
+                <span className="text-micro text-rose-600 font-semibold flex items-center gap-0.5 mt-0.5">
                   {t(`${kpis.won.count} of ${kpis.total} leads won`, `${kpis.won.count} z ${kpis.total} leadov vyhraných`, `${kpis.total} leadből ${kpis.won.count} megnyerve`)}
                 </span>
               </div>
@@ -1262,21 +1265,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           <div className="grid grid-cols-1 ws-lg:grid-cols-12 gap-6">
             {/* Playful Pipeline Funnel Graph */}
-            <div className="ws-lg:col-span-7 glass-panel p-6 rounded-[32px] border-2 border-indigo-200 bg-gradient-to-br from-indigo-50/20 to-purple-50/20 shadow-xl space-y-6 flex flex-col justify-between hover:scale-[1.01] transition-transform duration-300">
-              <div className="flex flex-col ws-sm:flex-row justify-between ws-sm:items-center gap-4 border-b border-indigo-100 pb-3">
-                <h3 className="text-ui font-heading font-bold text-slate-900 flex items-center gap-1.5">
-                  <Target className="h-4 w-4 text-indigo-600 animate-pulse" /> {t("Pipeline Funnel Graph", "Graf predajného lievika", "Értékesítési tölcsér grafikon")}
+            <div className="ws-lg:col-span-7  p-6 rounded-lg border-2 border-entity-border bg-gradient-to-br from-indigo-50/20 to-purple-50/20 shadow-xl space-y-6 flex flex-col justify-betweentransition-transform duration-300">
+              <div className="flex flex-col ws-sm:flex-row justify-between ws-sm:items-center gap-4 border-b border-entity-border pb-3">
+                <h3 className="text-ui font-heading font-bold text-gray-900 flex items-center gap-1.5">
+                  <Target className="h-4 w-4 text-entity-text animate-pulse" /> {t("Pipeline Funnel Graph", "Graf predajného lievika", "Értékesítési tölcsér grafikon")}
                 </h3>
                 
                 <div className="flex items-center gap-2">
-                  <div className="flex bg-slate-200/60 p-0.5 rounded-xl border border-slate-300/40 gap-0.5 select-none shrink-0">
+                  <div className="flex bg-gray-200/60 p-0.5 rounded-md border border-gray-300/40 gap-0.5 select-none shrink-0">
                     <button
                       type="button"
                       onClick={() => setFunnelMetric("count")}
                       className={`px-3 py-1 rounded-lg type-overline transition-all cursor-pointer ${
                         funnelMetric === "count"
                           ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10"
-                          : "text-slate-500 hover:text-slate-800 hover:bg-slate-100/50"
+                          : "text-gray-500 hover:text-gray-800 hover:bg-gray-100/50"
                       }`}
                     >
                       {t("Count", "Počet", "Darab")}
@@ -1287,13 +1290,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       className={`px-3 py-1 rounded-lg type-overline transition-all cursor-pointer ${
                         funnelMetric === "value"
                           ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10"
-                          : "text-slate-500 hover:text-slate-800 hover:bg-slate-100/50"
+                          : "text-gray-500 hover:text-gray-800 hover:bg-gray-100/50"
                       }`}
                     >
                       {t("Value", "Hodnota", "Érték")} ({currencySymbol})
                     </button>
                   </div>
-                  <span className="type-overline text-indigo-600 bg-indigo-100/60 px-2.5 py-1.5 rounded-xl border border-indigo-200 shrink-0">
+                  <span className="type-overline text-entity-text bg-indigo-100/60 px-2.5 py-1.5 rounded-md border border-entity-border shrink-0">
                     {t("Flow Analytics", "Analýza toku", "Folyamatelemzés")}
                   </span>
                 </div>
@@ -1311,7 +1314,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
                   if (openStates.length === 0) {
                     return (
-                      <div className="h-44 flex items-center justify-center text-ui font-bold text-slate-400">
+                      <div className="h-44 flex items-center justify-center text-ui font-bold text-gray-400">
                         {t("No active pipeline stages defined", "Nie sú definované žiadne aktívne fázy pipeline", "Nincsenek aktív pipeline szakaszok meghatározva")}
                       </div>
                     );
@@ -1446,14 +1449,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       </div>
 
                       {/* Swatches Legend matching reference visual layout */}
-                      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 pt-4 border-t border-slate-100 select-none">
+                      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 pt-4 border-t border-gray-100 select-none">
                         {stageData.map(stage => {
                           const displayPercent = totalMetricSum > 0 ? (stage.metricVal / totalMetricSum) * 100 : 0;
                           return (
                             <div key={stage.name} className="flex items-center gap-2">
                               <span className="h-3.5 w-3.5 rounded-full border border-white shadow-sm" style={{ backgroundColor: stage.color }} />
-                              <span className="type-overline text-slate-600">
-                                {stage.name}: <strong className="text-slate-800">{funnelMetric === "count" ? `${stage.count} ${t("leads", "záujemcov", "érdeklődő")}` : money(stage.value)}</strong> ({displayPercent.toFixed(1)}%)
+                              <span className="type-overline text-gray-600">
+                                {stage.name}: <strong className="text-gray-800">{funnelMetric === "count" ? `${stage.count} ${t("leads", "záujemcov", "érdeklődő")}` : money(stage.value)}</strong> ({displayPercent.toFixed(1)}%)
                               </span>
                             </div>
                           );
@@ -1466,8 +1469,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* Top performing channels */}
-            <div className="ws-lg:col-span-5 glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-4">
-              <h3 className="text-ui font-heading font-bold text-slate-900 flex items-center gap-1.5">
+            <div className="ws-lg:col-span-5  p-6 rounded-lg border border-gray-200 bg-white shadow-sm space-y-4">
+              <h3 className="text-ui font-heading font-bold text-gray-900 flex items-center gap-1.5">
                 <Compass className="h-4 w-4 text-emerald-600" /> {t("Marketing ROI by Channel", "Marketingové ROI podľa kanálov", "Marketing ROI csatornánként")}
               </h3>
 
@@ -1476,40 +1479,40 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {/* Projects Valuation Leaderboard Table */}
-          <div className="glass-panel p-6 rounded-[32px] border border-slate-100 bg-white shadow-sm space-y-4 hover:scale-[1.005] transition-transform duration-300">
+          <div className=" p-6 rounded-lg border border-gray-100 bg-white shadow-sm space-y-4transition-transform duration-300">
             <div className="flex flex-col ws-sm:flex-row ws-sm:items-center ws-sm:justify-between gap-4">
               <div className="flex flex-col">
-                <h3 className="text-ui font-heading font-bold text-slate-900 flex items-center gap-1.5">
-                  <Briefcase className="h-4 w-4 text-indigo-600 animate-pulse" /> {t("Projects Valuation Leaderboard", "Rebríček hodnoty projektov", "Projektek értékelési ranglistája")}
+                <h3 className="text-ui font-heading font-bold text-gray-900 flex items-center gap-1.5">
+                  <Briefcase className="h-4 w-4 text-entity-text animate-pulse" /> {t("Projects Valuation Leaderboard", "Rebríček hodnoty projektov", "Projektek értékelési ranglistája")}
                 </h3>
-                <p className="type-overline text-slate-400 mt-0.5">
+                <p className="type-overline text-gray-400 mt-0.5">
                   {t("Active business ventures sorted by deal size & share of portfolio worth inside selected date window", "Aktívne obchodné príležitosti zoradené podľa veľkosti obchodu a podielu na hodnote portfólia vo vybranom časovom období", "Aktív üzleti lehetőségek az üzlet mérete és a portfólió értékéből való részesedés szerint rendezve a kiválasztott időszakban")}
                 </p>
               </div>
               
-              <div className="bg-indigo-50/50 border border-indigo-100/50 rounded-2xl px-4 py-2 flex items-center gap-2.5 shrink-0 select-none">
-                <span className="type-overline text-indigo-700">{t("Total Portfolio Valuation", "Celková hodnota portfólia", "Teljes portfólió értéke")}:</span>
+              <div className="bg-indigo-50/50 border border-entity-border rounded-lg px-4 py-2 flex items-center gap-2.5 shrink-0 select-none">
+                <span className="type-overline text-entity-text">{t("Total Portfolio Valuation", "Celková hodnota portfólia", "Teljes portfólió értéke")}:</span>
                 <span className="text-body font-bold text-indigo-900">{money(totalProjectsSum)}</span>
               </div>
             </div>
 
-            <div className="max-h-90 overflow-y-auto border border-slate-100 rounded-2xl bg-slate-50/20 select-none">
+            <div className="max-h-90 overflow-y-auto border border-gray-100 rounded-lg bg-gray-50/20 select-none">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-white">
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-indigo-700 border-b-2 border-slate-100">{t("Rank", "Poradie", "Helyezés")}</th>
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-indigo-700 border-b-2 border-slate-100">{t("Project / Client Name", "Názov projektu / klienta", "Projekt / ügyfél neve")}</th>
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-indigo-700 border-b-2 border-slate-100">{t("Location", "Lokalita", "Helyszín")}</th>
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-indigo-700 border-b-2 border-slate-100">{t("State", "Stav", "Állapot")}</th>
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-indigo-700 border-b-2 border-slate-100">{t("Project Owner", "Vlastník projektu", "Projekt felelőse")}</th>
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-indigo-700 border-b-2 border-slate-100 text-right">{t("Value", "Hodnota", "Érték")}</th>
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-indigo-700 border-b-2 border-slate-100 text-right">{t("Share Of Total", "Podiel z celku", "Részesedés az összesből")}</th>
+                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-entity-text border-b-2 border-gray-100">{t("Rank", "Poradie", "Helyezés")}</th>
+                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-entity-text border-b-2 border-gray-100">{t("Project / Client Name", "Názov projektu / klienta", "Projekt / ügyfél neve")}</th>
+                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-entity-text border-b-2 border-gray-100">{t("Location", "Lokalita", "Helyszín")}</th>
+                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-entity-text border-b-2 border-gray-100">{t("State", "Stav", "Állapot")}</th>
+                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-entity-text border-b-2 border-gray-100">{t("Project Owner", "Vlastník projektu", "Projekt felelőse")}</th>
+                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-entity-text border-b-2 border-gray-100 text-right">{t("Value", "Hodnota", "Érték")}</th>
+                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-entity-text border-b-2 border-gray-100 text-right">{t("Share Of Total", "Podiel z celku", "Részesedés az összesből")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sortedProjects.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-ui font-bold text-slate-400">
+                      <td colSpan={7} className="px-4 py-8 text-center text-ui font-bold text-gray-400">
                         {t("No projects found within the active interval", "V aktívnom období neboli nájdené žiadne projekty", "Nincsenek projektek a kiválasztott időszakban")}
                       </td>
                     </tr>
@@ -1523,16 +1526,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             setSelectedLeadForDrawer(p);
                             setIsClosingLeadDrawer(false);
                           }}
-                          className="hover:bg-slate-50/80 transition-all border-b border-slate-100/50 group cursor-pointer active:scale-[0.99]"
+                          className="hover:bg-gray-50/80 transition-all border-b border-gray-100/50 group cursor-pointer active:scale-[0.99]"
                         >
-                          <td className="px-4 py-3 text-ui font-bold text-slate-400 group-hover:text-indigo-600 transition-colors">
+                          <td className="px-4 py-3 text-ui font-bold text-gray-400 group-hover:text-entity-text transition-colors">
                             #{idx + 1}
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex flex-col">
-                              <span className="text-ui font-bold text-slate-800">{p.name}</span>
+                              <span className="text-ui font-bold text-gray-800">{p.name}</span>
                               <div className="flex items-center gap-1 mt-0.5">
-                                <span className="type-overline text-slate-400">{t("source", "zdroj", "forrás")}:</span>
+                                <span className="type-overline text-gray-400">{t("source", "zdroj", "forrás")}:</span>
                                 <span 
                                   className="inline-block px-1.5 py-0.5 rounded type-overline border select-none leading-none"
                                   style={{
@@ -1546,7 +1549,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-micro font-bold text-slate-500">{p.city}</td>
+                          <td className="px-4 py-3 text-micro font-bold text-gray-500">{p.city}</td>
                           <td className="px-4 py-3">
                             {(() => {
                               const sName = p.status.toLowerCase();
@@ -1584,10 +1587,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               }
                             })()}
                           </td>
-                          <td className="px-4 py-3 text-micro font-bold text-slate-600">{p.owner}</td>
-                          <td className="px-4 py-3 text-ui font-bold text-slate-900 text-right">{money(p.value)}</td>
+                          <td className="px-4 py-3 text-micro font-bold text-gray-600">{p.owner}</td>
+                          <td className="px-4 py-3 text-ui font-bold text-gray-900 text-right">{money(p.value)}</td>
                           <td className="px-4 py-3 text-right">
-                            <span className="text-micro font-bold text-indigo-700">{sharePercent.toFixed(1)}%</span>
+                            <span className="text-micro font-bold text-entity-text">{sharePercent.toFixed(1)}%</span>
                           </td>
                         </tr>
                       );
@@ -1607,18 +1610,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {activeTab === "crm" && (
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* Company Core KPI Summaries */}
-          <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-4">
-            <h3 className="text-ui font-heading font-bold text-slate-900 flex items-center gap-1.5">
-              <Compass className="h-4 w-4 text-indigo-600" /> {t(`${PRODUCT_NAME} Company Key Performance Indicators`, `Kľúčové ukazovatele výkonnosti firmy v ${PRODUCT_NAME}`, `A vállalat kulcsfontosságú teljesítménymutatói a ${PRODUCT_NAME}-ben`)}
+          <div className=" p-6 rounded-lg border border-gray-200 bg-white shadow-sm space-y-4">
+            <h3 className="text-ui font-heading font-bold text-gray-900 flex items-center gap-1.5">
+              <Compass className="h-4 w-4 text-entity-text" /> {t(`${PRODUCT_NAME} Company Key Performance Indicators`, `Kľúčové ukazovatele výkonnosti firmy v ${PRODUCT_NAME}`, `A vállalat kulcsfontosságú teljesítménymutatói a ${PRODUCT_NAME}-ben`)}
             </h3>
             <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4 text-center">
-              <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-                <span className="type-overline text-slate-400 block">{t("Average Deal Value", "Priemerná hodnota obchodu", "Átlagos üzletérték")}</span>
-                <span className="text-title font-bold text-slate-800 block mt-1">{money(averageDealValue, { maximumFractionDigits: 0 })}</span>
+              <div className="p-4 bg-gray-50 border border-gray-100 rounded-lg">
+                <span className="type-overline text-gray-400 block">{t("Average Deal Value", "Priemerná hodnota obchodu", "Átlagos üzletérték")}</span>
+                <span className="text-title font-bold text-gray-800 block mt-1">{money(averageDealValue, { maximumFractionDigits: 0 })}</span>
               </div>
-              <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-                <span className="type-overline text-slate-400 block">{t("Active Deals in Funnel", "Aktívne obchody v lieviku", "Aktív üzletek a tölcsérben")}</span>
-                <span className="text-title font-bold text-indigo-600 block mt-1">{activePipelineLeads.length}</span>
+              <div className="p-4 bg-gray-50 border border-gray-100 rounded-lg">
+                <span className="type-overline text-gray-400 block">{t("Active Deals in Funnel", "Aktívne obchody v lieviku", "Aktív üzletek a tölcsérben")}</span>
+                <span className="text-title font-bold text-entity-text block mt-1">{activePipelineLeads.length}</span>
               </div>
             </div>
           </div>
@@ -1626,8 +1629,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="grid grid-cols-1 ws-lg:grid-cols-12 gap-6">
             
             {/* PM Leaderboard */}
-            <div className="ws-lg:col-span-5 glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-4">
-              <h3 className="text-ui font-heading font-bold text-slate-900 flex items-center gap-1.5">
+            <div className="ws-lg:col-span-5  p-6 rounded-lg border border-gray-200 bg-white shadow-sm space-y-4">
+              <h3 className="text-ui font-heading font-bold text-gray-900 flex items-center gap-1.5">
                 <Award className="h-4 w-4 text-amber-500" /> {t("Project Managers Toplist", "Rebríček projektových manažérov", "Projektmenedzserek ranglistája")}
               </h3>
 
@@ -1637,10 +1640,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   const revenuePercentage = (pm.revenue / maxRevenue) * 100;
                   
                   // Rank styling configurations
-                  let badgeBg = "bg-slate-100 text-slate-500 border-slate-200";
-                  let cardHover = "hover:border-slate-300 hover:shadow-md hover:shadow-slate-100/50";
+                  let badgeBg = "bg-gray-100 text-gray-500 border-gray-200";
+                  let cardHover = "hover:border-gray-300 hover:shadow-md hover:shadow-gray-100/50";
                   let rankTitle = t("Contender", "Vyzývateľ", "Kihívó");
-                  let icon = <Award className="h-3.5 w-3.5 text-slate-400" />;
+                  let icon = <Award className="h-3.5 w-3.5 text-gray-400" />;
                   let sparklineColor = "#6366f1"; // indigo
                   
                   if (idx === 0) {
@@ -1650,8 +1653,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     icon = <Crown className="h-3.5 w-3.5 text-white animate-bounce duration-1000" />;
                     sparklineColor = "#f59e0b"; // gold/amber
                   } else if (idx === 1) {
-                    badgeBg = "bg-gradient-to-br from-slate-300 via-slate-400 to-slate-500 text-white border-slate-200 shadow-md shadow-slate-500/15";
-                    cardHover = "hover:border-indigo-300 hover:shadow-lg hover:shadow-indigo-500/5";
+                    badgeBg = "bg-gradient-to-br from-gray-300 via-gray-400 to-gray-500 text-white border-gray-200 shadow-md shadow-gray-500/15";
+                    cardHover = "hover:border-entity hover:shadow-lg hover:shadow-indigo-500/5";
                     rankTitle = t("Super Challenger", "Super vyzývateľ", "Szuper kihívó");
                     icon = <Medal className="h-3.5 w-3.5 text-white" />;
                     sparklineColor = "#6366f1"; // indigo/silver
@@ -1670,7 +1673,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <div 
                       key={pm.name} 
                       onClick={() => handleInspectChart("pm", pm.name)}
-                      className={`flex flex-col p-4 bg-slate-50/50 border border-slate-100 rounded-2xl transition-all relative overflow-hidden group hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-sm ${cardHover}`}
+                      className={`flex flex-col p-4 bg-gray-50/50 border border-gray-100 rounded-lg transition-all relative overflow-hidden group cursor-pointer shadow-sm ${cardHover}`}
                     >
                       {/* Top Row: Rank & Name + Status Badge & Sparkline/Revenue */}
                       <div className="flex items-center justify-between relative z-20">
@@ -1679,22 +1682,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <div className={`h-9 w-9 rounded-full font-heading font-bold text-caption flex items-center justify-center border relative shrink-0 ${badgeBg}`}>
                             {icon}
                             {/* Level floating tag */}
-                            <span className="absolute -bottom-1 -right-1.5 px-1 bg-slate-800 text-white type-overline rounded-full scale-90 border border-white">
+                            <span className="absolute -bottom-1 -right-1.5 px-1 bg-gray-800 text-white type-overline rounded-full scale-90 border border-white">
                               {t("Lvl", "Úr.", "Szint")} {pm.wonCount + 1}
                             </span>
                           </div>
                           <div className="flex flex-col">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-ui font-bold text-slate-800">{pm.name}</span>
+                              <span className="text-ui font-bold text-gray-800">{pm.name}</span>
                               <span className={`type-overline px-1.5 py-0.5 rounded-full border select-none ${
                                 idx === 0 ? "bg-amber-500/10 text-amber-700 border-amber-200" :
-                                idx === 1 ? "bg-indigo-50/15 text-indigo-700 border-indigo-200/50" :
+                                idx === 1 ? "bg-indigo-50/15 text-entity-text border-entity-border" :
                                 "bg-orange-50 text-orange-700 border-orange-200"
                               }`}>
                                 {rankTitle}
                               </span>
                             </div>
-                            <span className="text-micro text-slate-400 font-semibold">{pm.wonCount} {t("won of", "vyhraných z", "megnyerve ebből")} {pm.leadsCount} {t("deals", "obchodov", "üzlet")}</span>
+                            <span className="text-micro text-gray-400 font-semibold">{pm.wonCount} {t("won of", "vyhraných z", "megnyerve ebből")} {pm.leadsCount} {t("deals", "obchodov", "üzlet")}</span>
                           </div>
                         </div>
 
@@ -1706,7 +1709,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </div>
                           
                           <div className="flex flex-col items-end shrink-0">
-                            <span className="text-ui font-bold text-slate-900">{money(pm.revenue)}</span>
+                            <span className="text-ui font-bold text-gray-900">{money(pm.revenue)}</span>
                             <div className="flex items-center gap-1 text-micro font-bold">
                               {isHighConversion && <Flame className="h-3 w-3 text-orange-500 animate-pulse" />}
                               <span className={isHighConversion ? "text-orange-600" : "text-emerald-600"}>
@@ -1720,15 +1723,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       {/* Bottom Row: XP Progress Bar comparing to #1 */}
                       <div className="mt-3 flex items-center justify-between gap-3 relative z-20">
                         {/* XP bar label */}
-                        <span className="type-overline text-slate-400 shrink-0">
+                        <span className="type-overline text-gray-400 shrink-0">
                           {idx === 0 ? t("Champion Level Max", "Maximálna úroveň šampióna", "Bajnoki szint max") : `${Math.round(revenuePercentage)}% ${t("of Top Score", "z najlepšieho skóre", "a legjobb pontszámból")}`}
                         </span>
                         {/* Interactive progress bar */}
-                        <div className="flex-1 bg-slate-100 h-1.5 rounded-full overflow-hidden relative border border-slate-200/30">
+                        <div className="flex-1 bg-gray-100 h-1.5 rounded-full overflow-hidden relative border border-gray-200/30">
                           <div 
                             className={`h-full rounded-full transition-all duration-700 ${
                               idx === 0 ? "bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500" :
-                              idx === 1 ? "bg-gradient-to-r from-slate-400 to-indigo-500" :
+                              idx === 1 ? "bg-gradient-to-r from-gray-400 to-indigo-500" :
                               "bg-gradient-to-r from-orange-400 to-orange-500"
                             }`}
                             style={{ width: `${revenuePercentage}%` }}
@@ -1742,32 +1745,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* PM Comparison Graph */}
-            <div className="ws-lg:col-span-7 glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-6">
+            <div className="ws-lg:col-span-7  p-6 rounded-lg border border-gray-200 bg-white shadow-sm space-y-6">
               <div className="flex flex-col ws-sm:flex-row ws-sm:items-center ws-sm:justify-between gap-4">
-                <h3 className="text-ui font-heading font-bold text-slate-900 flex items-center gap-1.5">
+                <h3 className="text-ui font-heading font-bold text-gray-900 flex items-center gap-1.5">
                   <TrendingUp className="h-4 w-4 text-purple-600" /> {t("PM Comparison Race", "Pretek porovnania PM", "PM összehasonlító verseny")}
                 </h3>
                 
                 {/* Selector Toggles */}
-                <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200 w-fit gap-1 type-overline font-heading shrink-0 select-none">
+                <div className="flex bg-gray-100 p-0.5 rounded-md border border-gray-200 w-fit gap-1 type-overline font-heading shrink-0 select-none">
                   <button 
                     type="button" 
                     onClick={() => setCompareAspect("revenue")}
-                    className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${compareAspect === "revenue" ? "bg-purple-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-800 bg-white"}`}
+                    className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${compareAspect === "revenue" ? "bg-purple-600 text-white shadow-sm" : "text-gray-500 hover:text-gray-800 bg-white"}`}
                   >
                     {t("Revenue", "Tržby", "Bevétel")}
                   </button>
                   <button 
                     type="button" 
                     onClick={() => setCompareAspect("won")}
-                    className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${compareAspect === "won" ? "bg-purple-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-800 bg-white"}`}
+                    className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${compareAspect === "won" ? "bg-purple-600 text-white shadow-sm" : "text-gray-500 hover:text-gray-800 bg-white"}`}
                   >
                     {t("Won Deals", "Uzavreté obchody", "Megnyert üzletek")}
                   </button>
                   <button 
                     type="button" 
                     onClick={() => setCompareAspect("conversion")}
-                    className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${compareAspect === "conversion" ? "bg-purple-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-800 bg-white"}`}
+                    className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${compareAspect === "conversion" ? "bg-purple-600 text-white shadow-sm" : "text-gray-500 hover:text-gray-800 bg-white"}`}
                   >
                     {t("Conversion", "Konverzia", "Konverzió")}
                   </button>
@@ -1775,7 +1778,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
 
               {/* Shared Racing Plotline Chart */}
-              <div className="relative bg-slate-50 border border-slate-100 rounded-3xl p-4 flex flex-col items-center justify-center min-h-65">
+              <div className="relative bg-gray-50 border border-gray-100 rounded-lg p-4 flex flex-col items-center justify-center min-h-65">
                 {(() => {
                   const width = 500;
                   const height = 200;
@@ -1865,7 +1868,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       </svg>
 
                       {/* Racing Legend with final values */}
-                      <div className="flex flex-wrap justify-center items-center gap-x-4 gap-y-1.5 mt-2 border-t border-slate-100 pt-3 select-none">
+                      <div className="flex flex-wrap justify-center items-center gap-x-4 gap-y-1.5 mt-2 border-t border-gray-100 pt-3 select-none">
                         {pmLeaderboard.map((pm) => {
                           const series = pmRacingChartData.series.find(s => s.name === pm.name);
                           const color = series ? series.color : "#cbd5e1";
@@ -1875,9 +1878,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           else finalLabel = `${pm.conversionRate.toFixed(0)}%`;
 
                           return (
-                            <div key={pm.name} className="flex items-center gap-1.5 type-overline text-slate-600">
+                            <div key={pm.name} className="flex items-center gap-1.5 type-overline text-gray-600">
                               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                              <span>{pm.name}: <strong className="text-slate-800">{finalLabel}</strong></span>
+                              <span>{pm.name}: <strong className="text-gray-800">{finalLabel}</strong></span>
                             </div>
                           );
                         })}
@@ -1890,30 +1893,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {/* Performance Trends (Full Width) */}
-          <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-6 w-full">
-            <h3 className="text-ui font-heading font-bold text-slate-900 flex items-center gap-1.5">
-              <TrendingUp className="h-4 w-4 text-indigo-600" /> {getTranslation(systemLanguage, "dashboard.charts.mom_trend")}
+          <div className=" p-6 rounded-lg border border-gray-200 bg-white shadow-sm space-y-6 w-full">
+            <h3 className="text-ui font-heading font-bold text-gray-900 flex items-center gap-1.5">
+              <TrendingUp className="h-4 w-4 text-entity-text" /> {getTranslation(systemLanguage, "dashboard.charts.mom_trend")}
             </h3>
 
             {monthlyTrends.length > 0 ? (
               <div className="space-y-4 pt-2">
                 {monthlyTrends.map(trend => (
-                  <div key={trend.label} className="p-4 bg-slate-50/30 rounded-2xl border border-slate-100 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4">
+                  <div key={trend.label} className="p-4 bg-gray-50/30 rounded-lg border border-gray-100 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4">
                     <div className="flex flex-col">
-                      <span className="text-ui font-bold text-slate-800">{trend.label}</span>
-                      <span className="text-micro text-slate-400 font-semibold">{t(`${PRODUCT_NAME} Activity Node Period`, `Obdobie aktivity v ${PRODUCT_NAME}`, `${PRODUCT_NAME} aktivitási időszak`)}</span>
+                      <span className="text-ui font-bold text-gray-800">{trend.label}</span>
+                      <span className="text-micro text-gray-400 font-semibold">{t(`${PRODUCT_NAME} Activity Node Period`, `Obdobie aktivity v ${PRODUCT_NAME}`, `${PRODUCT_NAME} aktivitási időszak`)}</span>
                     </div>
                     <div className="grid grid-cols-3 gap-4 text-center ws-sm:text-right">
                       <div>
-                        <span className="type-overline text-slate-400 block">{t("Revenue", "Tržby", "Bevétel")}</span>
-                        <strong className="text-ui font-bold text-slate-800 block mt-0.5">{money(trend.revenue)}</strong>
+                        <span className="type-overline text-gray-400 block">{t("Revenue", "Tržby", "Bevétel")}</span>
+                        <strong className="text-ui font-bold text-gray-800 block mt-0.5">{money(trend.revenue)}</strong>
                       </div>
                       <div>
-                        <span className="type-overline text-slate-400 block">{t("Clients", "Klienti", "Ügyfelek")}</span>
-                        <strong className="text-ui font-bold text-indigo-600 block mt-0.5">{trend.totalClients}</strong>
+                        <span className="type-overline text-gray-400 block">{t("Clients", "Klienti", "Ügyfelek")}</span>
+                        <strong className="text-ui font-bold text-entity-text block mt-0.5">{trend.totalClients}</strong>
                       </div>
                       <div>
-                        <span className="type-overline text-slate-400 block">{t("Rev/Client", "Tržby/klient", "Bevétel/ügyfél")}</span>
+                        <span className="type-overline text-gray-400 block">{t("Rev/Client", "Tržby/klient", "Bevétel/ügyfél")}</span>
                         <strong className="text-ui font-bold text-emerald-600 block mt-0.5">{money(trend.revPerClient, { maximumFractionDigits: 0 })}</strong>
                       </div>
                     </div>
@@ -1921,7 +1924,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 ))}
               </div>
             ) : (
-              <div className="py-8 flex flex-col items-center justify-center text-center text-slate-400 text-ui">
+              <div className="py-8 flex flex-col items-center justify-center text-center text-gray-400 text-ui">
                 <span>{t(`No monthly records found in ${PRODUCT_NAME} sandbox. Seeding cleanup records will regenerate trends.`, `V ${PRODUCT_NAME} sandboxe sa nenašli žiadne mesačné záznamy. Vyčistenie a opätovné naplnenie záznamov obnoví trendy.`, `Nem találhatók havi rekordok a ${PRODUCT_NAME} sandboxban. A rekordok feltöltése után újragenerálódnak a trendek.`)}</span>
               </div>
             )}
@@ -1935,9 +1938,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6">
             
             {/* Client type ratio */}
-            <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-4">
-              <h3 className="text-ui font-heading font-bold text-slate-900 flex items-center gap-1.5">
-                <PieChart className="h-4 w-4 text-indigo-600" /> {t("Client Type Distribution", "Rozdelenie typov klientov", "Ügyféltípusok megoszlása")}
+            <div className=" p-6 rounded-lg border border-gray-200 bg-white shadow-sm space-y-4">
+              <h3 className="text-ui font-heading font-bold text-gray-900 flex items-center gap-1.5">
+                <PieChart className="h-4 w-4 text-entity-text" /> {t("Client Type Distribution", "Rozdelenie typov klientov", "Ügyféltípusok megoszlása")}
               </h3>
 
               <div className="flex flex-col ws-sm:flex-row items-center gap-6 pt-2">
@@ -1963,8 +1966,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     ))}
                   </svg>
                   <div className="absolute flex flex-col items-center justify-center text-center">
-                    <span className="text-title font-bold text-slate-800 leading-none">{clientTypeChartData.total}</span>
-                    <span className="type-overline text-slate-400 mt-0.5">{t("Clients", "Klienti", "Ügyfelek")}</span>
+                    <span className="text-title font-bold text-gray-800 leading-none">{clientTypeChartData.total}</span>
+                    <span className="type-overline text-gray-400 mt-0.5">{t("Clients", "Klienti", "Ügyfelek")}</span>
                   </div>
                 </div>
 
@@ -1973,12 +1976,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {clientTypeChartData.segments.map((seg, idx) => {
                     return (
                       <div key={idx} className="flex flex-col gap-0.5">
-                        <div className="flex justify-between items-center text-micro font-bold text-slate-700">
+                        <div className="flex justify-between items-center text-micro font-bold text-gray-700">
                           <span className="flex items-center gap-1.5">
                             <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: seg.color }} />
                             {seg.label}
                           </span>
-                          <span className="text-slate-900">{seg.count} ({seg.percentage.toFixed(0)}%)</span>
+                          <span className="text-gray-900">{seg.count} ({seg.percentage.toFixed(0)}%)</span>
                         </div>
                       </div>
                     );
@@ -1988,8 +1991,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* City Demographics */}
-            <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-4">
-              <h3 className="text-ui font-heading font-bold text-slate-900 flex items-center gap-1.5">
+            <div className=" p-6 rounded-lg border border-gray-200 bg-white shadow-sm space-y-4">
+              <h3 className="text-ui font-heading font-bold text-gray-900 flex items-center gap-1.5">
                 <MapPin className="h-4 w-4 text-emerald-600" /> {t("Top Client Locations", "Najčastejšie lokality klientov", "Top ügyfélhelyszínek")}
               </h3>
 
@@ -1998,14 +2001,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   const percent = filteredLeads.length > 0 ? (count / filteredLeads.length) * 100 : 0;
                   return (
                     <div key={city} className="flex flex-col gap-1">
-                      <div className="flex justify-between items-center text-ui font-bold text-slate-700">
+                      <div className="flex justify-between items-center text-ui font-bold text-gray-700">
                         <span className="flex items-center gap-1">
                           <MapPin className="h-3.5 w-3.5 text-emerald-500" />
                           {city}
                         </span>
                         <span>{count}</span>
                       </div>
-                      <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="w-full h-1.5 rounded-full bg-gray-100 overflow-hidden">
                         <div className="h-full rounded-full bg-emerald-500" style={{ width: `${percent}%` }} />
                       </div>
                     </div>
@@ -2020,29 +2023,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Interactive Trend Chart Inspector Modal */}
       {inspectingChart && (
-        <div className={`fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 ws-sm:p-6 z-[9999] transition-all duration-300 ${
+        <div className={`fixed inset-0 bg-gray-900/60  flex items-center justify-center p-4 ws-sm:p-6 z-[9999] transition-all duration-300 ${
           isClosingInspector ? "opacity-0 scale-95" : "opacity-100 scale-100 animate-in fade-in zoom-in-95 duration-200"
         }`}>
           {/* Main Modal Container */}
           <div 
-            className="w-full max-w-212.5 bg-white rounded-[32px] border-2 border-slate-100 shadow-2xl p-6 ws-sm:p-8 flex flex-col space-y-6 overflow-hidden max-h-[90vh]"
+            className="w-full max-w-212.5 bg-white rounded-lg border-2 border-gray-100 shadow-xl p-6 ws-sm:p-8 flex flex-col space-y-6 overflow-hidden max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="flex justify-between items-start border-b border-slate-100 pb-4">
+            <div className="flex justify-between items-start border-b border-gray-100 pb-4">
               <div className="flex flex-col">
-                <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2">
+                <h3 className="text-body font-heading font-bold text-gray-900 flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full animate-ping shrink-0" style={{ backgroundColor: inspectingChart.color }} />
                   {inspectingChart.title}
                 </h3>
-                <span className="type-overline text-slate-400 mt-1">
+                <span className="type-overline text-gray-400 mt-1">
                   {t("Chronological progression & value analysis log", "Záznam chronologického vývoja a analýzy hodnoty", "Kronologikus folyamat és értékelemzési napló")}
                 </span>
               </div>
               <button 
                 type="button"
                 onClick={closeInspector}
-                className="h-8 w-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center font-bold text-ui transition-colors cursor-pointer"
+                className="h-8 w-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-800 flex items-center justify-center font-bold text-ui transition-colors cursor-pointer"
               >
                 ✕
               </button>
@@ -2053,7 +2056,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               
               {/* Detailed SVG Chart (lg:col-span-7) */}
               <div className="ws-lg:col-span-7 flex flex-col space-y-4">
-                <div className="relative bg-slate-50 border border-slate-100 rounded-3xl p-4 flex items-center justify-center min-h-65">
+                <div className="relative bg-gray-50 border border-gray-100 rounded-lg p-4 flex items-center justify-center min-h-65">
                   {/* SVG detailed curve */}
                   {(() => {
                     const width = 500;
@@ -2126,24 +2129,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
 
                 {/* Point details display */}
-                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 min-h-17.5 flex items-center justify-center text-center">
+                <div className="bg-gray-50 border border-gray-100 rounded-lg p-4 min-h-17.5 flex items-center justify-center text-center">
                   {hoveredPointIdx !== null && inspectingChart.details[hoveredPointIdx] ? (
                     (() => {
                       const pt = inspectingChart.details[hoveredPointIdx];
                       return (
                         <div className="flex flex-col animate-in fade-in slide-in-from-bottom duration-150">
-                          <span className="type-overline text-slate-400">{t("Selected Data Node", "Vybraný dátový bod", "Kiválasztott adatpont")}</span>
-                          <span className="text-ui font-bold text-slate-800 mt-0.5">{pt.label}</span>
+                          <span className="type-overline text-gray-400">{t("Selected Data Node", "Vybraný dátový bod", "Kiválasztott adatpont")}</span>
+                          <span className="text-ui font-bold text-gray-800 mt-0.5">{pt.label}</span>
                           <div className="flex items-center justify-center gap-3 mt-1 text-caption font-bold">
-                            <span className="text-slate-500">{t("Date", "Dátum", "Dátum")}: <strong className="text-slate-700">{formatTimestampLocalized(pt.date, systemLanguage)}</strong></span>
-                            <span className="text-slate-500">{t("Change", "Zmena", "Változás")}: <strong className="text-slate-700">+{inspectingChart.valuePrefix}{pt.value.toLocaleString()}{inspectingChart.valueSuffix}</strong></span>
-                            <span className="text-slate-500">{t("Value", "Hodnota", "Érték")}: <strong style={{ color: inspectingChart.color }}>{inspectingChart.valuePrefix}{pt.cumulative.toLocaleString()}{inspectingChart.valueSuffix}</strong></span>
+                            <span className="text-gray-500">{t("Date", "Dátum", "Dátum")}: <strong className="text-gray-700">{formatTimestampLocalized(pt.date, systemLanguage)}</strong></span>
+                            <span className="text-gray-500">{t("Change", "Zmena", "Változás")}: <strong className="text-gray-700">+{inspectingChart.valuePrefix}{pt.value.toLocaleString()}{inspectingChart.valueSuffix}</strong></span>
+                            <span className="text-gray-500">{t("Value", "Hodnota", "Érték")}: <strong style={{ color: inspectingChart.color }}>{inspectingChart.valuePrefix}{pt.cumulative.toLocaleString()}{inspectingChart.valueSuffix}</strong></span>
                           </div>
                         </div>
                       );
                     })()
                   ) : (
-                    <div className="type-overline text-slate-400 animate-pulse">
+                    <div className="type-overline text-gray-400 animate-pulse">
                       {t("Hover over any node on the plotline above to inspect granular values", "Prejdite myšou na ktorýkoľvek bod krivky vyššie pre zobrazenie podrobných hodnôt", "Vigye az egeret a fenti görbe bármely pontjára a részletes értékek megtekintéséhez")}
                     </div>
                   )}
@@ -2152,7 +2155,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
               {/* Chronological Values Log (lg:col-span-5) */}
               <div className="ws-lg:col-span-5 flex flex-col space-y-3 overflow-hidden max-h-87.5">
-                <h4 className="type-overline text-slate-400 border-b border-slate-100 pb-2">
+                <h4 className="type-overline text-gray-400 border-b border-gray-100 pb-2">
                   {t("Chronological Progression Log", "Záznam chronologického vývoja", "Kronologikus folyamatnapló")}
                 </h4>
                 <div className="overflow-y-auto space-y-2 pr-1 flex-1">
@@ -2161,23 +2164,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       key={idx} 
                       onMouseEnter={() => setHoveredPointIdx(idx)}
                       onMouseLeave={() => setHoveredPointIdx(null)}
-                      className={`p-3 rounded-xl border transition-all text-left flex justify-between items-center ${
+                      className={`p-3 rounded-md border transition-all text-left flex justify-between items-center ${
                         hoveredPointIdx === idx 
-                          ? "bg-slate-50 border-slate-200 translate-x-1 shadow-sm" 
-                          : "bg-white border-slate-100"
+                          ? "bg-gray-50 border-gray-200 translate-x-1 shadow-sm" 
+                          : "bg-white border-gray-100"
                       }`}
                     >
                       <div className="flex flex-col min-w-0 pr-2">
-                        <span className="text-caption font-bold text-slate-800 truncate leading-snug">{pt.label}</span>
-                        <span className="text-micro text-slate-400 font-bold mt-0.5">{formatTimestampLocalized(pt.date, systemLanguage)}</span>
+                        <span className="text-caption font-bold text-gray-800 truncate leading-snug">{pt.label}</span>
+                        <span className="text-micro text-gray-400 font-bold mt-0.5">{formatTimestampLocalized(pt.date, systemLanguage)}</span>
                       </div>
                       <div className="flex flex-col items-end shrink-0">
-                        <strong className="text-ui font-bold text-slate-800">
+                        <strong className="text-ui font-bold text-gray-800">
                           {inspectingChart.valuePrefix}
                           {pt.cumulative.toLocaleString()}
                           {inspectingChart.valueSuffix}
                         </strong>
-                        <span className="text-micro text-slate-400 font-bold">
+                        <span className="text-micro text-gray-400 font-bold">
                           +{inspectingChart.valuePrefix}{pt.value.toLocaleString()}{inspectingChart.valueSuffix}
                         </span>
                       </div>
@@ -2193,30 +2196,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Lead details right slideout drawer */}
       {selectedLeadForDrawer && (
-        <div className="fixed inset-0 z-[9998] flex justify-end">
+        <div style={entityAccentStyle("leads") as React.CSSProperties} className="fixed inset-0 z-[9998] flex justify-end">
           {/* Backdrop overlay */}
           <div 
             onClick={closeLeadDrawer}
-            className={`absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity duration-300 ${
+            className={`absolute inset-0 bg-gray-900/40 transition-opacity duration-300 ${
               isClosingLeadDrawer ? "opacity-0 animate-fade-out" : "opacity-100 animate-fade-in"
             }`}
           />
           
           {/* Slideout panel content */}
           <div 
-            className={`relative h-screen w-full ws-sm:w-130 bg-white border-l border-slate-100 shadow-2xl flex flex-col justify-between p-6 z-[9999] transition-transform duration-300 ${
+            className={`relative h-screen w-full ws-sm:w-130 bg-white border-l border-gray-200 shadow-xl flex flex-col justify-between p-6 z-[9999] transition-transform duration-300 ${
               isClosingLeadDrawer ? "animate-slide-out-right" : "animate-slide-in-right"
             }`}
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4 shrink-0">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-4 shrink-0">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-2xl bg-indigo-500 text-white flex items-center justify-center font-heading font-bold text-body border-2 border-indigo-700 shadow-md">
+                <div className="h-10 w-10 rounded-md bg-entity-solid text-white flex items-center justify-center font-heading font-bold text-body shadow-2xs">
                   {selectedLeadForDrawer.name.substring(0, 2).toUpperCase()}
                 </div>
                 <div className="flex flex-col">
-                  <h3 className="text-body font-heading font-bold text-slate-900">{t("Project Details", "Detaily projektu", "Projekt részletei")}</h3>
-                  <span className="type-overline text-slate-400 mt-0.5">{t("ID", "ID", "Azonosító")}: {selectedLeadForDrawer.id}</span>
+                  <h3 className="text-body font-heading font-bold text-gray-900">{t("Project Details", "Detaily projektu", "Projekt részletei")}</h3>
+                  <span className="type-overline text-gray-400 mt-0.5">{t("ID", "ID", "Azonosító")}: {selectedLeadForDrawer.id}</span>
                 </div>
               </div>
               
@@ -2226,7 +2229,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     // Navigate to dedicated fullscreen view via SPA hash routing
                     window.location.hash = "lead-" + selectedLeadForDrawer.id;
                   }}
-                  className="h-8.5 px-3 rounded-xl border border-indigo-200 hover:border-indigo-400 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-700 flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-95 type-overline"
+                  className="h-8.5 px-3 rounded-md border border-entity-border hover:bg-entity-subtle bg-entity-subtle text-entity-text flex items-center justify-center gap-1.5 cursor-pointer transition-colors type-overline"
                   title={t("Open in Dedicated Full Screen View", "Otvoriť v samostatnom zobrazení na celú obrazovku", "Megnyitás külön teljes képernyős nézetben")}
                 >
                   <Maximize2 className="h-3.5 w-3.5" /> {t("Full Screen", "Celá obrazovka", "Teljes képernyő")}
@@ -2234,7 +2237,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 
                 <button 
                   onClick={closeLeadDrawer}
-                  className="h-8.5 w-8.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500 hover:text-slate-800 flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-sm"
+                  className="h-8.5 w-8.5 rounded-md border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-500 hover:text-gray-800 flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-sm"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -2244,7 +2247,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {/* Scrollable details area */}
             <div className="flex-1 overflow-y-auto py-6 space-y-6 scrollbar-thin pr-1 text-left">
               {/* Financial metrics header card */}
-              <div className="p-5 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl text-white shadow-lg space-y-2.5 relative overflow-hidden shrink-0">
+              <div className="p-5 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg text-white shadow-lg space-y-2.5 relative overflow-hidden shrink-0">
                 {/* Background glow decoration */}
                 <div className="absolute -bottom-10 -right-10 w-32 h-32 rounded-full bg-white/10 blur-2xl pointer-events-none" />
                 <span className="type-overline text-indigo-100 block">{t("Estimated Deal Worth", "Odhadovaná hodnota obchodu", "Becsült üzletérték")}</span>
@@ -2268,12 +2271,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
               {/* Basic Lead Parameters */}
               <div className="space-y-4">
-                <h4 className="type-overline text-slate-400 border-b border-slate-100 pb-2">{t("Basic Lead Data", "Základné údaje o záujemcovi", "Alapvető érdeklődői adatok")}</h4>
+                <h4 className="type-overline text-gray-400 border-b border-gray-100 pb-2">{t("Basic Lead Data", "Základné údaje o záujemcovi", "Alapvető érdeklődői adatok")}</h4>
                 
                 <div className="grid grid-cols-2 gap-4">
                   {/* Status */}
-                  <div className="bg-slate-50 border border-slate-100 p-3.5 rounded-2xl space-y-1">
-                    <span className="type-overline text-slate-400 block">{t("Pipeline Stage", "Fáza pipeline", "Pipeline szakasz")}</span>
+                  <div className="bg-gray-50 border border-gray-100 p-3.5 rounded-lg space-y-1">
+                    <span className="type-overline text-gray-400 block">{t("Pipeline Stage", "Fáza pipeline", "Pipeline szakasz")}</span>
                     {(() => {
                       const sName = selectedLeadForDrawer.status.toLowerCase();
                       const parentName = leadStateParents[sName];
@@ -2307,28 +2310,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </div>
 
                   {/* Owner */}
-                  <div className="bg-slate-50 border border-slate-100 p-3.5 rounded-2xl space-y-1">
-                    <span className="type-overline text-slate-400 block">{t("Project Manager", "Projektový manažér", "Projektmenedzser")}</span>
-                    <span className="text-ui font-bold text-slate-800 block mt-1">{selectedLeadForDrawer.owner}</span>
+                  <div className="bg-gray-50 border border-gray-100 p-3.5 rounded-lg space-y-1">
+                    <span className="type-overline text-gray-400 block">{t("Project Manager", "Projektový manažér", "Projektmenedzser")}</span>
+                    <span className="text-ui font-bold text-gray-800 block mt-1">{selectedLeadForDrawer.owner}</span>
                   </div>
 
                   {/* City */}
-                  <div className="bg-slate-50 border border-slate-100 p-3.5 rounded-2xl space-y-1">
-                    <span className="type-overline text-slate-400 block">{t("City Location", "Mesto", "Város")}</span>
-                    <span className="text-ui font-bold text-slate-800 block mt-1">{selectedLeadForDrawer.city}</span>
+                  <div className="bg-gray-50 border border-gray-100 p-3.5 rounded-lg space-y-1">
+                    <span className="type-overline text-gray-400 block">{t("City Location", "Mesto", "Város")}</span>
+                    <span className="text-ui font-bold text-gray-800 block mt-1">{selectedLeadForDrawer.city}</span>
                   </div>
 
                   {/* Registered Date */}
-                  <div className="bg-slate-50 border border-slate-100 p-3.5 rounded-2xl space-y-1">
-                    <span className="type-overline text-slate-400 block">{t("System Inflow Date", "Dátum zaevidovania", "Rendszerbe kerülés dátuma")}</span>
-                    <span className="text-ui font-bold text-slate-800 block mt-1">{formatDateLocalized(selectedLeadForDrawer.createdAt, systemLanguage)}</span>
+                  <div className="bg-gray-50 border border-gray-100 p-3.5 rounded-lg space-y-1">
+                    <span className="type-overline text-gray-400 block">{t("System Inflow Date", "Dátum zaevidovania", "Rendszerbe kerülés dátuma")}</span>
+                    <span className="text-ui font-bold text-gray-800 block mt-1">{formatDateLocalized(selectedLeadForDrawer.createdAt, systemLanguage)}</span>
                   </div>
                 </div>
               </div>
 
               {/* Interested Categories list */}
               <div className="space-y-4">
-                <h4 className="type-overline text-slate-400 border-b border-slate-100 pb-2">{getTranslation(systemLanguage, "profile.interested_categories")}</h4>
+                <h4 className="type-overline text-gray-400 border-b border-gray-100 pb-2">{getTranslation(systemLanguage, "profile.interested_categories")}</h4>
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {selectedLeadForDrawer.categories && selectedLeadForDrawer.categories.length > 0 ? (
                     selectedLeadForDrawer.categories.map((cat) => {
@@ -2348,7 +2351,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       );
                     })
                   ) : (
-                    <span className="type-overline text-slate-400 italic">
+                    <span className="type-overline text-gray-400 italic">
                       {t("No interested categories selected", "Neboli vybrané žiadne kategórie záujmu", "Nincs kiválasztott érdeklődési kategória")}
                     </span>
                   )}
@@ -2357,29 +2360,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
               {/* Client Profile details */}
               <div className="space-y-4">
-                <h4 className="type-overline text-slate-400 border-b border-slate-100 pb-2">{t("Client Credentials", "Údaje o klientovi", "Ügyfél adatai")}</h4>
+                <h4 className="type-overline text-gray-400 border-b border-gray-100 pb-2">{t("Client Credentials", "Údaje o klientovi", "Ügyfél adatai")}</h4>
                 
-                <div className="space-y-3 bg-slate-50/50 border border-slate-100/40 p-4.5 rounded-2xl text-caption font-semibold text-slate-500">
+                <div className="space-y-3 bg-gray-50/50 border border-gray-100/40 p-4.5 rounded-lg text-caption font-semibold text-gray-500">
                   <div className="flex justify-between items-center py-1">
                     <span>{t("Legal Client Type", "Právny typ klienta", "Jogi ügyféltípus")}:</span>
-                    <span className="text-slate-800 type-overline">{selectedLeadForDrawer.clientType}</span>
+                    <span className="text-gray-800 type-overline">{selectedLeadForDrawer.clientType}</span>
                   </div>
                   {selectedLeadForDrawer.phone && (
-                    <div className="flex justify-between items-center py-1 border-t border-slate-100">
+                    <div className="flex justify-between items-center py-1 border-t border-gray-100">
                       <span>{t("Phone Line", "Telefón", "Telefonszám")}:</span>
-                      <strong className="text-slate-800 font-bold">{selectedLeadForDrawer.phone}</strong>
+                      <strong className="text-gray-800 font-bold">{selectedLeadForDrawer.phone}</strong>
                     </div>
                   )}
                   {selectedLeadForDrawer.email && (
-                    <div className="flex justify-between items-center py-1 border-t border-slate-100">
+                    <div className="flex justify-between items-center py-1 border-t border-gray-100">
                       <span>{t("E-mail Inbox", "E-mailová schránka", "E-mail postafiók")}:</span>
-                      <strong className="text-slate-800 font-bold select-all">{selectedLeadForDrawer.email}</strong>
+                      <strong className="text-gray-800 font-bold select-all">{selectedLeadForDrawer.email}</strong>
                     </div>
                   )}
                   {selectedLeadForDrawer.address && (
-                    <div className="flex flex-col gap-1 py-1 border-t border-slate-100 text-left">
+                    <div className="flex flex-col gap-1 py-1 border-t border-gray-100 text-left">
                       <span>{t("Mailing Address", "Korešpondenčná adresa", "Levelezési cím")}:</span>
-                      <strong className="text-slate-800 font-bold leading-normal mt-0.5">
+                      <strong className="text-gray-800 font-bold leading-normal mt-0.5">
                         {selectedLeadForDrawer.address.street}, {selectedLeadForDrawer.address.postalCode} {selectedLeadForDrawer.address.city}, {selectedLeadForDrawer.address.country}
                       </strong>
                     </div>
@@ -2390,11 +2393,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
               {/* Timeline Activity Logs */}
               {selectedLeadForDrawer.timeline && selectedLeadForDrawer.timeline.length > 0 && (
                 <div className="space-y-4">
-                  <h4 className="type-overline text-slate-400 border-b border-slate-100 pb-2">{getTranslation(systemLanguage, "timeline.activity")}</h4>
+                  <h4 className="type-overline text-gray-400 border-b border-gray-100 pb-2">{getTranslation(systemLanguage, "timeline.activity")}</h4>
                   
-                  <div className="relative border-l-2 border-slate-100 pl-5.5 ml-2.5 space-y-5 text-caption font-semibold text-slate-500">
+                  <div className="relative border-l-2 border-gray-100 pl-5.5 ml-2.5 space-y-5 text-caption font-semibold text-gray-500">
                     {selectedLeadForDrawer.timeline.map((event) => {
-                      let eventColor = "text-indigo-600 bg-indigo-50 border-indigo-100";
+                      let eventColor = "text-entity-text bg-indigo-50 border-entity-border";
                       if (event.type === "phone") eventColor = "text-blue-600 bg-blue-50 border-blue-100";
                       else if (event.type === "email") eventColor = "text-emerald-600 bg-emerald-50 border-emerald-100";
                       else if (event.type === "offer") eventColor = "text-purple-600 bg-purple-50 border-purple-100";
@@ -2405,16 +2408,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           {/* Timeline bullet dot */}
                           <span className="absolute -left-7.75 top-1.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-indigo-600 ring-4 ring-indigo-50 shrink-0" />
                           
-                          <div className="flex justify-between items-center text-micro font-bold text-slate-400">
+                          <div className="flex justify-between items-center text-micro font-bold text-gray-400">
                             <span className="uppercase tracking-widest">{formatTimestampLocalized(event.timestamp, systemLanguage)}</span>
                             <span className={`px-2 py-0.5 rounded type-overline border ${eventColor}`}>
                               {getTranslation(systemLanguage, `timeline.badge.${event.type}`)}
                             </span>
                           </div>
                           
-                          <div className="mt-1 bg-slate-50/40 hover:bg-slate-50 border border-slate-100 rounded-xl p-3 transition-colors">
-                            <h5 className="font-bold text-slate-800 leading-snug">{event.title}</h5>
-                            <p className="text-slate-400 leading-relaxed mt-1 text-micro font-semibold">{event.content}</p>
+                          <div className="mt-1 bg-gray-50/40 hover:bg-gray-50 border border-gray-100 rounded-md p-3 transition-colors">
+                            <h5 className="font-bold text-gray-800 leading-snug">{event.title}</h5>
+                            <p className="text-gray-400 leading-relaxed mt-1 text-micro font-semibold">{event.content}</p>
                           </div>
                         </div>
                       );
@@ -2425,10 +2428,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* Action buttons footer */}
-            <div className="pt-4 border-t border-slate-100 flex gap-3 shrink-0">
+            <div className="pt-4 border-t border-gray-100 flex gap-3 shrink-0">
               <button 
                 onClick={closeLeadDrawer}
-                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 hover:text-slate-800 text-slate-600 rounded-xl text-ui font-bold transition-colors cursor-pointer border border-slate-200 text-center"
+                className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 hover:text-gray-800 text-gray-600 rounded-md text-ui font-bold transition-colors cursor-pointer border border-gray-200 text-center"
               >
                 {t("Close View", "Zavrieť", "Bezárás")}
               </button>

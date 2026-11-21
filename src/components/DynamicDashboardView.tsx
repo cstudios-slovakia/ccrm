@@ -1597,7 +1597,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     const err = widgetErrors[dataKey];
     if (err) {
       return (
-        <div className="flex items-start gap-2 p-3 rounded-2xl bg-rose-50 border border-rose-100 text-rose-700 text-ui font-semibold leading-relaxed">
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-rose-50 border border-rose-100 text-rose-700 text-ui font-semibold leading-relaxed">
           <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
           <span>{err}</span>
         </div>
@@ -1631,7 +1631,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         if (depth > 0) {
           // Tabs nested inside tabs have no sane layout and no fetched data.
           return (
-            <div className="text-center py-6 text-ui text-slate-400 font-semibold">
+            <div className="text-center py-6 text-ui text-gray-400 font-semibold">
               {t("Nested tabs are not supported", "Vnorené záložky nie sú podporované", "Az egymásba ágyazott fülek nem támogatottak")}
             </div>
           );
@@ -1720,13 +1720,13 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     .filter((id): id is string => !!id);
 
   const headerButton =
-    "flex items-center gap-2 h-10 px-4 rounded-xl text-ui font-bold whitespace-nowrap transition-all cursor-pointer shrink-0";
+    "flex items-center gap-2 h-10 px-4 rounded-md text-ui font-bold whitespace-nowrap transition-all cursor-pointer shrink-0";
 
   return (
     <div ref={rootRef} className="w-full space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
       {/* HEADER — same shape as every other module: title block on the left,
           actions on the right, hairline rule underneath. */}
-      <div className="flex flex-col ws-sm:flex-row ws-sm:items-end ws-sm:justify-between gap-4 border-b border-slate-100 pb-6 pt-1">
+      <div className="flex flex-col ws-sm:flex-row ws-sm:items-end ws-sm:justify-between gap-4 border-b border-gray-100 pb-6 pt-1">
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2.5">
             {isHome ? (
@@ -1734,11 +1734,11 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             ) : (
               <Sparkles className="h-6 w-6" style={{ color: dashboard.color }} />
             )}
-            <h1 className="m-0 text-heading font-heading font-bold text-slate-900 tracking-[-0.02em]">
+            <h1 className="m-0 text-heading font-heading font-bold text-gray-900 tracking-[-0.02em]">
               {isHome ? t("Dashboard", "Nástenka", "Irányítópult") : dashboard.name}
             </h1>
           </div>
-          <p className="m-0 text-ui text-slate-500 font-bold">
+          <p className="m-0 text-ui text-gray-500 font-bold">
             {isHome
               ? t("Your workspace at a glance", "Váš prehľad na jednom mieste", "A munkaterülete egy pillantásra")
               : t("Custom Dynamic AI Dashboard", "Vlastný dynamický AI panel", "Egyéni dinamikus AI irányítópult")}
@@ -1760,7 +1760,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 "Prekladám názvy a popisky tohto panela do všetkých jazykov aplikácie…",
                 "A panel címeinek és feliratainak fordítása az összes alkalmazásnyelvre…"
               )}
-              className="px-3 py-2.5 rounded-xl text-slate-400 flex items-center gap-1.5 shrink-0"
+              className="px-3 py-2.5 rounded-md text-gray-400 flex items-center gap-1.5 shrink-0"
             >
               <Languages className="h-4 w-4 animate-pulse" />
             </span>
@@ -1770,7 +1770,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             <button
               type="button"
               onClick={resetToDefaultWidgets}
-              className={cn(headerButton, "bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50")}
+              className={cn(headerButton, "bg-white text-gray-700 border border-gray-200 shadow-sm hover:bg-gray-50")}
             >
               <RotateCcw className="h-4 w-4" strokeWidth={2.25} />
               {t("Restore default", "Obnoviť predvolené", "Alapértelmezett")}
@@ -1793,7 +1793,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             <button
               type="button"
               onClick={() => setIsEditMode(true)}
-              className={cn(headerButton, "bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50")}
+              className={cn(headerButton, "bg-white text-gray-700 border border-gray-200 shadow-sm hover:bg-gray-50")}
             >
               <Pencil className="h-4 w-4" strokeWidth={2.25} />
               {t("Edit", "Upraviť", "Szerkesztés")}
@@ -1809,7 +1809,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 setIsEditMode(false);
                 setSettingsWidgetId(null);
               }}
-              className={cn(headerButton, "bg-slate-900 text-white border border-slate-900 hover:bg-slate-800")}
+              className={cn(headerButton, "bg-gray-900 text-white border border-gray-900 hover:bg-gray-800")}
             >
               <Check className="h-4 w-4" strokeWidth={2.25} />
               {t("Done", "Hotovo", "Kész")}
@@ -1831,7 +1831,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 
       <div>
         {errorMsg && (
-          <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-3 text-rose-800 text-body animate-in fade-in duration-200">
+          <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-lg flex items-start gap-3 text-rose-800 text-body animate-in fade-in duration-200">
             <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
             <div className="text-left">
               <span className="font-bold">{t("Error", "Chyba", "Hiba")}: </span>
@@ -1841,16 +1841,16 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         )}
 
         {isEditMode && widgets.length > 0 && (
-          <div className="mb-6 flex items-center justify-between gap-4 min-h-11 px-4 py-2 rounded-2xl bg-indigo-50 border border-indigo-100">
+          <div className="mb-6 flex items-center justify-between gap-4 min-h-11 px-4 py-2 rounded-lg bg-indigo-50 border border-entity-border">
             <span className="flex items-center gap-2.5 text-ui font-semibold text-indigo-900">
-              <Info className="h-4 w-4 text-indigo-600 shrink-0" strokeWidth={2.25} />
+              <Info className="h-4 w-4 text-entity-text shrink-0" strokeWidth={2.25} />
               {t(
                 "Edit mode: drag a card by its handle, resize it from the corner, click it to open its settings.",
                 "Režim úprav: moduly presúvajte za úchyt, veľkosť meňte rohom, nastavenia otvoríte kliknutím na modul.",
                 "Szerkesztés: fogantyúval húzza, sarokból méretezze, kattintson a beállításokhoz."
               )}
             </span>
-            <span className="hidden ws-lg:block text-ui font-bold text-indigo-700 shrink-0">
+            <span className="hidden ws-lg:block text-ui font-bold text-entity-text shrink-0">
               {t("12-column grid", "Mriežka 12 stĺpcov", "12 oszlopos rács")}
             </span>
           </div>
@@ -1859,15 +1859,15 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         {widgets.length === 0 ? (
           /* Empty Initial State: Large Center Prompt Input */
           <div className="max-w-2xl mx-auto flex flex-col items-center text-center p-8 mt-12">
-            <div className="w-16 h-16 rounded-[24px] bg-indigo-50 flex items-center justify-center mb-6 shadow-inner">
-              <Sparkles className="h-8 w-8 text-indigo-600 animate-pulse" />
+            <div className="w-16 h-16 rounded-lg bg-indigo-50 flex items-center justify-center mb-6 shadow-inner">
+              <Sparkles className="h-8 w-8 text-entity-text animate-pulse" />
             </div>
-            <h2 className="type-metric text-slate-800">
+            <h2 className="type-metric text-gray-800">
               {canEdit
                 ? t("Generate your Dashboard", "Vytvorte si svoj panel", "Irányítópult létrehozása")
                 : t("No widgets yet", "Zatiaľ žiadne moduly", "Még nincsenek modulok")}
             </h2>
-            <p className="text-body text-slate-500 mt-2 max-w-md">
+            <p className="text-body text-gray-500 mt-2 max-w-md">
               {canEdit
                 ? t(
                     "Type what you want to analyze. The AI agent will fetch live database records, build custom metrics and charts.",
@@ -1889,26 +1889,26 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
               <button
                 type="button"
                 onClick={() => setIsAddOpen(true)}
-                className="px-5 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all text-ui font-bold flex items-center gap-2 cursor-pointer active:scale-95"
+                className="px-5 py-3 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all text-ui font-bold flex items-center gap-2 cursor-pointer active:scale-95"
               >
-                <LayoutGrid className="h-4 w-4 text-indigo-600" />
+                <LayoutGrid className="h-4 w-4 text-entity-text" />
                 <span>{t("Pick from the widget library", "Vybrať z knižnice modulov", "Válasszon a modulkönyvtárból")}</span>
               </button>
               {isHome && (
                 <button
                   type="button"
                   onClick={() => mutateWidgets(() => buildDefaultHomeWidgets())}
-                  className="px-5 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all text-ui font-bold flex items-center gap-2 cursor-pointer active:scale-95"
+                  className="px-5 py-3 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all text-ui font-bold flex items-center gap-2 cursor-pointer active:scale-95"
                 >
-                  <RotateCcw className="h-4 w-4 text-indigo-600" />
+                  <RotateCcw className="h-4 w-4 text-entity-text" />
                   <span>{t("Use the default layout", "Použiť predvolené rozloženie", "Alapértelmezett elrendezés")}</span>
                 </button>
               )}
             </div>
 
-            <form onSubmit={handleRunPrompt} className="w-full mt-8 bg-white border border-slate-200/80 rounded-[28px] shadow-xl p-5 space-y-4 text-left">
+            <form onSubmit={handleRunPrompt} className="w-full mt-8 bg-white border border-gray-200/80 rounded-lg shadow-xl p-5 space-y-4 text-left">
               <div>
-                <label className="block type-overline text-slate-400 mb-1.5">
+                <label className="block type-overline text-gray-400 mb-1.5">
                   {t("What would you like to build?", "Čo si prajete vytvoriť?", "Mit szeretne felépíteni?")}
                 </label>
                 <textarea
@@ -1920,7 +1920,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                     "napr., Zobrazte celkový počet leadov, koláčový graf zdrojov a tabuľku 5 najnovších úloh...",
                     "pl., Mutassa a lead-ek számát, egy kördiagramot a forrásokról, és a legújabb 5 feladatot..."
                   )}
-                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-body bg-slate-50 transition-all font-semibold resize-none"
+                  className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity text-body bg-gray-50 transition-all font-semibold resize-none"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
@@ -1933,7 +1933,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
               <div className="flex items-center justify-between gap-5 pt-2">
                 <div className="flex flex-col gap-1.5 items-start w-47.5 shrink-0">
                   <div className="flex items-center justify-between w-full gap-3">
-                    <span className="type-overline text-slate-400 shrink-0">
+                    <span className="type-overline text-gray-400 shrink-0">
                       {t("Model Power", "Výkon modelu", "Modell Teljesítmény")}
                     </span>
                     <span className="type-overline text-purple-600 whitespace-nowrap">
@@ -1946,9 +1946,9 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                     max="2"
                     value={modelLevelIndex}
                     onChange={(e) => handleModelSliderChange(Number(e.target.value))}
-                    className="w-full accent-purple-600 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                    className="w-full accent-purple-600 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                   />
-                  <span className="text-micro font-medium text-slate-400 tracking-tight normal-case">
+                  <span className="text-micro font-medium text-gray-400 tracking-tight normal-case">
                     {selectedModel}
                   </span>
                 </div>
@@ -1956,7 +1956,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 <button
                   type="submit"
                   disabled={isGenerating || !promptText.trim()}
-                  className="flex items-center gap-1.5 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-2xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 cursor-pointer shrink-0"
+                  className="flex items-center gap-1.5 px-6 py-3 bg-entity-solid hover:bg-entity-solid-hover disabled:bg-gray-200 text-white disabled:text-gray-400 rounded-lg text-ui font-bold transition-all shadow-md shadow-indigo-600/10 cursor-pointer shrink-0"
                 >
                   {isGenerating ? (
                     <>
@@ -1985,7 +1985,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 className="absolute -top-3 -bottom-3 left-0 right-0 hidden ws-lg:grid grid-cols-12 gap-x-6 pointer-events-none"
               >
                 {Array.from({ length: 12 }).map((_, index) => (
-                  <div key={index} className="rounded-xl bg-indigo-600/[0.035]" />
+                  <div key={index} className="rounded-md bg-indigo-600/[0.035]" />
                 ))}
               </div>
             )}
@@ -2000,7 +2000,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                   data-drop-zone={zone.insertIndex}
                   {...(activeZone === index ? { "data-drop-active": "" } : {})}
                   className={cn(
-                    "absolute rounded-3xl border-2 border-dashed pointer-events-none z-10",
+                    "absolute rounded-lg border-2 border-dashed pointer-events-none z-10",
                     "transition-[background-color,border-color,transform] duration-150",
                     activeZone === index
                       ? "border-indigo-500 bg-indigo-500/10 scale-100"
@@ -2049,12 +2049,12 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                         if (isEditMode) setSettingsWidgetId(w.id);
                       }}
                       className={cn(
-                        "relative flex flex-col flex-1 min-h-37.5 rounded-3xl",
+                        "relative flex flex-col flex-1 min-h-37.5 rounded-lg",
                         isEditMode && "outline-2 outline-dashed outline-offset-4 cursor-pointer",
                         isEditMode && dragOverWidgetId === w.id && draggedWidgetId !== w.id
                           ? "outline-indigo-500"
-                          : isEditMode && "outline-slate-300",
-                        isDragging && "shadow-2xl shadow-indigo-950/20 rotate-[0.6deg] scale-[1.015] outline-indigo-400"
+                          : isEditMode && "outline-gray-300",
+                        isDragging && "shadow-xl shadow-indigo-950/20 rotate-[0.6deg] scale-[1.015] outline-indigo-400"
                       )}
                     >
                       {isEditMode && (
@@ -2076,8 +2076,8 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                           content up and lets the new content take its place,
                           rather than blank the whole card out from under it. */}
                       {loadingWidgets[w.id] && widgetData[w.id] === undefined && (
-                        <div className="absolute inset-0 bg-white/70 backdrop-blur-[0.5px] z-30 flex items-center justify-center rounded-3xl">
-                          <RefreshCw className="h-5 w-5 text-indigo-600 animate-spin" />
+                        <div className="absolute inset-0 bg-white/70 -[0.5px] z-30 flex items-center justify-center rounded-lg">
+                          <RefreshCw className="h-5 w-5 text-entity-text animate-spin" />
                         </div>
                       )}
 
@@ -2093,9 +2093,9 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                             e.stopPropagation();
                             updateWidget(w.id, { size: nextSize(size) });
                           }}
-                          className="absolute -right-3 -bottom-3 w-6.5 h-6.5 rounded-lg bg-white border-[1.5px] border-slate-300 shadow-sm flex items-center justify-center z-20 cursor-pointer hover:border-indigo-400"
+                          className="absolute -right-3 -bottom-3 w-6.5 h-6.5 rounded-lg bg-white border-[1.5px] border-gray-300 shadow-sm flex items-center justify-center z-20 cursor-pointer hover:border-entity"
                         >
-                          <ArrowDownRight className="h-3.5 w-3.5 text-slate-500" strokeWidth={2.5} />
+                          <ArrowDownRight className="h-3.5 w-3.5 text-gray-500" strokeWidth={2.5} />
                         </button>
                       )}
                     </div>
@@ -2107,7 +2107,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsAddOpen(true)}
-                  className="col-span-12 ws-md:col-span-6 ws-lg:col-span-3 min-h-37.5 rounded-3xl border-2 border-dashed border-slate-200 text-slate-400 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50/40 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
+                  className="col-span-12 ws-md:col-span-6 ws-lg:col-span-3 min-h-37.5 rounded-lg border-2 border-dashed border-gray-200 text-gray-400 hover:border-entity hover:text-entity-text hover:bg-indigo-50/40 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
                 >
                   <Plus className="h-6 w-6" />
                   <span className="type-overline">
@@ -2127,7 +2127,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
           <div className="sticky bottom-6 z-40 mt-6 pointer-events-none animate-in slide-in-from-bottom-6 duration-300">
             <form
               onSubmit={handleRunPrompt}
-              className="pointer-events-auto max-w-3xl mx-auto bg-white/95 backdrop-blur-md border border-slate-200 rounded-[22px] shadow-2xl pl-4.5 pr-2.5 py-2.5 flex items-center gap-3"
+              className="pointer-events-auto max-w-3xl mx-auto bg-white/95  border border-gray-200 rounded-lg shadow-xl pl-4.5 pr-2.5 py-2.5 flex items-center gap-3"
             >
               <Sparkles className="h-4.5 w-4.5 text-purple-600 shrink-0" />
               <input
@@ -2140,11 +2140,11 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                   "Upravte rozloženie s AI (napr. zmeňte graf X na Y, pridajte metriku Z)…",
                   "Módosítsa az elrendezést AI-val (pl. az X diagramot Y-ra)…"
                 )}
-                className="flex-1 min-w-0 h-10 border-0 outline-none bg-transparent text-ui font-semibold text-slate-700"
+                className="flex-1 min-w-0 h-10 border-0 outline-none bg-transparent text-ui font-semibold text-gray-700"
               />
               <div className="hidden ws-sm:flex flex-col gap-1 items-start w-32.5 shrink-0">
                 <div className="flex items-center justify-between w-full gap-2">
-                  <span className="type-overline text-slate-400 shrink-0">
+                  <span className="type-overline text-gray-400 shrink-0">
                     {t("Model", "Model", "Modell")}
                   </span>
                   <span className="type-overline text-purple-600 whitespace-nowrap">
@@ -2157,14 +2157,14 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                   max="2"
                   value={modelLevelIndex}
                   onChange={(e) => handleModelSliderChange(Number(e.target.value))}
-                  className="w-full accent-purple-600 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                  className="w-full accent-purple-600 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                 />
               </div>
               <button
                 type="submit"
                 disabled={isGenerating || !promptText.trim()}
                 aria-label={t("Send", "Odoslať", "Küldés")}
-                className="w-10 h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                className="w-10 h-10 rounded-md bg-entity-solid hover:bg-entity-solid-hover disabled:bg-gray-200 text-white disabled:text-gray-400 flex items-center justify-center transition-colors cursor-pointer shrink-0"
               >
                 {isGenerating ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </button>
@@ -2255,7 +2255,7 @@ const WidgetEditToolbar: React.FC<{
   onRemove: () => void;
 }> = ({ t, size, canDelete, onGrab, onSettings, onDuplicate, onRemove }) => {
   const button =
-    "w-7 h-7 rounded-lg border-0 bg-transparent flex items-center justify-center p-0 text-slate-600 hover:bg-slate-100 hover:text-indigo-600 transition-colors cursor-pointer";
+    "w-7 h-7 rounded-lg border-0 bg-transparent flex items-center justify-center p-0 text-gray-600 hover:bg-gray-100 hover:text-entity-text transition-colors cursor-pointer";
   const stop = (fn: () => void) => (e: React.MouseEvent) => {
     e.stopPropagation();
     fn();
@@ -2264,7 +2264,7 @@ const WidgetEditToolbar: React.FC<{
   return (
     <div
       onClick={(e) => e.stopPropagation()}
-      className="absolute -top-4.5 right-4.5 z-20 flex items-center gap-0.5 h-8.5 px-0.75 rounded-[11px] bg-white border border-slate-200 shadow-lg"
+      className="absolute -top-4.5 right-4.5 z-20 flex items-center gap-0.5 h-8.5 px-0.75 rounded-[11px] bg-white border border-gray-200 shadow-lg"
     >
       <span
         onPointerDown={onGrab}
@@ -2278,14 +2278,14 @@ const WidgetEditToolbar: React.FC<{
       >
         <Grip className="h-3.75 w-3.75" strokeWidth={2.25} />
       </span>
-      <span className="w-px h-4 bg-slate-200" />
+      <span className="w-px h-4 bg-gray-200" />
       <span
-        className="px-1.5 text-caption font-extrabold tracking-[0.06em] text-slate-600"
+        className="px-1.5 text-caption font-extrabold tracking-[0.06em] text-gray-600"
         title={t("Widget width", "Šírka modulu", "Modul szélessége")}
       >
         {WIDGET_SIZE_LABELS[size]}
       </span>
-      <span className="w-px h-4 bg-slate-200" />
+      <span className="w-px h-4 bg-gray-200" />
       <button type="button" onClick={stop(onSettings)} aria-label={t("Settings", "Nastavenia", "Beállítások")} className={button}>
         <SlidersHorizontal className="h-3.75 w-3.75" strokeWidth={2.25} />
       </button>
@@ -2368,7 +2368,7 @@ const DashboardMetric: React.FC<{
 
   return (
     <div
-      className="text-display font-bold text-slate-900 tracking-[-0.02em] leading-[1.05]"
+      className="text-display font-bold text-gray-900 tracking-[-0.02em] leading-[1.05]"
       style={{ fontVariantNumeric: "tabular-nums" }}
     >
       {value}
@@ -2403,7 +2403,7 @@ const GaugeWidget: React.FC<DashboardChartProps> = ({ widget, data }) => {
 
   return (
     <div className="w-full flex flex-col justify-center gap-2 py-4">
-      <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+      <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${pct}%`, backgroundColor: barColor }}
@@ -2622,13 +2622,13 @@ const DashboardTable: React.FC<DashboardTableProps> = ({ widget, data, t, format
   return (
     <div className="w-full overflow-x-auto">
       {dataList.length === 0 ? (
-        <div className="text-center py-6 text-ui text-slate-400 font-semibold">
+        <div className="text-center py-6 text-ui text-gray-400 font-semibold">
           {t("No records found", "Žiadne záznamy", "Nincs találat")}
         </div>
       ) : (
         <table className="w-full text-left text-ui border-collapse">
           <thead>
-            <tr className="border-b border-slate-100 type-overline text-slate-400">
+            <tr className="border-b border-gray-100 type-overline text-gray-400">
               {columns.map((c: any, index: number) => (
                 <th key={index} className="py-2.5 px-3">
                   {localize(c.label)}
@@ -2636,9 +2636,9 @@ const DashboardTable: React.FC<DashboardTableProps> = ({ widget, data, t, format
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-50 font-semibold text-slate-700">
+          <tbody className="divide-y divide-gray-50 font-semibold text-gray-700">
             {dataList.map((row: any, rIdx: number) => (
-              <tr key={rIdx} className="hover:bg-slate-50/50 transition-colors">
+              <tr key={rIdx} className="hover:bg-gray-50/50 transition-colors">
                 {columns.map((c: any, cIdx: number) => (
                   <td key={cIdx} className="py-2.5 px-3 whitespace-nowrap">
                     {formatCell(row[c.key], c.format)}
@@ -2659,7 +2659,7 @@ const DashboardTable: React.FC<DashboardTableProps> = ({ widget, data, t, format
 --------------------------------------------------------------------------- */
 
 const EmptyRows: React.FC<{ t: Translate }> = ({ t }) => (
-  <div className="text-center py-6 text-ui text-slate-400 font-semibold">
+  <div className="text-center py-6 text-ui text-gray-400 font-semibold">
     {t("No records found", "Žiadne záznamy", "Nincs találat")}
   </div>
 );
@@ -2698,7 +2698,7 @@ const DashboardTimeline: React.FC<{
 
   return (
     <ol className="w-full relative pl-5 py-1 space-y-4">
-      <span className="absolute left-1 top-2 bottom-2 w-px bg-slate-200" aria-hidden="true" />
+      <span className="absolute left-1 top-2 bottom-2 w-px bg-gray-200" aria-hidden="true" />
       {dataList.map((row: any, i: number) => (
         <li key={i} className="relative">
           <span
@@ -2707,17 +2707,17 @@ const DashboardTimeline: React.FC<{
             aria-hidden="true"
           />
           <div className="flex items-baseline justify-between gap-3">
-            <span className="text-ui font-bold text-slate-800">
+            <span className="text-ui font-bold text-gray-800">
               {titleKey ? String(row[titleKey] ?? "-") : "-"}
             </span>
             {dateKey && (
-              <span className="type-overline text-slate-400 shrink-0">
+              <span className="type-overline text-gray-400 shrink-0">
                 {formatTimestamp(row[dateKey], systemLanguage)}
               </span>
             )}
           </div>
           {bodyKey && row[bodyKey] ? (
-            <p className="text-caption text-slate-500 leading-relaxed mt-0.5 line-clamp-3">
+            <p className="text-caption text-gray-500 leading-relaxed mt-0.5 line-clamp-3">
               {String(row[bodyKey])}
             </p>
           ) : null}
@@ -2749,7 +2749,7 @@ const DashboardAccordion: React.FC<{
   const subtitleKey = pickKey(sample, widget.mapping?.subtitleKey, DATE_KEY_CANDIDATES);
 
   return (
-    <div className="w-full divide-y divide-slate-100">
+    <div className="w-full divide-y divide-gray-100">
       {dataList.map((row: any, i: number) => {
         const isOpen = openIndex === i;
         const content = contentKey ? row[contentKey] : null;
@@ -2760,23 +2760,23 @@ const DashboardAccordion: React.FC<{
               onClick={() => setOpenIndex(isOpen ? null : i)}
               className="w-full flex items-center justify-between gap-3 py-2.5 text-left cursor-pointer group"
             >
-              <span className="text-ui font-bold text-slate-700 group-hover:text-slate-900 transition-colors">
+              <span className="text-ui font-bold text-gray-700 group-hover:text-gray-900 transition-colors">
                 {titleKey ? String(row[titleKey] ?? "-") : "-"}
               </span>
               <div className="flex items-center gap-2 shrink-0">
                 {subtitleKey && row[subtitleKey] ? (
-                  <span className="text-micro font-bold text-slate-400">{formatTimestamp(row[subtitleKey], systemLanguage)}</span>
+                  <span className="text-micro font-bold text-gray-400">{formatTimestamp(row[subtitleKey], systemLanguage)}</span>
                 ) : null}
                 <ChevronDown
                   className={cn(
-                    "h-3.5 w-3.5 text-slate-400 transition-transform duration-200",
+                    "h-3.5 w-3.5 text-gray-400 transition-transform duration-200",
                     isOpen && "rotate-180"
                   )}
                 />
               </div>
             </button>
             {isOpen && (
-              <p className="pb-3 text-caption text-slate-500 leading-relaxed whitespace-pre-line animate-in fade-in slide-in-from-top-1 duration-200">
+              <p className="pb-3 text-caption text-gray-500 leading-relaxed whitespace-pre-line animate-in fade-in slide-in-from-top-1 duration-200">
                 {content ? String(content) : t("No details.", "Žiadne detaily.", "Nincsenek részletek.")}
               </p>
             )}
@@ -2813,10 +2813,10 @@ const DashboardTabs: React.FC<{
             type="button"
             onClick={() => setActive(i)}
             className={cn(
-              "px-3 py-1.5 rounded-xl border type-overline transition-all cursor-pointer",
+              "px-3 py-1.5 rounded-md border type-overline transition-all cursor-pointer",
               i === current
                 ? "text-white border-transparent shadow-sm"
-                : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-700"
+                : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-700"
             )}
             style={i === current ? { backgroundColor: accent } : undefined}
           >
@@ -2828,7 +2828,7 @@ const DashboardTabs: React.FC<{
       <div className="relative min-h-20 flex flex-col justify-center">
         {isTabLoading(current) ? (
           <div className="flex items-center justify-center py-6">
-            <RefreshCw className="h-4 w-4 text-indigo-600 animate-spin" />
+            <RefreshCw className="h-4 w-4 text-entity-text animate-spin" />
           </div>
         ) : (
           // The tab's own label doubles as its title, so a metric tab keeps the

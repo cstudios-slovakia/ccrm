@@ -11,7 +11,7 @@ test('a stage on the donut opens leads filtered to that status', async ({ page }
 
   const card = page
     .locator('h2', { hasText: 'Leady podľa fázy' })
-    .locator('xpath=ancestor::div[contains(@class,"rounded-3xl")]')
+    .locator('xpath=ancestor::div[@data-widget-card]')
     .first();
 
   await expect(card.getByRole('link', { name: 'Otvoriť' })).toHaveCount(0);

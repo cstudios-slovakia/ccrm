@@ -36,8 +36,8 @@ const Field: React.FC<{ label: string; aside?: React.ReactNode; children: React.
 }) => (
   <div className="shrink-0 flex flex-col gap-2">
     <div className="flex items-center justify-between gap-2">
-      <span className="type-overline text-slate-500">{label}</span>
-      {aside ? <span className="text-caption font-bold text-slate-500">{aside}</span> : null}
+      <span className="type-overline text-gray-500">{label}</span>
+      {aside ? <span className="text-caption font-bold text-gray-500">{aside}</span> : null}
     </div>
     {children}
   </div>
@@ -50,10 +50,10 @@ const SwitchRow: React.FC<{
   on: boolean;
   onChange: (value: boolean) => void;
 }> = ({ label, hint, on, onChange }) => (
-  <label className="flex items-center gap-2.5 min-h-11 py-2 px-3 border-t border-slate-100 first:border-t-0 cursor-pointer">
+  <label className="flex items-center gap-2.5 min-h-11 py-2 px-3 border-t border-gray-100 first:border-t-0 cursor-pointer">
     <span className="flex-1 flex flex-col min-w-0">
-      <span className={cn("text-ui font-bold", on ? "text-slate-800" : "text-slate-500")}>{label}</span>
-      {hint ? <span className="text-caption font-semibold text-slate-400">{hint}</span> : null}
+      <span className={cn("text-ui font-bold", on ? "text-gray-800" : "text-gray-500")}>{label}</span>
+      {hint ? <span className="text-caption font-semibold text-gray-400">{hint}</span> : null}
     </span>
     <input
       type="checkbox"
@@ -66,7 +66,7 @@ const SwitchRow: React.FC<{
       aria-hidden="true"
       className={cn(
         "w-8.5 h-5 rounded-full flex items-center p-0.5 box-border transition-colors shrink-0",
-        on ? "bg-indigo-600 justify-end" : "bg-slate-200 justify-start"
+        on ? "bg-indigo-600 justify-end" : "bg-gray-200 justify-start"
       )}
     >
       <span className="w-4 h-4 rounded-full bg-white shadow-sm" />
@@ -85,10 +85,10 @@ const SizePreview: React.FC<{ span: number; active: boolean }> = ({ span, active
           index < span
             ? active
               ? "bg-indigo-600"
-              : "bg-slate-400"
+              : "bg-gray-400"
             : active
               ? "bg-indigo-200"
-              : "bg-slate-200"
+              : "bg-gray-200"
         )}
       />
     ))}
@@ -232,25 +232,25 @@ export const WidgetSettingsDrawer: React.FC<{
   return (
     <>
       <div
-        className="fixed inset-0 bg-slate-900/30 backdrop-blur-[1px] z-[9998] animate-in fade-in duration-200"
+        className="fixed inset-0 bg-gray-900/30 -[1px] z-[9998] animate-in fade-in duration-200"
         onClick={onClose}
       />
       <aside
         aria-label={t("Widget settings", "Nastavenia modulu", "Modul beállításai")}
-        className="fixed right-0 top-0 h-screen w-full max-w-115 bg-white border-l border-slate-200 shadow-2xl z-[9999] flex flex-col animate-in slide-in-from-right duration-300"
+        className="fixed right-0 top-0 h-screen w-full max-w-115 bg-white border-l border-gray-200 shadow-xl z-[9999] flex flex-col animate-in slide-in-from-right duration-300"
       >
-        <div className="flex items-center gap-3.5 px-6 py-5.5 border-b border-slate-100 shrink-0">
+        <div className="flex items-center gap-3.5 px-6 py-5.5 border-b border-gray-100 shrink-0">
           <span
-            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+            className="w-10 h-10 rounded-md flex items-center justify-center shrink-0"
             style={{ backgroundColor: section.accent }}
           >
             <SectionIcon className="h-5 w-5 text-white" strokeWidth={2.25} />
           </span>
           <div className="flex flex-col gap-0.75 flex-1 min-w-0">
-            <span className="text-title font-bold text-slate-900">
+            <span className="text-title font-bold text-gray-900">
               {t("Widget settings", "Nastavenia modulu", "Modul beállításai")}
             </span>
-            <span className="type-overline text-slate-500 truncate">
+            <span className="type-overline text-gray-500 truncate">
               {subtitle}
             </span>
           </div>
@@ -258,7 +258,7 @@ export const WidgetSettingsDrawer: React.FC<{
             type="button"
             onClick={onClose}
             aria-label={t("Close", "Zavrieť", "Bezárás")}
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer"
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
@@ -266,29 +266,29 @@ export const WidgetSettingsDrawer: React.FC<{
 
         <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5.5">
           <label className="shrink-0 flex flex-col gap-2">
-            <span className="type-overline text-slate-500">
+            <span className="type-overline text-gray-500">
               {t("Name", "Názov", "Név")}
             </span>
             <input
               type="text"
               value={title}
               onChange={(e) => onRename(e.target.value)}
-              className="h-10.5 px-3.5 rounded-xl border border-slate-200 bg-slate-50 text-body font-semibold text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 box-border"
+              className="h-10.5 px-3.5 rounded-md border border-gray-200 bg-gray-50 text-body font-semibold text-gray-900 outline-none focus:border-entity focus:ring-2 focus:ring-entity-ring box-border"
             />
           </label>
 
           <Field label={t("Data source", "Zdroj dát", "Adatforrás")}>
-            <div className="flex items-center gap-3 h-13 px-3.5 rounded-xl bg-slate-50 border border-slate-100">
+            <div className="flex items-center gap-3 h-13 px-3.5 rounded-md bg-gray-50 border border-gray-100">
               <SectionIcon className="h-4.5 w-4.5 shrink-0" style={{ color: section.accent }} strokeWidth={2.25} />
               <div className="flex flex-col flex-1 min-w-0">
-                <span className="text-ui font-bold text-slate-800 truncate">
+                <span className="text-ui font-bold text-gray-800 truncate">
                   {t(section.title.en, section.title.sk, section.title.hu)}
                 </span>
-                <span className="text-caption font-semibold text-slate-400 truncate">
+                <span className="text-caption font-semibold text-gray-400 truncate">
                   {preset ? t(preset.title.en, preset.title.sk, preset.title.hu) : widget?.query?.action}
                 </span>
               </div>
-              <span className="text-caption font-bold text-slate-400 text-right shrink-0">
+              <span className="text-caption font-bold text-gray-400 text-right shrink-0">
                 {t("Icon and colour from the section", "Ikona a farba zo sekcie", "Ikon és szín a szekcióból")}
               </span>
             </div>
@@ -304,7 +304,7 @@ export const WidgetSettingsDrawer: React.FC<{
                   value={typeOptions.some((o) => o.value === currentType) ? currentType : ""}
                   onChange={(e) => onType(e.target.value)}
                   aria-label={t("Widget type", "Typ modulu", "Modul típusa")}
-                  className="flex-1 h-10.5 px-3 rounded-xl border border-slate-200 bg-slate-50 text-ui font-semibold text-slate-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="flex-1 h-10.5 px-3 rounded-md border border-gray-200 bg-gray-50 text-ui font-semibold text-gray-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                 >
                   {!typeOptions.some((o) => o.value === currentType) && (
                     <option value="" disabled>
@@ -322,7 +322,7 @@ export const WidgetSettingsDrawer: React.FC<{
                     value={currentChartType}
                     onChange={(e) => onChartType(e.target.value)}
                     aria-label={t("Chart type", "Typ grafu", "Diagram típusa")}
-                    className="flex-1 h-10.5 px-3 rounded-xl border border-slate-200 bg-slate-50 text-ui font-semibold text-slate-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    className="flex-1 h-10.5 px-3 rounded-md border border-gray-200 bg-gray-50 text-ui font-semibold text-gray-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                   >
                     {chartTypes.map((type) => (
                       <option key={type} value={type}>
@@ -349,16 +349,16 @@ export const WidgetSettingsDrawer: React.FC<{
                     aria-pressed={active}
                     onClick={() => onSize(size)}
                     className={cn(
-                      "flex flex-col gap-2 p-2.5 rounded-xl border-[1.5px] text-left transition-colors cursor-pointer",
-                      active ? "bg-indigo-50 border-indigo-600" : "bg-white border-slate-200 hover:border-slate-300"
+                      "flex flex-col gap-2 p-2.5 rounded-md border-[1.5px] text-left transition-colors cursor-pointer",
+                      active ? "bg-indigo-50 border-indigo-600" : "bg-white border-gray-200 hover:border-gray-300"
                     )}
                   >
                     <SizePreview span={WIDGET_SIZE_SPAN[size]} active={active} />
                     <span className="flex items-baseline gap-1.5">
-                      <span className={cn("text-ui font-extrabold", active ? "text-indigo-700" : "text-slate-800")}>
+                      <span className={cn("text-ui font-extrabold", active ? "text-entity-text" : "text-gray-800")}>
                         {WIDGET_SIZE_LABELS[size]}
                       </span>
-                      <span className={cn("text-caption font-semibold", active ? "text-indigo-600" : "text-slate-400")}>
+                      <span className={cn("text-caption font-semibold", active ? "text-entity-text" : "text-gray-400")}>
                         {size === "sm" ? "1/4" : size === "md" ? "1/3" : size === "lg" ? "2/3" : t("Full width", "Celá šírka", "Teljes szélesség")}
                       </span>
                     </span>
@@ -435,7 +435,7 @@ export const WidgetSettingsDrawer: React.FC<{
                       onClick={() => toggleStatus(status)}
                       className={cn(
                         "flex items-center gap-1.5 h-7.5 px-2.5 rounded-lg text-ui font-bold capitalize transition-colors cursor-pointer",
-                        on ? "border" : "bg-white border border-dashed border-slate-300 text-slate-500 hover:text-slate-700"
+                        on ? "border" : "bg-white border border-dashed border-gray-300 text-gray-500 hover:text-gray-700"
                       )}
                       style={
                         on
@@ -470,7 +470,7 @@ export const WidgetSettingsDrawer: React.FC<{
                 />
               </Field>
               <Field label={t("Show", "Zobraziť", "Megjelenítés")}>
-                <div className="shrink-0 flex flex-col border border-slate-100 rounded-2xl overflow-hidden">
+                <div className="shrink-0 flex flex-col border border-gray-100 rounded-lg overflow-hidden">
                   <SwitchRow
                     label={t("Remaining invoicable", "Zostáva vyfakturovať", "Hátralévő számlázható")}
                     hint={t(
@@ -497,7 +497,7 @@ export const WidgetSettingsDrawer: React.FC<{
           )}
 
           {excludableGroups.length > 0 && (
-            <p className="shrink-0 m-0 -mb-2 text-caption font-semibold text-slate-500 leading-relaxed">
+            <p className="shrink-0 m-0 -mb-2 text-caption font-semibold text-gray-500 leading-relaxed">
               {t(
                 "Statuses switched off are left out of every sum in this widget. Closed ones start switched off.",
                 "Vypnuté stavy sa do súčtov v tomto module nezapočítavajú. Uzavreté stavy sú predvolene vypnuté.",
@@ -534,7 +534,7 @@ export const WidgetSettingsDrawer: React.FC<{
                         }
                         className={cn(
                           "flex items-center gap-1.5 h-7.5 px-2.5 rounded-lg text-ui font-bold transition-colors cursor-pointer",
-                          on ? "border" : "bg-white border border-dashed border-slate-300 text-slate-500 hover:text-slate-700"
+                          on ? "border" : "bg-white border border-dashed border-gray-300 text-gray-500 hover:text-gray-700"
                         )}
                         style={
                           on
@@ -560,7 +560,7 @@ export const WidgetSettingsDrawer: React.FC<{
                   <button
                     type="button"
                     onClick={() => onSettings({ [group.settingKey]: undefined })}
-                    className="self-start text-caption font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                    className="self-start text-caption font-bold text-entity-text hover:text-indigo-800 cursor-pointer"
                   >
                     {t("Back to default (closed left out)", "Späť na predvolené (bez uzavretých)", "Vissza az alapra (lezártak nélkül)")}
                   </button>
@@ -574,7 +574,7 @@ export const WidgetSettingsDrawer: React.FC<{
               label={t("Columns", "Stĺpce", "Oszlopok")}
               aside={t("Drag to reorder", "Poradie potiahnutím", "Húzással rendezhető")}
             >
-              <div className="shrink-0 flex flex-col border border-slate-100 rounded-2xl overflow-hidden">
+              <div className="shrink-0 flex flex-col border border-gray-100 rounded-lg overflow-hidden">
                 {ordered.map((key) => {
                   const column = columnCatalogue.find((c) => c.key === key)!;
                   const on = column.locked || visible.includes(key);
@@ -592,25 +592,25 @@ export const WidgetSettingsDrawer: React.FC<{
                       }}
                       onDragEnd={() => setDragKey(null)}
                       className={cn(
-                        "flex items-center gap-2.5 h-11 pl-1.5 pr-3 border-t border-slate-100 first:border-t-0",
+                        "flex items-center gap-2.5 h-11 pl-1.5 pr-3 border-t border-gray-100 first:border-t-0",
                         column.locked ? "cursor-default" : "cursor-grab active:cursor-grabbing",
                         dragKey === key && "opacity-50"
                       )}
                     >
                       <span className="flex items-center justify-center w-5 shrink-0">
-                        <GripVertical className="h-3.5 w-3.5 text-slate-300" strokeWidth={2.5} />
+                        <GripVertical className="h-3.5 w-3.5 text-gray-300" strokeWidth={2.5} />
                       </span>
                       <span className="flex-1 flex flex-col min-w-0">
                         <span
                           className={cn(
                             "text-ui font-bold truncate",
-                            on ? "text-slate-800" : "text-slate-500"
+                            on ? "text-gray-800" : "text-gray-500"
                           )}
                         >
                           {t(column.label.en, column.label.sk, column.label.hu)}
                         </span>
                         {column.hint ? (
-                          <span className="text-caption font-semibold text-slate-400 truncate">
+                          <span className="text-caption font-semibold text-gray-400 truncate">
                             {t(column.hint.en, column.hint.sk, column.hint.hu)}
                           </span>
                         ) : null}
@@ -624,7 +624,7 @@ export const WidgetSettingsDrawer: React.FC<{
                         className="sr-only"
                       />
                       {column.locked ? (
-                        <span className="flex items-center gap-1.5 text-caption font-bold text-slate-400 shrink-0">
+                        <span className="flex items-center gap-1.5 text-caption font-bold text-gray-400 shrink-0">
                           <Lock className="h-3 w-3" strokeWidth={2.25} />
                           {t("Always", "Vždy", "Mindig")}
                         </span>
@@ -633,7 +633,7 @@ export const WidgetSettingsDrawer: React.FC<{
                           aria-hidden="true"
                           className={cn(
                             "w-8.5 h-5 rounded-full flex items-center p-0.5 box-border transition-colors shrink-0",
-                            on ? "bg-indigo-600 justify-end" : "bg-slate-200 justify-start"
+                            on ? "bg-indigo-600 justify-end" : "bg-gray-200 justify-start"
                           )}
                         >
                           <span className="w-4 h-4 rounded-full bg-white shadow-sm" />
@@ -647,12 +647,12 @@ export const WidgetSettingsDrawer: React.FC<{
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 shrink-0">
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-100 shrink-0">
           {canDelete && (
             <button
               type="button"
               onClick={onDelete}
-              className="flex items-center gap-2 h-11 px-4 rounded-2xl bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 transition-colors text-ui font-bold cursor-pointer"
+              className="flex items-center gap-2 h-11 px-4 rounded-lg bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 transition-colors text-ui font-bold cursor-pointer"
             >
               <Trash2 className="h-4 w-4" strokeWidth={2.25} />
               {t("Remove", "Odstrániť", "Eltávolítás")}
@@ -661,7 +661,7 @@ export const WidgetSettingsDrawer: React.FC<{
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 h-11 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-ui font-bold transition-colors cursor-pointer"
+            className="flex-1 h-11 rounded-lg bg-gray-900 hover:bg-gray-800 text-white text-ui font-bold transition-colors cursor-pointer"
           >
             {t("Done", "Hotovo", "Kész")}
           </button>
