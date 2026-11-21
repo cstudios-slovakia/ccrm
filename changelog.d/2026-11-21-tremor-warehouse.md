@@ -1,0 +1,1 @@
+- Remake Warehouse & Inventory Management (all 6 tabs, Product Detail, Goods Receipt, Goods Issue, and Stock Transfer) in the Tremor Blocks design system with cobalt (`#1e40af`) entity accents, `<EntityBadge>` links for Clients, and extracted `WarehouseAnalyticsTab` powered by Tremor `BarList`, `DonutChart`, and `BarChart`.
