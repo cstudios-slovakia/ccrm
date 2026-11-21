@@ -199,13 +199,13 @@ export const MeetingFocusPanel: React.FC<Props> = ({
       : status === "error"
         ? "bg-amber-500"
         : status === "reconnecting"
-          ? "bg-slate-400 animate-pulse"
-          : "bg-slate-300";
+          ? "bg-gray-400 animate-pulse"
+          : "bg-gray-300";
 
   return (
     <section
       aria-label={t("Focus helper", "Pomocník sústredenia", "Fókuszsegéd")}
-      className="sticky top-2 z-20 w-full max-w-212.5 mb-6 rounded-2xl border border-slate-200 bg-white shadow-md animate-fade-in motion-reduce:animate-none"
+      className="sticky top-2 z-20 w-full max-w-212.5 mb-6 rounded-lg border border-gray-200 bg-white shadow-md animate-fade-in motion-reduce:animate-none"
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 ws-sm:px-4">
@@ -217,22 +217,22 @@ export const MeetingFocusPanel: React.FC<Props> = ({
           title={collapsed ? t("Show", "Zobraziť", "Megjelenítés") : t("Fold away", "Zbaliť", "Összecsukás")}
         >
           <Captions className="size-4 text-indigo-600 shrink-0" />
-          <span className="type-card-title text-slate-800 truncate">
+          <span className="type-card-title text-gray-800 truncate">
             {t("Focus helper", "Pomocník sústredenia", "Fókuszsegéd")}
           </span>
-          <span className="flex items-center gap-1.5 text-micro font-semibold uppercase text-slate-500 shrink-0">
+          <span className="flex items-center gap-1.5 text-micro font-semibold uppercase text-gray-500 shrink-0">
             <span className={cn("size-2 rounded-full", dot)} />
             {statusLabel}
           </span>
           <ChevronDown
-            className={cn("size-4 text-slate-400 shrink-0 ml-auto transition-transform duration-200", collapsed && "-rotate-90")}
+            className={cn("size-4 text-gray-400 shrink-0 ml-auto transition-transform duration-200", collapsed && "-rotate-90")}
           />
         </button>
         {aiText && (<>
         <div
           role="group"
           aria-label={t("View", "Zobrazenie", "Nézet")}
-          className="flex shrink-0 rounded-xl bg-slate-100 p-0.5"
+          className="flex shrink-0 rounded-md bg-gray-100 p-0.5"
         >
           {(["document", "transcript"] as const).map((v) => (
             <button
@@ -242,7 +242,7 @@ export const MeetingFocusPanel: React.FC<Props> = ({
               onClick={() => setView(v)}
               className={cn(
                 "px-2.5 h-7 rounded-[10px] text-caption font-semibold cursor-pointer transition-all duration-150 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 motion-reduce:transition-none motion-reduce:active:scale-100",
-                view === v ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-800 hover:bg-slate-200/60",
+                view === v ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-800 hover:bg-gray-200/60",
               )}
             >
               {v === "document" ? t("Document", "Dokument", "Dokumentum") : t("Transcript", "Prepis", "Átirat")}
@@ -253,7 +253,7 @@ export const MeetingFocusPanel: React.FC<Props> = ({
           type="button"
           onClick={catchMeUp}
           disabled={!rows.length || recap?.loading}
-          className="px-3 h-8 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-200 disabled:text-slate-400 text-white text-caption font-semibold flex items-center gap-1.5 shrink-0 cursor-pointer transition-all active:scale-95 disabled:cursor-default"
+          className="px-3 h-8 rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-200 disabled:text-gray-400 text-white text-caption font-semibold flex items-center gap-1.5 shrink-0 cursor-pointer transition-all active:scale-95 disabled:cursor-default"
         >
           {recap?.loading ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
           {t("Catch me up", "Zhrň mi to", "Foglald össze")}
@@ -263,7 +263,7 @@ export const MeetingFocusPanel: React.FC<Props> = ({
 
       {/* Collapsed: just the newest line, so a glance still works */}
       {collapsed && (
-        <p className="px-4 pb-3 text-body text-slate-600 line-clamp-2">
+        <p className="px-4 pb-3 text-body text-gray-600 line-clamp-2">
           {latest?.speaker && chip(latest.speaker)}
           {latest ? latest.text : t("Waiting for speech…", "Čaká sa na reč…", "Beszédre várakozás…")}
         </p>
@@ -272,7 +272,7 @@ export const MeetingFocusPanel: React.FC<Props> = ({
       {!collapsed && (
         <>
           {recap && (
-            <div className="mx-3 ws-sm:mx-4 mb-2 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2.5 animate-fade-in motion-reduce:animate-none">
+            <div className="mx-3 ws-sm:mx-4 mb-2 rounded-md border border-indigo-100 bg-indigo-50/60 px-3 py-2.5 animate-fade-in motion-reduce:animate-none">
               <div className="flex items-center justify-between gap-2">
                 <span className="type-overline text-indigo-700">
                   {t("Last 2 minutes", "Posledné 2 minúty", "Az utolsó 2 perc")}
@@ -280,14 +280,14 @@ export const MeetingFocusPanel: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={() => setRecap(null)}
-                  className="p-1 -m-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+                  className="p-1 -m-1 text-gray-400 hover:text-gray-700 cursor-pointer"
                   title={t("Dismiss", "Zavrieť", "Bezárás")}
                 >
                   <X className="size-3.5" />
                 </button>
               </div>
               {recap.loading && (
-                <p className="text-body text-slate-500 mt-1">{t("Summarising…", "Zhrňujem…", "Összefoglalás…")}</p>
+                <p className="text-body text-gray-500 mt-1">{t("Summarising…", "Zhrňujem…", "Összefoglalás…")}</p>
               )}
               {recap.failed && (
                 <p className="text-ui text-rose-600 mt-1" title={recap.detail}>
@@ -297,7 +297,7 @@ export const MeetingFocusPanel: React.FC<Props> = ({
               {recap.bullets.length > 0 && (
                 <ul className="mt-1.5 space-y-1">
                   {recap.bullets.map((b, i) => (
-                    <li key={i} className="flex gap-2 text-body text-slate-800">
+                    <li key={i} className="flex gap-2 text-body text-gray-800">
                       <span className="mt-2 size-1.5 rounded-full bg-indigo-400 shrink-0" />
                       <span>{b}</span>
                     </li>
@@ -316,7 +316,7 @@ export const MeetingFocusPanel: React.FC<Props> = ({
               aria-live="off"
             >
               {(view === "transcript" ? rows.length === 0 : docEmpty) && status !== "error" && (
-                <p className="text-body text-slate-400 pt-2">
+                <p className="text-body text-gray-400 pt-2">
                   {status === "connecting" || status === "reconnecting"
                     ? t("Connecting to the live transcript…", "Pripájam živý prepis…", "Élő átirat csatlakoztatása…")
                     : recordingState === "paused"
@@ -341,7 +341,7 @@ export const MeetingFocusPanel: React.FC<Props> = ({
                       <div
                         key={sec.id}
                         className={cn(
-                          "relative text-slate-700 [&_h2]:text-title-sm [&_h2]:font-bold [&_h2]:mt-0 [&_h3]:normal-case [&_h3]:tracking-normal [&_h3]:text-ui [&_h3]:font-semibold [&_p]:text-body [&_li]:text-body [&_li]:font-normal [&_blockquote]:text-body",
+                          "relative text-gray-700 [&_h2]:text-title-sm [&_h2]:font-bold [&_h2]:mt-0 [&_h3]:normal-case [&_h3]:tracking-normal [&_h3]:text-ui [&_h3]:font-semibold [&_p]:text-body [&_li]:text-body [&_li]:font-normal [&_blockquote]:text-body",
                           open && "border-l-2 border-indigo-400 pl-3",
                         )}
                       >
@@ -365,14 +365,14 @@ export const MeetingFocusPanel: React.FC<Props> = ({
                   {tail.length > 0 && (
                     <div className="pt-1 space-y-1.5">
                       <div className="flex items-center gap-2" aria-hidden>
-                        <span className="h-px flex-1 bg-slate-200" />
-                        <span className="type-overline text-slate-400">{t("Now speaking", "Práve sa hovorí", "Most beszél")}</span>
-                        <span className="h-px flex-1 bg-slate-200" />
+                        <span className="h-px flex-1 bg-gray-200" />
+                        <span className="type-overline text-gray-400">{t("Now speaking", "Práve sa hovorí", "Most beszél")}</span>
+                        <span className="h-px flex-1 bg-gray-200" />
                       </div>
                       {tail.map((g) => (
                         <p
                           key={g.ids[0]}
-                          className={cn("text-body leading-snug break-words", g.inProgress ? "text-slate-400" : "text-slate-500")}
+                          className={cn("text-body leading-snug break-words", g.inProgress ? "text-gray-400" : "text-gray-500")}
                         >
                           {g.speaker && chip(g.speaker)}
                           {g.text}
@@ -396,15 +396,15 @@ export const MeetingFocusPanel: React.FC<Props> = ({
                     )}
                     <div
                       className={cn(
-                        "flex gap-3 rounded-xl px-2.5 py-1.5 animate-fade-in motion-reduce:animate-none",
+                        "flex gap-3 rounded-md px-2.5 py-1.5 animate-fade-in motion-reduce:animate-none",
                         recent ? "bg-indigo-50/70 border-l-2 border-indigo-400" : "border-l-2 border-transparent",
                       )}
                     >
-                      <span className="type-meta text-slate-400 tabular-nums pt-1 shrink-0 w-11">{formatClock(s.startSec)}</span>
+                      <span className="type-meta text-gray-400 tabular-nums pt-1 shrink-0 w-11">{formatClock(s.startSec)}</span>
                       <p
                         className={cn(
                           "text-title-sm leading-snug min-w-0 break-words",
-                          !s.final ? "text-slate-400" : recent ? "text-slate-900 font-medium" : "text-slate-500",
+                          !s.final ? "text-gray-400" : recent ? "text-gray-900 font-medium" : "text-gray-500",
                         )}
                       >
                         {s.speaker && s.speaker !== rows[i - 1]?.speaker && chip(s.speaker)}
@@ -420,7 +420,7 @@ export const MeetingFocusPanel: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={jumpToLive}
-                className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 h-8 rounded-full bg-slate-800 hover:bg-slate-900 text-white text-caption font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer animate-fade-in motion-reduce:animate-none"
+                className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 h-8 rounded-full bg-gray-800 hover:bg-gray-900 text-white text-caption font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer animate-fade-in motion-reduce:animate-none"
               >
                 <ArrowDown className="size-3.5" />
                 {t("Jump to live", "Na aktuálne", "Ugrás az élőhöz")}
@@ -430,7 +430,7 @@ export const MeetingFocusPanel: React.FC<Props> = ({
 
           {/* Quiet inline error: the recording itself is unaffected. */}
           {status === "error" && (
-            <div className="mx-3 ws-sm:mx-4 mb-2 flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
+            <div className="mx-3 ws-sm:mx-4 mb-2 flex items-center gap-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2">
               <AlertCircle className="size-4 text-amber-600 shrink-0" />
               <p className="text-ui text-amber-800 min-w-0 flex-1" title={error?.detail}>
                 {t("Live transcript paused", "Živý prepis je prerušený", "Az élő átirat megszakadt")}
@@ -454,7 +454,7 @@ export const MeetingFocusPanel: React.FC<Props> = ({
 
           {/* The document is a nicety: say so quietly, the transcript carries on. */}
           {liveDocument.status === "error" && (
-            <p className="mx-3 ws-sm:mx-4 mb-2 type-meta text-slate-500" title={liveDocument.errorDetail}>
+            <p className="mx-3 ws-sm:mx-4 mb-2 type-meta text-gray-500" title={liveDocument.errorDetail}>
               {t(
                 "The document is not updating; the transcript continues.",
                 "Dokument sa neaktualizuje, prepis pokračuje.",
@@ -465,8 +465,8 @@ export const MeetingFocusPanel: React.FC<Props> = ({
 
           {/* After Stop: the official pass failed, the live text is all there is. */}
           {officialFailed && rows.length > 0 && (
-            <div className="mx-3 ws-sm:mx-4 mb-3 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 border border-slate-200 px-3 py-2">
-              <p className="text-ui text-slate-600 min-w-0 flex-1">
+            <div className="mx-3 ws-sm:mx-4 mb-3 flex flex-wrap items-center gap-2 rounded-md bg-gray-50 border border-gray-200 px-3 py-2">
+              <p className="text-ui text-gray-600 min-w-0 flex-1">
                 {t(
                   "The official transcription failed. You can keep the live text as a draft.",
                   "Oficiálny prepis zlyhal. Živý text si môžete ponechať ako koncept.",
@@ -476,14 +476,14 @@ export const MeetingFocusPanel: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={onUseLive}
-                className="px-3 h-8 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-caption font-semibold shrink-0 cursor-pointer"
+                className="px-3 h-8 rounded-md bg-gray-800 hover:bg-gray-900 text-white text-caption font-semibold shrink-0 cursor-pointer"
               >
                 {t("Use live transcript", "Použiť živý prepis", "Élő átirat használata")}
               </button>
             </div>
           )}
 
-          <p className="px-4 pb-3 type-meta text-slate-400">
+          <p className="px-4 pb-3 type-meta text-gray-400">
             {t(
               "Live draft for orientation. The official transcript is created after you stop.",
               "Živý koncept na orientáciu. Oficiálny prepis vznikne po zastavení.",

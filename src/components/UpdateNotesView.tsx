@@ -69,7 +69,7 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
         return (
             <div className="flex-1 flex flex-col items-center justify-center p-12">
                 <Loader2 className="h-8 w-8 text-indigo-600 animate-spin" />
-                <p className="text-ui font-semibold text-slate-400 mt-4">
+                <p className="text-ui font-semibold text-gray-400 mt-4">
                     {t(
                         "Loading update notes...",
                         "Načítavanie noviniek...",
@@ -82,16 +82,16 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
 
     if (error || updates.length === 0) {
         return (
-            <div className="flex-1 flex flex-col items-center justify-center p-12 bg-white rounded-3xl border border-slate-200/80 shadow-xs">
+            <div className="flex-1 flex flex-col items-center justify-center p-12 bg-white rounded-lg border border-gray-200/80 shadow-xs">
                 <SectionIcon id="updates" className="h-10 w-10" />
-                <h3 className="font-heading font-extrabold text-title-sm text-slate-700 mt-4">
+                <h3 className="font-heading font-extrabold text-title-sm text-gray-700 mt-4">
                     {t(
                         "No updates found",
                         "Žiadne novinky neboli nájdené",
                         "Nem találhatók frissítések",
                     )}
                 </h3>
-                <p className="text-ui text-slate-400 mt-2">
+                <p className="text-ui text-gray-400 mt-2">
                     {error ||
                         t(
                             "Check back later for new releases.",
@@ -122,11 +122,11 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
             />
 
             {/* Main Content Pane */}
-            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-md flex flex-col ws-md:flex-row overflow-hidden min-h-125">
+            <div className="bg-white rounded-lg border border-gray-200/80 shadow-md flex flex-col ws-md:flex-row overflow-hidden min-h-125">
                 {/* Versions Sidebar List */}
-                <div className="w-full ws-md:w-64 border-b ws-md:border-b-0 ws-md:border-r border-slate-100 flex flex-col shrink-0 bg-slate-50/50">
-                    <div className="p-4 border-b border-slate-100 select-none">
-                        <span className="type-overline text-slate-400">
+                <div className="w-full ws-md:w-64 border-b ws-md:border-b-0 ws-md:border-r border-gray-100 flex flex-col shrink-0 bg-gray-50/50">
+                    <div className="p-4 border-b border-gray-100 select-none">
+                        <span className="type-overline text-gray-400">
                             {t(
                                 "Release History",
                                 "História verzií",
@@ -141,17 +141,17 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                                 <button
                                     key={update.id}
                                     onClick={() => setActiveIndex(idx)}
-                                    className={`w-full text-left p-3 rounded-2xl transition-all flex items-start gap-3 cursor-pointer border ${
+                                    className={`w-full text-left p-3 rounded-lg transition-all flex items-start gap-3 cursor-pointer border ${
                                         isActive
-                                            ? "bg-white border-slate-200 text-indigo-600 shadow-xs"
-                                            : "bg-transparent border-transparent text-slate-600 hover:bg-white/50"
+                                            ? "bg-white border-gray-200 text-indigo-600 shadow-xs"
+                                            : "bg-transparent border-transparent text-gray-600 hover:bg-white/50"
                                     }`}
                                 >
                                     <span
                                         className={`px-2 py-0.5 rounded-md type-overline shrink-0 mt-0.5 ${
                                             isActive
                                                 ? "bg-indigo-600 text-white"
-                                                : "bg-slate-200 text-slate-600"
+                                                : "bg-gray-200 text-gray-600"
                                         }`}
                                     >
                                         v{update.version}
@@ -160,7 +160,7 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                                         <div className="font-bold text-ui truncate">
                                             {update.title}
                                         </div>
-                                        <div className="text-micro text-slate-400 font-semibold mt-0.5">
+                                        <div className="text-micro text-gray-400 font-semibold mt-0.5">
                                             {new Date(
                                                 update.postDate,
                                             ).toLocaleDateString(
@@ -190,16 +190,16 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                 >
                     {activeUpdate && (
                         <>
-                            <div className="border-b border-slate-100 pb-4 mb-6">
+                            <div className="border-b border-gray-100 pb-4 mb-6">
                                 <div className="flex items-center gap-2.5">
                                     <span className="px-3 py-1 rounded-full bg-indigo-600 text-white type-overline">
                                         v{activeUpdate.version}
                                     </span>
-                                    <h2 className="font-heading font-extrabold text-title text-slate-800">
+                                    <h2 className="font-heading font-extrabold text-title text-gray-800">
                                         {activeUpdate.title}
                                     </h2>
                                 </div>
-                                <div className="flex items-center gap-1 text-caption font-semibold text-slate-400 mt-2 select-none">
+                                <div className="flex items-center gap-1 text-caption font-semibold text-gray-400 mt-2 select-none">
                                     <Calendar className="h-3.5 w-3.5" />
                                     <span>
                                         {new Date(

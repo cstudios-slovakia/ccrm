@@ -240,14 +240,14 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
   const currentMetric = DEMO_METRICS_HISTORY[warRoomRound - 1] || DEMO_METRICS_HISTORY[0];
 
   return (
-    <div className="fixed inset-0 z-[2000] bg-slate-950/80 backdrop-blur-md flex flex-col overflow-hidden text-slate-900 animate-in fade-in duration-300">
+    <div className="fixed inset-0 z-[2000] bg-gray-950/80  flex flex-col overflow-hidden text-gray-900 animate-in fade-in duration-300">
       
       {/* Top Demo Control Header */}
-      <div className="bg-slate-900 border-b border-slate-800 px-6 py-3 text-white flex flex-wrap items-center justify-between gap-4 shadow-xl shrink-0">
+      <div className="bg-gray-900 border-b border-gray-800 px-6 py-3 text-white flex flex-wrap items-center justify-between gap-4 shadow-xl shrink-0">
         
         {/* Title & Badge */}
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-purple-600 via-indigo-600 to-emerald-500 flex items-center justify-center text-white shadow-md">
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-purple-600 via-indigo-600 to-emerald-500 flex items-center justify-center text-white shadow-md">
             <Zap className="w-5 h-5 fill-white" />
           </div>
           <div>
@@ -257,12 +257,12 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                 {t("Live Simulation Showcase", "Živá ukážka simulácie", "Élő szimulációs bemutató")}
               </span>
             </div>
-            <p className="text-caption text-slate-400">{t("Step", "Krok", "Lépés")} {currentStep} {t("of", "zo", "/")}{demoSteps.length}: {stepMeta.title}</p>
+            <p className="text-caption text-gray-400">{t("Step", "Krok", "Lépés")} {currentStep} {t("of", "zo", "/")}{demoSteps.length}: {stepMeta.title}</p>
           </div>
         </div>
 
         {/* Stepper Navigation Pills */}
-        <div className="flex items-center gap-1.5 bg-slate-950/70 p-1.5 rounded-2xl border border-slate-800">
+        <div className="flex items-center gap-1.5 bg-gray-950/70 p-1.5 rounded-lg border border-gray-800">
           {demoSteps.map(s => {
             const isActive = s.id === currentStep;
             const isPassed = s.id < currentStep;
@@ -270,12 +270,12 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
               <button
                 key={s.id}
                 onClick={() => handleSelectStep(s.id)}
-                className={`px-3 py-1.5 rounded-xl text-ui font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-md text-ui font-bold transition flex items-center gap-1.5 cursor-pointer ${
                   isActive 
                     ? 'bg-gradient-to-r from-purple-600 to-emerald-500 text-white shadow-md' 
                     : isPassed
-                      ? 'bg-slate-800 text-emerald-400 hover:bg-slate-700'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                      ? 'bg-gray-800 text-emerald-400 hover:bg-gray-700'
+                      : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900'
                 }`}
               >
                 {isPassed && <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />}
@@ -289,7 +289,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={() => setIsPlaying(!isPlaying)}
-            className={`p-2 rounded-xl text-ui font-bold transition flex items-center gap-1.5 cursor-pointer ${
+            className={`p-2 rounded-md text-ui font-bold transition flex items-center gap-1.5 cursor-pointer ${
               isPlaying ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300' : 'bg-emerald-600 text-white'
             }`}
             title={isPlaying ? t("Pause Walkthrough", "Pozastaviť prehliadku", "Bemutató szüneteltetése") : t("Resume Walkthrough", "Spustiť prehliadku", "Bemutató folytatása")}
@@ -301,7 +301,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
           <button
             onClick={handlePrevStep}
             disabled={currentStep === 1}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 transition cursor-pointer"
+            className="p-2 rounded-md bg-gray-800 hover:bg-gray-700 disabled:opacity-40 text-gray-200 transition cursor-pointer"
             title={t("Previous Step", "Predchádzajúci krok", "Előző lépés")}
           >
             <ChevronLeft className="w-4 h-4" />
@@ -310,7 +310,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
           <button
             onClick={handleNextStep}
             disabled={currentStep === demoSteps.length}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 transition cursor-pointer"
+            className="p-2 rounded-md bg-gray-800 hover:bg-gray-700 disabled:opacity-40 text-gray-200 transition cursor-pointer"
             title={t("Next Step", "Nasledujúci krok", "Következő lépés")}
           >
             <ChevronRight className="w-4 h-4" />
@@ -318,24 +318,24 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
 
           <button
             onClick={handleRestart}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
+            className="p-2 rounded-md bg-gray-800 hover:bg-gray-700 text-gray-300 transition cursor-pointer"
             title={t("Restart from Step 1", "Reštartovať od 1. kroku", "Újraindítás az 1. lépéstől")}
           >
             <RotateCcw className="w-4 h-4" />
           </button>
 
-          <div className="h-6 w-px bg-slate-800 mx-1" />
+          <div className="h-6 w-px bg-gray-800 mx-1" />
 
           <button
             onClick={onStartRealRehearsal}
-            className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-ui shadow-md transition cursor-pointer"
+            className="px-3 py-1.5 rounded-md bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-gray-950 font-bold text-ui shadow-md transition cursor-pointer"
           >
             {t("Launch Real Simulation", "Spustiť reálnu simuláciu", "Valós szimuláció indítása")}
           </button>
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-slate-100 transition cursor-pointer ml-1"
+            className="p-2 rounded-md hover:bg-gray-800 text-gray-400 hover:text-gray-100 transition cursor-pointer ml-1"
             title={t("Exit Walkthrough", "Ukončiť ukážku", "Kilépés a bemutatóból")}
           >
             <X className="w-5 h-5" />
@@ -345,7 +345,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
       </div>
 
       {/* Step Auto-Progress Bar */}
-      <div className="w-full bg-slate-800 h-1">
+      <div className="w-full bg-gray-800 h-1">
         <div 
           className="bg-gradient-to-r from-purple-500 via-indigo-500 to-emerald-400 h-1 transition-all duration-100 ease-linear"
           style={{ width: `${progress}%` }}
@@ -353,45 +353,45 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
       </div>
 
       {/* Guided Educational Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border-b border-indigo-900/40 px-8 py-3 text-white shrink-0 shadow-md">
+      <div className="bg-gradient-to-r from-gray-900 via-indigo-950 to-gray-900 border-b border-indigo-900/40 px-8 py-3 text-white shrink-0 shadow-md">
         <div className="flex flex-col ws-md:flex-row items-start ws-md:items-center justify-between gap-3">
           <div className="space-y-0.5">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
               <span className="text-ui font-bold text-emerald-300">{stepMeta.title}</span>
             </div>
-            <p className="text-body font-semibold text-slate-200">{stepMeta.tagline}</p>
+            <p className="text-body font-semibold text-gray-200">{stepMeta.tagline}</p>
           </div>
 
-          <div className="flex items-center gap-6 text-ui text-slate-300 bg-slate-950/60 px-4 py-2 rounded-2xl border border-slate-800/80">
+          <div className="flex items-center gap-6 text-ui text-gray-300 bg-gray-950/60 px-4 py-2 rounded-lg border border-gray-800/80">
             <div>
               <span className="type-overline text-indigo-400 block">👤 {t("User Action", "Akcia používateľa", "Felhasználói művelet")}</span>
-              <span className="text-caption text-slate-200">{stepMeta.userAction}</span>
+              <span className="text-caption text-gray-200">{stepMeta.userAction}</span>
             </div>
-            <div className="border-l border-slate-800 pl-4">
+            <div className="border-l border-gray-800 pl-4">
               <span className="type-overline text-emerald-400 block">⚡ {t("System Engine", "Činnosť systému", "Rendszerművelet")}</span>
-              <span className="text-caption text-slate-200">{stepMeta.engineAction}</span>
+              <span className="text-caption text-gray-200">{stepMeta.engineAction}</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* Main Interactive Stage Body */}
-      <div className="flex-1 overflow-y-auto p-6 bg-slate-100 flex flex-col">
+      <div className="flex-1 overflow-y-auto p-6 bg-gray-100 flex flex-col">
         <div className="w-full flex-1 flex flex-col">
           
           {/* STAGE 1: Scenario Definition */}
           {currentStep === 1 && (
             <div className="flex-1 flex flex-col justify-center max-w-3xl mx-auto w-full space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-300 py-6">
-              <div className="p-8 rounded-3xl bg-white border border-slate-200 shadow-xl space-y-5">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="p-8 rounded-lg bg-white border border-gray-200 shadow-xl space-y-5">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                    <div className="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
                       1
                     </div>
                     <div>
-                      <h3 className="text-title-sm font-bold text-slate-900">{t("Define the strategic scenario & hypothesis", "Definujte strategický scenár a hypotézu", "Határozza meg a stratégiai forgatókönyvet és a hipotézist")}</h3>
-                      <p className="text-ui text-slate-500">{t("Which business decision do you want to test before you publish it?", "Aké obchodné rozhodnutie si chcete otestovať pred jeho zverejnením?", "Melyik üzleti döntést szeretné tesztelni a közzététel előtt?")}</p>
+                      <h3 className="text-title-sm font-bold text-gray-900">{t("Define the strategic scenario & hypothesis", "Definujte strategický scenár a hypotézu", "Határozza meg a stratégiai forgatókönyvet és a hipotézist")}</h3>
+                      <p className="text-ui text-gray-500">{t("Which business decision do you want to test before you publish it?", "Aké obchodné rozhodnutie si chcete otestovať pred jeho zverejnením?", "Melyik üzleti döntést szeretné tesztelni a közzététel előtt?")}</p>
                     </div>
                   </div>
                   <span className="px-3 py-1 rounded-full text-ui font-bold bg-purple-50 text-purple-700 border border-purple-200">
@@ -401,50 +401,50 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
 
                 <div className="space-y-4 text-ui">
                   <div>
-                    <label className="text-slate-700 block mb-1.5 type-overline">
+                    <label className="text-gray-700 block mb-1.5 type-overline">
                       {t("Strategic proposal title", "Názov strategického návrhu", "A stratégiai javaslat neve")}
                     </label>
-                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 font-semibold text-slate-800">
+                    <div className="p-3 rounded-lg bg-gray-50 border border-gray-200 font-semibold text-gray-800">
                       {demo.scenarioLabel}
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-slate-700 block mb-1.5 type-overline">
+                    <label className="text-gray-700 block mb-1.5 type-overline">
                       {t("Strategic hypothesis & decision", "Strategická hypotéza a rozhodnutie", "Stratégiai hipotézis és döntés")}
                     </label>
-                    <div className="p-3.5 rounded-2xl bg-indigo-50/50 border border-indigo-200/80 font-medium text-indigo-900 leading-relaxed min-h-17.5">
+                    <div className="p-3.5 rounded-lg bg-indigo-50/50 border border-indigo-200/80 font-medium text-indigo-900 leading-relaxed min-h-17.5">
                       {typedProposal || t("Writing the brief...", "Písanie zadania...", "A feladat írása...")}
                       <span className="inline-block w-1.5 h-4 bg-indigo-600 ml-1 animate-pulse align-middle" />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-3 pt-2">
-                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
-                      <div className="flex items-center gap-1.5 text-slate-500 font-bold text-caption mb-1">
+                    <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
+                      <div className="flex items-center gap-1.5 text-gray-500 font-bold text-caption mb-1">
                         <Calendar className="w-3.5 h-3.5" />
                         <span>{t(`${PRODUCT_NAME} time horizon`, `Časový horizont ${PRODUCT_NAME}`, `${PRODUCT_NAME} időhorizont`)}</span>
                       </div>
-                      <span className="text-body font-bold text-slate-900">{t("12 months", "12 mesiacov", "12 hónap")}</span>
-                      <span className="text-micro text-slate-400 block">{t("Drawn from past won and lost deals", "Čerpá z minulých vyhratých a prehratých obchodov", "Korábbi megnyert és elvesztett üzletekből")}</span>
+                      <span className="text-body font-bold text-gray-900">{t("12 months", "12 mesiacov", "12 hónap")}</span>
+                      <span className="text-micro text-gray-400 block">{t("Drawn from past won and lost deals", "Čerpá z minulých vyhratých a prehratých obchodov", "Korábbi megnyert és elvesztett üzletekből")}</span>
                     </div>
 
-                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
-                      <div className="flex items-center gap-1.5 text-slate-500 font-bold text-caption mb-1">
+                    <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
+                      <div className="flex items-center gap-1.5 text-gray-500 font-bold text-caption mb-1">
                         <Users className="w-3.5 h-3.5" />
                         <span>{t("Swarm size", "Veľkosť roju", "Raj mérete")}</span>
                       </div>
-                      <span className="text-body font-bold text-slate-900">{t("20 autonomous personas", "20 autonómnych persón", "20 autonóm perszóna")}</span>
-                      <span className="text-micro text-slate-400 block">{t("Buyers, competitors & regulators", "Nákupcovia, konkurencia a regulátori", "Vevők, versenytársak és szabályozók")}</span>
+                      <span className="text-body font-bold text-gray-900">{t("20 autonomous personas", "20 autonómnych persón", "20 autonóm perszóna")}</span>
+                      <span className="text-micro text-gray-400 block">{t("Buyers, competitors & regulators", "Nákupcovia, konkurencia a regulátori", "Vevők, versenytársak és szabályozók")}</span>
                     </div>
 
-                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
-                      <div className="flex items-center gap-1.5 text-slate-500 font-bold text-caption mb-1">
+                    <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
+                      <div className="flex items-center gap-1.5 text-gray-500 font-bold text-caption mb-1">
                         <Clock className="w-3.5 h-3.5" />
                         <span>{t("Simulation rounds", "Simulačné kolá", "Szimulációs körök")}</span>
                       </div>
-                      <span className="text-body font-bold text-slate-900">{t("3 rounds (24h cycle)", "3 kolá (24h cyklus)", "3 kör (24 órás ciklus)")}</span>
-                      <span className="text-micro text-slate-400 block">{t("Models day and night behaviour", "Modeluje denný a nočný režim", "A nappali és éjszakai működést modellezi")}</span>
+                      <span className="text-body font-bold text-gray-900">{t("3 rounds (24h cycle)", "3 kolá (24h cyklus)", "3 kör (24 órás ciklus)")}</span>
+                      <span className="text-micro text-gray-400 block">{t("Models day and night behaviour", "Modeluje denný a nočný režim", "A nappali és éjszakai működést modellezi")}</span>
                     </div>
                   </div>
                 </div>
@@ -452,7 +452,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                 <div className="pt-4 flex justify-end">
                   <button
                     onClick={handleNextStep}
-                    className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-ui shadow-md transition flex items-center gap-2 cursor-pointer"
+                    className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-ui shadow-md transition flex items-center gap-2 cursor-pointer"
                   >
                     <span>{t("Continue to the estimate", "Prejsť na predbežný odhad", "Tovább az előzetes becsléshez")}</span>
                     <ArrowRight className="w-4 h-4" />
@@ -465,15 +465,15 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
           {/* STAGE 2: Pre-Flight Safety Estimator */}
           {currentStep === 2 && (
             <div className="flex-1 flex flex-col justify-center max-w-3xl mx-auto w-full space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-300 py-6">
-              <div className="p-8 rounded-3xl bg-white border border-slate-200 shadow-xl space-y-5">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="p-8 rounded-lg bg-white border border-gray-200 shadow-xl space-y-5">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                    <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
                       2
                     </div>
                     <div>
-                      <h3 className="text-title-sm font-bold text-slate-900">{t("Preflight cost & safety estimate", "Predbežný odhad nákladov a bezpečnosti", "Előzetes költség- és biztonságbecslés")}</h3>
-                      <p className="text-ui text-slate-500">{t("Token volume and safety limits before the model runs", "Výpočet objemu tokenov a overenie bezpečnostných limitov pred spustením modelu", "Tokenmennyiség és biztonsági limitek a modell indítása előtt")}</p>
+                      <h3 className="text-title-sm font-bold text-gray-900">{t("Preflight cost & safety estimate", "Predbežný odhad nákladov a bezpečnosti", "Előzetes költség- és biztonságbecslés")}</h3>
+                      <p className="text-ui text-gray-500">{t("Token volume and safety limits before the model runs", "Výpočet objemu tokenov a overenie bezpečnostných limitov pred spustením modelu", "Tokenmennyiség és biztonsági limitek a modell indítása előtt")}</p>
                     </div>
                   </div>
                   <span className="px-3 py-1 rounded-full text-ui font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -482,29 +482,29 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                 </div>
 
                 <div className="grid grid-cols-2 ws-md:grid-cols-4 gap-3 text-ui">
-                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                    <span className="text-caption text-slate-500 font-bold block">{t("Input volume", "Objem vstupu", "Bemenet mennyisége")}</span>
-                    <span className="text-title font-bold text-slate-900 mt-1 block">~42,500</span>
-                    <span className="text-micro text-slate-400">{t("Ontology + personas", "Ontológia + persóny", "Ontológia + perszónák")}</span>
+                  <div className="p-3.5 rounded-lg bg-gray-50 border border-gray-200">
+                    <span className="text-caption text-gray-500 font-bold block">{t("Input volume", "Objem vstupu", "Bemenet mennyisége")}</span>
+                    <span className="text-title font-bold text-gray-900 mt-1 block">~42,500</span>
+                    <span className="text-micro text-gray-400">{t("Ontology + personas", "Ontológia + persóny", "Ontológia + perszónák")}</span>
                   </div>
-                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                    <span className="text-caption text-slate-500 font-bold block">{t("Generated moves", "Generované ťahy", "Generált lépések")}</span>
+                  <div className="p-3.5 rounded-lg bg-gray-50 border border-gray-200">
+                    <span className="text-caption text-gray-500 font-bold block">{t("Generated moves", "Generované ťahy", "Generált lépések")}</span>
                     <span className="text-title font-bold text-indigo-600 mt-1 block">{t("~48 calls", "~48 volaní", "~48 hívás")}</span>
-                    <span className="text-micro text-slate-400">{t("Filtered by the night cycle", "Filtrované nočným cyklom", "Éjszakai ciklussal szűrve")}</span>
+                    <span className="text-micro text-gray-400">{t("Filtered by the night cycle", "Filtrované nočným cyklom", "Éjszakai ciklussal szűrve")}</span>
                   </div>
-                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                    <span className="text-caption text-slate-500 font-bold block">{t("GPT-6.1 Terra price", "Cena GPT-6.1 Terra", "GPT-6.1 Terra ára")}</span>
+                  <div className="p-3.5 rounded-lg bg-gray-50 border border-gray-200">
+                    <span className="text-caption text-gray-500 font-bold block">{t("GPT-6.1 Terra price", "Cena GPT-6.1 Terra", "GPT-6.1 Terra ára")}</span>
                     <span className="text-title font-bold text-indigo-600 mt-1 block">0.043 €</span>
-                    <span className="text-micro text-slate-400">{t("1.00 € / 1M input tokens (deep analysis)", "1.00 € / 1M vstupných tokenov (hĺbková analýza)", "1.00 € / 1M bemeneti token (mély elemzés)")}</span>
+                    <span className="text-micro text-gray-400">{t("1.00 € / 1M input tokens (deep analysis)", "1.00 € / 1M vstupných tokenov (hĺbková analýza)", "1.00 € / 1M bemeneti token (mély elemzés)")}</span>
                   </div>
-                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                    <span className="text-caption text-slate-500 font-bold block">{t("GPT-6 Luna price", "Cena GPT-6 Luna", "GPT-6 Luna ára")}</span>
+                  <div className="p-3.5 rounded-lg bg-gray-50 border border-gray-200">
+                    <span className="text-caption text-gray-500 font-bold block">{t("GPT-6 Luna price", "Cena GPT-6 Luna", "GPT-6 Luna ára")}</span>
                     <span className="text-title font-bold text-purple-600 mt-1 block">0.004 €</span>
-                    <span className="text-micro text-slate-400">{t("0.10 € / 1M input tokens (cost-optimised)", "0.10 € / 1M vstupných tokenov (cenovo optimalizovaný)", "0.10 € / 1M bemeneti token (árra optimalizált)")}</span>
+                    <span className="text-micro text-gray-400">{t("0.10 € / 1M input tokens (cost-optimised)", "0.10 € / 1M vstupných tokenov (cenovo optimalizovaný)", "0.10 € / 1M bemeneti token (árra optimalizált)")}</span>
                   </div>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-3">
+                <div className="p-4 rounded-lg bg-emerald-50/70 border border-emerald-200 space-y-3">
                   <div className="flex items-center gap-2 text-emerald-800 font-bold text-ui">
                     <ShieldCheck className="w-4 h-4 text-emerald-600" />
                     <span>{t("Safety checks passed", "Bezpečnostné overenia v poriadku", "A biztonsági ellenőrzések rendben")}</span>
@@ -528,13 +528,13 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                 <div className="pt-4 flex justify-between items-center">
                   <button
                     onClick={handlePrevStep}
-                    className="px-4 py-2 rounded-xl text-ui font-bold text-slate-500 hover:text-slate-800 transition cursor-pointer"
+                    className="px-4 py-2 rounded-md text-ui font-bold text-gray-500 hover:text-gray-800 transition cursor-pointer"
                   >
                     ← {t("Back to the scenario", "Späť na scenár", "Vissza a forgatókönyvhöz")}
                   </button>
                   <button
                     onClick={handleNextStep}
-                    className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-ui shadow-md transition flex items-center gap-2 cursor-pointer"
+                    className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-ui shadow-md transition flex items-center gap-2 cursor-pointer"
                   >
                     <span>{t("Authorise & synthesise swarm personas", "Autorizovať a syntetizovať persóny roju", "Engedélyezés és a raj perszónáinak szintetizálása")}</span>
                     <ArrowRight className="w-4 h-4" />
@@ -550,11 +550,11 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
               <div className="grid grid-cols-1 ws-lg:grid-cols-12 gap-5 flex-1 min-h-0">
                 
                 {/* Persona Ingestion Feed */}
-                <div className="ws-lg:col-span-5 bg-white rounded-3xl border border-slate-200/80 shadow-sm p-5 flex flex-col h-130 min-h-0 overflow-hidden">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+                <div className="ws-lg:col-span-5 bg-white rounded-lg border border-gray-200/80 shadow-sm p-5 flex flex-col h-130 min-h-0 overflow-hidden">
+                  <div className="flex items-center justify-between pb-3 border-b border-gray-100 shrink-0">
                     <div className="flex items-center gap-2">
                       <Users className="w-4 h-4 text-indigo-600" />
-                      <h4 className="text-ui font-bold text-slate-800">
+                      <h4 className="text-ui font-bold text-gray-800">
                         {t(
                           `${PRODUCT_NAME} persona feed (${DEMO_AGENTS.length} agents)`,
                           `Prúd načítaných persón z ${PRODUCT_NAME} (${DEMO_AGENTS.length} agentov)`,
@@ -567,23 +567,23 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex-1 min-h-0 overflow-y-auto space-y-2.5 pt-3 pr-1 scrollbar-thin scrollbar-thumb-slate-200">
+                  <div className="flex-1 min-h-0 overflow-y-auto space-y-2.5 pt-3 pr-1 scrollbar-thin scrollbar-thumb-gray-200">
                     {DEMO_AGENTS.map((agent, i) => (
                       <div 
                         key={agent.id} 
-                        className="p-3 bg-slate-50/70 hover:bg-white border border-slate-200/80 rounded-2xl shadow-xs transition duration-200 animate-in fade-in slide-in-from-left duration-300 flex flex-col space-y-1.5"
+                        className="p-3 bg-gray-50/70 hover:bg-white border border-gray-200/80 rounded-lg shadow-xs transition duration-200 animate-in fade-in slide-in-from-left duration-300 flex flex-col space-y-1.5"
                         style={{ animationDelay: `${i * 120}ms` }}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0">
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-ui text-white shrink-0 ${
-                              agent.stance === 'opposing' ? 'bg-rose-500' : agent.stance === 'supportive' ? 'bg-emerald-600' : 'bg-slate-600'
+                              agent.stance === 'opposing' ? 'bg-rose-500' : agent.stance === 'supportive' ? 'bg-emerald-600' : 'bg-gray-600'
                             }`}>
                               {agent.displayName.charAt(0)}
                             </div>
                             <div className="min-w-0">
-                              <div className="text-ui font-bold text-slate-900 truncate">{agent.displayName}</div>
-                              <div className="text-micro text-slate-500 truncate">{agent.profession}</div>
+                              <div className="text-ui font-bold text-gray-900 truncate">{agent.displayName}</div>
+                              <div className="text-micro text-gray-500 truncate">{agent.profession}</div>
                             </div>
                           </div>
                           <span className={`px-2 py-0.5 rounded-full type-overline shrink-0 ${
@@ -591,12 +591,12 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                               ? 'bg-rose-50 text-rose-700 border border-rose-200' 
                               : agent.stance === 'supportive'
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                : 'bg-gray-100 text-gray-600 border border-gray-200'
                           }`}>
                             {agent.stance === 'opposing' ? t('Opposing', 'Nesúhlasný', 'Ellenző') : agent.stance === 'supportive' ? t('Supportive', 'Podporujúci', 'Támogató') : t('Neutral', 'Neutrálny', 'Semleges')}
                           </span>
                         </div>
-                        <p className="text-caption text-slate-600 pl-10 leading-relaxed italic">
+                        <p className="text-caption text-gray-600 pl-10 leading-relaxed italic">
                           "{agent.userChar}"
                         </p>
                       </div>
@@ -605,11 +605,11 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                 </div>
 
                 {/* Dynamic Swarm Knowledge Graph */}
-                <div className="ws-lg:col-span-7 bg-white rounded-3xl border border-slate-200/80 shadow-sm p-5 flex flex-col h-130 min-h-0 overflow-hidden">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+                <div className="ws-lg:col-span-7 bg-white rounded-lg border border-gray-200/80 shadow-sm p-5 flex flex-col h-130 min-h-0 overflow-hidden">
+                  <div className="flex items-center justify-between pb-3 border-b border-gray-100 shrink-0">
                     <div className="flex items-center gap-2">
                       <Layers className="w-4 h-4 text-purple-600" />
-                      <h4 className="text-ui font-bold text-slate-800">
+                      <h4 className="text-ui font-bold text-gray-800">
                         {t("Dynamic knowledge graph & relationships", "Dynamický graf znalostí a vzájomné vzťahy", "Dinamikus tudásgráf és kapcsolatok")}
                       </h4>
                     </div>
@@ -618,7 +618,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex-1 min-h-0 mt-3 rounded-2xl overflow-hidden border border-slate-200/80 bg-slate-50 flex flex-col">
+                  <div className="flex-1 min-h-0 mt-3 rounded-lg overflow-hidden border border-gray-200/80 bg-gray-50 flex flex-col">
                     <SwarmGraphCanvas graph={DEMO_GRAPH} activeEntityId={demo.activeNodeId} className="w-full h-full min-h-0" />
                   </div>
                 </div>
@@ -631,24 +631,24 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
           {currentStep === 4 && (
             <div className="flex-1 flex flex-col space-y-4 animate-in fade-in slide-in-from-bottom-3 duration-300">
               {/* Simulation Header Status Bar */}
-              <div className="p-4 rounded-3xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
+              <div className="p-4 rounded-lg bg-white border border-gray-200 shadow-sm flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-lg bg-indigo-600 text-white flex items-center justify-center">
                     <Play className="w-5 h-5 fill-white animate-pulse" />
                   </div>
                   <div>
-                    <h3 className="text-body font-bold text-slate-900">{t("Step 4: autonomous market simulation in progress", "Krok 4: prebieha autonómna trhová simulácia", "4. lépés: autonóm piaci szimuláció folyamatban")}</h3>
-                    <p className="text-ui text-slate-500">{t("Personas debate, raise objections and react to the proposed changes in real time", "Persóny diskutujú, vznášajú námietky a reagujú na navrhované zmeny v reálnom čase", "A perszónák vitatkoznak, kifogásokat emelnek, és valós időben reagálnak a javasolt változásokra")}</p>
+                    <h3 className="text-body font-bold text-gray-900">{t("Step 4: autonomous market simulation in progress", "Krok 4: prebieha autonómna trhová simulácia", "4. lépés: autonóm piaci szimuláció folyamatban")}</h3>
+                    <p className="text-ui text-gray-500">{t("Personas debate, raise objections and react to the proposed changes in real time", "Persóny diskutujú, vznášajú námietky a reagujú na navrhované zmeny v reálnom čase", "A perszónák vitatkoznak, kifogásokat emelnek, és valós időben reagálnak a javasolt változásokra")}</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-4 text-ui">
-                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
-                    <span className="type-overline text-slate-400 block">{t("Simulated time", "Simulovaný čas", "Szimulált idő")}</span>
-                    <span className="font-bold text-slate-700">14:00 CET</span>
+                  <div className="px-3 py-1.5 rounded-md bg-gray-50 border border-gray-200">
+                    <span className="type-overline text-gray-400 block">{t("Simulated time", "Simulovaný čas", "Szimulált idő")}</span>
+                    <span className="font-bold text-gray-700">14:00 CET</span>
                   </div>
-                  <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
-                    <span className="type-overline text-slate-400 block">{t("Viral response", "Virálna odozva", "Virális visszhang")}</span>
+                  <div className="px-3 py-1.5 rounded-md bg-gray-50 border border-gray-200">
+                    <span className="type-overline text-gray-400 block">{t("Viral response", "Virálna odozva", "Virális visszhang")}</span>
                     <span className="font-bold text-purple-600">{currentMetric.viralIndex}%</span>
                   </div>
                 </div>
@@ -657,20 +657,20 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
               {/* Feed & Graph Columns */}
               <div className="grid grid-cols-1 ws-lg:grid-cols-12 gap-5 flex-1 min-h-0">
                 {/* Live Feed Stream */}
-                <div className="ws-lg:col-span-6 bg-white rounded-3xl border border-slate-200 shadow-sm p-4 flex flex-col h-125 min-h-0 overflow-hidden">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
-                    <span className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
+                <div className="ws-lg:col-span-6 bg-white rounded-lg border border-gray-200 shadow-sm p-4 flex flex-col h-125 min-h-0 overflow-hidden">
+                  <div className="flex items-center justify-between pb-3 border-b border-gray-100 shrink-0">
+                    <span className="text-ui font-bold text-gray-800 flex items-center gap-1.5">
                       <MessageSquare className="w-4 h-4 text-indigo-600" />
                       {t("Autonomous social feed", "Autonómny sociálny kanál", "Autonóm közösségi folyam")} ({warRoomPosts.length} {t("posts", "príspevkov", "bejegyzés")})
                     </span>
-                    <span className="text-micro font-bold text-slate-400">{t("Live streaming", "Priebežné streamovanie", "Folyamatos közvetítés")}</span>
+                    <span className="text-micro font-bold text-gray-400">{t("Live streaming", "Priebežné streamovanie", "Folyamatos közvetítés")}</span>
                   </div>
 
-                  <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pt-3 pr-1 scrollbar-thin scrollbar-thumb-slate-200">
+                  <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pt-3 pr-1 scrollbar-thin scrollbar-thumb-gray-200">
                     {[...warRoomPosts].reverse().map(post => (
                       <div 
                         key={post.id} 
-                        className="p-3.5 bg-slate-50/70 hover:bg-white border border-slate-200/80 rounded-2xl shadow-xs transition duration-200 animate-in fade-in slide-in-from-top-2 duration-300 group flex flex-col space-y-2"
+                        className="p-3.5 bg-gray-50/70 hover:bg-white border border-gray-200/80 rounded-lg shadow-xs transition duration-200 animate-in fade-in slide-in-from-top-2 duration-300 group flex flex-col space-y-2"
                       >
                         <div className="flex items-center justify-between text-ui">
                           <div className="flex items-center gap-2 min-w-0">
@@ -678,17 +678,17 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                               {post.agentName.charAt(0)}
                             </div>
                             <div className="min-w-0">
-                              <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition truncate">{post.agentName}</span>
-                              <span className="text-micro text-slate-400 font-mono ml-1.5 truncate">@{post.agentUsername}</span>
+                              <span className="font-bold text-gray-900 group-hover:text-indigo-600 transition truncate">{post.agentName}</span>
+                              <span className="text-micro text-gray-400 font-mono ml-1.5 truncate">@{post.agentUsername}</span>
                             </div>
                           </div>
                           <span className={`px-2 py-0.5 rounded-full type-overline shrink-0 ${
-                            post.sentimentScore > 0.2 ? 'bg-emerald-50 text-emerald-700' : post.sentimentScore < -0.2 ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-600'
+                            post.sentimentScore > 0.2 ? 'bg-emerald-50 text-emerald-700' : post.sentimentScore < -0.2 ? 'bg-rose-50 text-rose-700' : 'bg-gray-100 text-gray-600'
                           }`}>
                             {post.sentimentScore > 0.2 ? t('Supportive', 'Podporujúci', 'Támogató') : post.sentimentScore < -0.2 ? t('Opposing', 'Nesúhlasný', 'Ellenző') : t('Neutral', 'Neutrálny', 'Semleges')}
                           </span>
                         </div>
-                        <div className="text-ui text-slate-700 mt-1 leading-relaxed">
+                        <div className="text-ui text-gray-700 mt-1 leading-relaxed">
                           <Markdown content={post.content} />
                         </div>
                       </div>
@@ -697,7 +697,7 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                 </div>
 
                 {/* Graph Canvas */}
-                <div className="ws-lg:col-span-6 bg-white rounded-3xl border border-slate-200 shadow-sm p-3 flex flex-col h-125 min-h-0 overflow-hidden">
+                <div className="ws-lg:col-span-6 bg-white rounded-lg border border-gray-200 shadow-sm p-3 flex flex-col h-125 min-h-0 overflow-hidden">
                   <SwarmGraphCanvas graph={DEMO_GRAPH} activeEntityId={demo.activeNodeId} className="w-full h-full min-h-0" />
                 </div>
               </div>
@@ -707,18 +707,18 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
           {/* STAGE 5: Strategy Synthesis */}
           {currentStep === 5 && (
             <div className="flex-1 flex flex-col justify-center max-w-2xl mx-auto w-full space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-300 py-10 text-center">
-              <div className="p-8 rounded-3xl bg-white border border-slate-200 shadow-xl space-y-6">
-                <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-purple-600 via-indigo-600 to-emerald-500 mx-auto flex items-center justify-center text-white shadow-xl">
+              <div className="p-8 rounded-lg bg-white border border-gray-200 shadow-xl space-y-6">
+                <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-purple-600 via-indigo-600 to-emerald-500 mx-auto flex items-center justify-center text-white shadow-xl">
                   <Brain className="w-8 h-8 animate-pulse" />
                 </div>
 
                 <div className="space-y-1">
-                  <h3 className="text-title font-bold text-slate-900">{t("Lead intelligence analyst synthesis", "Syntéza hlavného spravodajského analytika", "Vezető hírszerzési elemző szintézise")}</h3>
-                  <p className="text-ui text-slate-500">{t("Turning 3 rounds of debate into strategic findings and objection replies", "Spracovanie dialógu z 3 kôl do strategických zistení a odpovedí na námietky", "3 kör vita feldolgozása stratégiai megállapításokká és kifogásválaszokká")}</p>
+                  <h3 className="text-title font-bold text-gray-900">{t("Lead intelligence analyst synthesis", "Syntéza hlavného spravodajského analytika", "Vezető hírszerzési elemző szintézise")}</h3>
+                  <p className="text-ui text-gray-500">{t("Turning 3 rounds of debate into strategic findings and objection replies", "Spracovanie dialógu z 3 kôl do strategických zistení a odpovedí na námietky", "3 kör vita feldolgozása stratégiai megállapításokká és kifogásválaszokká")}</p>
                 </div>
 
                 {/* Progress bar */}
-                <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden border border-slate-200 p-0.5">
+                <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden border border-gray-200 p-0.5">
                   <div 
                     className="bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 h-full rounded-full transition-all duration-200"
                     style={{ width: `${synthesisProgress}%` }}
@@ -726,34 +726,34 @@ export const GuidedDemoWalkthrough: React.FC<GuidedDemoWalkthroughProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-3 text-left text-ui">
-                  <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
-                    <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
+                    <div className="font-bold text-gray-800 flex items-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                       <span>{t("Critical risks", "Kritické riziká", "Kritikus kockázatok")}</span>
                     </div>
-                    <p className="text-caption text-slate-500 mt-1">{t("Identified outage penalties and an EU data-sovereignty requirement.", "Identifikované sankcie za výpadky a požiadavka na suverenitu dát v EÚ.", "Azonosított kiesési kötbérek és EU-s adatszuverenitási követelmény.")}</p>
+                    <p className="text-caption text-gray-500 mt-1">{t("Identified outage penalties and an EU data-sovereignty requirement.", "Identifikované sankcie za výpadky a požiadavka na suverenitu dát v EÚ.", "Azonosított kiesési kötbérek és EU-s adatszuverenitási követelmény.")}</p>
                   </div>
 
-                  <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
-                    <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
+                    <div className="font-bold text-gray-800 flex items-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                       <span>{t("Competitor moves", "Ťahy konkurencie", "Versenytársi lépések")}</span>
                     </div>
-                    <p className="text-caption text-slate-500 mt-1">{t("Mapped competitor counter-offers that include migration discounts.", "Zmapované protiútoky konkurencie ponúkajúcej migračné zľavy.", "Feltérképezett versenytársi ellentámadások migrációs kedvezményekkel.")}</p>
+                    <p className="text-caption text-gray-500 mt-1">{t("Mapped competitor counter-offers that include migration discounts.", "Zmapované protiútoky konkurencie ponúkajúcej migračné zľavy.", "Feltérképezett versenytársi ellentámadások migrációs kedvezményekkel.")}</p>
                   </div>
 
-                  <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
-                    <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
+                    <div className="font-bold text-gray-800 flex items-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                       <span>{t("Sales arguments", "Obchodné argumenty", "Értékesítési érvek")}</span>
                     </div>
-                    <p className="text-caption text-slate-500 mt-1">{t("Objection replies prepared for the sales team.", "Pripravené odpovede na námietky pre obchodný tím.", "A kifogásokra kész válaszok az értékesítő csapatnak.")}</p>
+                    <p className="text-caption text-gray-500 mt-1">{t("Objection replies prepared for the sales team.", "Pripravené odpovede na námietky pre obchodný tím.", "A kifogásokra kész válaszok az értékesítő csapatnak.")}</p>
                   </div>
                 </div>
 
                 <button
                   onClick={handleNextStep}
-                  className="px-6 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-ui shadow-md transition inline-flex items-center gap-2 cursor-pointer"
+                  className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-ui shadow-md transition inline-flex items-center gap-2 cursor-pointer"
                 >
                   <span>{t("Show the executive briefing & chatbot", "Zobraziť manažérsky briefing a chatbota", "Vezetői eligazítás és chatbot megjelenítése")}</span>
                   <ArrowRight className="w-4 h-4" />

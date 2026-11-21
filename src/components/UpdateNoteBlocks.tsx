@@ -10,7 +10,7 @@ interface UpdateNoteBlocksProps {
   language: UpdateLanguage;
 }
 
-const PROSE = "prose prose-slate max-w-none text-body text-slate-600 leading-relaxed font-sans ck-content";
+const PROSE = "prose prose-slate max-w-none text-body text-gray-600 leading-relaxed font-sans ck-content";
 
 const CALLOUTS: Record<string, { icon: React.ElementType; box: string; accent: string; label: [string, string, string] }> = {
   where: { icon: MapPin, box: "bg-indigo-50/70 border-indigo-100", accent: "text-indigo-600", label: ["Where to find it", "Kde to nájdete", "Hol található"] },
@@ -49,7 +49,7 @@ export const UpdateNoteBlocks: React.FC<UpdateNoteBlocksProps> = ({ blocks, grou
                 caption={img.title}
                 group={group}
                 openLabel={openLabel}
-                className="border border-slate-200/80 shadow-md"
+                className="border border-gray-200/80 shadow-md"
                 imageClassName="h-auto max-h-120"
               />
             );
@@ -61,7 +61,7 @@ export const UpdateNoteBlocks: React.FC<UpdateNoteBlocksProps> = ({ blocks, grou
             return (
               <div key={idx} className={`flex flex-col @2xl/note:flex-row gap-6 items-center ${isRight ? "@2xl/note:flex-row-reverse" : ""}`}>
                 {img && (
-                  <div className="w-full @2xl/note:w-1/2 rounded-2xl overflow-hidden border border-slate-200/80 shadow-sm shrink-0">
+                  <div className="w-full @2xl/note:w-1/2 rounded-lg overflow-hidden border border-gray-200/80 shadow-sm shrink-0">
                     <ZoomableUpdateImage
                       src={img.url}
                       alt={img.title || fallbackAlt}
@@ -85,8 +85,8 @@ export const UpdateNoteBlocks: React.FC<UpdateNoteBlocksProps> = ({ blocks, grou
             const isSub = block.headingLevel === "h3";
             const Tag = isSub ? "h4" : "h3";
             return (
-              <div key={idx} className={`flex flex-wrap items-center gap-2.5 ${isSub ? "pt-2" : "pt-4 border-t border-slate-100"}`}>
-                <Tag className={`font-heading font-extrabold text-slate-800 ${isSub ? "text-title-sm" : "text-title"}`}>
+              <div key={idx} className={`flex flex-wrap items-center gap-2.5 ${isSub ? "pt-2" : "pt-4 border-t border-gray-100"}`}>
+                <Tag className={`font-heading font-extrabold text-gray-800 ${isSub ? "text-title-sm" : "text-title"}`}>
                   {headingText}
                 </Tag>
                 {block.moduleTag && (
@@ -112,10 +112,10 @@ export const UpdateNoteBlocks: React.FC<UpdateNoteBlocksProps> = ({ blocks, grou
                       caption={img.title}
                       group={group}
                       openLabel={openLabel}
-                      className="border border-slate-200/80 shadow-sm"
+                      className="border border-gray-200/80 shadow-sm"
                       imageClassName="h-auto max-h-72"
                     />
-                    {img.title && <figcaption className="text-caption text-slate-500 px-1">{img.title}</figcaption>}
+                    {img.title && <figcaption className="text-caption text-gray-500 px-1">{img.title}</figcaption>}
                   </figure>
                 ))}
               </div>
@@ -127,7 +127,7 @@ export const UpdateNoteBlocks: React.FC<UpdateNoteBlocksProps> = ({ blocks, grou
             const style = CALLOUTS[block.calloutType ?? ""] ?? CALLOUTS.info;
             const Icon = style.icon;
             return (
-              <div key={idx} className={`flex gap-3 rounded-2xl border p-4 ${style.box}`}>
+              <div key={idx} className={`flex gap-3 rounded-lg border p-4 ${style.box}`}>
                 <Icon className={`h-5 w-5 shrink-0 mt-0.5 ${style.accent}`} aria-hidden="true" />
                 <div className="min-w-0">
                   <div className={`type-overline ${style.accent}`}>{t(...style.label)}</div>
@@ -143,8 +143,8 @@ export const UpdateNoteBlocks: React.FC<UpdateNoteBlocksProps> = ({ blocks, grou
             const isFixes = block.listType !== "improvements";
             const Icon = isFixes ? Wrench : CheckCircle2;
             return (
-              <div key={idx} className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-5">
-                <h4 className="font-heading font-extrabold text-title-sm text-slate-800 mb-3">
+              <div key={idx} className="rounded-lg border border-gray-200/80 bg-gray-50/60 p-5">
+                <h4 className="font-heading font-extrabold text-title-sm text-gray-800 mb-3">
                   {block.headingText ||
                     block.title ||
                     (isFixes
@@ -153,7 +153,7 @@ export const UpdateNoteBlocks: React.FC<UpdateNoteBlocksProps> = ({ blocks, grou
                 </h4>
                 <ul className="space-y-2">
                   {items.map((item, i) => (
-                    <li key={i} className="flex gap-2.5 text-body text-slate-600 leading-relaxed">
+                    <li key={i} className="flex gap-2.5 text-body text-gray-600 leading-relaxed">
                       <Icon className={`h-4 w-4 shrink-0 mt-1 ${isFixes ? "text-emerald-500" : "text-indigo-500"}`} aria-hidden="true" />
                       <span>{item}</span>
                     </li>

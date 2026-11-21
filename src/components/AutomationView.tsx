@@ -68,7 +68,7 @@ const getNodeHeaderIcon = (type: string) => {
     case "action":
       return <CheckCircle2 className={`${size} text-emerald-500`} />;
     default:
-      return <Zap className={`${size} text-slate-400`} />;
+      return <Zap className={`${size} text-gray-400`} />;
   }
 };
 
@@ -152,8 +152,8 @@ const VariableInputField: React.FC<VariableInputFieldProps> = ({
     "{{$ai.summary}}": { label: "AI Zhrnutie", block: "AI Agent", color: "bg-purple-100 text-purple-800 border-purple-200" },
     "{{$condition.result}}": { label: "Výsledok", block: "Podmienka", color: "bg-indigo-100 text-indigo-800 border-indigo-200" },
     "{{$item.value}}": { label: "Položka", block: "Rozdeľovač", color: "bg-amber-100 text-amber-800 border-amber-200" },
-    "{{$input.text}}": { label: "Input Text", block: "Predchádzajúci block", color: "bg-slate-100 text-slate-800 border-slate-200" },
-    "{{$input.result}}": { label: "Výsledok", block: "Predchádzajúci block", color: "bg-slate-100 text-slate-800 border-slate-200" },
+    "{{$input.text}}": { label: "Input Text", block: "Predchádzajúci block", color: "bg-gray-100 text-gray-800 border-gray-200" },
+    "{{$input.result}}": { label: "Výsledok", block: "Predchádzajúci block", color: "bg-gray-100 text-gray-800 border-gray-200" },
   };
 
   // Group available tags by previous blocks
@@ -241,7 +241,7 @@ const VariableInputField: React.FC<VariableInputFieldProps> = ({
     <div className="space-y-1 relative" ref={dropdownRef}>
       {label && (
         <div className="flex items-center justify-between">
-          <label className="type-overline text-slate-400 flex items-center gap-1">
+          <label className="type-overline text-gray-400 flex items-center gap-1">
             {label}
           </label>
           <button
@@ -269,7 +269,7 @@ const VariableInputField: React.FC<VariableInputFieldProps> = ({
                 <button
                   type="button"
                   onClick={() => handleRemoveTag(tag)}
-                  className="hover:text-rose-600 text-slate-400 font-extrabold text-micro ml-0.5 cursor-pointer"
+                  className="hover:text-rose-600 text-gray-400 font-extrabold text-micro ml-0.5 cursor-pointer"
                   title="Odstrániť pill"
                 >
                   ✕
@@ -282,7 +282,7 @@ const VariableInputField: React.FC<VariableInputFieldProps> = ({
 
       <div className="flex items-center gap-2 mt-0.5">
         {icon && (
-          <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
+          <div className="p-1.5 bg-gray-50 border border-gray-100 rounded-lg shrink-0 flex items-center justify-center">
             {icon}
           </div>
         )}
@@ -292,7 +292,7 @@ const VariableInputField: React.FC<VariableInputFieldProps> = ({
             onChange={(e) => onChange(e.target.value)}
             onFocus={() => setIsOpen(true)}
             onClick={() => setIsOpen(true)}
-            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-md text-ui font-semibold text-slate-700 h-16 bg-white resize-none focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 transition-all cursor-text"
+            className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-ui font-semibold text-gray-700 h-16 bg-white resize-none focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 transition-all cursor-text"
             placeholder={placeholder}
           />
         ) : (
@@ -302,7 +302,7 @@ const VariableInputField: React.FC<VariableInputFieldProps> = ({
             onChange={(e) => onChange(e.target.value)}
             onFocus={() => setIsOpen(true)}
             onClick={() => setIsOpen(true)}
-            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-ui font-semibold text-slate-700 bg-white focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 transition-all cursor-text"
+            className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-ui font-semibold text-gray-700 bg-white focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 transition-all cursor-text"
             placeholder={placeholder}
           />
         )}
@@ -311,9 +311,9 @@ const VariableInputField: React.FC<VariableInputFieldProps> = ({
       {/* Previous Block Values Dropdown */}
       {isOpen && (
         <div
-          className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[999] border-purple-100 ring-4 ring-purple-50/50 flex flex-col max-h-72 overflow-hidden animate-in fade-in-50 zoom-in-95"
+          className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-gray-200 rounded-lg shadow-xl z-[999] border-purple-100 ring-4 ring-purple-50/50 flex flex-col max-h-72 overflow-hidden animate-in fade-in-50 zoom-in-95"
         >
-          <div className="flex items-center justify-between px-3 py-2 border-b-2 border-slate-100 select-none shrink-0">
+          <div className="flex items-center justify-between px-3 py-2 border-b-2 border-gray-100 select-none shrink-0">
             <span className="type-overline text-purple-700 flex items-center gap-1">
               <Zap className="h-3 w-3 text-purple-600" />
               Hodnoty z predchádzajúcich blokov
@@ -321,7 +321,7 @@ const VariableInputField: React.FC<VariableInputFieldProps> = ({
             <button
               type="button"
               onClick={() => setIsOpen(false)}
-              className="text-micro text-slate-400 hover:text-slate-600 font-bold px-1"
+              className="text-micro text-gray-400 hover:text-gray-600 font-bold px-1"
             >
               ✕
             </button>
@@ -342,8 +342,8 @@ const VariableInputField: React.FC<VariableInputFieldProps> = ({
                       onClick={() => handleInsertTag(tItem.tag)}
                       className="w-full text-left px-2 py-1 text-ui hover:bg-purple-50 rounded-lg transition-colors flex items-center justify-between group cursor-pointer"
                     >
-                      <span className="font-bold text-slate-700 group-hover:text-purple-900">{tItem.label}</span>
-                      <code className="text-micro bg-slate-100 group-hover:bg-purple-100 text-slate-500 group-hover:text-purple-800 px-1.5 py-0.5 rounded-md font-mono font-bold">
+                      <span className="font-bold text-gray-700 group-hover:text-purple-900">{tItem.label}</span>
+                      <code className="text-micro bg-gray-100 group-hover:bg-purple-100 text-gray-500 group-hover:text-purple-800 px-1.5 py-0.5 rounded-md font-mono font-bold">
                         {tItem.tag}
                       </code>
                     </button>
@@ -721,16 +721,16 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
 
   const tabBtn = (active: boolean) =>
     `px-2 py-0.5 rounded-md type-overline transition-colors ${
-      active ? "bg-white text-indigo-700 shadow-sm" : "text-slate-400 hover:text-slate-600"
+      active ? "bg-white text-indigo-700 shadow-sm" : "text-gray-400 hover:text-gray-600"
     }`;
 
   return (
     <div className="mt-2 space-y-1.5">
       <div className="flex items-center justify-between">
-        <label className="type-overline text-slate-400">
+        <label className="type-overline text-gray-400">
           {t("Condition", "Podmienka", "Feltétel")}
         </label>
-        <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5">
+        <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
           <button type="button" className={tabBtn(mode === "visual")} onClick={() => switchMode("visual")}>
             <span className="flex items-center gap-1"><Sliders className="h-2.5 w-2.5" />{t("Builder", "Editor", "Szerkesztő")}</span>
           </button>
@@ -742,20 +742,20 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
 
       {mode === "js" ? (
         <div className="flex items-start gap-2">
-          <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center mt-0.5">
-            <Code className="h-3.5 w-3.5 text-slate-400" />
+          <div className="p-1.5 bg-gray-50 border border-gray-100 rounded-lg shrink-0 flex items-center justify-center mt-0.5">
+            <Code className="h-3.5 w-3.5 text-gray-400" />
           </div>
           <textarea
             value={data.js_code || ""}
             onChange={(e) => onChange({ js_code: e.target.value, cond_mode: "js", rules: undefined })}
-            className="w-full px-2 py-1 border border-slate-200 rounded-lg text-ui font-mono text-slate-700 h-16 bg-white resize-none focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
+            className="w-full px-2 py-1 border border-gray-200 rounded-lg text-ui font-mono text-gray-700 h-16 bg-white resize-none focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
             placeholder='return $trigger.status === "won";'
           />
         </div>
       ) : (
         <div className="space-y-1.5">
           {rules.length === 0 && (
-            <p className="text-micro text-slate-400 font-semibold italic px-0.5">
+            <p className="text-micro text-gray-400 font-semibold italic px-0.5">
               {t("No rules — the condition always passes.", "Žiadne pravidlá — podmienka vždy prejde.", "Nincs szabály — a feltétel mindig teljesül.")}
             </p>
           )}
@@ -770,7 +770,7 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
               { value: COND_CUSTOM, label: t("Custom path…", "Vlastná cesta…", "Egyéni útvonal…") },
             ];
             return (
-              <div key={index} className="rounded-lg border border-slate-200 bg-slate-50/60 p-1.5 space-y-1">
+              <div key={index} className="rounded-lg border border-gray-200 bg-gray-50/60 p-1.5 space-y-1">
                 <div className="flex items-center gap-1">
                   {index > 0 ? (
                     <button
@@ -782,7 +782,7 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
                       {logic === "AND" ? t("AND", "A", "ÉS") : t("OR", "ALEBO", "VAGY")}
                     </button>
                   ) : (
-                    <span className="shrink-0 px-1.5 py-0.5 type-overline text-slate-400">
+                    <span className="shrink-0 px-1.5 py-0.5 type-overline text-gray-400">
                       {t("IF", "AK", "HA")}
                     </span>
                   )}
@@ -804,7 +804,7 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
                   <button
                     type="button"
                     onClick={() => commit(rules.filter((_, i) => i !== index))}
-                    className="shrink-0 p-1 rounded-md text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                    className="shrink-0 p-1 rounded-md text-gray-300 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                     title={t("Remove rule", "Odstrániť pravidlo", "Szabály törlése")}
                   >
                     <Trash2 className="h-3 w-3" />
@@ -816,7 +816,7 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
                     type="text"
                     value={rule.field}
                     onChange={(e) => updateRule(index, { field: e.target.value })}
-                    className="w-full px-2 py-1 border border-slate-200 rounded-lg text-caption font-mono text-slate-700 bg-white focus:outline-none focus:border-indigo-400"
+                    className="w-full px-2 py-1 border border-gray-200 rounded-lg text-caption font-mono text-gray-700 bg-white focus:outline-none focus:border-indigo-400"
                     placeholder="$trigger.customField"
                   />
                 )}
@@ -845,7 +845,7 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
                           type={def?.type === "number" ? "number" : "text"}
                           value={rule.value}
                           onChange={(e) => updateRule(index, { value: e.target.value })}
-                          className="w-full px-2 py-1 border border-slate-200 rounded-lg text-caption font-semibold text-slate-700 bg-white focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
+                          className="w-full px-2 py-1 border border-gray-200 rounded-lg text-caption font-semibold text-gray-700 bg-white focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
                           placeholder={def?.type === "number" ? "0" : t("value", "hodnota", "érték")}
                         />
                       )}
@@ -866,7 +866,7 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
           </button>
 
           {rules.length > 0 && (
-            <code className="block px-2 py-1 rounded-lg bg-slate-900/90 text-micro font-mono text-emerald-300 break-all">
+            <code className="block px-2 py-1 rounded-lg bg-gray-900/90 text-micro font-mono text-emerald-300 break-all">
               {compileConditionRules(rules, logic, defFor)}
             </code>
           )}
@@ -1842,7 +1842,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 <button
                   type="button"
                   onClick={() => navigateToTab("settings")}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-ui font-heading font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
+                  className="px-4 py-2.5 rounded-md border border-gray-200 bg-white text-gray-600 hover:text-gray-800 hover:bg-gray-50 transition-colors text-ui font-heading font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
                 >
                   <Settings className="h-4 w-4" />
                   {t("Settings", "Nastavenia", "Beállítások")}
@@ -1851,7 +1851,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 <button
                   type="button"
                   onClick={() => handleNewWorkflow()}
-                  className="px-5 py-3 rounded-2xl bg-purple-800 text-white hover:bg-purple-900 shadow-md shadow-purple-900/20 transition-all font-heading font-bold text-ui flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
+                  className="px-5 py-3 rounded-lg bg-purple-800 text-white hover:bg-purple-900 shadow-md shadow-purple-900/20 transition-all font-heading font-bold text-ui flex items-center gap-2 cursor-pointer shrink-0"
                 >
                   <Plus className="h-4.5 w-4.5" />
                   {t("Create Workflow", "Vytvoriť workflow", "Új munkafolyamat")}
@@ -1865,7 +1865,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                   navigateToTab("list");
                   fetchWorkflows();
                 }}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-ui font-heading font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
+                className="px-4 py-2.5 rounded-md border border-gray-200 bg-white text-gray-600 hover:text-gray-800 hover:bg-gray-50 transition-colors text-ui font-heading font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
               >
                 <ArrowLeft className="h-4 w-4" />
                 {t("Back to list", "Späť na zoznam", "Vissza a listához")}
@@ -1884,22 +1884,22 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
             {loading ? (
               <div className="flex flex-col items-center justify-center py-20 gap-3">
                 <RefreshCw className="h-8 w-8 text-purple-600 animate-spin" />
-                <span className="text-ui font-heading font-bold text-slate-400">{t("Loading automations...", "Načítavam automatizácie...", "Betöltés...")}</span>
+                <span className="text-ui font-heading font-bold text-gray-400">{t("Loading automations...", "Načítavam automatizácie...", "Betöltés...")}</span>
               </div>
             ) : workflows.length === 0 ? (
-              <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-12 text-center flex flex-col items-center justify-center">
-                <div className="h-16 w-16 bg-purple-50 rounded-2xl flex items-center justify-center mb-4">
+              <div className=" rounded-lg border border-gray-200 bg-white shadow-xs p-12 text-center flex flex-col items-center justify-center">
+                <div className="h-16 w-16 bg-purple-50 rounded-lg flex items-center justify-center mb-4">
                   <Workflow className="h-8 w-8 text-purple-600" />
                 </div>
-                <h3 className="font-heading font-extrabold text-slate-900 mb-1">{t("No workflows created yet", "Zatiaľ neboli vytvorené žiadne workflowy", "Még nincsenek munkafolyamatok")}</h3>
-                <p className="text-body text-slate-500 max-w-sm mb-6 font-medium">
+                <h3 className="font-heading font-extrabold text-gray-900 mb-1">{t("No workflows created yet", "Zatiaľ neboli vytvorené žiadne workflowy", "Még nincsenek munkafolyamatok")}</h3>
+                <p className="text-body text-gray-500 max-w-sm mb-6 font-medium">
                   {t("Set up your first automation to trigger AI actions, notifications or task creation when leads/events change.", "Vytvorte si svoju prvú automatizáciu pre spúšťanie AI akcií, upozornení alebo vytváranie úloh.", "Hozzon létre egy automatizációt a feladatok automatikus indításához.")}
                 </p>
                 {canEdit && (
                 <button
                   type="button"
                   onClick={() => handleNewWorkflow()}
-                  className="px-5 py-3 rounded-2xl bg-purple-800 text-white hover:bg-purple-900 shadow-md shadow-purple-900/20 transition-all font-heading font-bold text-ui flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95"
+                  className="px-5 py-3 rounded-lg bg-purple-800 text-white hover:bg-purple-900 shadow-md shadow-purple-900/20 transition-all font-heading font-bold text-ui flex items-center gap-2 cursor-pointer"
                 >
                   <Plus className="h-4.5 w-4.5" />
                   {t("Create Workflow", "Vytvoriť workflow", "Új munkafolyamat")}
@@ -1912,13 +1912,13 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                   <div
                     key={wf.id}
                     onClick={() => handleEditWorkflow(wf)}
-                    className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 hover:shadow-lg hover:-translate-y-0.5 hover:border-purple-200 transition-all duration-300 group cursor-pointer flex flex-col relative overflow-hidden"
+                    className=" rounded-lg border border-gray-200 bg-white shadow-xs p-6 hover:shadow-lg hover:-translate-y-0.5 hover:border-purple-200 transition-all duration-300 group cursor-pointer flex flex-col relative overflow-hidden"
                   >
                     {/* Active State Ribbon */}
-                    <div className={`absolute top-0 right-0 h-1.5 left-0 ${wf.is_active ? 'bg-purple-600' : 'bg-slate-300'}`} />
+                    <div className={`absolute top-0 right-0 h-1.5 left-0 ${wf.is_active ? 'bg-purple-600' : 'bg-gray-300'}`} />
 
                     <div className="flex items-start justify-between mb-4">
-                      <div className="h-10 w-10 rounded-2xl bg-slate-100 flex items-center justify-center">
+                      <div className="h-10 w-10 rounded-lg bg-gray-100 flex items-center justify-center">
                         {getTriggerIcon(wf.trigger_type)}
                       </div>
                       <div className="flex items-center gap-1">
@@ -1927,9 +1927,9 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                           type="button"
                           onClick={(e) => toggleActive(wf.id, wf.is_active === 1, e)}
                           title={wf.is_active ? t("Deactivate", "Deaktivovať", "Deaktivál") : t("Activate", "Aktivovať", "Aktivál")}
-                          className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors cursor-pointer"
+                          className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500 transition-colors cursor-pointer"
                         >
-                          {wf.is_active ? <ToggleRight className="h-6 w-6 text-purple-600" /> : <ToggleLeft className="h-6 w-6 text-slate-400" />}
+                          {wf.is_active ? <ToggleRight className="h-6 w-6 text-purple-600" /> : <ToggleLeft className="h-6 w-6 text-gray-400" />}
                         </button>
                         )}
                         {canEdit && (
@@ -1937,7 +1937,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                           type="button"
                           onClick={(e) => cloneWorkflow(wf.id, e)}
                           title={t("Duplicate", "Duplikovať", "Duplikál")}
-                          className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors cursor-pointer"
+                          className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500 transition-colors cursor-pointer"
                         >
                           <Copy className="h-4 w-4" />
                         </button>
@@ -1949,7 +1949,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                             what={wf.name}
                             onConfirm={() => deleteWorkflow(wf.id)}
                             title={t("Delete", "Vymazať", "Töröl")}
-                            className="p-1.5 hover:bg-rose-50 rounded-xl text-rose-500 transition-colors"
+                            className="p-1.5 hover:bg-rose-50 rounded-md text-rose-500 transition-colors"
                         >
                           <Trash2 className="h-4 w-4" />
                         </HoldToConfirmButton>
@@ -1957,22 +1957,22 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       </div>
                     </div>
 
-                    <h3 className="font-heading font-extrabold text-slate-900 group-hover:text-purple-800 transition-colors mb-1">
+                    <h3 className="font-heading font-extrabold text-gray-900 group-hover:text-purple-800 transition-colors mb-1">
                       {wf.name}
                     </h3>
-                    <p className="text-ui text-slate-500 font-medium mb-4 line-clamp-2">
+                    <p className="text-ui text-gray-500 font-medium mb-4 line-clamp-2">
                       {wf.description || t("No description added.", "Žiadny popis.", "Nincs leírás.")}
                     </p>
 
                     {/* Stats Section */}
-                    <div className="mt-auto border-t border-slate-100 pt-4 flex items-center justify-between">
+                    <div className="mt-auto border-t border-gray-100 pt-4 flex items-center justify-between">
                       <div className="flex gap-4">
                         <div className="flex flex-col">
-                          <span className="type-overline text-slate-400">{t("Total Runs", "Spustenia", "Futások")}</span>
-                          <span className="text-body font-bold text-slate-900 font-mono">{wf.stats?.total_runs || 0}</span>
+                          <span className="type-overline text-gray-400">{t("Total Runs", "Spustenia", "Futások")}</span>
+                          <span className="text-body font-bold text-gray-900 font-mono">{wf.stats?.total_runs || 0}</span>
                         </div>
                         <div className="flex flex-col">
-                          <span className="type-overline text-slate-400">{t("Success Rate", "Úspešnosť", "Siker")}</span>
+                          <span className="type-overline text-gray-400">{t("Success Rate", "Úspešnosť", "Siker")}</span>
                           <span className="text-body font-bold text-emerald-600 font-mono">
                             {wf.stats?.total_runs > 0
                               ? Math.round((wf.stats.success_runs / wf.stats.total_runs) * 100) + "%"
@@ -2005,11 +2005,11 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
           /* The canvas is a bounded card inside the padded workspace, not a full-bleed
              screen — the old 100vh-80px height assumed this view drew its own header
              and left the editor hanging past the bottom of the page. */
-          <div className="h-[calc(100vh-15rem)] min-h-140 flex overflow-hidden rounded-3xl border border-white/60 bg-white/95 shadow-glass">
+          <div className="h-[calc(100vh-15rem)] min-h-140 flex overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xs">
             {/* Editor Canvas Area */}
             <div
               ref={canvasRef}
-              className="flex-1 bg-slate-50 border-r border-slate-200 overflow-hidden relative select-none"
+              className="flex-1 bg-gray-50 border-r border-gray-200 overflow-hidden relative select-none"
               onMouseDown={handleCanvasMouseDown}
               onMouseMove={handleCanvasMouseMove}
               onMouseUp={handleCanvasMouseUp}
@@ -2024,10 +2024,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
             >
               
               {/* Floating Node Controls Bar */}
-              <div ref={pillDropdownRef} className="absolute top-4 left-4 bg-white/95 backdrop-blur border border-slate-200/90 rounded-2xl p-2.5 shadow-lg flex items-center gap-2 z-30">
+              <div ref={pillDropdownRef} className="absolute top-4 left-4 bg-white  border border-gray-200/90 rounded-lg p-2.5 shadow-lg flex items-center gap-2 z-30">
                 {canEdit && (
                 <>
-                <span className="text-ui font-extrabold text-slate-400 border-r border-slate-200 pr-3 mr-1 select-none">{t("Add Nodes", "Pridať uzly", "Új csomópontok")}</span>
+                <span className="text-ui font-extrabold text-gray-400 border-r border-gray-200 pr-3 mr-1 select-none">{t("Add Nodes", "Pridať uzly", "Új csomópontok")}</span>
 
                 {/* AI Agent Pill */}
                 <div className="relative">
@@ -2045,7 +2045,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                     <ChevronDown className={`h-3 w-3 text-purple-500 transition-transform ${activePillDropdown === "agent" ? "rotate-180" : ""}`} />
                   </button>
                   {activePillDropdown === "agent" && (
-                    <div className="absolute left-0 top-full mt-2 w-56 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 py-2 border-purple-100 ring-4 ring-purple-50/50 animate-in fade-in-50 zoom-in-95">
+                    <div className="absolute left-0 top-full mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-xl z-50 py-2 border-purple-100 ring-4 ring-purple-50/50 animate-in fade-in-50 zoom-in-95">
                       <div className="px-3 py-1 type-overline text-purple-600 bg-purple-50/50 flex items-center gap-1.5 select-none mb-1">
                         <span className="h-1.5 w-1.5 rounded-full bg-purple-500" />
                         {t("AI Processors", "AI PROCESORY", "AI PROCESSZOROK")}
@@ -2053,40 +2053,40 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       <button 
                         type="button"
                         onClick={() => addNode("ai_agent", "general")} 
-                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-ui font-semibold text-slate-700 hover:bg-purple-50 hover:text-purple-900 text-left transition-colors cursor-pointer"
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-ui font-semibold text-gray-700 hover:bg-purple-50 hover:text-purple-900 text-left transition-colors cursor-pointer"
                       >
                         <div className="p-1 rounded-md bg-purple-50 text-purple-600">
                           <Brain className="h-3.5 w-3.5" />
                         </div>
                         <div>
                           <div className="font-bold">{t("AI Agent Processor", "AI Agent Procesor", "AI Ágens")}</div>
-                          <div className="text-micro text-slate-400 font-normal">{t("Custom AI prompts & logic", "Vlastné AI vzory a logika", "Egyedi AI promptok")}</div>
+                          <div className="text-micro text-gray-400 font-normal">{t("Custom AI prompts & logic", "Vlastné AI vzory a logika", "Egyedi AI promptok")}</div>
                         </div>
                       </button>
                       <button 
                         type="button"
                         onClick={() => addNode("ai_agent", "summarize")} 
-                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-ui font-semibold text-slate-700 hover:bg-purple-50 hover:text-purple-900 text-left transition-colors cursor-pointer"
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-ui font-semibold text-gray-700 hover:bg-purple-50 hover:text-purple-900 text-left transition-colors cursor-pointer"
                       >
                         <div className="p-1 rounded-md bg-purple-50 text-purple-600">
                           <Bot className="h-3.5 w-3.5" />
                         </div>
                         <div>
                           <div className="font-bold">{t("Summarize Lead", "Zhrnutie leadu", "Lead összegzés")}</div>
-                          <div className="text-micro text-slate-400 font-normal">{t("Auto-generate lead summary", "Automatické zhrnutie leadu", "Automatikus összegzés")}</div>
+                          <div className="text-micro text-gray-400 font-normal">{t("Auto-generate lead summary", "Automatické zhrnutie leadu", "Automatikus összegzés")}</div>
                         </div>
                       </button>
                       <button 
                         type="button"
                         onClick={() => addNode("ai_agent", "draft_email")} 
-                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-ui font-semibold text-slate-700 hover:bg-purple-50 hover:text-purple-900 text-left transition-colors cursor-pointer"
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-ui font-semibold text-gray-700 hover:bg-purple-50 hover:text-purple-900 text-left transition-colors cursor-pointer"
                       >
                         <div className="p-1 rounded-md bg-purple-50 text-purple-600">
                           <Mail className="h-3.5 w-3.5" />
                         </div>
                         <div>
                           <div className="font-bold">{t("Draft Email Response", "Návrh odpovede na e-mail", "E-mail válasz piszkozat")}</div>
-                          <div className="text-micro text-slate-400 font-normal">{t("AI smart email draft", "AI inteligentný návrh", "AI okos piszkozat")}</div>
+                          <div className="text-micro text-gray-400 font-normal">{t("AI smart email draft", "AI inteligentný návrh", "AI okos piszkozat")}</div>
                         </div>
                       </button>
                     </div>
@@ -2109,7 +2109,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                     <ChevronDown className={`h-3 w-3 text-emerald-500 transition-transform ${activePillDropdown === "action" ? "rotate-180" : ""}`} />
                   </button>
                   {activePillDropdown === "action" && (
-                    <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 py-2 border-emerald-100 ring-4 ring-emerald-50/50 animate-in fade-in-50 zoom-in-95">
+                    <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-gray-200 rounded-lg shadow-xl z-50 py-2 border-emerald-100 ring-4 ring-emerald-50/50 animate-in fade-in-50 zoom-in-95">
                       
                       {/* Leads */}
                       <div className="px-3 py-1 type-overline text-blue-600 bg-blue-50/40 flex items-center gap-1 select-none mb-0.5">
@@ -2119,7 +2119,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       <button 
                         type="button"
                         onClick={() => addNode("action", "create_lead")} 
-                        className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-ui font-bold text-slate-700 hover:bg-blue-50 hover:text-blue-900 text-left transition-colors cursor-pointer"
+                        className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-ui font-bold text-gray-700 hover:bg-blue-50 hover:text-blue-900 text-left transition-colors cursor-pointer"
                       >
                         <UserPlus className="h-4 w-4 text-blue-500" />
                         <span>{t("Create Lead", "Vytvoriť lead", "Lead létrehozása")}</span>
@@ -2133,7 +2133,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       <button 
                         type="button"
                         onClick={() => addNode("action", "create_client")} 
-                        className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-ui font-bold text-slate-700 hover:bg-emerald-50 hover:text-emerald-900 text-left transition-colors cursor-pointer"
+                        className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-ui font-bold text-gray-700 hover:bg-emerald-50 hover:text-emerald-900 text-left transition-colors cursor-pointer"
                       >
                         <Users className="h-4 w-4 text-emerald-500" />
                         <span>{t("Create Client", "Vytvoriť klienta", "Ügyfél létrehozása")}</span>
@@ -2147,7 +2147,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       <button 
                         type="button"
                         onClick={() => addNode("action", "create_task")} 
-                        className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-ui font-bold text-slate-700 hover:bg-amber-50 hover:text-amber-900 text-left transition-colors cursor-pointer"
+                        className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-ui font-bold text-gray-700 hover:bg-amber-50 hover:text-amber-900 text-left transition-colors cursor-pointer"
                       >
                         <CheckSquare className="h-4 w-4 text-amber-600" />
                         <span>{t("Create Task", "Vytvoriť úlohu", "Feladat létrehozása")}</span>
@@ -2161,7 +2161,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       <button
                         type="button"
                         onClick={() => addNode("action", "update_project_status")}
-                        className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-ui font-bold text-slate-700 hover:bg-purple-50 hover:text-purple-900 text-left transition-colors cursor-pointer"
+                        className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-ui font-bold text-gray-700 hover:bg-purple-50 hover:text-purple-900 text-left transition-colors cursor-pointer"
                       >
                         <Briefcase className="h-4 w-4 text-purple-500" />
                         <span>{t("Change Project Status", "Zmeniť stav projektu", "Projekt állapota")}</span>
@@ -2169,7 +2169,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       <button
                         type="button"
                         onClick={() => addNode("action", "convert_lead_to_project")}
-                        className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-ui font-bold text-slate-700 hover:bg-purple-50 hover:text-purple-900 text-left transition-colors cursor-pointer"
+                        className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-ui font-bold text-gray-700 hover:bg-purple-50 hover:text-purple-900 text-left transition-colors cursor-pointer"
                       >
                         <ArrowRightLeft className="h-4 w-4 text-purple-500" />
                         <span>{t("Convert Lead to Project", "Lead na projekt", "Lead projektté")}</span>
@@ -2183,7 +2183,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       <button 
                         type="button"
                         onClick={() => addNode("action", "send_email")} 
-                        className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-ui font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-900 text-left transition-colors cursor-pointer"
+                        className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-ui font-bold text-gray-700 hover:bg-indigo-50 hover:text-indigo-900 text-left transition-colors cursor-pointer"
                       >
                         <Mail className="h-4 w-4 text-indigo-500" />
                         <span>{t("Send Email", "Odoslať e-mail", "E-mail küldése")}</span>
@@ -2209,7 +2209,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                     <ChevronDown className={`h-3 w-3 text-indigo-500 transition-transform ${activePillDropdown === "condition" ? "rotate-180" : ""}`} />
                   </button>
                   {activePillDropdown === "condition" && (
-                    <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 py-2 border-indigo-100 ring-4 ring-indigo-50/50 animate-in fade-in-50 zoom-in-95">
+                    <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-gray-200 rounded-lg shadow-xl z-50 py-2 border-indigo-100 ring-4 ring-indigo-50/50 animate-in fade-in-50 zoom-in-95">
                       <div className="px-3 py-1 type-overline text-indigo-600 bg-indigo-50/40 flex items-center gap-1 select-none mb-1">
                         <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
                         {t("Logic Conditions", "PODMIENKY A LOGIKA", "FELTÉTELEK")}
@@ -2217,27 +2217,27 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       <button 
                         type="button"
                         onClick={() => addNode("condition", "if_else")} 
-                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-ui font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-900 text-left transition-colors cursor-pointer"
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-ui font-semibold text-gray-700 hover:bg-indigo-50 hover:text-indigo-900 text-left transition-colors cursor-pointer"
                       >
                         <div className="p-1 rounded-md bg-indigo-50 text-indigo-600">
                           <GitFork className="h-3.5 w-3.5" />
                         </div>
                         <div>
                           <div className="font-bold">{t("If/Else Condition", "Podmienka If/Else", "Feltétel")}</div>
-                          <div className="text-micro text-slate-400 font-normal">{t("Branch logic evaluation", "Vyhodnotenie podmienky", "Feltétel kiértékelés")}</div>
+                          <div className="text-micro text-gray-400 font-normal">{t("Branch logic evaluation", "Vyhodnotenie podmienky", "Feltétel kiértékelés")}</div>
                         </div>
                       </button>
                       <button 
                         type="button"
                         onClick={() => addNode("condition", "status_check")} 
-                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-ui font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-900 text-left transition-colors cursor-pointer"
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-ui font-semibold text-gray-700 hover:bg-indigo-50 hover:text-indigo-900 text-left transition-colors cursor-pointer"
                       >
                         <div className="p-1 rounded-md bg-indigo-50 text-indigo-600">
                           <Filter className="h-3.5 w-3.5" />
                         </div>
                         <div>
                           <div className="font-bold">{t("Status Filter", "Kontrola stavu", "Státusz szűrő")}</div>
-                          <div className="text-micro text-slate-400 font-normal">{t("Filter by status", "Filtrovať podľa stavu", "Szűrés státusz alapján")}</div>
+                          <div className="text-micro text-gray-400 font-normal">{t("Filter by status", "Filtrovať podľa stavu", "Szűrés státusz alapján")}</div>
                         </div>
                       </button>
                     </div>
@@ -2263,7 +2263,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                     <ChevronDown className={`h-3 w-3 text-amber-500 transition-transform ${activePillDropdown === "splitter" ? "rotate-180" : ""}`} />
                   </button>
                   {activePillDropdown === "splitter" && (
-                    <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 py-2 border-amber-100 ring-4 ring-amber-50/50 animate-in fade-in-50 zoom-in-95">
+                    <div className="absolute left-0 top-full mt-2 w-52 bg-white border border-gray-200 rounded-lg shadow-xl z-50 py-2 border-amber-100 ring-4 ring-amber-50/50 animate-in fade-in-50 zoom-in-95">
                       <div className="px-3 py-1 type-overline text-amber-600 bg-amber-50/40 flex items-center gap-1 select-none mb-1">
                         <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
                         {t("Flow Control", "ROZDELENIE TOKU", "FOLYAMAT VEZÉRLÉS")}
@@ -2271,27 +2271,27 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       <button
                         type="button"
                         onClick={() => addNode("splitter", "array")}
-                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-ui font-semibold text-slate-700 hover:bg-amber-50 hover:text-amber-900 text-left transition-colors cursor-pointer"
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-ui font-semibold text-gray-700 hover:bg-amber-50 hover:text-amber-900 text-left transition-colors cursor-pointer"
                       >
                         <div className="p-1 rounded-md bg-amber-50 text-amber-600">
                           <Layers className="h-3.5 w-3.5" />
                         </div>
                         <div>
                           <div className="font-bold">{t("Split Events Array", "Rozdeliť udalosti", "Események felosztása")}</div>
-                          <div className="text-micro text-slate-400 font-normal">{t("Process items individually", "Spracovať položky po jednej", "Elemek feldolgozása egyenkoľnek")}</div>
+                          <div className="text-micro text-gray-400 font-normal">{t("Process items individually", "Spracovať položky po jednej", "Elemek feldolgozása egyenkoľnek")}</div>
                         </div>
                       </button>
                       <button
                         type="button"
                         onClick={() => addNode("splitter", "parallel")}
-                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-ui font-semibold text-slate-700 hover:bg-amber-50 hover:text-amber-900 text-left transition-colors cursor-pointer"
+                        className="w-full flex items-center gap-2.5 px-3.5 py-2 text-ui font-semibold text-gray-700 hover:bg-amber-50 hover:text-amber-900 text-left transition-colors cursor-pointer"
                       >
                         <div className="p-1 rounded-md bg-amber-50 text-amber-600">
                           <GitFork className="h-3.5 w-3.5" />
                         </div>
                         <div>
                           <div className="font-bold">{t("Parallel Branches", "Paralelné vetvenie", "Párhuzamos ágak")}</div>
-                          <div className="text-micro text-slate-400 font-normal">{t("Execute multiple paths", "Spustiť viacero ciest súčasne", "Több ág párhuzamos futtatása")}</div>
+                          <div className="text-micro text-gray-400 font-normal">{t("Execute multiple paths", "Spustiť viacero ciest súčasne", "Több ág párhuzamos futtatása")}</div>
                         </div>
                       </button>
                     </div>
@@ -2306,21 +2306,21 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 <button
                   type="button"
                   onClick={resetView}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-full text-ui font-bold transition-colors select-none ml-2 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 rounded-full text-ui font-bold transition-colors select-none ml-2 cursor-pointer"
                   title={t("Reset view position and zoom", "Vynulovať pohľad a priblíženie", "Nézet és nagyítás visszaállítása")}
                 >
-                  <Move className="h-3.5 w-3.5 text-slate-500" />
+                  <Move className="h-3.5 w-3.5 text-gray-500" />
                   <span>{panOffset.x !== 0 || panOffset.y !== 0 ? `Reset (${Math.round(panOffset.x)}, ${Math.round(panOffset.y)})` : t("Reset View", "Reset pohľadu", "Alaphelyzet")}</span>
                 </button>
               </div>
 
               {/* Zoom Controls */}
-              <div className="absolute bottom-4 right-4 z-30 flex items-center gap-0.5 bg-white/95 backdrop-blur border border-slate-200/90 rounded-2xl p-1.5 shadow-lg">
+              <div className="absolute bottom-4 right-4 z-30 flex items-center gap-0.5 bg-white  border border-gray-200/90 rounded-lg p-1.5 shadow-lg">
                 <button
                   type="button"
                   onClick={() => zoomAround(zoom / 1.2)}
                   disabled={zoom <= MIN_ZOOM + 0.001}
-                  className="h-7 w-7 flex items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-default transition-colors cursor-pointer"
+                  className="h-7 w-7 flex items-center justify-center rounded-md text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-default transition-colors cursor-pointer"
                   title={t("Zoom out", "Oddialiť", "Kicsinyítés")}
                 >
                   <Minus className="h-4 w-4" />
@@ -2328,7 +2328,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 <button
                   type="button"
                   onClick={() => zoomAround(1)}
-                  className="min-w-11.5 px-1 h-7 rounded-xl text-caption font-extrabold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer tabular-nums select-none"
+                  className="min-w-11.5 px-1 h-7 rounded-md text-caption font-extrabold text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors cursor-pointer tabular-nums select-none"
                   title={t("Reset zoom to 100%", "Obnoviť priblíženie na 100 %", "Nagyítás visszaállítása 100%-ra")}
                 >
                   {Math.round(zoom * 100)}%
@@ -2337,16 +2337,16 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                   type="button"
                   onClick={() => zoomAround(zoom * 1.2)}
                   disabled={zoom >= MAX_ZOOM - 0.001}
-                  className="h-7 w-7 flex items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-default transition-colors cursor-pointer"
+                  className="h-7 w-7 flex items-center justify-center rounded-md text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-default transition-colors cursor-pointer"
                   title={t("Zoom in", "Priblížiť", "Nagyítás")}
                 >
                   <Plus className="h-4 w-4" />
                 </button>
-                <div className="w-px h-5 bg-slate-200 mx-1" />
+                <div className="w-px h-5 bg-gray-200 mx-1" />
                 <button
                   type="button"
                   onClick={fitViewToNodes}
-                  className="h-7 w-7 flex items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
+                  className="h-7 w-7 flex items-center justify-center rounded-md text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors cursor-pointer"
                   title={t("Fit all nodes to view (scroll to pan, Ctrl+scroll to zoom)", "Prispôsobiť všetky uzly pohľadu (koliesko posúva, Ctrl+koliesko približuje)", "Összes csomópont a nézetbe (görgetés = mozgatás, Ctrl+görgetés = nagyítás)")}
                 >
                   <Maximize2 className="h-3.5 w-3.5" />
@@ -2403,7 +2403,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         setEdges(edges.filter(ed => ed.id !== edge.id));
                         showToast(t("Connection removed", "Prepojenie bolo odstránené", "Kapcsolat törölve"));
                       }}
-                      className="absolute pointer-events-auto -translate-x-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-white border border-slate-300 shadow-md hover:border-rose-500 hover:bg-rose-500 text-slate-500 hover:text-white flex items-center justify-center transition-colors cursor-pointer group select-none"
+                      className="absolute pointer-events-auto -translate-x-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-white border border-gray-300 shadow-md hover:border-rose-500 hover:bg-rose-500 text-gray-500 hover:text-white flex items-center justify-center transition-colors cursor-pointer group select-none"
                       style={{ left: midX, top: midY }}
                       title={t("Remove Connection", "Odstrániť prepojenie", "Kapcsolat törlése")}
                     >
@@ -2429,10 +2429,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       }}
                       /* No `transition-all` here: it animates left/top too, which makes
                          the card visibly trail the cursor while panning or dragging. */
-                      className={`node-card absolute w-80 bg-white border-2 rounded-xl p-4 shadow-sm cursor-grab transition-[border-color,box-shadow] duration-150 select-none ${
+                      className={`node-card absolute w-80 bg-white border-2 rounded-md p-4 shadow-sm cursor-grab transition-[border-color,box-shadow] duration-150 select-none ${
                         selectedNode?.id === node.id
                           ? "border-purple-700 shadow-md ring-4 ring-purple-100"
-                          : "border-slate-200/80 hover:border-purple-300 hover:shadow"
+                          : "border-gray-200/80 hover:border-purple-300 hover:shadow"
                       }`}
                       style={{
                         left: node.x,
@@ -2443,7 +2443,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       {/* Node Inputs Handle Handle */}
                       {node.id !== "node-trigger" && (
                         <div 
-                          className={`connection-handle absolute ${isCollapsed ? 'top-1/2' : 'top-11.25'} left-0 -translate-x-1/2 -translate-y-1/2 h-5 px-1.5 rounded-full border-2 border-slate-200 bg-white hover:bg-purple-600 hover:border-purple-600 cursor-crosshair transition-all z-20 flex items-center justify-center text-micro font-extrabold text-slate-500 hover:text-white shadow-sm select-none`}
+                          className={`connection-handle absolute ${isCollapsed ? 'top-1/2' : 'top-11.25'} left-0 -translate-x-1/2 -translate-y-1/2 h-5 px-1.5 rounded-full border-2 border-gray-200 bg-white hover:bg-purple-600 hover:border-purple-600 cursor-crosshair transition-all z-20 flex items-center justify-center text-micro font-extrabold text-gray-500 hover:text-white shadow-sm select-none`}
                           onClick={(e) => handleCompleteConnection(node.id, e)}
                           title={t("Connect Input", "Vstup", "Bemenet")}
                         >
@@ -2454,7 +2454,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-1.5">
                           {getNodeHeaderIcon(node.type)}
-                          <span className="type-overline text-slate-400">
+                          <span className="type-overline text-gray-400">
                             {node.type === "trigger" ? t("Trigger", "Spúšťač", "Indító") :
                              node.type === "condition" ? t("Condition", "Podmienka", "Feltétel") :
                              node.type === "splitter" ? t("Splitter", "Rozdeľovač", "Osztó") :
@@ -2465,7 +2465,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         <div className="flex items-center gap-1">
                           <button 
                             onClick={(e) => toggleNodeCollapse(node.id, e)}
-                            className="p-1 text-slate-400 hover:text-purple-700 rounded hover:bg-purple-50 transition-colors"
+                            className="p-1 text-gray-400 hover:text-purple-700 rounded hover:bg-purple-50 transition-colors"
                             title={isCollapsed ? t("Expand block", "Rozbaliť blok", "Kibontás") : t("Collapse block", "Zbaliť blok", "Összecsukás")}
                           >
                             {isCollapsed ? (
@@ -2480,7 +2480,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 e.stopPropagation();
                                 removeNode(node.id);
                               }}
-                              className="p-1 text-slate-400 hover:text-rose-500 rounded hover:bg-slate-50"
+                              className="p-1 text-gray-400 hover:text-rose-500 rounded hover:bg-gray-50"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
@@ -2488,7 +2488,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         </div>
                       </div>
 
-                      <h4 className="font-bold text-slate-700 text-ui truncate">{node.name}</h4>
+                      <h4 className="font-bold text-gray-700 text-ui truncate">{node.name}</h4>
 
                       {node.type !== "trigger" && !reachableNodeIds.has(node.id) && (
                         <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5">
@@ -2509,12 +2509,12 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                           {node.type === "trigger" && (
                       <div className="space-y-2 mt-2">
                         <div>
-                          <label className="type-overline text-slate-400">{t("Trigger Event", "Udalosť spúšťača", "Indító esemény")}</label>
+                          <label className="type-overline text-gray-400">{t("Trigger Event", "Udalosť spúšťača", "Indító esemény")}</label>
                           <div className="relative mt-0.5" ref={triggerDropdownRef}>
                             <button
                               type="button"
                               onClick={() => setIsTriggerDropdownOpen(!isTriggerDropdownOpen)}
-                              className="w-full flex items-center justify-between px-2 py-1.5 border border-slate-200 rounded-lg text-ui font-semibold text-slate-700 bg-white hover:border-purple-300 focus:outline-none text-left"
+                              className="w-full flex items-center justify-between px-2 py-1.5 border border-gray-200 rounded-lg text-ui font-semibold text-gray-700 bg-white hover:border-purple-300 focus:outline-none text-left"
                             >
                               <div className="flex items-center gap-2">
                                 <div 
@@ -2526,12 +2526,12 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 >
                                   {getTriggerIcon(triggerType)}
                                 </div>
-                                <span className="font-semibold text-slate-700">{getTriggerLabel(triggerType)}</span>
+                                <span className="font-semibold text-gray-700">{getTriggerLabel(triggerType)}</span>
                               </div>
-                              <span className="text-slate-400 text-micro mr-1">▼</span>
+                              <span className="text-gray-400 text-micro mr-1">▼</span>
                             </button>
                             {isTriggerDropdownOpen && (
-                              <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl py-1 z-[999] max-h-80 overflow-y-auto border-purple-100 ring-4 ring-purple-50">
+                              <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-xl py-1 z-[999] max-h-80 overflow-y-auto border-purple-100 ring-4 ring-purple-50">
                                 
                                 {/* Group: Leads */}
                                 <div className="px-3 py-1 type-overline text-blue-600 bg-blue-50/40 flex items-center gap-1 select-none">
@@ -2545,13 +2545,13 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                     setNodes(nodes.map(n => n.id === node.id ? { ...n, data: { ...n.data, type: "lead_created" } } : n));
                                     setIsTriggerDropdownOpen(false);
                                   }}
-                                  className="w-full flex items-center justify-between px-4 py-1.5 text-ui text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                                  className="w-full flex items-center justify-between px-4 py-1.5 text-ui text-gray-700 hover:bg-gray-50 transition-colors text-left"
                                 >
                                   <div className="flex items-center gap-2.5">
                                     <div className="p-1 rounded-md bg-blue-50 text-blue-600">
                                       <UserPlus className="h-3.5 w-3.5" />
                                     </div>
-                                    <span className={triggerType === "lead_created" ? "font-bold text-slate-900" : "font-medium"}>
+                                    <span className={triggerType === "lead_created" ? "font-bold text-gray-900" : "font-medium"}>
                                       {t("Lead Created", "Vytvorený lead", "Lead létrehozva")}
                                     </span>
                                   </div>
@@ -2564,13 +2564,13 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                     setNodes(nodes.map(n => n.id === node.id ? { ...n, data: { ...n.data, type: "lead_status_changed" } } : n));
                                     setIsTriggerDropdownOpen(false);
                                   }}
-                                  className="w-full flex items-center justify-between px-4 py-1.5 text-ui text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                                  className="w-full flex items-center justify-between px-4 py-1.5 text-ui text-gray-700 hover:bg-gray-50 transition-colors text-left"
                                 >
                                   <div className="flex items-center gap-2.5">
                                     <div className="p-1 rounded-md bg-blue-50 text-blue-600">
                                       <Activity className="h-3.5 w-3.5" />
                                     </div>
-                                    <span className={triggerType === "lead_status_changed" ? "font-bold text-slate-900" : "font-medium"}>
+                                    <span className={triggerType === "lead_status_changed" ? "font-bold text-gray-900" : "font-medium"}>
                                       {t("Lead Status Changed", "Zmena stavu leadu", "Lead státusz változott")}
                                     </span>
                                   </div>
@@ -2583,13 +2583,13 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                     setNodes(nodes.map(n => n.id === node.id ? { ...n, data: { ...n.data, type: "lead_timeline_event" } } : n));
                                     setIsTriggerDropdownOpen(false);
                                   }}
-                                  className="w-full flex items-center justify-between px-4 py-1.5 text-ui text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                                  className="w-full flex items-center justify-between px-4 py-1.5 text-ui text-gray-700 hover:bg-gray-50 transition-colors text-left"
                                 >
                                   <div className="flex items-center gap-2.5">
                                     <div className="p-1 rounded-md bg-blue-50 text-blue-600">
                                       <Layers className="h-3.5 w-3.5" />
                                     </div>
-                                    <span className={triggerType === "lead_timeline_event" ? "font-bold text-slate-900" : "font-medium"}>
+                                    <span className={triggerType === "lead_timeline_event" ? "font-bold text-gray-900" : "font-medium"}>
                                       {t("New Timeline Event", "Nová udalosť na osi", "Új idővonali esemény")}
                                     </span>
                                   </div>
@@ -2608,13 +2608,13 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                     setNodes(nodes.map(n => n.id === node.id ? { ...n, data: { ...n.data, type: "client_created" } } : n));
                                     setIsTriggerDropdownOpen(false);
                                   }}
-                                  className="w-full flex items-center justify-between px-4 py-1.5 text-ui text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                                  className="w-full flex items-center justify-between px-4 py-1.5 text-ui text-gray-700 hover:bg-gray-50 transition-colors text-left"
                                 >
                                   <div className="flex items-center gap-2.5">
                                     <div className="p-1 rounded-md bg-emerald-50 text-emerald-600">
                                       <Users className="h-3.5 w-3.5" />
                                     </div>
-                                    <span className={triggerType === "client_created" ? "font-bold text-slate-900" : "font-medium"}>
+                                    <span className={triggerType === "client_created" ? "font-bold text-gray-900" : "font-medium"}>
                                       {t("Client Created", "Vytvorený klient", "Ügyfél létrehozva")}
                                     </span>
                                   </div>
@@ -2633,13 +2633,13 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                     setNodes(nodes.map(n => n.id === node.id ? { ...n, data: { ...n.data, type: "task_created" } } : n));
                                     setIsTriggerDropdownOpen(false);
                                   }}
-                                  className="w-full flex items-center justify-between px-4 py-1.5 text-ui text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                                  className="w-full flex items-center justify-between px-4 py-1.5 text-ui text-gray-700 hover:bg-gray-50 transition-colors text-left"
                                 >
                                   <div className="flex items-center gap-2.5">
                                     <div className="p-1 rounded-md bg-orange-50 text-orange-600">
                                       <CheckSquare className="h-3.5 w-3.5" />
                                     </div>
-                                    <span className={triggerType === "task_created" ? "font-bold text-slate-900" : "font-medium"}>
+                                    <span className={triggerType === "task_created" ? "font-bold text-gray-900" : "font-medium"}>
                                       {t("Task Created", "Vytvorená úloha", "Feladat létrehozva")}
                                     </span>
                                   </div>
@@ -2652,13 +2652,13 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                     setNodes(nodes.map(n => n.id === node.id ? { ...n, data: { ...n.data, type: "task_status_changed" } } : n));
                                     setIsTriggerDropdownOpen(false);
                                   }}
-                                  className="w-full flex items-center justify-between px-4 py-1.5 text-ui text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                                  className="w-full flex items-center justify-between px-4 py-1.5 text-ui text-gray-700 hover:bg-gray-50 transition-colors text-left"
                                 >
                                   <div className="flex items-center gap-2.5">
                                     <div className="p-1 rounded-md bg-orange-50 text-orange-600">
                                       <ClipboardList className="h-3.5 w-3.5" />
                                     </div>
-                                    <span className={triggerType === "task_status_changed" ? "font-bold text-slate-900" : "font-medium"}>
+                                    <span className={triggerType === "task_status_changed" ? "font-bold text-gray-900" : "font-medium"}>
                                       {t("Task Status Changed", "Zmena stavu úlohy", "Feladat státusz változott")}
                                     </span>
                                   </div>
@@ -2677,13 +2677,13 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                     setNodes(nodes.map(n => n.id === node.id ? { ...n, data: { ...n.data, type: "timer" } } : n));
                                     setIsTriggerDropdownOpen(false);
                                   }}
-                                  className="w-full flex items-center justify-between px-4 py-1.5 text-ui text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                                  className="w-full flex items-center justify-between px-4 py-1.5 text-ui text-gray-700 hover:bg-gray-50 transition-colors text-left"
                                 >
                                   <div className="flex items-center gap-2.5">
                                     <div className="p-1 rounded-md bg-amber-50 text-amber-600">
                                       <Clock className="h-3.5 w-3.5" />
                                     </div>
-                                    <span className={triggerType === "timer" ? "font-bold text-slate-900" : "font-medium"}>
+                                    <span className={triggerType === "timer" ? "font-bold text-gray-900" : "font-medium"}>
                                       {t("Timer Trigger (Cron)", "Časovač (Cron)", "Időzítő")}
                                     </span>
                                   </div>
@@ -2696,13 +2696,13 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                     setNodes(nodes.map(n => n.id === node.id ? { ...n, data: { ...n.data, type: "manual" } } : n));
                                     setIsTriggerDropdownOpen(false);
                                   }}
-                                  className="w-full flex items-center justify-between px-4 py-1.5 text-ui text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                                  className="w-full flex items-center justify-between px-4 py-1.5 text-ui text-gray-700 hover:bg-gray-50 transition-colors text-left"
                                 >
                                   <div className="flex items-center gap-2.5">
                                     <div className="p-1 rounded-md bg-purple-50 text-purple-600">
                                       <Zap className="h-3.5 w-3.5" />
                                     </div>
-                                    <span className={triggerType === "manual" ? "font-bold text-slate-900" : "font-medium"}>
+                                    <span className={triggerType === "manual" ? "font-bold text-gray-900" : "font-medium"}>
                                       {t("Manual Button Trigger", "Manuálny spúšťač", "Kézi indítás")}
                                     </span>
                                   </div>
@@ -2716,10 +2716,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         {/* Trigger Filter: Lead Source */}
                         {triggerType === "lead_created" && (
                           <div>
-                            <label className="type-overline text-slate-400">{t("Filter Lead Source", "Filter zdroja leadu", "Lead forrás szűrő")}</label>
+                            <label className="type-overline text-gray-400">{t("Filter Lead Source", "Filter zdroja leadu", "Lead forrás szűrő")}</label>
                             <div className="flex items-center gap-2 mt-0.5">
-                              <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
-                                <Filter className="h-3.5 w-3.5 text-slate-400" />
+                              <div className="p-1.5 bg-gray-50 border border-gray-100 rounded-lg shrink-0 flex items-center justify-center">
+                                <Filter className="h-3.5 w-3.5 text-gray-400" />
                               </div>
                               <CustomSelect
                                 size="sm"
@@ -2740,10 +2740,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                             picking it would build a workflow that can never run. */}
                         {triggerType === "client_created" && (
                           <div>
-                            <label className="type-overline text-slate-400">{t("Filter Client Type", "Filter typu klienta", "Ügyfél típus szűrő")}</label>
+                            <label className="type-overline text-gray-400">{t("Filter Client Type", "Filter typu klienta", "Ügyfél típus szűrő")}</label>
                             <div className="flex items-center gap-2 mt-0.5">
-                              <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
-                                <Filter className="h-3.5 w-3.5 text-slate-400" />
+                              <div className="p-1.5 bg-gray-50 border border-gray-100 rounded-lg shrink-0 flex items-center justify-center">
+                                <Filter className="h-3.5 w-3.5 text-gray-400" />
                               </div>
                               <CustomSelect
                                 size="sm"
@@ -2763,10 +2763,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         {triggerType === "lead_status_changed" && (
                           <div className="grid grid-cols-2 gap-1.5">
                             <div>
-                              <label className="type-overline text-slate-400">{t("From Status", "Zo stavu", "Kiindulási állapot")}</label>
+                              <label className="type-overline text-gray-400">{t("From Status", "Zo stavu", "Kiindulási állapot")}</label>
                               <div className="flex items-center gap-1.5 mt-0.5">
-                                <div className="p-1 bg-slate-50 border border-slate-100 rounded-md shrink-0 flex items-center justify-center">
-                                  <Activity className="h-3 w-3 text-slate-400" />
+                                <div className="p-1 bg-gray-50 border border-gray-100 rounded-md shrink-0 flex items-center justify-center">
+                                  <Activity className="h-3 w-3 text-gray-400" />
                                 </div>
                                 <CustomSelect
                                   size="sm"
@@ -2781,10 +2781,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                               </div>
                             </div>
                             <div>
-                              <label className="type-overline text-slate-400">{t("To Status", "Do stavu", "Cél állapot")}</label>
+                              <label className="type-overline text-gray-400">{t("To Status", "Do stavu", "Cél állapot")}</label>
                               <div className="flex items-center gap-1.5 mt-0.5">
-                                <div className="p-1 bg-slate-50 border border-slate-100 rounded-md shrink-0 flex items-center justify-center">
-                                  <Activity className="h-3 w-3 text-slate-400" />
+                                <div className="p-1 bg-gray-50 border border-gray-100 rounded-md shrink-0 flex items-center justify-center">
+                                  <Activity className="h-3 w-3 text-gray-400" />
                                 </div>
                                 <CustomSelect
                                   size="sm"
@@ -2804,16 +2804,16 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         {/* Trigger Filter: Timer */}
                         {triggerType === "timer" && (
                           <div>
-                            <label className="type-overline text-slate-400">{t("Interval (Minutes)", "Interval (Minúty)", "Időköz (perc)")}</label>
+                            <label className="type-overline text-gray-400">{t("Interval (Minutes)", "Interval (Minúty)", "Időköz (perc)")}</label>
                             <div className="flex items-center gap-2 mt-0.5">
-                              <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
-                                <Clock className="h-3.5 w-3.5 text-slate-400" />
+                              <div className="p-1.5 bg-gray-50 border border-gray-100 rounded-lg shrink-0 flex items-center justify-center">
+                                <Clock className="h-3.5 w-3.5 text-gray-400" />
                               </div>
                               <input
                                 type="number"
                                 value={triggerConfig.interval_minutes || 60}
                                 onChange={(e) => setTriggerConfig({ ...triggerConfig, interval_minutes: parseInt(e.target.value) || 60 })}
-                                className="w-full px-2 py-1 border border-slate-200 rounded-lg text-ui font-semibold text-slate-700 bg-white focus:outline-none"
+                                className="w-full px-2 py-1 border border-gray-200 rounded-lg text-ui font-semibold text-gray-700 bg-white focus:outline-none"
                               />
                             </div>
                           </div>
@@ -2821,10 +2821,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
                         {/* Trigger Filter: Manual Trigger custom styling */}
                         {triggerType === "manual" && (
-                          <div className="space-y-2 mt-2 pt-2 border-t border-slate-100">
+                          <div className="space-y-2 mt-2 pt-2 border-t border-gray-100">
                             {/* Finite Palette of System Colors */}
                             <div>
-                              <label className="type-overline text-slate-400">
+                              <label className="type-overline text-gray-400">
                                 {t("Button Color", "Farba tlačidla", "Gomb színe")}
                               </label>
                               <div className="flex flex-wrap gap-1.5 mt-1">
@@ -2851,7 +2851,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                             {/* Button Style & Icon Selector */}
                             <div className="grid grid-cols-2 gap-1.5">
                               <div>
-                                <label className="type-overline text-slate-400">{t("Style", "Štýl", "Stílus")}</label>
+                                <label className="type-overline text-gray-400">{t("Style", "Štýl", "Stílus")}</label>
                                 <div className="mt-0.5">
                                   <CustomSelect
                                     size="sm"
@@ -2868,31 +2868,31 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
                               {/* Rich Icon Selector with all system icons */}
                               <div>
-                                <label className="type-overline text-slate-400">{t("Button Icon", "Ikona tlačidla", "Gomb ikon")}</label>
+                                <label className="type-overline text-gray-400">{t("Button Icon", "Ikona tlačidla", "Gomb ikon")}</label>
                                 <div className="relative mt-0.5" ref={iconPickerRef}>
                                   <button
                                     type="button"
                                     onClick={() => setIsIconPickerOpen(!isIconPickerOpen)}
-                                    className="w-full flex items-center justify-between px-2 py-1 border border-slate-200 rounded-lg text-ui font-semibold text-slate-700 bg-white hover:border-purple-300 focus:outline-none cursor-pointer"
+                                    className="w-full flex items-center justify-between px-2 py-1 border border-gray-200 rounded-lg text-ui font-semibold text-gray-700 bg-white hover:border-purple-300 focus:outline-none cursor-pointer"
                                   >
                                     <div className="flex items-center gap-1.5 truncate">
                                       {renderIconByName(triggerConfig.buttonIcon || "Play", "h-3.5 w-3.5 text-purple-600")}
                                       <span className="text-micro font-bold">{triggerConfig.buttonIcon || "Play"}</span>
                                     </div>
-                                    <ChevronDown className="h-3 w-3 text-slate-400 shrink-0 ml-1" />
+                                    <ChevronDown className="h-3 w-3 text-gray-400 shrink-0 ml-1" />
                                   </button>
 
                                   {/* Icon Picker Popover */}
                                   {isIconPickerOpen && (
-                                    <div className="absolute left-0 right-0 top-full mt-1 w-64 p-2 bg-white border border-slate-200 rounded-xl shadow-2xl z-[999] border-purple-100 ring-4 ring-purple-50 animate-in fade-in-50 zoom-in-95">
+                                    <div className="absolute left-0 right-0 top-full mt-1 w-64 p-2 bg-white border border-gray-200 rounded-md shadow-xl z-[999] border-purple-100 ring-4 ring-purple-50 animate-in fade-in-50 zoom-in-95">
                                       <div className="relative mb-2">
-                                        <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-slate-400" />
+                                        <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-gray-400" />
                                         <input
                                           type="text"
                                           value={iconSearchQuery}
                                           onChange={(e) => setIconSearchQuery(e.target.value)}
                                           placeholder={t("Search icons...", "Hľadať ikonu...", "Ikon keresése...")}
-                                          className="w-full pl-7 pr-2 py-1 border border-slate-200 rounded-lg text-ui font-semibold text-slate-700 bg-slate-50 focus:bg-white focus:outline-none"
+                                          className="w-full pl-7 pr-2 py-1 border border-gray-200 rounded-lg text-ui font-semibold text-gray-700 bg-gray-50 focus:bg-white focus:outline-none"
                                           autoFocus
                                         />
                                       </div>
@@ -2914,7 +2914,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                                 className={`p-1.5 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
                                                   isSelected 
                                                     ? "bg-purple-100 text-purple-700 border border-purple-300 font-bold scale-105 shadow-xs" 
-                                                    : "hover:bg-slate-100 text-slate-600 hover:text-slate-900"
+                                                    : "hover:bg-gray-100 text-gray-600 hover:text-gray-900"
                                                 }`}
                                                 title={iconName}
                                               >
@@ -2952,10 +2952,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
                     {node.type === "splitter" && (
                       <div className="mt-2 space-y-1">
-                        <label className="type-overline text-slate-400">{t("Array Path", "Cesta k poľu", "Tömb útvonal")}</label>
+                        <label className="type-overline text-gray-400">{t("Array Path", "Cesta k poľu", "Tömb útvonal")}</label>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
-                            <Layers className="h-3.5 w-3.5 text-slate-400" />
+                          <div className="p-1.5 bg-gray-50 border border-gray-100 rounded-lg shrink-0 flex items-center justify-center">
+                            <Layers className="h-3.5 w-3.5 text-gray-400" />
                           </div>
                           <input
                             type="text"
@@ -2969,7 +2969,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                               });
                               setNodes(updatedNodes);
                             }}
-                            className="w-full px-2 py-1 border border-slate-200 rounded-lg text-ui font-semibold text-slate-700 bg-white focus:outline-none"
+                            className="w-full px-2 py-1 border border-gray-200 rounded-lg text-ui font-semibold text-gray-700 bg-white focus:outline-none"
                             placeholder="e.g. leads"
                           />
                         </div>
@@ -2979,10 +2979,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                     {node.type === "ai_agent" && (
                       <div className="mt-2 space-y-2">
                         <div>
-                          <label className="type-overline text-slate-400">{t("AI Provider", "AI poskytovateľ", "AI szolgáltató")}</label>
+                          <label className="type-overline text-gray-400">{t("AI Provider", "AI poskytovateľ", "AI szolgáltató")}</label>
                           <div className="flex items-center gap-2 mt-0.5">
-                            <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
-                              <Bot className="h-3.5 w-3.5 text-slate-400" />
+                            <div className="p-1.5 bg-gray-50 border border-gray-100 rounded-lg shrink-0 flex items-center justify-center">
+                              <Bot className="h-3.5 w-3.5 text-gray-400" />
                             </div>
                             <CustomSelect
                               value={node.data.provider || "gemini"}
@@ -3011,7 +3011,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                             setNodes(updatedNodes);
                           }}
                           placeholder="Summarize this lead: {{$trigger.name}}"
-                          icon={<Brain className="h-3.5 w-3.5 text-slate-400" />}
+                          icon={<Brain className="h-3.5 w-3.5 text-gray-400" />}
                           multiline={true}
                           nodes={nodes}
                           currentNodeId={node.id}
@@ -3065,7 +3065,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       }
 
                       return (
-                        <div className="mt-2 pt-2 space-y-2 border-t border-slate-100">
+                        <div className="mt-2 pt-2 space-y-2 border-t border-gray-100">
                           {node.data.type === "create_lead" && (
                             <div className="space-y-2">
                               <VariableInputField
@@ -3073,7 +3073,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 value={node.data.name || ""}
                                 onChange={(val) => updateActionField("name", val)}
                                 placeholder="e.g. {{$trigger.name}}"
-                                icon={<User className="h-3.5 w-3.5 text-slate-400" />}
+                                icon={<User className="h-3.5 w-3.5 text-gray-400" />}
                                 nodes={nodes}
                                 currentNodeId={node.id}
                               />
@@ -3082,15 +3082,15 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 value={node.data.city || ""}
                                 onChange={(val) => updateActionField("city", val)}
                                 placeholder="e.g. {{$trigger.city}}"
-                                icon={<Filter className="h-3.5 w-3.5 text-slate-400" />}
+                                icon={<Filter className="h-3.5 w-3.5 text-gray-400" />}
                                 nodes={nodes}
                                 currentNodeId={node.id}
                               />
                               <div>
-                                <label className="type-overline text-slate-400">{t("Status", "Stav", "Állapot")}</label>
+                                <label className="type-overline text-gray-400">{t("Status", "Stav", "Állapot")}</label>
                                 <div className="flex items-center gap-2 mt-0.5">
-                                  <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
-                                    <Activity className="h-3.5 w-3.5 text-slate-400" />
+                                  <div className="p-1.5 bg-gray-50 border border-gray-100 rounded-lg shrink-0 flex items-center justify-center">
+                                    <Activity className="h-3.5 w-3.5 text-gray-400" />
                                   </div>
                                   <CustomSelect
                                     value={node.data.status || "new"}
@@ -3109,7 +3109,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 value={node.data.title || ""}
                                 onChange={(val) => updateActionField("title", val)}
                                 placeholder="e.g. Follow up with {{$trigger.name}}"
-                                icon={<CheckSquare className="h-3.5 w-3.5 text-slate-400" />}
+                                icon={<CheckSquare className="h-3.5 w-3.5 text-gray-400" />}
                                 nodes={nodes}
                                 currentNodeId={node.id}
                               />
@@ -3118,17 +3118,17 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 value={node.data.description || ""}
                                 onChange={(val) => updateActionField("description", val)}
                                 placeholder="e.g. Contact lead {{$trigger.name}} regarding quote"
-                                icon={<FileText className="h-3.5 w-3.5 text-slate-400" />}
+                                icon={<FileText className="h-3.5 w-3.5 text-gray-400" />}
                                 multiline={true}
                                 nodes={nodes}
                                 currentNodeId={node.id}
                               />
                               <div className="grid grid-cols-2 gap-1.5">
                                 <div>
-                                  <label className="type-overline text-slate-400">{t("Priority", "Priorita", "Prioritás")}</label>
+                                  <label className="type-overline text-gray-400">{t("Priority", "Priorita", "Prioritás")}</label>
                                   <div className="flex items-center gap-1.5 mt-0.5">
-                                    <div className="p-1 bg-slate-50 border border-slate-100 rounded-md shrink-0 flex items-center justify-center">
-                                      <AlertCircle className="h-3.5 w-3.5 text-slate-400" />
+                                    <div className="p-1 bg-gray-50 border border-gray-100 rounded-md shrink-0 flex items-center justify-center">
+                                      <AlertCircle className="h-3.5 w-3.5 text-gray-400" />
                                     </div>
                                     <CustomSelect
                                       size="sm"
@@ -3144,7 +3144,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                   </div>
                                 </div>
                                 <div>
-                                  <label className="flex items-center gap-1 type-overline text-slate-400">
+                                  <label className="flex items-center gap-1 type-overline text-gray-400">
                                     {t("Deadline (Days)", "Termín (dni)", "Határidő (nap)")}
                                     <span
                                       className="inline-flex shrink-0 cursor-help"
@@ -3154,46 +3154,46 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                         "A feladat határideje automatikusan a mai nap + ennyi napra lesz beállítva"
                                       )}
                                     >
-                                      <Info className="h-2.5 w-2.5 text-slate-300" />
+                                      <Info className="h-2.5 w-2.5 text-gray-300" />
                                     </span>
                                   </label>
                                   <div className="flex items-center gap-1.5 mt-0.5">
-                                    <div className="p-1 bg-slate-50 border border-slate-100 rounded-md shrink-0 flex items-center justify-center">
-                                      <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                                    <div className="p-1 bg-gray-50 border border-gray-100 rounded-md shrink-0 flex items-center justify-center">
+                                      <Calendar className="h-3.5 w-3.5 text-gray-400" />
                                     </div>
                                     <input
                                       type="number"
                                       value={node.data.deadline_days || 2}
                                       onChange={(e) => updateActionField("deadline_days", parseInt(e.target.value) || 2)}
-                                      className="w-full px-1.5 py-0.5 border border-slate-200 rounded-lg text-micro font-semibold text-slate-700 focus:outline-none"
+                                      className="w-full px-1.5 py-0.5 border border-gray-200 rounded-lg text-micro font-semibold text-gray-700 focus:outline-none"
                                     />
                                   </div>
                                 </div>
                                 {/* Without a time the task lands on the calendar
                                     with no hour and sorts above every timed entry. */}
                                 <div>
-                                  <label className="type-overline text-slate-400">{t("Time", "Čas", "Időpont")}</label>
+                                  <label className="type-overline text-gray-400">{t("Time", "Čas", "Időpont")}</label>
                                   <div className="flex items-center gap-1.5 mt-0.5">
-                                    <div className="p-1 bg-slate-50 border border-slate-100 rounded-md shrink-0 flex items-center justify-center">
-                                      <Clock className="h-3.5 w-3.5 text-slate-400" />
+                                    <div className="p-1 bg-gray-50 border border-gray-100 rounded-md shrink-0 flex items-center justify-center">
+                                      <Clock className="h-3.5 w-3.5 text-gray-400" />
                                     </div>
                                     <input
                                       type="time"
                                       value={node.data.deadline_time || ""}
                                       onChange={(e) => updateActionField("deadline_time", e.target.value)}
-                                      className="w-full px-1.5 py-0.5 border border-slate-200 rounded-lg text-micro font-semibold text-slate-700 focus:outline-none"
+                                      className="w-full px-1.5 py-0.5 border border-gray-200 rounded-lg text-micro font-semibold text-gray-700 focus:outline-none"
                                     />
                                   </div>
                                 </div>
                               </div>
                               <div>
-                                <label className="type-overline text-slate-400">{t("Assignee", "Poverená osoba", "Felelős")}</label>
+                                <label className="type-overline text-gray-400">{t("Assignee", "Poverená osoba", "Felelős")}</label>
                                 <div className="mt-0.5">
                                   <CustomSelect
                                     size="sm"
                                     value={ownerValue}
                                     onChange={(v) => updateActionField("owner", v)}
-                                    icon={<User className="h-3.5 w-3.5 text-slate-400 shrink-0" />}
+                                    icon={<User className="h-3.5 w-3.5 text-gray-400 shrink-0" />}
                                     placeholder={t("Unassigned", "Nepriradené", "Nincs felelős")}
                                     options={assigneeOptions}
                                   />
@@ -3211,10 +3211,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                     case; an explicit id is for a project a
                                     previous node produced. */}
                                 <div>
-                                  <label className="type-overline text-slate-400">{t("Project", "Projekt", "Projekt")}</label>
+                                  <label className="type-overline text-gray-400">{t("Project", "Projekt", "Projekt")}</label>
                                   <div className="flex items-center gap-2 mt-0.5">
-                                    <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
-                                      <Briefcase className="h-3.5 w-3.5 text-slate-400" />
+                                    <div className="p-1.5 bg-gray-50 border border-gray-100 rounded-lg shrink-0 flex items-center justify-center">
+                                      <Briefcase className="h-3.5 w-3.5 text-gray-400" />
                                     </div>
                                     <CustomSelect
                                       value={target}
@@ -3233,14 +3233,14 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                     value={node.data.project_id || ""}
                                     onChange={(val) => updateActionField("project_id", val)}
                                     placeholder="e.g. {{$input.project_id}}"
-                                    icon={<Code className="h-3.5 w-3.5 text-slate-400" />}
+                                    icon={<Code className="h-3.5 w-3.5 text-gray-400" />}
                                     nodes={nodes}
                                     currentNodeId={node.id}
                                   />
                                 ) : (
                                   <div className="grid grid-cols-2 gap-1.5">
                                     <div>
-                                      <label className="type-overline text-slate-400">{t("Of type", "Typu", "Típusa")}</label>
+                                      <label className="type-overline text-gray-400">{t("Of type", "Typu", "Típusa")}</label>
                                       <div className="mt-0.5">
                                         <CustomSelect
                                           size="sm"
@@ -3254,7 +3254,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                       </div>
                                     </div>
                                     <div>
-                                      <label className="flex items-center gap-1 type-overline text-slate-400">
+                                      <label className="flex items-center gap-1 type-overline text-gray-400">
                                         {t("How many", "Koľko", "Hány")}
                                         <span
                                           className="inline-flex shrink-0 cursor-help"
@@ -3264,7 +3264,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                             "Egy leadhez több projekt is tartozhat. A legújabb csak az éppen futót mozgatja.",
                                           )}
                                         >
-                                          <Info className="h-2.5 w-2.5 text-slate-300" />
+                                          <Info className="h-2.5 w-2.5 text-gray-300" />
                                         </span>
                                       </label>
                                       <div className="mt-0.5">
@@ -3283,10 +3283,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 )}
 
                                 <div>
-                                  <label className="type-overline text-slate-400">{t("New Status", "Nový stav", "Új állapot")}</label>
+                                  <label className="type-overline text-gray-400">{t("New Status", "Nový stav", "Új állapot")}</label>
                                   <div className="flex items-center gap-2 mt-0.5">
-                                    <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
-                                      <Activity className="h-3.5 w-3.5 text-slate-400" />
+                                    <div className="p-1.5 bg-gray-50 border border-gray-100 rounded-lg shrink-0 flex items-center justify-center">
+                                      <Activity className="h-3.5 w-3.5 text-gray-400" />
                                     </div>
                                     <CustomSelect
                                       value={node.data.status || "active"}
@@ -3296,7 +3296,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                   </div>
                                 </div>
 
-                                <p className="text-micro font-semibold text-slate-400 leading-snug">
+                                <p className="text-micro font-semibold text-gray-400 leading-snug">
                                   {t(
                                     "A lead with no project yet is skipped, not failed — the run carries on.",
                                     "Lead bez projektu sa preskočí, nejde o chybu — beh pokračuje ďalej.",
@@ -3319,10 +3319,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                             return (
                               <div className="space-y-2">
                                 <div>
-                                  <label className="type-overline text-slate-400">{t("Project Type", "Typ projektu", "Projekt típusa")}</label>
+                                  <label className="type-overline text-gray-400">{t("Project Type", "Typ projektu", "Projekt típusa")}</label>
                                   <div className="flex items-center gap-2 mt-0.5">
-                                    <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
-                                      <Briefcase className="h-3.5 w-3.5 text-slate-400" />
+                                    <div className="p-1.5 bg-gray-50 border border-gray-100 rounded-lg shrink-0 flex items-center justify-center">
+                                      <Briefcase className="h-3.5 w-3.5 text-gray-400" />
                                     </div>
                                     <CustomSelect
                                       value={typeId}
@@ -3344,7 +3344,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
                                 <div className="grid grid-cols-2 gap-1.5">
                                   <div>
-                                    <label className="type-overline text-slate-400">{t("Status", "Stav", "Állapot")}</label>
+                                    <label className="type-overline text-gray-400">{t("Status", "Stav", "Állapot")}</label>
                                     <div className="mt-0.5">
                                       <CustomSelect
                                         size="sm"
@@ -3355,7 +3355,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                     </div>
                                   </div>
                                   <div>
-                                    <label className="flex items-center gap-1 type-overline text-slate-400">
+                                    <label className="flex items-center gap-1 type-overline text-gray-400">
                                       {t("If one exists", "Ak už existuje", "Ha már létezik")}
                                       <span
                                         className="inline-flex shrink-0 cursor-help"
@@ -3365,7 +3365,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                           "A leadhez kötött workflow minden változáskor újra lefut. A kihagyás megakadályozza, hogy ugyanaz a projekt kétszer jöjjön létre.",
                                         )}
                                       >
-                                        <Info className="h-2.5 w-2.5 text-slate-300" />
+                                        <Info className="h-2.5 w-2.5 text-gray-300" />
                                       </span>
                                     </label>
                                     <div className="mt-0.5">
@@ -3383,13 +3383,13 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 </div>
 
                                 <div>
-                                  <label className="type-overline text-slate-400">{t("Project Manager", "Projektový manažér", "Projektmenedzser")}</label>
+                                  <label className="type-overline text-gray-400">{t("Project Manager", "Projektový manažér", "Projektmenedzser")}</label>
                                   <div className="mt-0.5">
                                     <CustomSelect
                                       size="sm"
                                       value={node.data.manager || ""}
                                       onChange={(v) => updateActionField("manager", v)}
-                                      icon={<User className="h-3.5 w-3.5 text-slate-400 shrink-0" />}
+                                      icon={<User className="h-3.5 w-3.5 text-gray-400 shrink-0" />}
                                       options={[
                                         { value: "", label: t("The lead's owner", "Zodpovedný za lead", "A lead felelőse") },
                                         { value: "__none__", label: t("Unassigned", "Nepriradené", "Nincs felelős") },
@@ -3402,7 +3402,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                   </div>
                                 </div>
 
-                                <p className="text-micro font-semibold text-slate-400 leading-snug">
+                                <p className="text-micro font-semibold text-gray-400 leading-snug">
                                   {t(
                                     "The same conversion as the button on a lead: the new project is paired with the lead, and text fields it recognises are filled in from it. A branch with no lead is skipped, not failed.",
                                     "Rovnaká konverzia ako tlačidlo na leade: nový projekt sa spáruje s leadom a rozpoznané textové polia sa z neho predvyplnia. Vetva bez leadu sa preskočí, nejde o chybu.",
@@ -3420,7 +3420,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 value={node.data.to || ""}
                                 onChange={(val) => updateActionField("to", val)}
                                 placeholder="e.g. {{$trigger.email}}"
-                                icon={<User className="h-3.5 w-3.5 text-slate-400" />}
+                                icon={<User className="h-3.5 w-3.5 text-gray-400" />}
                                 nodes={nodes}
                                 currentNodeId={node.id}
                               />
@@ -3429,7 +3429,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 value={node.data.subject || ""}
                                 onChange={(val) => updateActionField("subject", val)}
                                 placeholder="e.g. Welcome {{$trigger.name}}"
-                                icon={<Mail className="h-3.5 w-3.5 text-slate-400" />}
+                                icon={<Mail className="h-3.5 w-3.5 text-gray-400" />}
                                 nodes={nodes}
                                 currentNodeId={node.id}
                               />
@@ -3438,7 +3438,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 value={node.data.body || ""}
                                 onChange={(val) => updateActionField("body", val)}
                                 placeholder="Hello {{$trigger.name}}..."
-                                icon={<ClipboardList className="h-3.5 w-3.5 text-slate-400" />}
+                                icon={<ClipboardList className="h-3.5 w-3.5 text-gray-400" />}
                                 multiline={true}
                                 nodes={nodes}
                                 currentNodeId={node.id}
@@ -3454,17 +3454,17 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 value={node.data.name || ""}
                                 onChange={(val) => updateActionField("name", val)}
                                 placeholder="e.g. Acme Corp / {{$trigger.name}}"
-                                icon={<User className="h-3.5 w-3.5 text-slate-400" />}
+                                icon={<User className="h-3.5 w-3.5 text-gray-400" />}
                               />
 
                               {/* Client Type */}
                               <div>
-                                <label className="type-overline text-slate-400">
+                                <label className="type-overline text-gray-400">
                                   {t("Client Type", "Typ klienta", "Ügyfél típusa")}
                                 </label>
                                 <div className="flex items-center gap-2 mt-0.5">
-                                  <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
-                                    <Users className="h-3.5 w-3.5 text-slate-400" />
+                                  <div className="p-1.5 bg-gray-50 border border-gray-100 rounded-lg shrink-0 flex items-center justify-center">
+                                    <Users className="h-3.5 w-3.5 text-gray-400" />
                                   </div>
                                   <CustomSelect
                                     value={node.data.client_type || "business"}
@@ -3485,14 +3485,14 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                   value={node.data.email || ""}
                                   onChange={(val) => updateActionField("email", val)}
                                   placeholder="client@email.com"
-                                  icon={<Mail className="h-3.5 w-3.5 text-slate-400" />}
+                                  icon={<Mail className="h-3.5 w-3.5 text-gray-400" />}
                                 />
                                 <VariableInputField
                                   label={t("Phone", "Telefón", "Telefon")}
                                   value={node.data.phone || ""}
                                   onChange={(val) => updateActionField("phone", val)}
                                   placeholder="+421 900..."
-                                  icon={<Phone className="h-3.5 w-3.5 text-slate-400" />}
+                                  icon={<Phone className="h-3.5 w-3.5 text-gray-400" />}
                                 />
                               </div>
 
@@ -3502,7 +3502,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 value={node.data.street || ""}
                                 onChange={(val) => updateActionField("street", val)}
                                 placeholder="Mlynské Nivy 42"
-                                icon={<MapPin className="h-3.5 w-3.5 text-slate-400" />}
+                                icon={<MapPin className="h-3.5 w-3.5 text-gray-400" />}
                               />
 
                               {/* City & Postal Code */}
@@ -3530,7 +3530,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                               />
 
                               {/* Corporate Registries: IČO / DIČ / IČ DPH */}
-                              <div className="border-t border-slate-100 pt-2 space-y-2">
+                              <div className="border-t border-gray-100 pt-2 space-y-2">
                                 <span className="type-overline text-purple-600 block">
                                   {t("Company Details", "Firemné údaje", "Cégadatok")}
                                 </span>
@@ -3540,7 +3540,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                     value={node.data.company_id || node.data.ico || ""}
                                     onChange={(val) => updateActionField("company_id", val)}
                                     placeholder="12345678"
-                                    icon={<Briefcase className="h-3.5 w-3.5 text-slate-400" />}
+                                    icon={<Briefcase className="h-3.5 w-3.5 text-gray-400" />}
                                   />
                                   <VariableInputField
                                     label={t("DIČ / Tax ID", "DIČ", "Adószám")}
@@ -3568,7 +3568,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                   value={node.data.website || ""}
                                   onChange={(val) => updateActionField("website", val)}
                                   placeholder="https://acme.com"
-                                  icon={<Globe className="h-3.5 w-3.5 text-slate-400" />}
+                                  icon={<Globe className="h-3.5 w-3.5 text-gray-400" />}
                                 />
                               </div>
                             </div>
@@ -3617,9 +3617,9 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
             </div>
 
             {/* Sidebar properties editor panel */}
-            <div className="w-96 bg-white border-l border-slate-200 flex flex-col h-full overflow-hidden shrink-0">
-              <div className="p-6 border-b border-slate-200">
-                <h3 className="font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <div className="w-96 bg-white border-l border-gray-200 flex flex-col h-full overflow-hidden shrink-0">
+              <div className="p-6 border-b border-gray-200">
+                <h3 className="font-heading font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
                   <Sliders className="h-4.5 w-4.5 text-purple-600" />
                   {t("Workflow Properties", "Vlastnosti workflow", "Munkafolyamat tulajdonságok")}
                 </h3>
@@ -3628,42 +3628,42 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 {/* General Config */}
                 <div className="space-y-4">
                   <div>
-                    <label className="text-ui font-bold text-slate-500">{t("Workflow Name", "Názov workflow", "Munkafolyamat név")}</label>
+                    <label className="text-ui font-bold text-gray-500">{t("Workflow Name", "Názov workflow", "Munkafolyamat név")}</label>
                     <input 
                       type="text" 
                       value={workflowName}
                       onChange={(e) => setWorkflowName(e.target.value)}
                       placeholder={t("e.g. New Website Lead Nurture", "napr. Starostlivosť o nových leadov", "pl. Új weboldalas lead gondozás")}
-                      className="w-full mt-1.5 px-3 py-2 border border-slate-200 rounded-lg text-body font-semibold text-slate-700 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
+                      className="w-full mt-1.5 px-3 py-2 border border-gray-200 rounded-lg text-body font-semibold text-gray-700 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
                     />
                   </div>
                   <div>
-                    <label className="text-ui font-bold text-slate-500">{t("Description", "Popis", "Leírás")}</label>
+                    <label className="text-ui font-bold text-gray-500">{t("Description", "Popis", "Leírás")}</label>
                     <textarea 
                       value={workflowDesc}
                       onChange={(e) => setWorkflowDesc(e.target.value)}
                       placeholder={t("What does this workflow do?", "Čo tento workflow robí?", "Mit csinál ez a munkafolyamat?")}
-                      className="w-full mt-1.5 px-3 py-2 border border-slate-200 rounded-lg text-body font-semibold text-slate-700 h-20 resize-none focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
+                      className="w-full mt-1.5 px-3 py-2 border border-gray-200 rounded-lg text-body font-semibold text-gray-700 h-20 resize-none focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
                     />
                   </div>
                 </div>
 
                 {/* Node-specific configurations help */}
                 {selectedNode && (
-                  <div className="border-t border-slate-100 pt-6 space-y-4">
-                    <h4 className="font-bold text-slate-700 text-ui text-purple-700">
+                  <div className="border-t border-gray-100 pt-6 space-y-4">
+                    <h4 className="font-bold text-gray-700 text-ui text-purple-700">
                       {t("Selected Node:", "Vybraný uzol:", "Kiválasztott csomópont:")} {selectedNode.name}
                     </h4>
-                    <p className="text-ui text-slate-500 leading-relaxed">
+                    <p className="text-ui text-gray-500 leading-relaxed">
                       {t(
                         "All node properties and settings are now editable directly inside the card itself on the canvas.",
                         "Všetky vlastnosti a nastavenia uzla sú teraz upraviteľné priamo vo vnútri karty na plátne.",
                         "Minden csomópont tulajdonság és beállítás most már közvetlenül a kártyán belül szerkeszthető a vásznon."
                       )}
                     </p>
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
-                      <h5 className="type-overline text-slate-400">{t("Canvas Tips", "Tipy na plátne", "Tippek")}</h5>
-                      <ul className="list-disc pl-4 text-micro text-slate-500 space-y-1 font-semibold">
+                    <div className="bg-gray-50 border border-gray-200 rounded-md p-3 space-y-2">
+                      <h5 className="type-overline text-gray-400">{t("Canvas Tips", "Tipy na plátne", "Tippek")}</h5>
+                      <ul className="list-disc pl-4 text-micro text-gray-500 space-y-1 font-semibold">
                         <li>{t("Drag nodes by their header or background.", "Presúvajte uzly ťahaním za hlavičku alebo pozadie.", "Húzza a csomópontokat a fejlécüknél vagy a hátterüknél fogva.")}</li>
                         <li>{t("Click any output circle, then click an input circle to connect nodes.", "Kliknite na výstupný krúžok, potom na vstupný krúžok pre prepojenie.", "Kattintson egy kimeneti körre, majd egy bemeneti körre a csatlakozáshoz.")}</li>
                         <li>{t("Click any connection line to delete it.", "Pre vymazanie prepojenia naň kliknite.", "Kattintson bármelyik kapcsolódási vonalra a törléséhez.")}</li>
@@ -3674,11 +3674,11 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
               </div>
 
               {/* Editor bottom save bar */}
-              <div className="p-6 border-t border-slate-200 bg-slate-50/80 flex items-center justify-between gap-2 shrink-0">
+              <div className="p-6 border-t border-gray-200 bg-gray-50/80 flex items-center justify-between gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => navigateToTab("list")}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-ui font-heading font-bold cursor-pointer"
+                  className="px-4 py-2.5 rounded-md border border-gray-200 bg-white text-gray-600 hover:text-gray-800 hover:bg-gray-50 transition-colors text-ui font-heading font-bold cursor-pointer"
                 >
                   {t("Cancel", "Zrušiť", "Mégse")}
                 </button>
@@ -3686,7 +3686,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 <button
                   type="button"
                   onClick={saveWorkflow}
-                  className="px-5 py-3 rounded-2xl bg-[#0b1329] text-white hover:bg-slate-900 shadow-md shadow-[#0b1329]/20 transition-all font-heading font-bold text-ui flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95"
+                  className="px-5 py-3 rounded-lg bg-[#0b1329] text-white hover:bg-gray-900 shadow-md shadow-[#0b1329]/20 transition-all font-heading font-bold text-ui flex items-center gap-2 cursor-pointer"
                 >
                   {t("Save Workflow", "Uložiť workflow", "Mentés")}
                 </button>
@@ -3701,11 +3701,11 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
           <div className="space-y-6">
             <div className="flex flex-col ws-sm:flex-row ws-sm:items-center ws-sm:justify-between gap-4">
               <div className="flex flex-col">
-                <h2 className="text-title font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                <h2 className="text-title font-heading font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
                   <Terminal className="h-5 w-5 text-purple-600" />
                   {t("Execution Logs & Runs for:", "Záznamy o spustení pre:", "Futási naplók:")} {selectedWorkflow?.name}
                 </h2>
-                <p className="text-ui text-slate-500 font-semibold mt-1">
+                <p className="text-ui text-gray-500 font-semibold mt-1">
                   {t("Track automation runs and visually debug each step payload", "Sledujte behy a debugujte JSON payload každého kroku", "Kövesse nyomon a futásokat és debugolja a lépéseket")}
                 </p>
               </div>
@@ -3714,7 +3714,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 <button
                   type="button"
                   onClick={triggerManualRun}
-                  className="px-4 py-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-ui font-heading font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-2.5 rounded-md bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-ui font-heading font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <Play className="h-4 w-4" />
                   {t("Trigger Test Run", "Spustiť testovací beh", "Teszt futás indítása")}
@@ -3724,7 +3724,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                   type="button"
                   onClick={() => handleViewLogs(selectedWorkflow)}
                   title={t("Refresh", "Obnoviť", "Frissítés")}
-                  className="p-2.5 border border-slate-200 bg-white rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-colors cursor-pointer"
+                  className="p-2.5 border border-gray-200 bg-white rounded-md text-gray-500 hover:text-gray-800 hover:bg-gray-50 transition-colors cursor-pointer"
                 >
                   <RefreshCw className="h-4 w-4" />
                 </button>
@@ -3733,13 +3733,13 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
             <div className="grid grid-cols-1 ws-lg:grid-cols-3 gap-6 h-125">
               {/* Runs List */}
-              <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-hidden flex flex-col h-full">
-                <div className="p-4 bg-slate-50/80 border-b border-slate-200 font-heading type-overline text-slate-400">
+              <div className=" rounded-lg border border-gray-200 bg-white shadow-xs overflow-hidden flex flex-col h-full">
+                <div className="p-4 bg-gray-50/80 border-b border-gray-200 font-heading type-overline text-gray-400">
                   {t("Run History", "História spustení", "Futási előzmények")}
                 </div>
-                <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+                <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
                   {logs.length === 0 ? (
-                    <div className="p-6 text-center text-ui text-slate-400 font-medium">
+                    <div className="p-6 text-center text-ui text-gray-400 font-medium">
                       {t("No runs logged yet.", "Zatiaľ žiadne záznamy.", "Nincsenek futások.")}
                     </div>
                   ) : (
@@ -3747,7 +3747,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       <div 
                         key={log.id}
                         onClick={() => setSelectedLog(log)}
-                        className={`p-4 cursor-pointer hover:bg-slate-50 transition-colors flex items-center justify-between ${
+                        className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors flex items-center justify-between ${
                           selectedLog?.id === log.id ? "bg-purple-50 hover:bg-purple-50" : ""
                         }`}
                       >
@@ -3756,9 +3756,9 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                             <span className={`h-2 w-2 rounded-full ${
                               log.status === "success" ? "bg-emerald-500" : "bg-rose-500"
                             }`} />
-                            <span className="text-ui font-bold text-slate-700 font-mono">{log.id.substring(4, 12)}</span>
+                            <span className="text-ui font-bold text-gray-700 font-mono">{log.id.substring(4, 12)}</span>
                           </div>
-                          <span className="text-micro text-slate-400 font-semibold block">{log.created_at}</span>
+                          <span className="text-micro text-gray-400 font-semibold block">{log.created_at}</span>
                         </div>
                         <div className="text-right space-y-1">
                           <span className={`type-overline px-2 py-0.5 rounded-full ${
@@ -3766,7 +3766,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                           }`}>
                             {log.status}
                           </span>
-                          <span className="text-micro text-slate-400 block font-medium">{log.execution_time_ms} ms</span>
+                          <span className="text-micro text-gray-400 block font-medium">{log.execution_time_ms} ms</span>
                         </div>
                       </div>
                     ))
@@ -3775,23 +3775,23 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
               </div>
 
               {/* Visual Execution Step Trace / Debugger */}
-              <div className="ws-lg:col-span-2 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-hidden flex flex-col h-full">
-                <div className="p-4 bg-slate-50/80 border-b border-slate-200 font-heading type-overline text-slate-400 flex items-center justify-between">
+              <div className="ws-lg:col-span-2  rounded-lg border border-gray-200 bg-white shadow-xs overflow-hidden flex flex-col h-full">
+                <div className="p-4 bg-gray-50/80 border-b border-gray-200 font-heading type-overline text-gray-400 flex items-center justify-between">
                   <span>{t("Visual Debugger Trace", "Vizualizácia behu", "Vizuális nyomkövető")}</span>
                   {selectedLog && (
-                    <span className="text-micro font-mono text-slate-400">{selectedLog.id}</span>
+                    <span className="text-micro font-mono text-gray-400">{selectedLog.id}</span>
                   )}
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 space-y-4">
                   {!selectedLog ? (
-                    <div className="flex flex-col items-center justify-center h-full text-slate-400 text-ui font-medium">
-                      <Terminal className="h-8 w-8 mb-2 text-slate-300" />
+                    <div className="flex flex-col items-center justify-center h-full text-gray-400 text-ui font-medium">
+                      <Terminal className="h-8 w-8 mb-2 text-gray-300" />
                       {t("Select a run to view execution trace details.", "Vyberte beh pre zobrazenie detailov.", "Válasszon egy futást a részletekhez.")}
                     </div>
                   ) : (
                     <div className="space-y-4">
                       {selectedLog.execution_log?.map((step: any, index: number) => (
-                        <div key={index} className="border border-slate-200 rounded-xl overflow-hidden">
+                        <div key={index} className="border border-gray-200 rounded-md overflow-hidden">
                           <div className={`p-3 flex items-center justify-between border-b ${
                             step.success ? "bg-emerald-50/50 border-emerald-100" : "bg-rose-50/50 border-rose-100"
                           }`}>
@@ -3801,8 +3801,8 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                               ) : (
                                 <XCircle className="h-4 w-4 text-rose-600" />
                               )}
-                              <span className="text-ui font-bold text-slate-700">{step.node_name}</span>
-                              <span className="type-overline bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">{step.type}</span>
+                              <span className="text-ui font-bold text-gray-700">{step.node_name}</span>
+                              <span className="type-overline bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{step.type}</span>
                             </div>
                             {!step.success && (
                               <span className="text-ui font-bold text-rose-700">{t("FAILED", "ZLYHALO", "HIBA")}</span>
@@ -3816,16 +3816,16 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                               {step.error}
                             </div>
                           )}
-                          <div className="p-4 grid grid-cols-2 gap-4 bg-slate-50/50">
+                          <div className="p-4 grid grid-cols-2 gap-4 bg-gray-50/50">
                             <div>
-                              <span className="type-overline text-slate-400 block mb-1">{t("Input Data", "Vstupné dáta", "Bemeneti adatok")}</span>
-                              <pre className="text-micro font-mono bg-white p-2.5 border border-slate-200 rounded-lg max-h-36 overflow-auto text-slate-600">
+                              <span className="type-overline text-gray-400 block mb-1">{t("Input Data", "Vstupné dáta", "Bemeneti adatok")}</span>
+                              <pre className="text-micro font-mono bg-white p-2.5 border border-gray-200 rounded-lg max-h-36 overflow-auto text-gray-600">
                                 {JSON.stringify(step.input, null, 2)}
                               </pre>
                             </div>
                             <div>
-                              <span className="type-overline text-slate-400 block mb-1">{t("Output Data", "Výstupné dáta", "Kimeneti adatok")}</span>
-                              <pre className="text-micro font-mono bg-white p-2.5 border border-slate-200 rounded-lg max-h-36 overflow-auto text-slate-600">
+                              <span className="type-overline text-gray-400 block mb-1">{t("Output Data", "Výstupné dáta", "Kimeneti adatok")}</span>
+                              <pre className="text-micro font-mono bg-white p-2.5 border border-gray-200 rounded-lg max-h-36 overflow-auto text-gray-600">
                                 {JSON.stringify(step.output, null, 2)}
                               </pre>
                             </div>
@@ -3843,16 +3843,16 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
         {/* TAB 4: AUTOMATION MODULE CONFIG (cron endpoint) */}
         {activeTab === "settings" && (
           <div className="max-w-2xl space-y-6">
-            <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 ws-sm:p-8">
-              <h2 className="text-title font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <div className=" rounded-lg border border-gray-200 bg-white shadow-xs p-6 ws-sm:p-8">
+              <h2 className="text-title font-heading font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
                 <Settings className="h-5 w-5 text-purple-600" />
                 {t("Automation Execution Settings", "Nastavenia spúšťania automatizácií", "Automatizálás futtatási beállításai")}
               </h2>
-              <p className="text-ui text-slate-500 font-semibold mt-1 mb-6">{t("Copy the Cron URL that runs timers and the queued workflow jobs in the background.", "Skopírujte Cron URL, ktorá na pozadí spúšťa časovače a úlohy vo fronte.", "Másolja ki a Cron URL-t, amely a háttérben futtatja az időzítőket és a sorban álló feladatokat.")}</p>
+              <p className="text-ui text-gray-500 font-semibold mt-1 mb-6">{t("Copy the Cron URL that runs timers and the queued workflow jobs in the background.", "Skopírujte Cron URL, ktorá na pozadí spúšťa časovače a úlohy vo fronte.", "Másolja ki a Cron URL-t, amely a háttérben futtatja az időzítőket és a sorban álló feladatokat.")}</p>
 
-              <div className="flex gap-3 bg-indigo-50 border border-indigo-100 rounded-xl p-4 mb-6">
+              <div className="flex gap-3 bg-indigo-50 border border-indigo-100 rounded-md p-4 mb-6">
                 <Info className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" />
-                <p className="text-ui text-slate-600 font-semibold leading-relaxed">
+                <p className="text-ui text-gray-600 font-semibold leading-relaxed">
                   {t(
                     "AI agent nodes use the API keys from Settings. Make sure the key for your chosen provider (OpenAI, Anthropic or Gemini) is set there.",
                     "Uzly AI agenta používajú API kľúče z Nastavení. Uistite sa, že kľúč pre zvoleného poskytovateľa (OpenAI, Anthropic alebo Gemini) je tam nastavený.",
@@ -3873,20 +3873,20 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
               <form onSubmit={saveSettings} className="space-y-4">
                 <div>
-                  <label className="text-ui font-bold text-slate-500">{t("Cron Endpoint Token", "Token pre Cron endpoint", "Cron végpont token")}</label>
+                  <label className="text-ui font-bold text-gray-500">{t("Cron Endpoint Token", "Token pre Cron endpoint", "Cron végpont token")}</label>
                   <div className="flex gap-2 mt-1.5">
                     <input 
                       type="text" 
                       value={apiKeys.cronToken}
                       onChange={(e) => setApiKeys({ ...apiKeys, cronToken: e.target.value })}
                       disabled={!canEdit}
-                      className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-body font-semibold text-slate-700 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500"
+                      className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-body font-semibold text-gray-700 focus:outline-none disabled:bg-gray-50 disabled:text-gray-500"
                     />
                     {canEdit && (
                     <button 
                       type="button"
                       onClick={() => setApiKeys({ ...apiKeys, cronToken: crypto.randomUUID().replace(/-/g, "") })}
-                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-ui font-bold text-slate-600"
+                      className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-ui font-bold text-gray-600"
                     >
                       {t("Regenerate", "Regenerovať", "Újra előállít")}
                     </button>
@@ -3907,7 +3907,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                   <button
                     type="submit"
                     disabled={savingSettings}
-                    className="px-5 py-3 rounded-2xl bg-[#0b1329] text-white hover:bg-slate-900 shadow-md shadow-[#0b1329]/20 transition-all font-heading font-bold text-ui flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
+                    className="px-5 py-3 rounded-lg bg-[#0b1329] text-white hover:bg-gray-900 shadow-md shadow-[#0b1329]/20 transition-all font-heading font-bold text-ui flex items-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
                   >
                     {savingSettings ? t("Saving...", "Ukladám...", "Mentés...") : t("Save Settings", "Uložiť nastavenia", "Beállítások mentése")}
                   </button>
