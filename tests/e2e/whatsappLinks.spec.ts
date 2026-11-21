@@ -23,7 +23,7 @@ test.describe('WhatsApp links in the client views', () => {
     await seedWhatsApp(page, {});
     await openClient(page, OTHER_CLIENT);
     await expect(page.getByRole('link', { name: 'Začať chat' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Otvoriť chat' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Otvoriť chat', exact: true })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Začať chat' })).toHaveAttribute('href', /^#whatsapp\/open\?phone=421906321654&lead=/);
   });
 
@@ -32,14 +32,15 @@ test.describe('WhatsApp links in the client views', () => {
     await seedWhatsApp(page, { numbers: [{ phone: '421906321654', status: 'not_registered', checkedAt: '2026-10-28 10:00:00' }] });
     await openClient(page, OTHER_CLIENT);
     await expect(page.getByRole('heading', { name: OTHER_CLIENT }).first()).toBeVisible();
-    await expect(page.getByRole('link', { name: /chat/i })).toHaveCount(0);
+    await expect(page.locator('a[href^="#whatsapp"]')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: /^(Začať chat|Otvoriť chat)$/ })).toHaveCount(0);
   });
 
   test('one paired chat is a direct link into it', async ({ page }) => {
     await startSession(page);
     await seedWhatsApp(page, { links: [link('conv-1', 'client-kovac')] });
     await openClient(page, CLIENT);
-    const chip = page.getByRole('link', { name: 'Otvoriť chat' });
+    const chip = page.getByRole('link', { name: 'Otvoriť chat', exact: true });
     await expect(chip).toBeVisible();
     await expect(chip).toHaveAttribute('href', '#whatsapp/c/conv-1');
   });

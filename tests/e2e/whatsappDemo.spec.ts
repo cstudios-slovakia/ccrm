@@ -104,6 +104,7 @@ async function openChat(page: Page, title: string) {
 }
 
 async function openDemo(page: Page, hash = '#whatsapp') {
+  await page.clock.setFixedTime(new Date('2026-11-22T12:00:00+01:00'));
   const demo = await installDemo(page, { demoMode: true });
   await page.goto(`/${hash}`);
   await expect(page.getByTestId('wa-account-pill')).toHaveText('Ukážkové dáta', { timeout: 20_000 });
