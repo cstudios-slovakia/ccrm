@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { entityAccentStyle } from "../../utils/entityAccent";
 import {
   Coins,
   X,
@@ -333,7 +334,8 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
 
   return (
     <div
-      className={`fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex flex-col justify-end ${
+      style={entityAccentStyle("employees") as React.CSSProperties}
+      className={`fixed inset-0 z-50 bg-gray-900/40 flex flex-col justify-end ${
         isClosing ? "animate-fade-out" : "animate-fade-in"
       }`}
     >
@@ -342,12 +344,12 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
 
       {/* Drawer Container sliding up from the bottom */}
       <div
-        className={`w-full max-w-3xl mx-auto glass-panel bg-white/95 rounded-t-[32px] ws-sm:rounded-t-[36px] shadow-2xl border-t-2 border-x border-[#c29b62]/60 overflow-hidden flex flex-col max-h-[90vh] relative z-10 ${
+        className={`w-full max-w-3xl mx-auto bg-white rounded-t-xl shadow-xl border-t-2 border-x border-entity-border overflow-hidden flex flex-col max-h-[90vh] relative z-10 ${
           isClosing ? "animate-slide-out-bottom" : "animate-slide-in-bottom"
         }`}
       >
         {/* Subtle Pull Indicator */}
-        <div className="pt-2.5 pb-1 flex justify-center shrink-0 bg-[#c29b62]/10">
+        <div className="pt-2.5 pb-1 flex justify-center shrink-0 bg-entity-subtle">
           <div
             className="w-12 h-1.5 bg-[#c29b62]/30 rounded-full cursor-pointer hover:bg-[#c29b62]/60 transition"
             onClick={handleClose}
@@ -356,16 +358,16 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
         </div>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-[#c29b62]/10">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-entity-subtle">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-2xl bg-[#c29b62] text-white flex items-center justify-center shadow-md shadow-[#c29b62]/30 shrink-0">
+            <div className="w-10 h-10 rounded-lg bg-[#c29b62] text-white flex items-center justify-center shadow-md shadow-2xs shrink-0">
               <Coins className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-title-sm font-bold text-slate-900 truncate">
+              <h2 className="text-title-sm font-bold text-gray-900 truncate">
                 {employee.name} — {currentMonthName} {activeYear}
               </h2>
-              <p className="text-ui text-slate-500">
+              <p className="text-ui text-gray-500">
                 {showPayslip
                   ? t(
                       "Payslip for the month: gross salary, labour cost and what has been paid",
@@ -383,7 +385,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
           <button
             type="button"
             onClick={handleClose}
-            className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition cursor-pointer shrink-0"
+            className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
@@ -393,7 +395,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Period selector if canChangePeriod is enabled or no existingRecord */}
           {(canChangePeriod || !existingRecord) && (
-            <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/80 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">
+            <div className="p-4 rounded-lg bg-amber-50/60 border border-amber-200/80 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-ui font-bold text-amber-900">
                 <Calendar className="w-4 h-4 text-[#c29b62]" />
                 <span>{t("Salary Period:", "Obdobie mzdy:", "Bér időszaka:")}</span>
@@ -403,7 +405,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                 <select
                   value={activeMonthNum}
                   onChange={(e) => setActiveMonthNum(Number(e.target.value))}
-                  className="px-3 py-1.5 rounded-xl border border-amber-300/80 bg-white text-ui font-bold text-slate-800 shadow-sm"
+                  className="px-3 py-1.5 rounded-md border border-amber-300/80 bg-white text-ui font-bold text-gray-800 shadow-sm"
                 >
                   {monthNames.map((name, idx) => (
                     <option key={idx + 1} value={idx + 1}>
@@ -418,7 +420,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                   max="2035"
                   value={activeYear}
                   onChange={(e) => setActiveYear(Number(e.target.value) || activeYear)}
-                  className="w-20 px-3 py-1.5 rounded-xl border border-amber-300/80 bg-white text-ui font-bold text-slate-800 shadow-sm"
+                  className="w-20 px-3 py-1.5 rounded-md border border-amber-300/80 bg-white text-ui font-bold text-gray-800 shadow-sm"
                 />
               </div>
             </div>
@@ -428,7 +430,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
             <div
               role="alert"
               data-testid="salary-period-taken"
-              className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-ui font-semibold text-rose-800"
+              className="p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-ui font-semibold text-rose-800"
             >
               {t(
                 "This month already has a salary record. Open it from the list to edit it.",
@@ -441,10 +443,10 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
           {isClosed && (
             <div
               data-testid="salary-period-closed"
-              className="flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200"
+              className="flex items-center justify-between gap-3 p-3.5 rounded-lg bg-gray-50 border border-gray-200"
             >
-              <div className="flex items-center gap-2 text-ui font-semibold text-slate-700">
-                <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+              <div className="flex items-center gap-2 text-ui font-semibold text-gray-700">
+                <Lock className="w-4 h-4 text-gray-500 shrink-0" />
                 <span>
                   {reopenRequested
                     ? t(
@@ -463,7 +465,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                 <button
                   type="button"
                   onClick={() => setReopenRequested((v) => !v)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-ui font-semibold rounded-xl border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 transition shrink-0 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-ui font-semibold rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 transition shrink-0 cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   {reopenRequested ? t("Keep closed", "Ponechať uzavretý", "Maradjon lezárva") : t("Reopen month", "Znovu otvoriť", "Újranyitás")}
@@ -473,7 +475,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
           )}
 
           {/* Quick Mark as Paid Button */}
-          <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+          <div className="flex items-center justify-between p-3.5 rounded-lg bg-gray-50 border border-gray-200">
             <div className="flex items-center gap-2">
               <div
                 className={`w-3 h-3 rounded-full ${
@@ -481,10 +483,10 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                     ? "bg-emerald-500"
                     : status === "partially_paid"
                     ? "bg-amber-500"
-                    : "bg-slate-400"
+                    : "bg-gray-400"
                 }`}
               />
-              <span className="text-ui font-semibold text-slate-800">
+              <span className="text-ui font-semibold text-gray-800">
                 {status === "paid"
                   ? t("Status: Fully Paid", "Stav: Vyplatené", "Állapot: Kifizetve")
                   : status === "partially_paid"
@@ -496,7 +498,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
             <button
               type="button"
               onClick={handleMarkAllPaid}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-ui font-semibold rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-sm cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-ui font-semibold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-sm cursor-pointer"
             >
               <Check className="w-3.5 h-3.5 stroke-[3]" />
               {t("Mark as Fully Paid", "Označiť ako vyplatené", "Megjelölés kifizetettként")}
@@ -510,23 +512,23 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                 {t("Payslip", "Výplatná páska", "Bérjegyzék")}
               </h4>
 
-              <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
+              <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
                 <table className="w-full text-ui">
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-gray-100">
                     {/* Hrubá mzda = Základná + Iné */}
-                    <tr className="bg-slate-50/70">
-                      <td className="py-2.5 px-3 font-bold text-slate-900">{t("Gross salary", "Hrubá mzda", "Bruttó bér")}</td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 w-48" data-testid="salary-gross">
+                    <tr className="bg-gray-50/70">
+                      <td className="py-2.5 px-3 font-bold text-gray-900">{t("Gross salary", "Hrubá mzda", "Bruttó bér")}</td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-gray-900 w-48" data-testid="salary-gross">
                         {formatMoney(totalSalary)}
                       </td>
                       <td className="w-10"></td>
                     </tr>
 
                     <tr>
-                      <td className="py-2 pl-8 pr-3 text-slate-700">
+                      <td className="py-2 pl-8 pr-3 text-gray-700">
                         <div className="font-medium">{t("Base salary", "Základná mzda", "Alapbér")}</div>
                         {baseDiffersFromContract && (
-                          <div className="text-micro text-slate-500 flex items-center gap-1.5">
+                          <div className="text-micro text-gray-500 flex items-center gap-1.5">
                             <span>{t("Contract", "Podľa zmluvy", "Szerződés szerint")}: {formatMoney(contractBase)}</span>
                             <button
                               type="button"
@@ -551,13 +553,13 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                               placeholder="0.00"
                               onChange={(e) => handleItemChange(baseIdx, "amount", parseFloat(e.target.value) || 0)}
                               data-testid="salary-base-input"
-                              className="w-28 px-2 py-1 text-right font-mono font-bold text-slate-900 border border-slate-200 rounded-lg focus:ring-1 focus:ring-[#c29b62]"
+                              className="w-28 px-2 py-1 text-right font-mono font-bold text-gray-900 border border-gray-200 rounded-lg focus:ring-1 focus:ring-[#c29b62]"
                             />
-                            <span className="text-slate-400 font-mono">{systemCurrency}</span>
+                            <span className="text-gray-400 font-mono">{systemCurrency}</span>
                           </div>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 font-mono text-slate-700" data-testid="salary-base-amount">
-                            <Lock className="w-3 h-3 text-slate-400" />
+                          <span className="inline-flex items-center gap-1.5 font-mono text-gray-700" data-testid="salary-base-amount">
+                            <Lock className="w-3 h-3 text-gray-400" />
                             {formatMoney(baseAmount)}
                           </span>
                         )}
@@ -567,7 +569,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                           <button
                             type="button"
                             onClick={() => setBaseUnlocked(true)}
-                            className="text-slate-400 hover:text-[#b58b4c] hover:bg-[#c29b62]/10 rounded-lg transition p-1 cursor-pointer"
+                            className="text-gray-400 hover:text-[#b58b4c] hover:bg-entity-subtle rounded-lg transition p-1 cursor-pointer"
                             title={t("Change for this month", "Upraviť pre tento mesiac", "Módosítás erre a hónapra")}
                             aria-label={t("Change for this month", "Upraviť pre tento mesiac", "Módosítás erre a hónapra")}
                             data-testid="salary-base-unlock"
@@ -580,15 +582,15 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
 
                     {/* Iné: subtotal of the manually added rows below it */}
                     <tr>
-                      <td className="py-2 pl-8 pr-3 font-medium text-slate-700">{t("Other", "Iné", "Egyéb")}</td>
-                      <td className="py-2 px-3 text-right font-mono text-slate-700" data-testid="salary-other-total">
+                      <td className="py-2 pl-8 pr-3 font-medium text-gray-700">{t("Other", "Iné", "Egyéb")}</td>
+                      <td className="py-2 px-3 text-right font-mono text-gray-700" data-testid="salary-other-total">
                         {formatMoney(otherTotal)}
                       </td>
                       <td></td>
                     </tr>
                     {items.map((item, idx) =>
                       idx === baseIdx ? null : (
-                        <tr key={item.categoryId || idx} className="hover:bg-slate-50/50 transition-colors" data-testid="salary-other-row">
+                        <tr key={item.categoryId || idx} className="hover:bg-gray-50/50 transition-colors" data-testid="salary-other-row">
                           <td className="py-1.5 pl-12 pr-3">
                             <input
                               type="text"
@@ -601,7 +603,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                                 updated[idx] = { ...updated[idx], categoryName: e.target.value };
                                 setItems(updated);
                               }}
-                              className="w-full px-2 py-1 bg-transparent border-0 focus:ring-1 focus:ring-[#c29b62] rounded text-slate-800"
+                              className="w-full px-2 py-1 bg-transparent border-0 focus:ring-1 focus:ring-[#c29b62] rounded text-gray-800"
                             />
                           </td>
                           <td className="py-1.5 px-3 text-right">
@@ -612,16 +614,16 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                                 value={item.amount === 0 ? "" : item.amount}
                                 placeholder="0.00"
                                 onChange={(e) => handleItemChange(idx, "amount", parseFloat(e.target.value) || 0)}
-                                className="w-28 px-2 py-1 text-right font-mono font-bold text-slate-900 border border-slate-200 rounded-lg focus:ring-1 focus:ring-[#c29b62]"
+                                className="w-28 px-2 py-1 text-right font-mono font-bold text-gray-900 border border-gray-200 rounded-lg focus:ring-1 focus:ring-[#c29b62]"
                               />
-                              <span className="text-slate-400 font-mono">{systemCurrency}</span>
+                              <span className="text-gray-400 font-mono">{systemCurrency}</span>
                             </div>
                           </td>
                           <td className="py-1.5 px-2 text-center">
                             <button
                               type="button"
                               onClick={() => handleRemoveItem(idx)}
-                              className="text-slate-300 hover:text-red-500 transition p-1 cursor-pointer"
+                              className="text-gray-300 hover:text-red-500 transition p-1 cursor-pointer"
                               title={t("Remove Row", "Odstrániť riadok", "Sor törlése")}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -650,8 +652,8 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                     </tr>
 
                     {/* Cena práce and Na výplatu are typed in from the payslip */}
-                    <tr className="bg-slate-50/70">
-                      <td className="py-2.5 px-3 font-bold text-slate-900">{t("Labour cost", "Cena práce", "Bérköltség")}</td>
+                    <tr className="bg-gray-50/70">
+                      <td className="py-2.5 px-3 font-bold text-gray-900">{t("Labour cost", "Cena práce", "Bérköltség")}</td>
                       <td className="py-2 px-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <input
@@ -663,15 +665,15 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                             placeholder="0.00"
                             onChange={(e) => setLaborCostText(e.target.value)}
                             data-testid="salary-labor-cost"
-                            className="w-28 px-2 py-1 text-right font-mono font-bold text-slate-900 border border-slate-200 rounded-lg focus:ring-1 focus:ring-[#c29b62]"
+                            className="w-28 px-2 py-1 text-right font-mono font-bold text-gray-900 border border-gray-200 rounded-lg focus:ring-1 focus:ring-[#c29b62]"
                           />
-                          <span className="text-slate-400 font-mono">{systemCurrency}</span>
+                          <span className="text-gray-400 font-mono">{systemCurrency}</span>
                         </div>
                       </td>
                       <td></td>
                     </tr>
-                    <tr className="bg-slate-50/70">
-                      <td className="py-2.5 px-3 font-bold text-slate-900">{t("Net pay", "Na výplatu", "Nettó kifizetés")}</td>
+                    <tr className="bg-gray-50/70">
+                      <td className="py-2.5 px-3 font-bold text-gray-900">{t("Net pay", "Na výplatu", "Nettó kifizetés")}</td>
                       <td className="py-2 px-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <input
@@ -683,14 +685,14 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                             placeholder="0.00"
                             onChange={(e) => setNetPayText(e.target.value)}
                             data-testid="salary-net-pay"
-                            className="w-28 px-2 py-1 text-right font-mono font-bold text-slate-900 border border-slate-200 rounded-lg focus:ring-1 focus:ring-[#c29b62]"
+                            className="w-28 px-2 py-1 text-right font-mono font-bold text-gray-900 border border-gray-200 rounded-lg focus:ring-1 focus:ring-[#c29b62]"
                           />
-                          <span className="text-slate-400 font-mono">{systemCurrency}</span>
+                          <span className="text-gray-400 font-mono">{systemCurrency}</span>
                         </div>
                       </td>
                       <td></td>
                     </tr>
-                    <tr className="text-micro text-slate-500">
+                    <tr className="text-micro text-gray-500">
                       <td className="py-1.5 pl-8 pr-3">
                         {t("Employer levies", "Odvody zamestnávateľa", "Munkáltatói járulékok")}
                         <span className="opacity-70"> ({t("labour cost − gross", "cena práce − hrubá mzda", "bérköltség − bruttó bér")})</span>
@@ -703,7 +705,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                       </td>
                       <td></td>
                     </tr>
-                    <tr className="text-micro text-slate-500">
+                    <tr className="text-micro text-gray-500">
                       <td className="py-1.5 pl-8 pr-3">
                         {t("Employee levies and tax", "Odvody a daň zamestnanca", "Munkavállalói járulékok és adó")}
                         <span className="opacity-70"> ({t("gross − net pay", "hrubá mzda − na výplatu", "bruttó bér − nettó kifizetés")})</span>
@@ -722,7 +724,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                     <tr className="bg-emerald-50/60 border-t border-emerald-200">
                       <td className="py-2.5 px-3">
                         <div className="font-bold text-emerald-700">{t("Paid", "Vyplatené", "Kifizetve")}</div>
-                        <div className="text-micro text-slate-500">
+                        <div className="text-micro text-gray-500">
                           {laborCost != null
                             ? t("of labour cost", "z ceny práce", "a bérköltségből")
                             : t("of gross salary, until labour cost is filled in", "z hrubej mzdy, kým nie je vyplnená cena práce", "a bruttó bérből, amíg nincs bérköltség")}{" "}
@@ -742,7 +744,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                             data-testid="salary-paid"
                             className="w-28 px-2 py-1 text-right font-mono font-bold text-emerald-700 border border-emerald-200 bg-white rounded-lg focus:ring-1 focus:ring-emerald-500"
                           />
-                          <span className="text-slate-400 font-mono">{systemCurrency}</span>
+                          <span className="text-gray-400 font-mono">{systemCurrency}</span>
                         </div>
                       </td>
                       <td></td>
@@ -768,10 +770,10 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
               </button>
             </div>
 
-            <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
+            <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
               <table className="w-full text-ui">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 type-overline">
+                  <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 type-overline">
                     <th className="py-2.5 px-3 text-left">{t("Category", "Kategória", "Kategória")}</th>
                     <th className="py-2.5 px-3 text-right w-36 text-[#c29b62] font-bold">
                       {t("Salary (Due)", "Mzda (Predpis)", "Bér (Előírás)")}
@@ -782,9 +784,9 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                     <th className="w-10"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-gray-100">
                   {items.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/50">
+                    <tr key={idx} className="hover:bg-gray-50/50">
                       <td className="py-2 px-3">
                         <input
                           type="text"
@@ -794,7 +796,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                             updated[idx].categoryName = e.target.value;
                             setItems(updated);
                           }}
-                          className="w-full px-2 py-1 bg-transparent border-0 focus:ring-1 focus:ring-[#c29b62] rounded font-medium text-slate-800"
+                          className="w-full px-2 py-1 bg-transparent border-0 focus:ring-1 focus:ring-[#c29b62] rounded font-medium text-gray-800"
                         />
                       </td>
                       <td className="py-2 px-3 text-right">
@@ -806,9 +808,9 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                             value={item.amount === 0 ? "" : item.amount}
                             placeholder="0.00"
                             onChange={(e) => handleItemChange(idx, "amount", parseFloat(e.target.value) || 0)}
-                            className="w-28 px-2 py-1 text-right font-mono font-bold text-slate-900 border border-slate-200 rounded-lg focus:ring-1 focus:ring-[#c29b62]"
+                            className="w-28 px-2 py-1 text-right font-mono font-bold text-gray-900 border border-gray-200 rounded-lg focus:ring-1 focus:ring-[#c29b62]"
                           />
-                          <span className="text-slate-400 font-mono">{systemCurrency}</span>
+                          <span className="text-gray-400 font-mono">{systemCurrency}</span>
                         </div>
                       </td>
                       <td className="py-2 px-3 text-right">
@@ -822,7 +824,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                             onChange={(e) => handleItemChange(idx, "paidAmount", parseFloat(e.target.value) || 0)}
                             className="w-28 px-2 py-1 text-right font-mono font-bold text-emerald-600 border border-emerald-200 bg-emerald-50/30 rounded-lg focus:ring-1 focus:ring-emerald-500"
                           />
-                          <span className="text-slate-400 font-mono">{systemCurrency}</span>
+                          <span className="text-gray-400 font-mono">{systemCurrency}</span>
                         </div>
                       </td>
                       <td className="py-2 px-2 text-center">
@@ -830,7 +832,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                           <button
                             type="button"
                             onClick={() => handleRemoveItem(idx)}
-                            className="text-slate-300 hover:text-red-500 transition p-1"
+                            className="text-gray-300 hover:text-red-500 transition p-1"
                             title={t("Remove Row", "Odstrániť riadok", "Sor törlése")}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -841,8 +843,8 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="bg-slate-50 border-t border-slate-200 font-bold text-ui">
-                    <td className="py-2.5 px-3 text-slate-700">
+                  <tr className="bg-gray-50 border-t border-gray-200 font-bold text-ui">
+                    <td className="py-2.5 px-3 text-gray-700">
                       {t("Total", "Spolu celkom", "Összesen")}
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono text-[#c29b62]">
@@ -863,37 +865,37 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
           {/* DATES & PAYMENT DETAILS */}
           <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-ui font-semibold text-slate-700 mb-1">
+              <label className="block text-ui font-semibold text-gray-700 mb-1">
                 {t("Due Date", "Dátum splatnosti", "Esedékesség napja")}
               </label>
               <input
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="w-full px-3 py-2 text-ui border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#c29b62]/40"
+                className="w-full px-3 py-2 text-ui border border-gray-200 rounded-md focus:ring-2 focus:ring-entity-ring"
               />
             </div>
 
             <div>
-              <label className="block text-ui font-semibold text-slate-700 mb-1">
+              <label className="block text-ui font-semibold text-gray-700 mb-1">
                 {t("Payment Date", "Dátum skutočnej úhrady", "Kifizetés napja")}
               </label>
               <input
                 type="date"
                 value={paymentDate}
                 onChange={(e) => setPaymentDate(e.target.value)}
-                className="w-full px-3 py-2 text-ui border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#c29b62]/40"
+                className="w-full px-3 py-2 text-ui border border-gray-200 rounded-md focus:ring-2 focus:ring-entity-ring"
               />
             </div>
 
             <div>
-              <label className="block text-ui font-semibold text-slate-700 mb-1">
+              <label className="block text-ui font-semibold text-gray-700 mb-1">
                 {t("Payment Method", "Spôsob úhrady", "Fizetési mód")}
               </label>
               <select
                 value={paymentMethod}
                 onChange={(e) => setPaymentMethod(e.target.value)}
-                className="w-full px-3 py-2 text-ui border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#c29b62]/40 bg-white"
+                className="w-full px-3 py-2 text-ui border border-gray-200 rounded-md focus:ring-2 focus:ring-entity-ring bg-white"
               >
                 <option value="bank_transfer">{t("Bank Transfer", "Bankový prevod", "Banki átutalás")}</option>
                 <option value="cash">{t("Cash in Hand", "Hotovosť", "Készpénz")}</option>
@@ -902,11 +904,11 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
             </div>
 
             <div>
-              <label className="block text-ui font-semibold text-slate-700 mb-1">
+              <label className="block text-ui font-semibold text-gray-700 mb-1">
                 {t("Sync to Financial Hub", "Prepojenie s Financiami", "Pénzügyi szinkronizáció")}
               </label>
-              <div className="flex items-center gap-2 p-2 border border-slate-200 rounded-xl bg-slate-50 text-ui text-slate-600">
-                <div className={`w-2 h-2 rounded-full ${settings.autoExpense ? "bg-emerald-500" : "bg-slate-400"}`} />
+              <div className="flex items-center gap-2 p-2 border border-gray-200 rounded-md bg-gray-50 text-ui text-gray-600">
+                <div className={`w-2 h-2 rounded-full ${settings.autoExpense ? "bg-emerald-500" : "bg-gray-400"}`} />
                 <span>
                   {settings.autoExpense
                     ? t("Auto-expense active (financial records updated)", "Automatický náklad zapnutý", "Automatikus kiadás aktív")
@@ -918,7 +920,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
 
           {/* NOTE */}
           <div>
-            <label className="block text-ui font-semibold text-slate-700 mb-1">
+            <label className="block text-ui font-semibold text-gray-700 mb-1">
               {t("Internal Note", "Poznámka k výplate", "Megjegyzés")}
             </label>
             <input
@@ -926,16 +928,16 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder={t("e.g. Regular monthly payout + bonus for Q3 milestone", "napr. Mzda + odmena za Q3", "Megjegyzés")}
-              className="w-full px-3 py-2 text-ui border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#c29b62]/40"
+              className="w-full px-3 py-2 text-ui border border-gray-200 rounded-md focus:ring-2 focus:ring-entity-ring"
             />
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/80">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50/80">
           <div className="text-ui">
-            <span className="text-slate-400">{t("Balance Remaining:", "Zostáva uhradiť:", "Fennmaradó összeg:")} </span>
-            <span className="font-mono font-bold text-slate-900">
+            <span className="text-gray-400">{t("Balance Remaining:", "Zostáva uhradiť:", "Fennmaradó összeg:")} </span>
+            <span className="font-mono font-bold text-gray-900">
               {formatNumber(balanceDue, systemLanguage, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {systemCurrency}
             </span>
           </div>
@@ -944,7 +946,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
             <button
               type="button"
               onClick={handleClose}
-              className="px-4 py-2 text-body font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl transition cursor-pointer"
+              className="px-4 py-2 text-body font-semibold text-gray-600 hover:bg-gray-200/60 rounded-md transition cursor-pointer"
             >
               {t("Cancel", "Zrušiť", "Mégse")}
             </button>
@@ -952,7 +954,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
               type="button"
               onClick={handleSave}
               disabled={!!periodTakenBy}
-              className="px-5 py-2 disabled:opacity-50 disabled:cursor-not-allowed text-body font-heading font-bold text-white bg-gradient-to-r from-[#c29b62] to-[#b58b4c] hover:shadow-lg rounded-xl shadow-md shadow-[#c29b62]/25 transition cursor-pointer"
+              className="px-5 py-2 disabled:opacity-50 disabled:cursor-not-allowed text-body font-heading font-bold text-white bg-entity-solid hover:bg-entity-solid-hover hover:shadow-lg rounded-md shadow-md shadow-2xs transition cursor-pointer"
             >
               {t("Save Period Salary", "Uložiť mzdu", "Bér mentése")}
             </button>

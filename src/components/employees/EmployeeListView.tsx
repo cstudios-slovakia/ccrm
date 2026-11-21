@@ -327,57 +327,57 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
       {/* KPI Cards Row */}
       <StatGrid count={4}>
         {/* Total Staff */}
-        <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-5 flex items-center justify-between hover:shadow-lg transition-all">
+        <div className=" rounded-lg border border-gray-200 bg-white shadow-xs p-5 flex items-center justify-between hover:shadow-lg transition-all">
           <div>
-            <span className="type-overline text-slate-400 block">
+            <span className="type-overline text-gray-400 block">
               {t("Total Staff", "Celkom zamestnancov", "Összes alkalmazott")}
             </span>
-            <span className="type-metric text-slate-900 mt-1 block">
+            <span className="type-metric text-gray-900 mt-1 block">
               {stats.total}
             </span>
-            <span className="text-micro text-slate-400 font-medium">
+            <span className="text-micro text-gray-400 font-medium">
               {stats.active} {t("active employees", "aktívnych", "aktív")}
             </span>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-[#c29b62]/15 text-[#9e7638] flex items-center justify-center shadow-xs">
+          <div className="w-12 h-12 rounded-lg bg-entity-subtle text-[#9e7638] flex items-center justify-center shadow-xs">
             <Users className="w-6 h-6" />
           </div>
         </div>
 
         {/* Active Rate */}
-        <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-5 flex items-center justify-between hover:shadow-lg transition-all">
+        <div className=" rounded-lg border border-gray-200 bg-white shadow-xs p-5 flex items-center justify-between hover:shadow-lg transition-all">
           <div>
-            <span className="type-overline text-slate-400 block">
+            <span className="type-overline text-gray-400 block">
               {t("Active Status", "Aktívny stav", "Aktív állapot")}
             </span>
             <span className="type-metric text-emerald-600 mt-1 block">
               {stats.total > 0 ? Math.round((stats.active / stats.total) * 100) : 0}%
             </span>
-            <span className="text-micro text-slate-400 font-medium">
+            <span className="text-micro text-gray-400 font-medium">
               {stats.total - stats.active} {t("inactive / left", "neaktívnych", "inaktív")}
             </span>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-xs">
+          <div className="w-12 h-12 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-xs">
             <UserCheck className="w-6 h-6" />
           </div>
         </div>
 
         {/* Monthly Payroll Base */}
         {rights.salaries && (
-        <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-5 flex items-center justify-between hover:shadow-lg transition-all">
+        <div className=" rounded-lg border border-gray-200 bg-white shadow-xs p-5 flex items-center justify-between hover:shadow-lg transition-all">
           <div>
-            <span className="type-overline text-slate-400 block">
+            <span className="type-overline text-gray-400 block">
               {t("Est. Monthly Payroll", "Mesačný objem miezd", "Havi bérköltség")}
             </span>
-            <span className="type-metric text-slate-900 mt-1 block">
+            <span className="type-metric text-gray-900 mt-1 block">
               {formatNumber(stats.totalMonthlyPayroll, systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}{" "}
-              <span className="text-body font-bold text-slate-400">{systemCurrency}</span>
+              <span className="text-body font-bold text-gray-400">{systemCurrency}</span>
             </span>
-            <span className="text-micro text-slate-400 font-medium">
+            <span className="text-micro text-gray-400 font-medium">
               {t("Due around", "Splatnosť okolo", "Esedékes:")} {settings.salaryDueDay ?? 15}. {t("of month", "v mesiaci", "a hónapban")}
             </span>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-[#c29b62]/15 text-[#9e7638] flex items-center justify-center shadow-xs">
+          <div className="w-12 h-12 rounded-lg bg-entity-subtle text-[#9e7638] flex items-center justify-center shadow-xs">
             <Coins className="w-6 h-6" />
           </div>
         </div>
@@ -385,19 +385,19 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
 
         {/* On Leave Today */}
         {rights.vacations && (
-        <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-5 flex items-center justify-between hover:shadow-lg transition-all">
+        <div className=" rounded-lg border border-gray-200 bg-white shadow-xs p-5 flex items-center justify-between hover:shadow-lg transition-all">
           <div>
-            <span className="type-overline text-slate-400 block">
+            <span className="type-overline text-gray-400 block">
               {t("On Leave Today", "Dnes na dovolenke / PN", "Ma távol lévők")}
             </span>
             <span className="type-metric text-amber-600 mt-1 block">
               {stats.onLeaveToday}
             </span>
-            <span className="text-micro text-slate-400 font-medium">
+            <span className="text-micro text-gray-400 font-medium">
               {t("Absence calendar tracked", "Evidované v kalendári", "Naptárban rögzítve")}
             </span>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shadow-xs">
+          <div className="w-12 h-12 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shadow-xs">
             <Calendar className="w-6 h-6" />
           </div>
         </div>
@@ -408,10 +408,10 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
       {employees.length > 0 && (
         <div
           data-testid="employees-list-ai-summary"
-          className={`rounded-2xl border px-4 py-3 shadow-xs transition-colors ${
+          className={`rounded-lg border px-4 py-3 shadow-xs transition-colors ${
             combinedRosterProblems.length > 0
               ? "bg-rose-50/70 border-rose-200/80"
-              : "bg-amber-50/40 border-[#c29b62]/30"
+              : "bg-amber-50/40 border-entity-border"
           }`}
         >
           <div className="flex items-start justify-between gap-3">
@@ -439,7 +439,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                 type="button"
                 onClick={() => generateRosterSummary(true)}
                 disabled={isGeneratingRosterSummary}
-                className="p-1 rounded-lg hover:bg-white/80 text-slate-500 hover:text-slate-700 transition-colors disabled:opacity-50"
+                className="p-1 rounded-lg hover:bg-white text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
                 title={t("Regenerate AI Summary", "Pregenerovať AI zhrnutie", "AI összefoglaló újragenerálása")}
               >
                 <RefreshCw className={`size-3.5 ${isGeneratingRosterSummary ? "animate-spin text-[#9e7638]" : ""}`} />
@@ -459,9 +459,9 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
               ))}
             </div>
           )}
-          <p className="mt-1.5 text-caption text-slate-700 leading-relaxed">
+          <p className="mt-1.5 text-caption text-gray-700 leading-relaxed">
             {isGeneratingRosterSummary && !rosterAiSummary ? (
-              <span className="italic text-slate-400">
+              <span className="italic text-gray-400">
                 {t("Generating AI team overview...", "Generujem AI prehľad tímu...", "AI csapatáttekintés generálása...")}
               </span>
             ) : rosterAiSummary ? (
@@ -484,28 +484,28 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
       )}
 
       {/* Filter and Search Bar */}
-      <div className="glass-panel rounded-2xl border border-white/60 bg-white/95 shadow-glass p-3 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">
+      <div className=" rounded-lg border border-gray-200 bg-white shadow-xs p-3 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3 flex-1">
           <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t("Search by name, PIN, email or phone...", "Hľadať podľa mena, RČ, emailu...", "Keresés név, személyi szám szerint...")}
-              className="w-full pl-9 pr-3.5 py-2 text-ui bg-slate-100/70 border border-slate-200/60 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#c29b62]/40 focus:bg-white transition"
+              className="w-full pl-9 pr-3.5 py-2 text-ui bg-gray-100/70 border border-gray-200/60 rounded-md text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-entity-ring focus:bg-white transition"
             />
           </div>
 
           {/* Status Segmented Buttons */}
-          <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl text-ui border border-slate-200/40">
+          <div className="flex items-center gap-1 bg-gray-100/80 p-1 rounded-md text-ui border border-gray-200/40">
             <button
               type="button"
               onClick={() => setStatusFilter("all")}
               className={`px-3 py-1 rounded-lg font-heading text-ui transition cursor-pointer ${
                 statusFilter === "all"
-                  ? "bg-white text-slate-900 shadow-xs font-bold"
-                  : "text-slate-500 hover:text-slate-900 font-medium"
+                  ? "bg-white text-gray-900 shadow-xs font-bold"
+                  : "text-gray-500 hover:text-gray-900 font-medium"
               }`}
             >
               {t("All", "Všetci", "Mind")}
@@ -515,8 +515,8 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
               onClick={() => setStatusFilter("active")}
               className={`px-3 py-1 rounded-lg font-heading text-ui transition cursor-pointer ${
                 statusFilter === "active"
-                  ? "bg-white text-slate-900 shadow-xs font-bold"
-                  : "text-slate-500 hover:text-slate-900 font-medium"
+                  ? "bg-white text-gray-900 shadow-xs font-bold"
+                  : "text-gray-500 hover:text-gray-900 font-medium"
               }`}
             >
               {t("Active", "Aktívni", "Aktív")}
@@ -526,8 +526,8 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
               onClick={() => setStatusFilter("inactive")}
               className={`px-3 py-1 rounded-lg font-heading text-ui transition cursor-pointer ${
                 statusFilter === "inactive"
-                  ? "bg-white text-slate-900 shadow-xs font-bold"
-                  : "text-slate-500 hover:text-slate-900 font-medium"
+                  ? "bg-white text-gray-900 shadow-xs font-bold"
+                  : "text-gray-500 hover:text-gray-900 font-medium"
               }`}
             >
               {t("Inactive", "Neaktívni", "Inaktív")}
@@ -535,7 +535,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
           </div>
 
           {hasOtherKinds && (
-            <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl text-ui border border-slate-200/40">
+            <div className="flex items-center gap-1 bg-gray-100/80 p-1 rounded-md text-ui border border-gray-200/40">
               {(["all", "employee", "contractor", "ledger"] as const).map((k) => (
                 <button
                   key={k}
@@ -543,8 +543,8 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                   onClick={() => setKindFilter(k)}
                   className={`px-3 py-1 rounded-lg font-heading text-ui transition cursor-pointer ${
                     kindFilter === k
-                      ? "bg-white text-slate-900 shadow-xs font-bold"
-                      : "text-slate-500 hover:text-slate-900 font-medium"
+                      ? "bg-white text-gray-900 shadow-xs font-bold"
+                      : "text-gray-500 hover:text-gray-900 font-medium"
                   }`}
                 >
                   {k === "all" ? t("All types", "Všetky typy", "Minden típus") : kindLabels[k]}
@@ -555,7 +555,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
         </div>
 
         {/* View Mode Switcher */}
-        <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl text-slate-500 border border-slate-200/40">
+        <div className="flex items-center gap-1 bg-gray-100/80 p-1 rounded-md text-gray-500 border border-gray-200/40">
           {([
             { mode: "structure" as const, Icon: ListTree, label: t("Structure View", "Zobrazenie štruktúry", "Struktúra nézet") },
             { mode: "table" as const, Icon: List, label: t("Table View", "Tabuľka", "Táblázat") },
@@ -566,7 +566,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
               type="button"
               onClick={() => setViewMode(mode)}
               className={`p-1.5 rounded-lg transition cursor-pointer ${
-                viewMode === mode ? "bg-white text-slate-900 shadow-xs font-bold" : "hover:text-slate-800"
+                viewMode === mode ? "bg-white text-gray-900 shadow-xs font-bold" : "hover:text-gray-800"
               }`}
               title={label}
               aria-label={label}
@@ -580,15 +580,15 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
 
       {/* EMPTY STATE */}
       {filteredEmployees.length === 0 ? (
-        <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-12 text-center space-y-4">
-          <div className="w-16 h-16 rounded-3xl mx-auto flex items-center justify-center shadow-inner" style={{ backgroundColor: SECTION_VISUALS.employees.bg, color: SECTION_VISUALS.employees.color }}>
+        <div className=" rounded-lg border border-gray-200 bg-white shadow-xs p-12 text-center space-y-4">
+          <div className="w-16 h-16 rounded-lg mx-auto flex items-center justify-center shadow-inner" style={{ backgroundColor: SECTION_VISUALS.employees.bg, color: SECTION_VISUALS.employees.color }}>
             <SectionIcon id="employees" className="w-8 h-8" />
           </div>
           <div className="max-w-md mx-auto space-y-1.5">
-            <h3 className="text-title-sm font-heading font-extrabold text-slate-900">
+            <h3 className="text-title-sm font-heading font-extrabold text-gray-900">
               {t("No employees found", "Žiadni zamestnanci", "Nincsenek alkalmazottak")}
             </h3>
-            <p className="text-ui text-slate-500 leading-relaxed">
+            <p className="text-ui text-gray-500 leading-relaxed">
               {employees.length === 0
                 ? reseedHref
                   ? t(
@@ -608,7 +608,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
             {employees.length === 0 && reseedHref && (
               <a
                 href={reseedHref}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-white font-heading font-bold text-ui shadow-lg shadow-amber-500/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 text-white font-heading font-bold text-ui shadow-lg shadow-amber-500/25 hover:shadow-xl transition cursor-pointer"
               >
                 <Sparkles className="w-4 h-4" />
                 <span>{t("Re-seed demo data", "Znovu naplniť demo dáta", "Demo adatok újratöltése")}</span>
@@ -618,7 +618,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
             <button
               type="button"
               onClick={onAddEmployee}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white font-heading font-bold text-ui shadow-lg shadow-[#c29b62]/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-entity-solid hover:bg-entity-solid-hover text-white font-heading font-bold text-ui shadow-lg shadow-2xs hover:shadow-xl transition cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>{t("Add Employee", "Nový zamestnanec", "Új alkalmazott")}</span>
@@ -628,9 +628,9 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
         </div>
       ) : viewMode === "table" || isStructure ? (
         /* TABLE VIEW — the structure is the same table, in its hand-set order, with rows to drag */
-        <div ref={resultsRef} className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-clip">
+        <div ref={resultsRef} className=" rounded-lg border border-gray-200 bg-white shadow-xs overflow-clip">
           {isStructure && (
-            <p className="px-4 py-2.5 text-caption text-slate-500 border-b border-slate-200/60 bg-[#c29b62]/5">
+            <p className="px-4 py-2.5 text-caption text-gray-500 border-b border-gray-200/60 bg-[#c29b62]/5">
               {t(
                 "The structure keeps its own order. Drag rows to rearrange it.",
                 "Štruktúra má vlastné poradie. Zmeníte ho potiahnutím riadkov.",
@@ -641,17 +641,17 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
           <div ref={tableWrapRef} className="table-page-wrap">
             <table className="w-full text-left text-ui border-collapse">
               <thead className="table-page-sticky-head">
-                <tr className="border-b border-slate-200/80 bg-slate-50 text-slate-500 type-overline">
-                  <th className="sticky z-10 bg-slate-50 py-3.5 px-4">{t("Employee", "Zamestnanec", "Alkalmazott")}</th>
-                  <th className="sticky z-10 bg-slate-50 py-3.5 px-4">{t("Contact", "Kontakt", "Elérhetőség")}</th>
-                  {rights.salaries && <th className="sticky z-10 bg-slate-50 py-3.5 px-4">{t("Salary & Terms", "Mzda a podmienky", "Bér és feltételek")}</th>}
-                  <th className="sticky z-10 bg-slate-50 py-3.5 px-4">{t("Time Tracking", "Meranie času", "Időkövetés")}</th>
-                  {rights.files && <th className="sticky z-10 bg-slate-50 py-3.5 px-4">{t("Contracts", "Zmluvy", "Szerződések")}</th>}
-                  <th className="sticky z-10 bg-slate-50 py-3.5 px-4 text-center">{t("Status", "Stav", "Állapot")}</th>
-                  <th className="sticky right-0 z-30 py-3.5 px-4 text-right bg-slate-50 border-l border-slate-200/80">{t("Actions", "Akcie", "Műveletek")}</th>
+                <tr className="border-b border-gray-200/80 bg-gray-50 text-gray-500 type-overline">
+                  <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Employee", "Zamestnanec", "Alkalmazott")}</th>
+                  <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Contact", "Kontakt", "Elérhetőség")}</th>
+                  {rights.salaries && <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Salary & Terms", "Mzda a podmienky", "Bér és feltételek")}</th>}
+                  <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Time Tracking", "Meranie času", "Időkövetés")}</th>
+                  {rights.files && <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Contracts", "Zmluvy", "Szerződések")}</th>}
+                  <th className="sticky z-10 bg-gray-50 py-3.5 px-4 text-center">{t("Status", "Stav", "Állapot")}</th>
+                  <th className="sticky right-0 z-30 py-3.5 px-4 text-right bg-gray-50 border-l border-gray-200/80">{t("Actions", "Akcie", "Műveletek")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-gray-100">
                 {shownEmployees.map((emp) => {
                   const initials = emp.name
                     .split(" ")
@@ -667,7 +667,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                       data-employee-row={emp.id}
                       {...employeeDrag.rowProps(emp.id)}
                       onClick={() => onSelectEmployee(emp.id)}
-                      className={`hover:bg-slate-500/5 cursor-pointer transition group ${
+                      className={`hover:bg-gray-500/5 cursor-pointer transition group ${
                         employeeDrag.draggedId === emp.id ? "opacity-40" : ""
                       } ${
                         // A table row cannot hold a positioned marker, so the drop line is an inset edge on its cells.
@@ -683,10 +683,10 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                             <Move
                               aria-hidden
                               data-structure-handle
-                              className="w-3.5 h-3.5 shrink-0 text-slate-300 group-hover:text-[#c29b62] transition-colors cursor-grab active:cursor-grabbing"
+                              className="w-3.5 h-3.5 shrink-0 text-gray-300 group-hover:text-[#c29b62] transition-colors cursor-grab active:cursor-grabbing"
                             />
                           )}
-                          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#c29b62]/20 to-[#9e7638]/20 border border-[#c29b62]/30 text-[#9e7638] flex items-center justify-center font-heading font-bold text-ui shrink-0 shadow-xs">
+                          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#c29b62]/20 to-[#9e7638]/20 border border-entity-border text-[#9e7638] flex items-center justify-center font-heading font-bold text-ui shrink-0 shadow-xs">
                             {initials}
                           </div>
                           <div className="min-w-0">
@@ -697,13 +697,13 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                                 e.preventDefault();
                                 onSelectEmployee(emp.id);
                               }}
-                              className="font-heading font-bold text-slate-900 block group-hover:text-[#c29b62] transition truncate text-body"
+                              className="font-heading font-bold text-gray-900 block group-hover:text-[#c29b62] transition truncate text-body"
                             >
                               {emp.name}
                             </a>
                             <div className="flex items-center gap-2 mt-0.5">
                               {employeeKind(emp) !== "employee" && (
-                                <span className="text-micro font-bold text-slate-500 bg-slate-100 border border-slate-200 rounded-full px-1.5">
+                                <span className="text-micro font-bold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-1.5">
                                   {kindLabels[employeeKind(emp)]}
                                 </span>
                               )}
@@ -716,12 +716,12 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                                 </span>
                               )}
                               {(emp.position || emp.department) && (
-                                <span className="text-caption font-medium text-slate-500 truncate block">
+                                <span className="text-caption font-medium text-gray-500 truncate block">
                                   {[emp.position, emp.department].filter(Boolean).join(" · ")}
                                 </span>
                               )}
                               {emp.pin && (
-                                <span className="text-micro font-mono text-slate-400">
+                                <span className="text-micro font-mono text-gray-400">
                                   • {emp.pin}
                                 </span>
                               )}
@@ -731,18 +731,18 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                       </td>
 
                       {/* Contact */}
-                      <td className="py-3.5 px-4 text-slate-600">
+                      <td className="py-3.5 px-4 text-gray-600">
                         {emp.email && <div className="truncate font-medium">{emp.email}</div>}
-                        {emp.phone && <div className="text-micro text-slate-400 mt-0.5">{emp.phone}</div>}
+                        {emp.phone && <div className="text-micro text-gray-400 mt-0.5">{emp.phone}</div>}
                       </td>
 
                       {/* Compensation */}
                       {rights.salaries && (
                       <td className="py-3.5 px-4">
-                        <span className="font-mono font-bold text-slate-900 block text-ui">
+                        <span className="font-mono font-bold text-gray-900 block text-ui">
                           {formatNumber(emp.salaryAmount, systemLanguage)} {systemCurrency}
                         </span>
-                        <span className="text-micro text-slate-400 block mt-0.5">
+                        <span className="text-micro text-gray-400 block mt-0.5">
                           {emp.salaryType === "hourly"
                             ? t("hourly", "hodinová", "órabér")
                             : emp.salaryType === "daily"
@@ -756,12 +756,12 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                       {/* Time tracking mapping */}
                       <td className="py-3.5 px-4">
                         {emp.timeTrackingUserId ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-micro font-bold bg-[#c29b62]/10 text-[#9e7638] border border-[#c29b62]/25">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-micro font-bold bg-entity-subtle text-[#9e7638] border border-entity-border">
                             <Clock className="w-3 h-3 text-[#c29b62]" />
                             <span className="truncate max-w-30">{emp.timeTrackingUserName || emp.timeTrackingUserId}</span>
                           </span>
                         ) : (
-                          <span className="text-slate-400 text-micro">—</span>
+                          <span className="text-gray-400 text-micro">—</span>
                         )}
                       </td>
 
@@ -769,12 +769,12 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                       {rights.files && (
                       <td className="py-3.5 px-4">
                         {emp.files && emp.files.length > 0 ? (
-                          <span className="inline-flex items-center gap-1 text-caption text-slate-700 font-semibold">
+                          <span className="inline-flex items-center gap-1 text-caption text-gray-700 font-semibold">
                             <FileText className="w-3.5 h-3.5 text-[#c29b62]" />
                             <span>{emp.files.length}</span>
                           </span>
                         ) : (
-                          <span className="text-slate-400 text-micro">0</span>
+                          <span className="text-gray-400 text-micro">0</span>
                         )}
                       </td>
                       )}
@@ -785,16 +785,16 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                           className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full type-overline ${
                             emp.isActive !== false
                               ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : "bg-slate-100 text-slate-500 border border-slate-200"
+                              : "bg-gray-100 text-gray-500 border border-gray-200"
                           }`}
                         >
-                          <span className={`w-1.5 h-1.5 rounded-full ${emp.isActive !== false ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
+                          <span className={`w-1.5 h-1.5 rounded-full ${emp.isActive !== false ? "bg-emerald-500 animate-pulse" : "bg-gray-400"}`} />
                           {emp.isActive !== false ? t("Active", "Aktívny", "Aktív") : t("Inactive", "Neaktívny", "Inaktív")}
                         </span>
                       </td>
 
                       {/* Actions */}
-                      <td className="py-3.5 px-4 text-right sticky right-0 z-10 bg-white group-hover:bg-slate-50 border-l border-slate-100/80 transition-colors">
+                      <td className="py-3.5 px-4 text-right sticky right-0 z-10 bg-white group-hover:bg-gray-50 border-l border-gray-100/80 transition-colors">
                         <div
                           className="flex items-center justify-end gap-1.5"
                           onClick={(e) => e.stopPropagation()}
@@ -803,7 +803,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                           <button
                             type="button"
                             onClick={() => onEditEmployee(emp)}
-                            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                            className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition cursor-pointer"
                             title={t("Edit", "Upraviť", "Szerkesztés")}
                           >
                             <Edit3 className="w-3.5 h-3.5" />
@@ -815,13 +815,13 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                               lang={asLang(systemLanguage)}
                               what={emp.name}
                               onConfirm={() => onDeleteEmployee(emp.id)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
+                              className="p-1.5 text-gray-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition"
                               title={t("Delete", "Zmazať", "Törlés")}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </HoldToConfirmButton>
                           )}
-                          <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-600 transition ml-1" />
+                          <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-600 transition ml-1" />
                         </div>
                       </td>
                     </tr>
@@ -847,12 +847,12 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
               <div
                 key={emp.id}
                 onClick={() => onSelectEmployee(emp.id)}
-                className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 hover:shadow-xl hover:-translate-y-1 transition-all duration-200 flex flex-col justify-between space-y-4 group cursor-pointer relative"
+                className=" rounded-lg border border-gray-200 bg-white shadow-xs p-6 hover:shadow-xl hover:-translate-y-1 transition-all duration-200 flex flex-col justify-between space-y-4 group cursor-pointer relative"
               >
                 <div>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#c29b62]/20 to-[#9e7638]/20 border border-[#c29b62]/30 text-[#9e7638] flex items-center justify-center font-heading font-bold text-body shrink-0 shadow-xs">
+                      <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[#c29b62]/20 to-[#9e7638]/20 border border-entity-border text-[#9e7638] flex items-center justify-center font-heading font-bold text-body shrink-0 shadow-xs">
                         {initials}
                       </div>
                       <div className="min-w-0">
@@ -862,18 +862,18 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                             e.preventDefault();
                             onSelectEmployee(emp.id);
                           }}
-                          className="font-heading font-bold text-body text-slate-900 group-hover:text-[#c29b62] transition truncate block"
+                          className="font-heading font-bold text-body text-gray-900 group-hover:text-[#c29b62] transition truncate block"
                         >
                           {emp.name}
                         </a>
                         {emp.position || emp.department ? (
-                          <span className="text-caption font-medium text-slate-500 truncate block">
+                          <span className="text-caption font-medium text-gray-500 truncate block">
                             {[emp.position, emp.department].filter(Boolean).join(" · ")}
                           </span>
                         ) : emp.pin ? (
-                          <span className="text-micro font-mono text-slate-400 block">{emp.pin}</span>
+                          <span className="text-micro font-mono text-gray-400 block">{emp.pin}</span>
                         ) : (
-                          <span className="text-micro text-slate-400 block">{emp.addressCity || "—"}</span>
+                          <span className="text-micro text-gray-400 block">{emp.addressCity || "—"}</span>
                         )}
                       </div>
                     </div>
@@ -882,37 +882,37 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                       className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full type-overline shrink-0 ${
                         emp.isActive !== false
                           ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                          : "bg-slate-100 text-slate-500 border border-slate-200"
+                          : "bg-gray-100 text-gray-500 border border-gray-200"
                       }`}
                     >
-                      <span className={`w-1.5 h-1.5 rounded-full ${emp.isActive !== false ? "bg-emerald-500" : "bg-slate-400"}`} />
+                      <span className={`w-1.5 h-1.5 rounded-full ${emp.isActive !== false ? "bg-emerald-500" : "bg-gray-400"}`} />
                       {emp.isActive !== false ? t("Active", "Aktívny", "Aktív") : t("Inactive", "Neaktívny", "Inaktív")}
                     </span>
                   </div>
 
-                  <div className="mt-4 pt-3 border-t border-slate-100 space-y-2 text-ui text-slate-600">
+                  <div className="mt-4 pt-3 border-t border-gray-100 space-y-2 text-ui text-gray-600">
                     {emp.email && (
                       <div className="flex items-center gap-2 truncate">
-                        <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                         <span className="truncate font-medium">{emp.email}</span>
                       </div>
                     )}
                     {emp.phone && (
                       <div className="flex items-center gap-2">
-                        <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="text-slate-500">{emp.phone}</span>
+                        <Phone className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <span className="text-gray-500">{emp.phone}</span>
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-ui">
+                <div className="pt-3 border-t border-gray-100 flex items-center justify-between text-ui">
                   <div>
                     {rights.salaries && (<>
-                    <span className="font-mono font-bold text-slate-900 block text-body">
+                    <span className="font-mono font-bold text-gray-900 block text-body">
                       {formatNumber(emp.salaryAmount, systemLanguage)} {systemCurrency}
                     </span>
-                    <span className="text-micro text-slate-400 font-medium">
+                    <span className="text-micro text-gray-400 font-medium">
                       {emp.salaryType === "hourly"
                         ? t("hourly", "hodinová", "órabér")
                         : emp.salaryType === "daily"
@@ -930,7 +930,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                     <button
                       type="button"
                       onClick={() => onEditEmployee(emp)}
-                      className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+                      className="p-2 text-gray-400 hover:text-gray-700 rounded-md hover:bg-gray-100 transition cursor-pointer"
                       title={t("Edit", "Upraviť", "Szerkesztés")}
                     >
                       <Edit3 className="w-3.5 h-3.5" />
@@ -941,7 +941,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                         lang={asLang(systemLanguage)}
                         what={emp.name}
                         onConfirm={() => onDeleteEmployee(emp.id)}
-                        className="p-2 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition"
+                        className="p-2 text-gray-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition"
                         title={t("Delete", "Zmazať", "Törlés")}
                     >
                       <Trash2 className="w-3.5 h-3.5" />

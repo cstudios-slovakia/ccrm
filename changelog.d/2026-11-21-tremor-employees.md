@@ -1,0 +1,1 @@
+- **Employees & Payroll UI (`employees/`)**: Remade Employee List, Employee Detail, My Employment, Salary Cell Drawer, Vacation Modal, AI Summary banner (RAG AI accent), CCRM Timesheet (Time Tracking accent), and Files tab (Files accent) in Tremor Blocks with entity accent scoping.

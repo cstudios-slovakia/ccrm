@@ -53,7 +53,7 @@ export const LinkedUserPicker: React.FC<LinkedUserPickerProps> = ({
   const warn = current ? roleSeesEveryEmployee(roles, current.role) : false;
 
   const label = (
-    <label className={`block ${compact ? "type-overline text-slate-500 mb-0.5" : "text-ui font-bold text-slate-600 mb-1.5"}`} htmlFor="employee-linked-user">
+    <label className={`block ${compact ? "type-overline text-gray-500 mb-0.5" : "text-ui font-bold text-gray-600 mb-1.5"}`} htmlFor="employee-linked-user">
       {tr("employees.link.label")}
     </label>
   );
@@ -62,10 +62,10 @@ export const LinkedUserPicker: React.FC<LinkedUserPickerProps> = ({
     return (
       <div data-testid="employee-link-readonly">
         {label}
-        <div className="type-body text-slate-800">
-          {current ? `${current.name} (${current.email})` : <span className="text-slate-400">{tr("employees.link.none")}</span>}
+        <div className="type-body text-gray-800">
+          {current ? `${current.name} (${current.email})` : <span className="text-gray-400">{tr("employees.link.none")}</span>}
         </div>
-        <p className="type-meta text-slate-500 mt-1">{tr("employees.link.no_permission")}</p>
+        <p className="type-meta text-gray-500 mt-1">{tr("employees.link.no_permission")}</p>
       </div>
     );
   }
@@ -78,7 +78,7 @@ export const LinkedUserPicker: React.FC<LinkedUserPickerProps> = ({
           id="employee-linked-user"
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value === "" ? null : e.target.value)}
-          className="w-full px-3 py-2 text-ui bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+          className="w-full px-3 py-2 text-ui bg-white border border-gray-200 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
         >
           <option value="">{tr("employees.link.none")}</option>
           {selectable.map((u) => (
@@ -87,11 +87,11 @@ export const LinkedUserPicker: React.FC<LinkedUserPickerProps> = ({
             </option>
           ))}
         </select>
-        <p className="type-meta text-slate-500 mt-1">{tr("employees.link.hint")}</p>
+        <p className="type-meta text-gray-500 mt-1">{tr("employees.link.hint")}</p>
       </div>
 
       {suggestion && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2" data-testid="employee-link-suggestion">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2" data-testid="employee-link-suggestion">
           <span className="type-meta text-sky-900">
             {formatTranslation(lang, "employees.link.suggestion", { name: suggestion.name, email: suggestion.email })}
           </span>
@@ -107,7 +107,7 @@ export const LinkedUserPicker: React.FC<LinkedUserPickerProps> = ({
       )}
 
       {warn && (
-        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2" data-testid="employee-link-warning" role="alert">
+        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2" data-testid="employee-link-warning" role="alert">
           <AlertTriangle className="size-4 text-amber-600 shrink-0 mt-0.5" />
           <span className="type-meta text-amber-900">{tr("employees.link.warn_access")}</span>
         </div>

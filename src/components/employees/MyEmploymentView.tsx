@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { SECTION_VISUALS } from "../../utils/sectionVisuals";
+import { entityAccentStyle } from "../../utils/entityAccent";
 import {
   CalendarDays,
   Clock,
@@ -55,11 +56,11 @@ const EmbeddedPage = ({ children }: { children: React.ReactNode }) => (
 );
 
 const inputClass =
-  "w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm disabled:bg-slate-50 disabled:text-slate-500";
+  "w-full px-4 py-2.5 text-body bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm disabled:bg-gray-50 disabled:text-gray-500";
 const primaryButton =
-  "h-10 px-4 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 text-white text-ui font-semibold hover:bg-slate-800 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer";
+  "h-10 px-4 inline-flex items-center justify-center gap-2 rounded-md bg-gray-900 text-white text-ui font-semibold hover:bg-gray-800 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer";
 const secondaryButton =
-  "h-10 px-4 inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-ui font-semibold hover:bg-slate-50 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer";
+  "h-10 px-4 inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white text-gray-700 text-ui font-semibold hover:bg-gray-50 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer";
 
 const statusBadge = (status: string): string => {
   if (status === "approved" || status === "paid" || status === "taken") return "bg-emerald-50 text-emerald-700 border-emerald-200";
@@ -218,7 +219,7 @@ export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLangua
     return (
       <Page>
         {header}
-        <div className="flex items-center gap-2 text-slate-500 type-body" data-testid="my-employment-loading">
+        <div className="flex items-center gap-2 text-gray-500 type-body" data-testid="my-employment-loading">
           <Loader2 className="size-4 animate-spin" /> {tr("myEmployment.loading")}
         </div>
       </Page>
@@ -280,18 +281,23 @@ export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLangua
     documents: <FileText />,
     hours: <Clock />,
   };
-  const tabItems: TabItem<MyEmploymentTab>[] = tabs.map((key) => ({ key, label: tr(`myEmployment.tab.${key}`), icon: tabIcons[key] }));
+  const tabItems: TabItem<MyEmploymentTab>[] = tabs.map((key) => ({
+    key,
+    label: tr(`myEmployment.tab.${key}`),
+    icon: tabIcons[key],
+    entity: key === "documents" ? "files" : key === "hours" ? "time-tracking" : undefined,
+  }));
 
   const readOnlyNote = (
-    <p className="type-meta text-slate-500" data-testid="my-employment-readonly">
+    <p className="type-meta text-gray-500" data-testid="my-employment-readonly">
       {tr("myEmployment.readonly")}
     </p>
   );
 
   const field = (label: string, value: string | null | undefined, mono = false) => (
     <div className="min-w-0">
-      <dt className="type-label text-slate-500">{label}</dt>
-      <dd className={`type-body text-slate-900 break-words ${mono ? "font-mono" : ""}`}>{value && value.trim() !== "" ? value : "—"}</dd>
+      <dt className="type-label text-gray-500">{label}</dt>
+      <dd className={`type-body text-gray-900 break-words ${mono ? "font-mono" : ""}`}>{value && value.trim() !== "" ? value : "—"}</dd>
     </div>
   );
 
@@ -312,7 +318,7 @@ export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLangua
               <div
                 role="status"
                 data-testid="my-employment-notice"
-                className={`rounded-2xl border px-4 py-3 type-body ${
+                className={`rounded-lg border px-4 py-3 type-body ${
                   notice.tone === "ok" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-rose-200 bg-rose-50 text-rose-800"
                 }`}
               >
@@ -329,11 +335,11 @@ export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLangua
                     {field(tr("myEmployment.personal.pin"), overview.personal.pin, true)}
                   </dl>
 
-                  <div className="border-t border-slate-100 pt-5 flex flex-col gap-4">
+                  <div className="border-t border-gray-100 pt-5 flex flex-col gap-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <h3 className="type-card-title text-slate-900">{tr("myEmployment.personal.contact")}</h3>
-                        <p className="type-meta text-slate-500">{overview.can.editProfile ? tr("myEmployment.personal.contact_hint") : tr("myEmployment.readonly")}</p>
+                        <h3 className="type-card-title text-gray-900">{tr("myEmployment.personal.contact")}</h3>
+                        <p className="type-meta text-gray-500">{overview.can.editProfile ? tr("myEmployment.personal.contact_hint") : tr("myEmployment.readonly")}</p>
                       </div>
                       {overview.can.editProfile && !editingContact && (
                         <button type="button" className={secondaryButton} onClick={startEditContact} data-testid="my-employment-edit-contact">
@@ -389,15 +395,15 @@ export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLangua
                 <Surface>
                   <div className="grid grid-cols-1 gap-4 ws-md:grid-cols-2">
                     <div>
-                      <div className="type-label text-slate-500">{tr("myEmployment.pay.rate")}</div>
-                      <div className="type-metric text-slate-900" data-testid="my-employment-rate">
+                      <div className="type-label text-gray-500">{tr("myEmployment.pay.rate")}</div>
+                      <div className="type-metric text-gray-900" data-testid="my-employment-rate">
                         {formatMoney(overview.pay.salaryAmount, systemCurrency, lang)}{" "}
-                        <span className="type-body text-slate-500">{tr(`myEmployment.pay.per.${overview.pay.salaryType}`)}</span>
+                        <span className="type-body text-gray-500">{tr(`myEmployment.pay.per.${overview.pay.salaryType}`)}</span>
                       </div>
                     </div>
                     <div>
-                      <div className="type-label text-slate-500">{tr("myEmployment.pay.due_day")}</div>
-                      <div className="type-body text-slate-900">
+                      <div className="type-label text-gray-500">{tr("myEmployment.pay.due_day")}</div>
+                      <div className="type-body text-gray-900">
                         {overview.pay.salaryDueDay != null
                           ? formatTranslation(lang, "myEmployment.pay.due_day_value", { day: String(overview.pay.salaryDueDay) })
                           : "—"}
@@ -409,15 +415,15 @@ export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLangua
 
                 <Surface padding="none">
                   <div className="px-4 ws-sm:px-6 pt-4 ws-sm:pt-6 pb-2">
-                    <h3 className="type-card-title text-slate-900">{tr("myEmployment.pay.records")}</h3>
+                    <h3 className="type-card-title text-gray-900">{tr("myEmployment.pay.records")}</h3>
                   </div>
                   {overview.pay.payroll.length === 0 ? (
-                    <p className="px-4 ws-sm:px-6 pb-6 type-body text-slate-500">{tr("myEmployment.pay.empty")}</p>
+                    <p className="px-4 ws-sm:px-6 pb-6 type-body text-gray-500">{tr("myEmployment.pay.empty")}</p>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-left" data-testid="my-employment-payroll">
                         <thead>
-                          <tr className="border-y border-slate-100 bg-slate-50 type-overline text-slate-500">
+                          <tr className="border-y border-gray-100 bg-gray-50 type-overline text-gray-500">
                             <th className="px-4 ws-sm:px-6 py-2">{tr("myEmployment.pay.period")}</th>
                             <th className="px-3 py-2 text-right">{tr("myEmployment.pay.total")}</th>
                             <th className="px-3 py-2 text-right">{tr("myEmployment.pay.net")}</th>
@@ -427,7 +433,7 @@ export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLangua
                         </thead>
                         <tbody>
                           {overview.pay.payroll.map((row) => (
-                            <tr key={row.id} className="border-b border-slate-100 type-body text-slate-800">
+                            <tr key={row.id} className="border-b border-gray-100 type-body text-gray-800">
                               <td className="px-4 ws-sm:px-6 py-2.5 font-semibold">{row.periodKey}</td>
                               <td className="px-3 py-2.5 text-right tabular-nums">{formatMoney(row.totalSalary, systemCurrency, lang)}</td>
                               <td className="px-3 py-2.5 text-right tabular-nums">{formatMoney(row.netPay ?? row.totalPaid, systemCurrency, lang)}</td>
@@ -450,23 +456,23 @@ export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLangua
             {tab === "leave" && overview.leave && (
               <div className="flex flex-col gap-4">
                 <Surface>
-                  <h3 className="type-card-title text-slate-900 mb-3">{tr("myEmployment.leave.balances")}</h3>
+                  <h3 className="type-card-title text-gray-900 mb-3">{tr("myEmployment.leave.balances")}</h3>
                   <div className="grid grid-cols-1 gap-3 ws-md:grid-cols-2 ws-2xl:grid-cols-4" data-testid="my-employment-balances">
                     {overview.leave.balances.map((b) => {
                       const pct = b.allowance > 0 ? Math.min(100, Math.round((b.used / b.allowance) * 100)) : 0;
                       return (
                         <Surface tone="inset" key={b.typeId}>
-                          <div className="flex items-center gap-2 type-label text-slate-700">
+                          <div className="flex items-center gap-2 type-label text-gray-700">
                             <span className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: typeColor(b.typeId) }} />
                             <span className="truncate">{typeName(b.typeId)}</span>
                           </div>
-                          <div className="type-body text-slate-900 mt-1 tabular-nums">
+                          <div className="type-body text-gray-900 mt-1 tabular-nums">
                             {formatNumber(b.used, lang)} / {formatNumber(b.allowance, lang)} {tr("myEmployment.leave.used")}
                           </div>
-                          <div className="h-1.5 rounded-full bg-slate-200 mt-2 overflow-hidden">
-                            <div className="h-full rounded-full bg-slate-700" style={{ width: `${pct}%` }} />
+                          <div className="h-1.5 rounded-full bg-gray-200 mt-2 overflow-hidden">
+                            <div className="h-full rounded-full bg-gray-700" style={{ width: `${pct}%` }} />
                           </div>
-                          <div className="type-meta text-slate-500 mt-1">
+                          <div className="type-meta text-gray-500 mt-1">
                             {formatNumber(b.remaining, lang)} {tr("myEmployment.leave.remaining")}
                           </div>
                         </Surface>
@@ -477,7 +483,7 @@ export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLangua
 
                 {overview.can.requestLeave && (
                   <Surface>
-                    <h3 className="type-card-title text-slate-900 mb-3">{tr("myEmployment.leave.request")}</h3>
+                    <h3 className="type-card-title text-gray-900 mb-3">{tr("myEmployment.leave.request")}</h3>
                     <form onSubmit={submitLeave} data-testid="my-employment-leave-form" className="flex flex-col gap-4">
                       <FormGrid>
                         <Field label={tr("myEmployment.leave.type")} htmlFor="me-leave-type">
@@ -514,20 +520,20 @@ export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLangua
 
                 <Surface padding="none">
                   <div className="px-4 ws-sm:px-6 pt-4 ws-sm:pt-6 pb-2">
-                    <h3 className="type-card-title text-slate-900">{tr("myEmployment.leave.requests")}</h3>
+                    <h3 className="type-card-title text-gray-900">{tr("myEmployment.leave.requests")}</h3>
                   </div>
                   {overview.leave.requests.length === 0 ? (
-                    <p className="px-4 ws-sm:px-6 pb-6 type-body text-slate-500">{tr("myEmployment.leave.empty")}</p>
+                    <p className="px-4 ws-sm:px-6 pb-6 type-body text-gray-500">{tr("myEmployment.leave.empty")}</p>
                   ) : (
-                    <ul className="divide-y divide-slate-100" data-testid="my-employment-leave-list">
+                    <ul className="divide-y divide-gray-100" data-testid="my-employment-leave-list">
                       {overview.leave.requests.map((r) => (
                         <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-4 ws-sm:px-6 py-3">
                           <div className="min-w-0">
-                            <div className="flex items-center gap-2 type-body text-slate-900 font-semibold">
+                            <div className="flex items-center gap-2 type-body text-gray-900 font-semibold">
                               <span className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: typeColor(r.vacationTypeId) }} />
                               <span className="truncate">{typeName(r.vacationTypeId)}</span>
                             </div>
-                            <div className="type-meta text-slate-500">
+                            <div className="type-meta text-gray-500">
                               {fmtDate(r.startDate)} – {fmtDate(r.endDate)} · {formatTranslation(lang, "myEmployment.leave.days", { days: formatNumber(r.daysCount, lang) })}
                             </div>
                           </div>
@@ -550,20 +556,21 @@ export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLangua
             )}
 
             {tab === "documents" && overview.documents && (
+              <div style={entityAccentStyle("files") as React.CSSProperties}>
               <Surface padding="none">
                 {overview.documents.length === 0 ? (
-                  <p className="p-6 type-body text-slate-500">{tr("myEmployment.docs.empty")}</p>
+                  <p className="p-6 type-body text-gray-500">{tr("myEmployment.docs.empty")}</p>
                 ) : (
-                  <ul className="divide-y divide-slate-100" data-testid="my-employment-documents">
+                  <ul className="divide-y divide-gray-100" data-testid="my-employment-documents">
                     {overview.documents.map((d) => (
                       <li key={d.id} className="flex items-center justify-between gap-3 px-4 ws-sm:px-6 py-3">
                         <div className="flex min-w-0 items-center gap-3">
-                          <span className="size-9 shrink-0 inline-flex items-center justify-center rounded-xl bg-[#c29b62]/15 text-[#9e7638]">
+                          <span className="size-9 shrink-0 inline-flex items-center justify-center rounded-md bg-entity-subtle text-entity-text border border-entity-border">
                             <FileText className="size-4" />
                           </span>
                           <div className="min-w-0">
-                            <div className="type-body text-slate-900 font-semibold truncate" title={d.name}>{d.name}</div>
-                            <div className="type-meta text-slate-500">
+                            <div className="type-body text-gray-900 font-semibold truncate" title={d.name}>{d.name}</div>
+                            <div className="type-meta text-gray-500">
                               {d.size ? `${(d.size / 1024).toFixed(1)} KB` : ""}
                               {d.size && d.uploadedAt ? " · " : ""}
                               {d.uploadedAt ? formatTranslation(lang, "myEmployment.docs.uploaded", { date: fmtDate(d.uploadedAt) }) : ""}
@@ -579,15 +586,17 @@ export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLangua
                   </ul>
                 )}
               </Surface>
+              </div>
             )}
 
             {tab === "hours" && (
+              <div style={entityAccentStyle("time-tracking") as React.CSSProperties}>
               <Surface>
                 <div className="flex items-center justify-between gap-3 mb-4">
                   <button type="button" className={secondaryButton} onClick={() => shiftMonth(-1)} aria-label={tr("myEmployment.hours.prev")} title={tr("myEmployment.hours.prev")}>
                     <ChevronLeft className="size-4" />
                   </button>
-                  <div className="type-card-title text-slate-900 tabular-nums">
+                  <div className="type-card-title text-gray-900 tabular-nums">
                     {new Date(hoursMonth.year, hoursMonth.month - 1, 1).toLocaleDateString(locale, { month: "long", year: "numeric" })}
                   </div>
                   <button type="button" className={secondaryButton} onClick={() => shiftMonth(1)} aria-label={tr("myEmployment.hours.next")} title={tr("myEmployment.hours.next")}>
@@ -596,28 +605,28 @@ export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLangua
                 </div>
 
                 {hours.status === "loading" && (
-                  <div className="flex items-center gap-2 text-slate-500 type-body"><Loader2 className="size-4 animate-spin" /> {tr("myEmployment.loading")}</div>
+                  <div className="flex items-center gap-2 text-gray-500 type-body"><Loader2 className="size-4 animate-spin" /> {tr("myEmployment.loading")}</div>
                 )}
-                {hours.status === "none" && <p className="type-body text-slate-500" data-testid="my-employment-no-tracker">{tr("myEmployment.hours.no_tracker")}</p>}
+                {hours.status === "none" && <p className="type-body text-gray-500" data-testid="my-employment-no-tracker">{tr("myEmployment.hours.no_tracker")}</p>}
                 {hours.status === "error" && <p className="type-body text-rose-700">{tr(errorTranslationKey(hours.code === "hours_unavailable" ? "hours_unavailable" : hours.code))}</p>}
                 {hours.status === "ok" && (
                   <div className="flex flex-col gap-4">
                     <div className="grid grid-cols-2 gap-3">
                       <Surface tone="inset">
-                        <div className="type-label text-slate-500">{tr("myEmployment.hours.total")}</div>
-                        <div className="type-metric text-slate-900 tabular-nums">{formatNumber(hours.data?.total_hours ?? 0, lang)} h</div>
+                        <div className="type-label text-gray-500">{tr("myEmployment.hours.total")}</div>
+                        <div className="type-metric text-gray-900 tabular-nums">{formatNumber(hours.data?.total_hours ?? 0, lang)} h</div>
                       </Surface>
                       <Surface tone="inset">
-                        <div className="type-label text-slate-500">{tr("myEmployment.hours.active_days")}</div>
-                        <div className="type-metric text-slate-900 tabular-nums">{hours.data?.active_days ?? 0}</div>
+                        <div className="type-label text-gray-500">{tr("myEmployment.hours.active_days")}</div>
+                        <div className="type-metric text-gray-900 tabular-nums">{hours.data?.active_days ?? 0}</div>
                       </Surface>
                     </div>
                     <div>
-                      <h3 className="type-card-title text-slate-900 mb-2">{tr("myEmployment.hours.daily")}</h3>
-                      <ul className="divide-y divide-slate-100 rounded-2xl border border-slate-100">
+                      <h3 className="type-card-title text-gray-900 mb-2">{tr("myEmployment.hours.daily")}</h3>
+                      <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100">
                         {(hours.data?.daily_log ?? []).filter((d) => d.hours > 0).map((d) => (
-                          <li key={d.date} className="flex items-center justify-between px-4 py-2 type-body text-slate-800">
-                            <span>{fmtDate(d.date)} <span className="text-slate-400">{d.weekday}</span></span>
+                          <li key={d.date} className="flex items-center justify-between px-4 py-2 type-body text-gray-800">
+                            <span>{fmtDate(d.date)} <span className="text-gray-400">{d.weekday}</span></span>
                             <span className="tabular-nums font-semibold">{formatNumber(d.hours, lang)} h</span>
                           </li>
                         ))}
@@ -626,6 +635,7 @@ export const MyEmploymentView: React.FC<MyEmploymentViewProps> = ({ systemLangua
                   </div>
                 )}
               </Surface>
+              </div>
             )}
           </>
         )}

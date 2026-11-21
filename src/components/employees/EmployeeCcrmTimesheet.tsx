@@ -4,6 +4,7 @@ import { listEntries } from "../../utils/timeTrackingApi.ts";
 import { formatDuration } from "../../utils/timeTracking.ts";
 import type { Employee } from "../../types";
 import { PRODUCT_NAME } from "../../utils/brand";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
 interface Props {
   employee: Employee;
@@ -58,7 +59,7 @@ export function EmployeeCcrmTimesheet({ employee, year, month, t }: Props) {
   if (!userId) {
     return (
       <Surface>
-        <p className="text-body text-slate-500">
+        <p className="text-body text-gray-500">
           {t(
             `This employee has no ${brand} login, so there is no native time to show. Toggl stays available on the switch.`,
             `Tento zamestnanec nemá prihlásenie do ${brand}, preto nie je čo zobraziť z evidencie času. Toggl zostáva na prepínači.`,
@@ -70,29 +71,31 @@ export function EmployeeCcrmTimesheet({ employee, year, month, t }: Props) {
   }
 
   return (
-    <Surface className="space-y-3" data-testid="ccrm-timesheet">
-      <h3 className="type-card-title text-slate-900">{t(`${brand} time tracking`, `Evidencia času ${brand}`, `${brand} időkövetés`)}</h3>
+    <div style={entityAccentStyle("time-tracking") as React.CSSProperties}>
+      <Surface className="space-y-3" data-testid="ccrm-timesheet">
+      <h3 className="type-card-title text-gray-900">{t(`${brand} time tracking`, `Evidencia času ${brand}`, `${brand} időkövetés`)}</h3>
       {error ? (
-        <p className="text-body text-rose-700">{t("Could not load time entries.", "Záznamy času sa nepodarilo načítať.", "Az időbejegyzéseket nem sikerült betölteni.")}</p>
+        <p className="text-body text-rose-700">{t("Could not load time entries.", "Záznamy času sa nepodarilo načíť.", "Az időbejegyzéseket nem sikerült betölteni.")}</p>
       ) : seconds === null ? (
-        <p className="text-body text-slate-500">{t("Loading…", "Načítava sa…", "Betöltés…")}</p>
+        <p className="text-body text-gray-500">{t("Loading…", "Načítava sa…", "Betöltés…")}</p>
       ) : (
         <>
-          <p className="text-metric tabular-nums text-teal-700">{label}</p>
+          <p className="text-metric tabular-nums text-entity-text">{label}</p>
           {days.length === 0 ? (
-            <p className="text-body text-slate-500">{t("Nothing logged this month.", "Tento mesiac nie je nič zaznamenané.", "Ebben a hónapban nincs rögzített idő.")}</p>
+            <p className="text-body text-gray-500">{t("Nothing logged this month.", "Tento mesiac nie je nič zaznamenané.", "Ebben a hónapban nincs rögzített idő.")}</p>
           ) : (
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-gray-100">
               {days.map((day) => (
                 <li key={day.date} className="flex items-center justify-between py-2 text-ui">
-                  <span className="tabular-nums text-slate-700">{day.date}</span>
-                  <span className="tabular-nums font-semibold text-slate-900">{formatDuration(day.seconds)}</span>
+                  <span className="tabular-nums text-gray-700">{day.date}</span>
+                  <span className="tabular-nums font-semibold text-gray-900">{formatDuration(day.seconds)}</span>
                 </li>
               ))}
             </ul>
           )}
         </>
       )}
-    </Surface>
+      </Surface>
+    </div>
   );
 }

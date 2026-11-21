@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Brain, RefreshCw } from "lucide-react";
 import { hasAiConfigured } from "../../utils/aiConfig";
+import { entityAccentStyle } from "../../utils/entityAccent";
 import { fetchWithTimeout } from "../../utils/fetchWithTimeout";
 import type { Employee, EmployeeSalary, EmployeeVacation } from "../../types";
 import { employeeKind, identityComplete, identityOf } from "../../utils/employeeIdentity";
@@ -209,28 +210,29 @@ export const EmployeeAiSummaryBanner = ({
     <>
       <div
         data-testid="employee-ai-summary"
-        className={`rounded-2xl border p-4 shadow-sm transition-colors ${
+        style={combinedEmployeeProblems.length > 0 ? undefined : (entityAccentStyle("rag_ai") as React.CSSProperties)}
+        className={`rounded-lg border p-4 shadow-xs transition-colors ${
           combinedEmployeeProblems.length > 0
             ? "bg-rose-50/75 border-rose-200/80"
-            : "bg-amber-50/40 border-[#c29b62]/30"
+            : "bg-entity-subtle border-entity-border"
         }`}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2">
             <Brain
               className={`size-4 shrink-0 ${
-                combinedEmployeeProblems.length > 0 ? "text-rose-600" : "text-[#9e7638]"
+                combinedEmployeeProblems.length > 0 ? "text-rose-600" : "text-entity-text"
               } ${isGeneratingSummary ? "animate-pulse" : ""}`}
             />
             <span
               className={`text-micro font-bold uppercase tracking-wider ${
-                combinedEmployeeProblems.length > 0 ? "text-rose-700" : "text-[#9e7638]"
+                combinedEmployeeProblems.length > 0 ? "text-rose-700" : "text-entity-text"
               }`}
             >
               {t("AI Employee Summary & Problem Monitor", "AI Zhrnutie zamestnanca a riziká", "AI Alkalmazotti Összefoglaló és Problémák")}
             </span>
             {combinedEmployeeProblems.length > 0 && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-rose-100 text-rose-700 border border-rose-200">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-bold bg-rose-100 text-rose-700 border border-rose-200">
                 ⚠️ {combinedEmployeeProblems.length}{" "}
                 {t("problem(s)", "problém(y)", "probléma")}
               </span>
@@ -241,10 +243,10 @@ export const EmployeeAiSummaryBanner = ({
               type="button"
               onClick={() => generateEmployeeAiSummary(true)}
               disabled={isGeneratingSummary}
-              className="p-1 rounded-lg hover:bg-white/80 text-slate-500 hover:text-slate-700 transition-colors disabled:opacity-50"
+              className="p-1 rounded-md hover:bg-white text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50 cursor-pointer"
               title={t("Regenerate AI Summary", "Pregenerovať AI zhrnutie", "AI összefoglaló újragenerálása")}
             >
-              <RefreshCw className={`size-3.5 ${isGeneratingSummary ? "animate-spin text-[#9e7638]" : ""}`} />
+              <RefreshCw className={`size-3.5 ${isGeneratingSummary ? "animate-spin text-entity-text" : ""}`} />
             </button>
           )}
         </div>
@@ -263,9 +265,9 @@ export const EmployeeAiSummaryBanner = ({
           </div>
         )}
 
-        <p className="mt-2 text-caption text-slate-700 leading-relaxed">
+        <p className="mt-2 text-caption text-gray-700 leading-relaxed">
           {isGeneratingSummary && !aiSummary ? (
-            <span className="italic text-slate-400">
+            <span className="italic text-gray-400">
               {t("Analyzing employee records, salaries, and absences...", "Analyzujem záznamy, mzdy a dovolenky zamestnanca...", "Alkalmazotti adatok, bérek és szabadságok elemzése...")}
             </span>
           ) : aiSummary ? (

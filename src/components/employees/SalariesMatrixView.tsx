@@ -160,31 +160,31 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
   return (
     <div className="space-y-4">
       {/* Top Controls: Year selector, active filter, metric lightswitch, and grand summary card */}
-      <div className="glass-panel rounded-2xl border border-white/60 bg-white/95 shadow-glass p-3.5 flex flex-col ws-xl:flex-row ws-xl:items-center justify-between gap-4">
+      <div className=" rounded-lg border border-gray-200 bg-white shadow-xs p-3.5 flex flex-col ws-xl:flex-row ws-xl:items-center justify-between gap-4">
         <div className="flex items-center flex-wrap gap-3">
-          <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/40">
+          <div className="flex items-center gap-1 bg-gray-100/80 p-1 rounded-md border border-gray-200/40">
             <button
               type="button"
               onClick={() => setSelectedYear((y) => y - 1)}
-              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-white transition cursor-pointer"
+              className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-white transition cursor-pointer"
               title={t("Previous Year", "Predchádzajúci rok", "Előző év")}
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="px-3 text-body font-bold font-mono text-slate-800">
+            <span className="px-3 text-body font-bold font-mono text-gray-800">
               {selectedYear}
             </span>
             <button
               type="button"
               onClick={() => setSelectedYear((y) => y + 1)}
-              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-white transition cursor-pointer"
+              className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-white transition cursor-pointer"
               title={t("Next Year", "Nasledujúci rok", "Következő év")}
             >
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
 
-          <label className="flex items-center gap-2 text-ui font-medium text-slate-600 cursor-pointer select-none">
+          <label className="flex items-center gap-2 text-ui font-medium text-gray-600 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={onlyActive}
@@ -198,7 +198,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
           <div
             role="radiogroup"
             aria-label={t("Filter display by paid or remaining", "Zobraziť vyplatené alebo zostávajúce", "Kifizetett vagy hátralék megjelenítése")}
-            className="inline-flex items-center p-0.5 rounded-xl bg-slate-100/90 border border-slate-200/80 shadow-inner"
+            className="inline-flex items-center p-0.5 rounded-md bg-gray-100/90 border border-gray-200/80 shadow-inner"
           >
             <button
               type="button"
@@ -208,7 +208,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-ui font-bold transition-all duration-150 cursor-pointer ${
                 displayMetric === "paid"
                   ? "bg-white text-[#c29b62] shadow-xs"
-                  : "text-slate-500 hover:text-slate-800"
+                  : "text-gray-500 hover:text-gray-800"
               }`}
             >
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
@@ -222,7 +222,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-ui font-bold transition-all duration-150 cursor-pointer ${
                 displayMetric === "remaining"
                   ? "bg-white text-amber-600 shadow-xs"
-                  : "text-slate-500 hover:text-slate-800"
+                  : "text-gray-500 hover:text-gray-800"
               }`}
             >
               <Clock className="w-3.5 h-3.5 text-amber-500" />
@@ -233,21 +233,21 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
 
         {/* Grand Total Badges */}
         <div className="flex items-center flex-wrap gap-2.5">
-          <div className="px-3.5 py-1.5 rounded-xl bg-slate-100/70 border border-slate-200/60 text-right">
-            <span className="type-overline text-slate-400 block">
+          <div className="px-3.5 py-1.5 rounded-md bg-gray-100/70 border border-gray-200/60 text-right">
+            <span className="type-overline text-gray-400 block">
               {t("Total Payroll Cost", "Mzdové náklady", "Bérköltségek")} ({selectedYear})
             </span>
-            <span className="text-body font-bold font-mono text-slate-800">
+            <span className="text-body font-bold font-mono text-gray-800">
               {formatNumber(grandTotal.totalSalary, systemLanguage, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {systemCurrency}
             </span>
           </div>
 
           <div
             onClick={() => setDisplayMetric("paid")}
-            className={`px-3.5 py-1.5 rounded-xl transition cursor-pointer text-right ${
+            className={`px-3.5 py-1.5 rounded-md transition cursor-pointer text-right ${
               displayMetric === "paid"
-                ? "bg-[#c29b62]/15 border-2 border-[#c29b62] shadow-xs"
-                : "bg-[#c29b62]/10 border border-[#c29b62]/30 opacity-80 hover:opacity-100"
+                ? "bg-entity-subtle border-2 border-[#c29b62] shadow-xs"
+                : "bg-entity-subtle border border-entity-border opacity-80 hover:opacity-100"
             }`}
             title={t("Click to show paid amounts in table", "Kliknite pre zobrazenie vyplatených súm", "Kattintson a kifizetett összegek megjelenítéséhez")}
           >
@@ -261,7 +261,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
 
           <div
             onClick={() => setDisplayMetric("remaining")}
-            className={`px-3.5 py-1.5 rounded-xl transition cursor-pointer text-right ${
+            className={`px-3.5 py-1.5 rounded-md transition cursor-pointer text-right ${
               displayMetric === "remaining"
                 ? "bg-amber-500/15 border-2 border-amber-500 shadow-xs"
                 : "bg-amber-500/10 border border-amber-500/30 opacity-80 hover:opacity-100"
@@ -279,25 +279,25 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
       </div>
 
       {/* Main Salaries Matrix Table */}
-      <div className="glass-panel overflow-clip rounded-3xl border border-white/60 bg-white/95 shadow-glass">
+      <div className=" overflow-clip rounded-lg border border-gray-200 bg-white shadow-xs">
         <div ref={tableWrapRef} className="table-page-wrap">
           <table className="w-full text-left border-collapse">
             <thead className="table-page-sticky-head">
-              <tr className="border-b border-slate-200/80 bg-slate-50 text-ui font-bold text-slate-500">
-                <th className="py-3.5 px-4 sticky left-0 z-30 bg-slate-100 border-r-2 border-slate-200 shadow-[2px_0_4px_rgba(0,0,0,0.04)] min-w-50">
+              <tr className="border-b border-gray-200/80 bg-gray-50 text-ui font-bold text-gray-500">
+                <th className="py-3.5 px-4 sticky left-0 z-30 bg-gray-100 border-r-2 border-gray-200 shadow-[2px_0_4px_rgba(0,0,0,0.04)] min-w-50">
                   {t("Employee", "Zamestnanec", "Alkalmazott")}
                 </th>
                 {monthNames.map((mName, idx) => (
                   <th
                     key={idx}
-                    className="sticky z-10 bg-slate-50 py-3.5 px-2 text-center min-w-27.5 border-r border-slate-200/60 font-semibold"
+                    className="sticky z-10 bg-gray-50 py-3.5 px-2 text-center min-w-27.5 border-r border-gray-200/60 font-semibold"
                   >
                     <span>{mName}</span>
                   </th>
                 ))}
-                <th className="sticky right-0 z-30 py-3.5 px-4 text-right min-w-35 bg-slate-100 font-bold border-l-2 border-slate-200 shadow-[-2px_0_4px_rgba(0,0,0,0.04)]">
+                <th className="sticky right-0 z-30 py-3.5 px-4 text-right min-w-35 bg-gray-100 font-bold border-l-2 border-gray-200 shadow-[-2px_0_4px_rgba(0,0,0,0.04)]">
                   <span>{t("Year Total", "Spolu Rok", "Év összesen")}</span>
-                  <span className="block type-overline text-slate-400">
+                  <span className="block type-overline text-gray-400">
                     {displayMetric === "paid"
                       ? t("Plan / Paid", "Plán / Vyplatené", "Terv / Kifizetve")
                       : t("Plan / Remaining", "Plán / Zostáva", "Terv / Hátralék")}
@@ -305,10 +305,10 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-ui">
+            <tbody className="divide-y divide-gray-100 text-ui">
               {visibleEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="py-12 text-center text-slate-400">
+                  <td colSpan={14} className="py-12 text-center text-gray-400">
                     {t("No employees found.", "Neboli nájdení žiadni zamestnanci.", "Nem találhatók alkalmazottak.")}
                   </td>
                 </tr>
@@ -320,10 +320,10 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
                   return (
                     <tr
                       key={emp.id}
-                      className="hover:bg-slate-500/5 transition group"
+                      className="hover:bg-gray-500/5 transition group"
                     >
                       {/* Employee Fixed Name Column */}
-                      <td className="py-3 px-4 sticky left-0 z-10 bg-white group-hover:bg-slate-50 border-r-2 border-slate-200 shadow-[2px_0_4px_rgba(0,0,0,0.04)] transition">
+                      <td className="py-3 px-4 sticky left-0 z-10 bg-white group-hover:bg-gray-50 border-r-2 border-gray-200 shadow-[2px_0_4px_rgba(0,0,0,0.04)] transition">
                         <div className="flex items-center justify-between">
                           <a
                             href={`#employees/${encodeURIComponent(emp.id)}`}
@@ -331,10 +331,10 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
                               e.preventDefault();
                               onSelectEmployee && onSelectEmployee(emp.id);
                             }}
-                            className="text-left font-semibold text-slate-900 hover:text-[#c29b62] transition truncate cursor-pointer block"
+                            className="text-left font-semibold text-gray-900 hover:text-[#c29b62] transition truncate cursor-pointer block"
                           >
                             <span className="block truncate">{emp.name}</span>
-                            <span className="text-micro font-normal text-slate-400 block">
+                            <span className="text-micro font-normal text-gray-400 block">
                               {emp.pin ? `${emp.pin} • ` : ""}{formatNumber(emp.salaryAmount || 0, systemLanguage)} {systemCurrency}/{emp.salaryType === "hourly" ? "h" : emp.salaryType === "daily" ? "d" : "m"}
                             </span>
                           </a>
@@ -362,17 +362,17 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
                           <td
                             key={mNum}
                             onClick={() => handleCellClick(emp, mNum)}
-                            className="py-2.5 px-2 text-center border-r border-slate-100 cursor-pointer hover:bg-slate-500/10 transition relative select-none"
+                            className="py-2.5 px-2 text-center border-r border-gray-100 cursor-pointer hover:bg-gray-500/10 transition relative select-none"
                             title={t("Click to view or edit breakdown", "Kliknite pre detail a úpravu", "Kattintson a részletekért")}
                           >
                             {hasSalary ? (
                               <div
-                                className={`py-1.5 px-1 rounded-xl border text-center transition ${
+                                className={`py-1.5 px-1 rounded-md border text-center transition ${
                                   isFullyPaid
                                     ? "bg-emerald-50 border-emerald-200 text-emerald-800"
                                     : isPartial
                                     ? "bg-amber-50 border-amber-200 text-amber-800"
-                                    : "bg-slate-100/70 border-slate-200/80 text-slate-700"
+                                    : "bg-gray-100/70 border-gray-200/80 text-gray-700"
                                 }`}
                               >
                                 <span className="block font-mono font-bold leading-tight text-ui">
@@ -386,7 +386,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
                                         <span>{formatNumber(Math.round(sal!.totalPaid || 0), systemLanguage)} {systemCurrency}</span>
                                       </span>
                                     ) : (
-                                      <span className="font-mono text-micro font-semibold text-slate-600">
+                                      <span className="font-mono text-micro font-semibold text-gray-600">
                                         {formatNumber(Math.round(sal!.totalPaid || 0), systemLanguage)} {systemCurrency} <span className="text-micro opacity-75">{t("pd", "vyp", "kif")}</span>
                                       </span>
                                     )
@@ -405,7 +405,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
                                 </div>
                               </div>
                             ) : (
-                              <span className="text-slate-300 hover:text-slate-500 transition font-mono">
+                              <span className="text-gray-300 hover:text-gray-500 transition font-mono">
                                 —
                               </span>
                             )}
@@ -414,7 +414,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
                       })}
 
                       {/* Year Row Total */}
-                      <td className="py-3 px-4 text-right bg-slate-50/70 border-l-2 border-slate-200 shadow-[-2px_0_4px_rgba(0,0,0,0.04)] font-mono font-bold text-slate-800">
+                      <td className="py-3 px-4 text-right bg-gray-50/70 border-l-2 border-gray-200 shadow-[-2px_0_4px_rgba(0,0,0,0.04)] font-mono font-bold text-gray-800">
                         <span className="block text-ui">
                           {formatNumber(empYearSalary, systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} {systemCurrency}
                         </span>
@@ -436,13 +436,13 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
 
             {/* Summary Footer Row */}
             <tfoot>
-              <tr className="border-t-2 border-slate-200 bg-slate-100/90 text-ui font-bold text-slate-900">
-                <td className="py-3.5 px-4 sticky left-0 z-20 bg-slate-100 border-r-2 border-slate-200 shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
+              <tr className="border-t-2 border-gray-200 bg-gray-100/90 text-ui font-bold text-gray-900">
+                <td className="py-3.5 px-4 sticky left-0 z-20 bg-gray-100 border-r-2 border-gray-200 shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
                   {t("Total All Employees", "Celkom všetci", "Összes alkalmazott")}
                 </td>
                 {columnTotals.map((col, idx) => (
-                  <td key={idx} className="py-3 px-1 text-center border-r border-slate-200/60 font-mono">
-                    <span className="block text-slate-800 font-bold text-ui">
+                  <td key={idx} className="py-3 px-1 text-center border-r border-gray-200/60 font-mono">
+                    <span className="block text-gray-800 font-bold text-ui">
                       {formatNumber(Math.round(col.totalSalary), systemLanguage)} {systemCurrency}
                     </span>
                     {displayMetric === "paid" ? (
@@ -456,8 +456,8 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
                     )}
                   </td>
                 ))}
-                <td className="py-3.5 px-4 text-right font-mono border-l-2 border-slate-200 shadow-[-2px_0_4px_rgba(0,0,0,0.04)]">
-                  <span className="block text-body font-bold text-slate-900">
+                <td className="py-3.5 px-4 text-right font-mono border-l-2 border-gray-200 shadow-[-2px_0_4px_rgba(0,0,0,0.04)]">
+                  <span className="block text-body font-bold text-gray-900">
                     {formatNumber(grandTotal.totalSalary, systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} {systemCurrency}
                   </span>
                   {displayMetric === "paid" ? (

@@ -92,10 +92,10 @@ export const EmployeeIdentityFields: React.FC<Props> = ({
     ledger: t("Accounting item", "Účtovná položka", "Könyvelési tétel"),
   };
 
-  const label = compact ? "type-overline text-slate-500 block mb-0.5" : "block text-ui font-bold text-slate-600 mb-1.5";
+  const label = compact ? "type-overline text-gray-500 block mb-0.5" : "block text-ui font-bold text-gray-600 mb-1.5";
   const input = compact
-    ? "w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
-    : "w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm font-medium";
+    ? "w-full px-2.5 py-1.5 text-ui bg-gray-50 border border-gray-200 rounded-md focus:border-[#c29b62] focus:outline-none"
+    : "w-full px-4 py-2.5 text-body bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm font-medium";
   const wide = compact ? "col-span-2" : "ws-sm:col-span-2";
   const personName = hasPersonName(value.kind);
 
@@ -249,8 +249,8 @@ export const EmployeeIdentityFields: React.FC<Props> = ({
                 type="button"
                 disabled={isFetching || lookup.isResolving}
                 onClick={fetchByCompanyId}
-                className={`shrink-0 flex items-center gap-1.5 font-bold text-white bg-gradient-to-r from-[#c29b62] to-[#b58b4c] hover:shadow-md disabled:opacity-50 transition cursor-pointer ${
-                  compact ? "px-2.5 py-1.5 text-ui rounded-xl" : "px-4 py-2.5 text-body rounded-2xl"
+                className={`shrink-0 flex items-center gap-1.5 font-bold text-white bg-entity-solid hover:bg-entity-solid-hover hover:shadow-md disabled:opacity-50 transition cursor-pointer ${
+                  compact ? "px-2.5 py-1.5 text-ui rounded-md" : "px-4 py-2.5 text-body rounded-lg"
                 }`}
               >
                 {isFetching || lookup.isResolving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}

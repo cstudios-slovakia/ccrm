@@ -43,6 +43,7 @@ import { VacationRequestModal } from "./VacationRequestModal";
 import { EntityHeader } from "../layout";
 import { formatNumber } from "../../utils/currency";
 import { SalaryCellDrawer } from "./SalaryCellDrawer";
+import { entityAccentStyle } from "../../utils/entityAccent";
 import { employerLevies, hasPayslip, salaryDue, salaryStatus } from "../../utils/payslip";
 import { EmployeeTimesheetSummary, type TimesheetHoursData } from "./EmployeeTimesheetSummary";
 import { CustomSelect, type DropdownOption } from "../ui/CustomSelect";
@@ -482,7 +483,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
       {
         value: "",
         label: (
-          <span className="text-slate-400 font-normal">
+          <span className="text-gray-400 font-normal">
             {t("-- Not mapped / Unlinked --", "-- Bez prepojenia na Toggl --", "-- Nincs összerendelve --")}
           </span>
         ),
@@ -496,7 +497,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
         value: currentIdStr,
         label: (
           <span className="flex items-center gap-2 min-w-0">
-            <span className="font-semibold text-slate-800 truncate">
+            <span className="font-semibold text-gray-800 truncate">
               {editTimeTrackingUserName || `User #${currentIdStr}`}
             </span>
             <span className="shrink-0 text-micro px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-normal">
@@ -521,15 +522,15 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
         label: (
           <span className="flex items-center justify-between gap-2 min-w-0 w-full">
             <span className="flex items-center gap-1.5 min-w-0 truncate">
-              <span className="font-semibold text-slate-800 truncate">{displayName}</span>
+              <span className="font-semibold text-gray-800 truncate">{displayName}</span>
               {u.name && u.email && (
-                <span className="text-caption text-slate-400 font-normal truncate">
+                <span className="text-caption text-gray-400 font-normal truncate">
                   ({u.email})
                 </span>
               )}
             </span>
             {isInactive && (
-              <span className="shrink-0 text-micro px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-normal">
+              <span className="shrink-0 text-micro px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-normal">
                 {t("Inactive", "Neaktívny", "Inaktív")}
               </span>
             )}
@@ -800,7 +801,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
         onBack={onBack}
         backLabel={t("Back to Employees", "Späť na zoznam", "Vissza az alkalmazottakhoz")}
         avatar={
-          <div className="size-12 rounded-2xl bg-gradient-to-br from-[#c29b62] to-[#9e7638] text-white flex items-center justify-center font-heading font-bold text-title shadow-md">
+          <div className="size-12 rounded-lg bg-entity-solid hover:bg-entity-solid-hover text-white flex items-center justify-center font-heading font-bold text-title shadow-md">
             {employee.name ? employee.name.split(" ").map(n => n[0]).slice(0, 2).join("").toUpperCase() : "EM"}
           </div>
         }
@@ -811,13 +812,13 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
               className={`px-2.5 py-0.5 text-ui font-semibold rounded-full ${
                 employee.isActive !== false
                   ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
-                  : "bg-slate-100 text-slate-500 border border-slate-200"
+                  : "bg-gray-100 text-gray-500 border border-gray-200"
               }`}
             >
               {employee.isActive !== false ? t("Active", "Aktívny", "Aktív") : t("Inactive", "Neaktívny", "Inaktív")}
             </span>
             {employeeKind(employee) !== "employee" && (
-              <span className="bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-0.5 rounded-full type-overline">
+              <span className="bg-gray-100 text-gray-600 border border-gray-200 px-2.5 py-0.5 rounded-full type-overline">
                 {employeeKind(employee) === "contractor"
                   ? t("External supplier", "Externý dodávateľ", "Külső beszállító")
                   : t("Accounting item", "Účtovná položka", "Könyvelési tétel")}
@@ -829,7 +830,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
               </span>
             )}
             {employee.department && (
-              <span className="bg-slate-50 text-slate-600 border border-slate-200 px-2.5 py-0.5 rounded-full type-overline">
+              <span className="bg-gray-50 text-gray-600 border border-gray-200 px-2.5 py-0.5 rounded-full type-overline">
                 {employee.department}
               </span>
             )}
@@ -854,18 +855,18 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
           {/* Profile Card (Display Mode or In-Place Edit Mode) */}
           {isEditingCard ? (
             /* IN-PLACE EDIT MODE */
-            <div className="glass-panel rounded-3xl border-2 border-[#c29b62]/40 bg-white/95 shadow-glass p-5 space-y-4 animate-in fade-in duration-200">
+            <div className=" rounded-lg border-2 border-entity-border bg-white shadow-xs p-5 space-y-4 animate-in fade-in duration-200">
               {/* Edit Mode Header */}
-              <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-200/80">
+              <div className="flex items-center justify-between gap-2 pb-3 border-b border-gray-200/80">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-8 h-8 rounded-xl bg-[#c29b62]/15 border border-[#c29b62]/30 text-[#9e7638] flex items-center justify-center font-bold text-body shrink-0">
+                  <div className="w-8 h-8 rounded-md bg-entity-subtle border border-entity-border text-[#9e7638] flex items-center justify-center font-bold text-body shrink-0">
                     <Edit3 className="w-4 h-4 text-[#c29b62]" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-ui font-bold text-slate-900 leading-tight truncate">
+                    <h3 className="text-ui font-bold text-gray-900 leading-tight truncate">
                       {t("Edit Employee", "Upraviť zamestnanca", "Alkalmazott szerkesztése")}
                     </h3>
-                    <p className="text-micro text-slate-400 truncate">{employee.name}</p>
+                    <p className="text-micro text-gray-400 truncate">{employee.name}</p>
                   </div>
                 </div>
 
@@ -873,7 +874,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   <button
                     type="button"
                     onClick={handleCancelCard}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-ui font-bold transition cursor-pointer"
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-600 text-ui font-bold transition cursor-pointer"
                   >
                     <X className="w-3.5 h-3.5" />
                     <span>{t("Cancel", "Zrušiť", "Mégse")}</span>
@@ -882,7 +883,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     type="button"
                     onClick={handleSaveCard}
                     disabled={isSavingCard}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white text-ui font-bold shadow-sm hover:shadow transition cursor-pointer disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-bold shadow-sm hover:shadow transition cursor-pointer disabled:opacity-50"
                   >
                     {isSavingCard ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                     <span>{t("Save", "Uložiť", "Mentés")}</span>
@@ -891,7 +892,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
               </div>
 
               {cardSaveError && (
-                <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-ui text-red-600 flex items-center gap-2">
+                <div className="p-2.5 rounded-md bg-red-500/10 border border-red-500/20 text-ui text-red-600 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{cardSaveError}</span>
                 </div>
@@ -900,8 +901,8 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
               <div className="space-y-4 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
                 {/* 1. Personal & Contact Information (Edit) */}
                 <div className="space-y-2.5">
-                  <div className="flex items-center justify-between pb-1 border-b border-slate-100">
-                    <span className="type-overline text-slate-600 flex items-center gap-1.5">
+                  <div className="flex items-center justify-between pb-1 border-b border-gray-100">
+                    <span className="type-overline text-gray-600 flex items-center gap-1.5">
                       <User className="w-3 h-3 text-[#c29b62]" />
                       {t("Personal & Contact Information", "Osobné a kontaktné údaje", "Személyes és kapcsolat")}
                     </span>
@@ -912,7 +913,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                         onChange={(e) => setEditIsActive(e.target.checked)}
                         className="w-3.5 h-3.5 accent-[#c29b62] rounded"
                       />
-                      <span className="text-caption font-bold text-slate-700">{t("Active", "Aktívny", "Aktív")}</span>
+                      <span className="text-caption font-bold text-gray-700">{t("Active", "Aktívny", "Aktív")}</span>
                     </label>
                   </div>
 
@@ -938,14 +939,14 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     <div className="grid grid-cols-2 gap-2">
                       {rights.editPersonal && (
                       <div>
-                        <label className="type-overline text-slate-500 block mb-0.5">
+                        <label className="type-overline text-gray-500 block mb-0.5">
                           {t("PIN / RČ", "Rodné číslo", "Személyi szám")}
                         </label>
                         <input
                           type="text"
                           value={editPin}
                           onChange={(e) => setEditPin(e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none font-mono"
+                          className="w-full px-2.5 py-1.5 text-ui bg-gray-50 border border-gray-200 rounded-md focus:border-[#c29b62] focus:outline-none font-mono"
                           placeholder="950122/8104"
                         />
                       </div>
@@ -954,27 +955,27 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="type-overline text-slate-500 block mb-0.5">
+                        <label className="type-overline text-gray-500 block mb-0.5">
                           {t("Email", "Email", "Email")}
                         </label>
                         <input
                           type="email"
                           value={editEmail}
                           onChange={(e) => setEditEmail(e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
+                          className="w-full px-2.5 py-1.5 text-ui bg-gray-50 border border-gray-200 rounded-md focus:border-[#c29b62] focus:outline-none"
                           placeholder="name@company.com"
                         />
                       </div>
                       {rights.editPersonal && (
                       <div>
-                        <label className="type-overline text-slate-500 block mb-0.5">
+                        <label className="type-overline text-gray-500 block mb-0.5">
                           {t("Phone", "Telefón", "Telefonszám")}
                         </label>
                         <input
                           type="tel"
                           value={editPhone}
                           onChange={(e) => setEditPhone(e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
+                          className="w-full px-2.5 py-1.5 text-ui bg-gray-50 border border-gray-200 rounded-md focus:border-[#c29b62] focus:outline-none"
                           placeholder="+421 9..."
                         />
                       </div>
@@ -985,16 +986,16 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
                 {/* 2. Vacation Quotas (Edit) */}
                 {rights.editVacations && (
-                <div className="space-y-2 pt-2.5 border-t border-slate-100">
-                  <span className="type-overline text-slate-600 flex items-center gap-1.5 pb-1 border-b border-slate-100">
+                <div className="space-y-2 pt-2.5 border-t border-gray-100">
+                  <span className="type-overline text-gray-600 flex items-center gap-1.5 pb-1 border-b border-gray-100">
                     <Calendar className="w-3 h-3 text-[#c29b62]" />
                     {t("Vacation Quotas (Annual Days)", "Dovolenkové kvóty (ročné nároky v dňoch)", "Szabadság kvóták (éves napok)")}
                   </span>
 
                   <div className="grid grid-cols-2 gap-2">
                     {vacationTypes.map((vt) => (
-                      <div key={vt.id} className="p-2 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
-                        <label className="text-micro font-bold text-slate-700 flex items-center gap-1.5">
+                      <div key={vt.id} className="p-2 rounded-md bg-gray-50 border border-gray-200/80 space-y-1">
+                        <label className="text-micro font-bold text-gray-700 flex items-center gap-1.5">
                           <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: vt.color || "#c29b62" }} />
                           <span className="truncate">{vt.name}</span>
                         </label>
@@ -1008,9 +1009,9 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                               const val = Number(e.target.value);
                               setEditVacationAllowances((prev) => ({ ...prev, [vt.id]: val }));
                             }}
-                            className="w-full px-2 py-1 text-ui bg-white border border-slate-200 rounded-lg text-slate-800 font-mono font-bold focus:border-[#c29b62] focus:outline-none"
+                            className="w-full px-2 py-1 text-ui bg-white border border-gray-200 rounded-lg text-gray-800 font-mono font-bold focus:border-[#c29b62] focus:outline-none"
                           />
-                          <span className="text-micro text-slate-400 font-medium shrink-0">{t("days", "dní", "nap")}</span>
+                          <span className="text-micro text-gray-400 font-medium shrink-0">{t("days", "dní", "nap")}</span>
                         </div>
                       </div>
                     ))}
@@ -1020,62 +1021,62 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
                 {/* 3. Permanent Residence & Address (Edit) */}
                 {rights.editPersonal && (
-                <div className="space-y-2 pt-2.5 border-t border-slate-100">
-                  <span className="type-overline text-slate-600 flex items-center gap-1.5 pb-1 border-b border-slate-100">
+                <div className="space-y-2 pt-2.5 border-t border-gray-100">
+                  <span className="type-overline text-gray-600 flex items-center gap-1.5 pb-1 border-b border-gray-100">
                     <MapPin className="w-3 h-3 text-[#c29b62]" />
                     {t("Permanent Residence & Address", "Trvalé bydlisko a adresa", "Állandó lakcím és cím")}
                   </span>
 
                   <div className="space-y-2 text-ui">
                     <div>
-                      <label className="type-overline text-slate-500 block mb-0.5">
+                      <label className="type-overline text-gray-500 block mb-0.5">
                         {t("Street & Number", "Ulica a číslo", "Utca és házszám")}
                       </label>
                       <input
                         type="text"
                         value={editStreet}
                         onChange={(e) => setEditStreet(e.target.value)}
-                        className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
+                        className="w-full px-2.5 py-1.5 text-ui bg-gray-50 border border-gray-200 rounded-md focus:border-[#c29b62] focus:outline-none"
                         placeholder="Štefánikova 12"
                       />
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="type-overline text-slate-500 block mb-0.5">
+                        <label className="type-overline text-gray-500 block mb-0.5">
                           {t("City", "Mesto", "Város")}
                         </label>
                         <input
                           type="text"
                           value={editCity}
                           onChange={(e) => setEditCity(e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
+                          className="w-full px-2.5 py-1.5 text-ui bg-gray-50 border border-gray-200 rounded-md focus:border-[#c29b62] focus:outline-none"
                           placeholder="Nitra"
                         />
                       </div>
                       <div>
-                        <label className="type-overline text-slate-500 block mb-0.5">
+                        <label className="type-overline text-gray-500 block mb-0.5">
                           {t("ZIP Code", "PSČ", "Irányítószám")}
                         </label>
                         <input
                           type="text"
                           value={editZip}
                           onChange={(e) => setEditZip(e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none font-mono"
+                          className="w-full px-2.5 py-1.5 text-ui bg-gray-50 border border-gray-200 rounded-md focus:border-[#c29b62] focus:outline-none font-mono"
                           placeholder="949 01"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="type-overline text-slate-500 block mb-0.5">
+                      <label className="type-overline text-gray-500 block mb-0.5">
                         {t("Country", "Krajina", "Ország")}
                       </label>
                       <input
                         type="text"
                         value={editCountry}
                         onChange={(e) => setEditCountry(e.target.value)}
-                        className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
+                        className="w-full px-2.5 py-1.5 text-ui bg-gray-50 border border-gray-200 rounded-md focus:border-[#c29b62] focus:outline-none"
                         placeholder="Slovakia"
                       />
                     </div>
@@ -1085,8 +1086,8 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
                 {/* 4. Salary & Compensation Terms (Edit) */}
                 {rights.editSalaries && (
-                <div className="space-y-2 pt-2.5 border-t border-slate-100">
-                  <span className="type-overline text-slate-600 flex items-center gap-1.5 pb-1 border-b border-slate-100">
+                <div className="space-y-2 pt-2.5 border-t border-gray-100">
+                  <span className="type-overline text-gray-600 flex items-center gap-1.5 pb-1 border-b border-gray-100">
                     <Coins className="w-3 h-3 text-[#c29b62]" />
                     {t("Salary & Compensation Terms", "Mzdové a kompenzačné podmienky", "Bérezési feltételek")}
                   </span>
@@ -1094,7 +1095,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   <div className="space-y-2 text-ui">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="type-overline text-slate-500 block mb-0.5">
+                        <label className="type-overline text-gray-500 block mb-0.5">
                           {t("Salary Amount", "Výška mzdy", "Bér összege")} ({systemCurrency})
                         </label>
                         <input
@@ -1103,17 +1104,17 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                           step="50"
                           value={editSalaryAmount}
                           onChange={(e) => setEditSalaryAmount(e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none font-mono font-bold"
+                          className="w-full px-2.5 py-1.5 text-ui bg-gray-50 border border-gray-200 rounded-md focus:border-[#c29b62] focus:outline-none font-mono font-bold"
                         />
                       </div>
                       <div>
-                        <label className="type-overline text-slate-500 block mb-0.5">
+                        <label className="type-overline text-gray-500 block mb-0.5">
                           {t("Period", "Perióda", "Időszak")}
                         </label>
                         <select
                           value={editSalaryType}
                           onChange={(e) => setEditSalaryType(e.target.value as any)}
-                          className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none font-medium"
+                          className="w-full px-2.5 py-1.5 text-ui bg-gray-50 border border-gray-200 rounded-md focus:border-[#c29b62] focus:outline-none font-medium"
                         >
                           <option value="monthly">{t("Monthly", "Mesačne", "Havonta")}</option>
                           <option value="daily">{t("Daily", "Denne", "Naponta")}</option>
@@ -1124,7 +1125,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="type-overline text-slate-500 block mb-0.5">
+                        <label className="type-overline text-gray-500 block mb-0.5">
                           {t("Salary Due Day", "Výplatný deň", "Kifizetési nap")}
                         </label>
                         <input
@@ -1133,14 +1134,14 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                           max="31"
                           value={editSalaryDueDay}
                           onChange={(e) => setEditSalaryDueDay(e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none font-mono"
+                          className="w-full px-2.5 py-1.5 text-ui bg-gray-50 border border-gray-200 rounded-md focus:border-[#c29b62] focus:outline-none font-mono"
                           placeholder={String(settings.salaryDueDay ?? 15)}
                         />
                       </div>
 
                       <div>
                         <div className="flex items-center justify-between mb-0.5">
-                          <label className="type-overline text-slate-500 block">
+                          <label className="type-overline text-gray-500 block">
                             {t("Toggl User Link", "Prepojenie Toggl", "Toggl kapcsolat")}
                           </label>
                           <div className="flex items-center gap-2.5">
@@ -1151,7 +1152,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                                 className={`text-micro cursor-pointer transition-colors ${
                                   showInactiveTogglUsers
                                     ? "text-[#c29b62] font-semibold underline"
-                                    : "text-slate-400 hover:text-slate-600 underline"
+                                    : "text-gray-400 hover:text-gray-600 underline"
                                 }`}
                               >
                                 {showInactiveTogglUsers
@@ -1167,7 +1168,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                               <button
                                 type="button"
                                 onClick={() => setManualTogglInput((prev) => !prev)}
-                                className="text-micro text-slate-400 hover:text-slate-600 underline cursor-pointer"
+                                className="text-micro text-gray-400 hover:text-gray-600 underline cursor-pointer"
                               >
                                 {manualTogglInput
                                   ? t("Select from list", "Vybrať zo zoznamu", "Kiválasztás listából")
@@ -1178,7 +1179,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                         </div>
 
                         {loadingTogglUsers && togglUsers.length === 0 ? (
-                          <div className="flex items-center gap-2 px-2.5 py-1.5 text-caption text-slate-400 bg-slate-50 border border-slate-200 rounded-xl">
+                          <div className="flex items-center gap-2 px-2.5 py-1.5 text-caption text-gray-400 bg-gray-50 border border-gray-200 rounded-md">
                             <Loader2 className="w-3.5 h-3.5 animate-spin text-[#c29b62]" />
                             <span className="truncate">
                               {t("Loading Toggl users...", "Načítavam používateľov z Toggl...", "Toggl felhasználók betöltése...")}
@@ -1199,7 +1200,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                             options={togglSelectOptions}
                             searchable
                             size="sm"
-                            className="bg-slate-50 border-slate-200"
+                            className="bg-gray-50 border-gray-200"
                             searchPlaceholder={t("Search user...", "Hľadať používateľa...", "Felhasználó keresése...")}
                             placeholder={t("-- Not mapped / Unlinked --", "-- Bez prepojenia na Toggl --", "-- Nincs összerendelve --")}
                           />
@@ -1212,7 +1213,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                                 setEditTimeTrackingUserName(e.target.value);
                                 setEditTimeTrackingUserId(e.target.value);
                               }}
-                              className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none font-mono"
+                              className="w-full px-2.5 py-1.5 text-ui bg-gray-50 border border-gray-200 rounded-md focus:border-[#c29b62] focus:outline-none font-mono"
                               placeholder={t("User ID or name", "ID alebo meno", "ID vagy név")}
                             />
                             {togglUsersError && (
@@ -1234,7 +1235,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                           onChange={(e) => setEditAutoExpense(e.target.checked)}
                           className="w-3.5 h-3.5 accent-[#c29b62] rounded"
                         />
-                        <span className="text-caption font-semibold text-slate-700">
+                        <span className="text-caption font-semibold text-gray-700">
                           {t("Auto-sync salary to financial expenses", "Auto výdavok do financií", "Auto kiadás szinkron")}
                         </span>
                       </label>
@@ -1242,13 +1243,13 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
                     {financialCategories.length > 0 && (
                       <div>
-                        <label className="type-overline text-slate-500 block mb-0.5">
+                        <label className="type-overline text-gray-500 block mb-0.5">
                           {t("Expense Category", "Kategória výdavku", "Kiadási kategória")}
                         </label>
                         <select
                           value={editExpenseCategoryId}
                           onChange={(e) => setEditExpenseCategoryId(e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
+                          className="w-full px-2.5 py-1.5 text-ui bg-gray-50 border border-gray-200 rounded-md focus:border-[#c29b62] focus:outline-none"
                         >
                           <option value="">{t("Select Category...", "Vyberte kategóriu...", "Kategória kiválasztása...")}</option>
                           {financialCategories.map((c) => (
@@ -1265,8 +1266,8 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
                 {/* 5. Internal Notes & Observations (Edit) */}
                 {rights.editPersonal && (
-                <div className="space-y-1.5 pt-2.5 border-t border-slate-100">
-                  <span className="type-overline text-slate-600 flex items-center gap-1.5 pb-1 border-b border-slate-100">
+                <div className="space-y-1.5 pt-2.5 border-t border-gray-100">
+                  <span className="type-overline text-gray-600 flex items-center gap-1.5 pb-1 border-b border-gray-100">
                     <FileText className="w-3 h-3 text-[#c29b62]" />
                     {t("Internal Notes & Observations", "Interné poznámky a postrehy", "Belső feljegyzések")}
                   </span>
@@ -1274,7 +1275,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     value={editNotes}
                     onChange={(e) => setEditNotes(e.target.value)}
                     rows={3}
-                    className="w-full p-2 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none resize-none leading-relaxed"
+                    className="w-full p-2 text-ui bg-gray-50 border border-gray-200 rounded-md focus:border-[#c29b62] focus:outline-none resize-none leading-relaxed"
                     placeholder={t(
                       "Internal notes, contract milestones, observations...",
                       "Interné poznámky k zamestnancovi...",
@@ -1286,7 +1287,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
               </div>
 
               {/* Linked user account (Admin, or employees + pm_managers at edit) */}
-              <div className="pt-2.5 border-t border-slate-100">
+              <div className="pt-2.5 border-t border-gray-100">
                 <LinkedUserPicker
                   compact
                   value={editUserId}
@@ -1302,11 +1303,11 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
               </div>
 
               {/* Bottom Actions in Edit Mode */}
-              <div className="pt-3 border-t border-slate-100 flex items-center gap-2">
+              <div className="pt-3 border-t border-gray-100 flex items-center gap-2">
                 <button
                   type="button"
                   onClick={handleCancelCard}
-                  className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-ui font-bold transition cursor-pointer"
+                  className="flex-1 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-700 text-ui font-bold transition cursor-pointer"
                 >
                   {t("Cancel", "Zrušiť", "Mégse")}
                 </button>
@@ -1314,7 +1315,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   type="button"
                   onClick={handleSaveCard}
                   disabled={isSavingCard}
-                  className="flex-[2] py-2 rounded-xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white text-ui font-bold shadow-md shadow-[#c29b62]/20 hover:shadow-lg transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  className="flex-[2] py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-bold shadow-md shadow-2xs hover:shadow-lg transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
                   {isSavingCard ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                   <span>{t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}</span>
@@ -1323,11 +1324,11 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             </div>
           ) : (
             /* DISPLAY MODE (5 Sections + Header with Eye & Edit + Files Shortcut) */
-            <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-5">
+            <div className=" rounded-lg border border-gray-200 bg-white shadow-xs p-6 space-y-5">
               {/* Header: Avatar, Name, Status, Eye Toggle & Edit Buttons */}
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3.5 min-w-0 flex-1">
-                  <div className="w-14 h-14 rounded-2xl bg-[#c29b62]/15 border border-[#c29b62]/30 text-[#9e7638] dark:text-[#d4af7a] flex items-center justify-center font-bold text-title shrink-0 shadow-sm">
+                  <div className="w-14 h-14 rounded-lg bg-entity-subtle border border-entity-border text-[#9e7638] flex items-center justify-center font-bold text-title shrink-0 shadow-sm">
                     {employee.name
                       .split(" ")
                       .map((n) => n[0])
@@ -1337,14 +1338,14 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="text-title font-bold text-slate-900 truncate">
+                      <h2 className="text-title font-bold text-gray-900 truncate">
                         {employee.name}
                       </h2>
                       <span
                         className={`px-2 py-0.5 text-micro font-bold rounded-full ${
                           employee.isActive !== false
                             ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
-                            : "bg-slate-100 text-slate-500 border border-slate-200"
+                            : "bg-gray-100 text-gray-500 border border-gray-200"
                         }`}
                       >
                         {employee.isActive !== false ? t("Active", "Aktívny", "Aktív") : t("Inactive", "Neaktívny", "Inaktív")}
@@ -1352,17 +1353,17 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     </div>
 
                     {(employee.position || employee.department) && (
-                      <p className="text-ui text-slate-500 font-medium truncate mt-0.5">
+                      <p className="text-ui text-gray-500 font-medium truncate mt-0.5">
                         {[employee.position, employee.department].filter(Boolean).join(" · ")}
                       </p>
                     )}
 
                     {/* Salary badge pill */}
                     {rights.salaries && (
-                    <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#c29b62]/10 border border-[#c29b62]/20 text-[#9e7638] dark:text-[#d4af7a] text-ui font-semibold">
+                    <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-entity-subtle border border-entity-border text-[#9e7638] text-ui font-semibold">
                       <Coins className="w-3.5 h-3.5 text-[#c29b62]" />
                       {isSensitiveHidden ? (
-                        <span className="font-mono tracking-widest text-slate-400 select-none">
+                        <span className="font-mono tracking-widest text-gray-400 select-none">
                           •••••• / {salaryTypeLabel}
                         </span>
                       ) : (
@@ -1380,10 +1381,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   <button
                     type="button"
                     onClick={toggleSensitiveHidden}
-                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl border transition cursor-pointer shrink-0 shadow-sm ${
+                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md border transition cursor-pointer shrink-0 shadow-sm ${
                       isSensitiveHidden
                         ? "bg-amber-500/10 border-amber-500/30 text-amber-700 hover:bg-amber-500/20"
-                        : "bg-slate-100/90 hover:bg-[#c29b62]/15 text-slate-600 hover:text-[#9e7638] dark:hover:text-[#d4af7a] border-slate-200/80 hover:border-[#c29b62]/30"
+                        : "bg-gray-100/90 hover:bg-entity-subtle text-gray-600 hover:text-[#9e7638] border-gray-200/80 hover:border-entity-border"
                     }`}
                     title={
                       isSensitiveHidden
@@ -1398,7 +1399,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                       </>
                     ) : (
                       <>
-                        <Eye className="w-3.5 h-3.5 text-slate-500" />
+                        <Eye className="w-3.5 h-3.5 text-gray-500" />
                         <span className="text-caption font-bold">{t("Hide", "Skryť", "Elrejtés")}</span>
                       </>
                     )}
@@ -1408,7 +1409,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   <button
                     type="button"
                     onClick={handleStartEdit}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100/90 hover:bg-[#c29b62]/15 text-slate-600 hover:text-[#9e7638] dark:hover:text-[#d4af7a] border border-slate-200/80 hover:border-[#c29b62]/30 transition cursor-pointer shrink-0 shadow-sm group"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-gray-100/90 hover:bg-entity-subtle text-gray-600 hover:text-[#9e7638] border border-gray-200/80 hover:border-entity-border transition cursor-pointer shrink-0 shadow-sm group"
                     title={t("Edit Profile", "Upraviť profil", "Profil szerkesztése")}
                   >
                     <Edit3 className="w-3.5 h-3.5 text-[#c29b62] group-hover:scale-110 transition-transform" />
@@ -1419,8 +1420,8 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
               </div>
 
               {/* 1. PERSONAL & CONTACT INFORMATION */}
-              <div className="pt-4 border-t border-slate-100 space-y-2.5 text-ui">
-                <div className="flex items-center gap-1.5 type-overline text-slate-400 mb-1">
+              <div className="pt-4 border-t border-gray-100 space-y-2.5 text-ui">
+                <div className="flex items-center gap-1.5 type-overline text-gray-400 mb-1">
                   <User className="w-3.5 h-3.5 text-[#c29b62]" />
                   <span>{t("Personal & Contact Information", "Osobné a kontaktné údaje", "Személyes és kapcsolat adatok")}</span>
                 </div>
@@ -1431,27 +1432,27 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   ["IČ DPH", employee.vatId],
                 ] as const).map(([name, id]) => id ? (
                   <div key={name} className="flex items-center justify-between pl-5">
-                    <span className="text-slate-400">{name}:</span>
-                    <span className="font-mono text-slate-800 font-semibold">{id}</span>
+                    <span className="text-gray-400">{name}:</span>
+                    <span className="font-mono text-gray-800 font-semibold">{id}</span>
                   </div>
                 ) : null)}
 
                 {employee.pin && (
                   <div className="flex items-center justify-between pl-5">
-                    <span className="text-slate-400">{t("PIN / RČ", "Rodné číslo", "Személyi szám")}:</span>
+                    <span className="text-gray-400">{t("PIN / RČ", "Rodné číslo", "Személyi szám")}:</span>
                     {isSensitiveHidden ? (
-                      <span className="font-mono text-slate-400 tracking-widest font-bold select-none">
+                      <span className="font-mono text-gray-400 tracking-widest font-bold select-none">
                         ••••••/••••
                       </span>
                     ) : (
-                      <span className="font-mono text-slate-800 font-semibold">{employee.pin}</span>
+                      <span className="font-mono text-gray-800 font-semibold">{employee.pin}</span>
                     )}
                   </div>
                 )}
 
                 {employee.email && (
-                  <div className="flex items-center gap-2.5 text-slate-600 pl-5">
-                    <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <div className="flex items-center gap-2.5 text-gray-600 pl-5">
+                    <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                     <a href={`mailto:${employee.email}`} className="hover:text-[#c29b62] truncate">
                       {employee.email}
                     </a>
@@ -1459,8 +1460,8 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                 )}
 
                 {employee.phone && (
-                  <div className="flex items-center gap-2.5 text-slate-600 pl-5">
-                    <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <div className="flex items-center gap-2.5 text-gray-600 pl-5">
+                    <Phone className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                     <a href={`tel:${employee.phone}`} className="hover:text-[#c29b62]">
                       {employee.phone}
                     </a>
@@ -1468,7 +1469,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                 )}
 
                 {!employee.pin && !employee.email && !employee.phone && !employee.companyId && !employee.taxId && !employee.vatId && (
-                  <p className="text-ui text-slate-400 italic pl-5">
+                  <p className="text-ui text-gray-400 italic pl-5">
                     {t("No contact details specified", "Kontaktné údaje nezadané", "Nincsenek megadott elérhetőségek")}
                   </p>
                 )}
@@ -1476,13 +1477,13 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
               {/* 2. VACATION QUOTAS - AND THEIR USAGE */}
               {rights.vacations && (
-              <div className="pt-4 border-t border-slate-100 space-y-2.5">
+              <div className="pt-4 border-t border-gray-100 space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 type-overline text-slate-400">
+                  <div className="flex items-center gap-1.5 type-overline text-gray-400">
                     <Calendar className="w-3.5 h-3.5 text-[#c29b62]" />
                     <span>{t("Vacation Quotas & Usage", "Dovolenkové kvóty a čerpanie", "Szabadság kvóták és felhasználás")}</span>
                   </div>
-                  <span className="text-micro font-mono font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
+                  <span className="text-micro font-mono font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-md">
                     {calYear}
                   </span>
                 </div>
@@ -1501,9 +1502,9 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     const percent = allowance > 0 ? Math.min(100, Math.round((used / allowance) * 100)) : 0;
 
                     return (
-                      <div key={vt.id} className="p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/60 space-y-1.5">
+                      <div key={vt.id} className="p-2.5 rounded-md bg-gray-50/70 border border-gray-200/60 space-y-1.5">
                         <div className="flex items-center justify-between text-ui">
-                          <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                          <span className="font-semibold text-gray-700 flex items-center gap-1.5">
                             <span
                               className="w-2 h-2 rounded-full shrink-0"
                               style={{ backgroundColor: vt.color || "#c29b62" }}
@@ -1512,16 +1513,16 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                           </span>
                           <div className="flex items-center gap-2">
                             {isSensitiveHidden ? (
-                              <span className="font-mono text-slate-400 tracking-widest text-caption select-none">
+                              <span className="font-mono text-gray-400 tracking-widest text-caption select-none">
                                 •• / •• {t("days", "dní", "nap")}
                               </span>
                             ) : (
-                              <span className="font-mono text-slate-800 font-bold text-caption">
+                              <span className="font-mono text-gray-800 font-bold text-caption">
                                 {used} / {allowance} {t("days", "dní", "nap")}
                               </span>
                             )}
                             {isSensitiveHidden ? (
-                              <span className="text-micro font-mono px-1.5 py-0.5 rounded bg-slate-200/60 text-slate-500 select-none">
+                              <span className="text-micro font-mono px-1.5 py-0.5 rounded bg-gray-200/60 text-gray-500 select-none">
                                 ••
                               </span>
                             ) : (
@@ -1529,7 +1530,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                                 className={`text-micro font-bold px-1.5 py-0.5 rounded ${
                                   remaining === 0
                                     ? "bg-red-500/10 text-red-600 border border-red-500/20"
-                                    : "bg-[#c29b62]/10 text-[#9e7638] dark:text-[#d4af7a] border border-[#c29b62]/20"
+                                    : "bg-entity-subtle text-[#9e7638] border border-entity-border"
                                 }`}
                               >
                                 {remaining} {t("left", "zostáva", "maradt")}
@@ -1540,9 +1541,9 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
                         {/* Usage Progress Bar */}
                         {isSensitiveHidden ? (
-                          <div className="w-full h-1.5 bg-slate-200/50 rounded-full" />
+                          <div className="w-full h-1.5 bg-gray-200/50 rounded-full" />
                         ) : (
-                          <div className="w-full h-1.5 bg-slate-200/70 rounded-full overflow-hidden">
+                          <div className="w-full h-1.5 bg-gray-200/70 rounded-full overflow-hidden">
                             <div
                               className="h-full rounded-full transition-all duration-300"
                               style={{
@@ -1561,23 +1562,23 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
               {/* 3. PERMANENT RESIDENCE & ADDRESS */}
               {rights.personal && (
-              <div className="pt-4 border-t border-slate-100 space-y-2">
-                <div className="flex items-center gap-1.5 type-overline text-slate-400">
+              <div className="pt-4 border-t border-gray-100 space-y-2">
+                <div className="flex items-center gap-1.5 type-overline text-gray-400">
                   <MapPin className="w-3.5 h-3.5 text-[#c29b62]" />
                   <span>{t("Permanent Residence & Address", "Trvalé bydlisko a adresa", "Állandó lakcím és cím")}</span>
                 </div>
 
                 {employee.addressStreet || employee.addressCity || employee.addressZip ? (
-                  <div className="text-ui text-slate-700 pl-5 space-y-0.5">
-                    {employee.addressStreet && <p className="font-medium text-slate-800">{employee.addressStreet}</p>}
-                    <p className="text-slate-600">
+                  <div className="text-ui text-gray-700 pl-5 space-y-0.5">
+                    {employee.addressStreet && <p className="font-medium text-gray-800">{employee.addressStreet}</p>}
+                    <p className="text-gray-600">
                       {employee.addressZip ? `${employee.addressZip} ` : ""}
                       {employee.addressCity || ""}
                       {employee.addressCountry ? ` (${employee.addressCountry})` : ""}
                     </p>
                   </div>
                 ) : (
-                  <p className="text-ui text-slate-400 italic pl-5">
+                  <p className="text-ui text-gray-400 italic pl-5">
                     {t("Address not specified", "Adresa nezadaná", "Cím nincs megadva")}
                   </p>
                 )}
@@ -1586,33 +1587,33 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
               {/* 4. SALARY & COMPENSATION TERMS */}
               {rights.salaries && (
-              <div className="pt-4 border-t border-slate-100 space-y-2.5 text-ui">
-                <div className="flex items-center gap-1.5 type-overline text-slate-400 mb-1">
+              <div className="pt-4 border-t border-gray-100 space-y-2.5 text-ui">
+                <div className="flex items-center gap-1.5 type-overline text-gray-400 mb-1">
                   <Coins className="w-3.5 h-3.5 text-[#c29b62]" />
                   <span>{t("Salary & Compensation Terms", "Mzdové a kompenzačné podmienky", "Bérezési feltételek")}</span>
                 </div>
 
                 <div className="flex items-center justify-between pl-5">
-                  <span className="text-slate-400">{t("Base Rate", "Základná sadzba", "Alapbér")}:</span>
+                  <span className="text-gray-400">{t("Base Rate", "Základná sadzba", "Alapbér")}:</span>
                   {isSensitiveHidden ? (
-                    <span className="font-mono text-slate-400 tracking-widest font-bold select-none">
+                    <span className="font-mono text-gray-400 tracking-widest font-bold select-none">
                       •••••• / {salaryTypeLabel}
                     </span>
                   ) : (
-                    <span className="font-bold text-slate-800 font-mono">
+                    <span className="font-bold text-gray-800 font-mono">
                       {formatNumber(employee.salaryAmount, systemLanguage)} {systemCurrency} / {salaryTypeLabel}
                     </span>
                   )}
                 </div>
 
                 <div className="flex items-center justify-between pl-5">
-                  <span className="text-slate-400">{t("Salary Due Day", "Výplatný deň", "Kifizetési nap")}:</span>
+                  <span className="text-gray-400">{t("Salary Due Day", "Výplatný deň", "Kifizetési nap")}:</span>
                   {isSensitiveHidden ? (
-                    <span className="font-mono text-slate-400 tracking-widest font-bold select-none">
+                    <span className="font-mono text-gray-400 tracking-widest font-bold select-none">
                       ••. {t("of month", "v mesiaci", "a hónapban")}
                     </span>
                   ) : (
-                    <span className="font-semibold text-slate-800">
+                    <span className="font-semibold text-gray-800">
                       {employee.salaryDueDay
                         ? `${employee.salaryDueDay}. ${t("of month", "v mesiaci", "a hónapban")}`
                         : `${settings.salaryDueDay ?? 15}. ${t("(default)", "(predvolený)", "(alapértelmezett)")}`}
@@ -1621,8 +1622,8 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between pl-5">
-                  <span className="text-slate-400">{t("Time Tracking", "Meranie času", "Időkövetés")}:</span>
-                  <span className="font-semibold text-slate-800 flex items-center gap-1.5 truncate max-w-47.5">
+                  <span className="text-gray-400">{t("Time Tracking", "Meranie času", "Időkövetés")}:</span>
+                  <span className="font-semibold text-gray-800 flex items-center gap-1.5 truncate max-w-47.5">
                     <Clock className="w-3.5 h-3.5 text-[#c29b62] shrink-0" />
                     <span className="truncate">
                       {employee.timeTrackingUserName ||
@@ -1632,10 +1633,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between pl-5">
-                  <span className="text-slate-400">{t("Auto-Expense Sync", "Auto výdavok do financií", "Auto kiadás szinkron")}:</span>
+                  <span className="text-gray-400">{t("Auto-Expense Sync", "Auto výdavok do financií", "Auto kiadás szinkron")}:</span>
                   <span
                     className={`font-semibold px-2 py-0.5 rounded-md text-caption ${
-                      employee.autoExpense ? "bg-emerald-500/10 text-emerald-600" : "bg-slate-100 text-slate-500"
+                      employee.autoExpense ? "bg-emerald-500/10 text-emerald-600" : "bg-gray-100 text-gray-500"
                     }`}
                   >
                     {employee.autoExpense ? t("Active", "Aktívny", "Aktív") : t("Disabled", "Vypnuté", "Kikapcsolva")}
@@ -1646,26 +1647,26 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
               {/* 5. INTERNAL NOTES & OBSERVATIONS */}
               {rights.personal && (
-              <div className="pt-4 border-t border-slate-100 space-y-2">
-                <div className="flex items-center gap-1.5 type-overline text-slate-400">
+              <div className="pt-4 border-t border-gray-100 space-y-2">
+                <div className="flex items-center gap-1.5 type-overline text-gray-400">
                   <FileText className="w-3.5 h-3.5 text-[#c29b62]" />
                   <span>{t("Internal Notes & Observations", "Interné poznámky a postrehy", "Belső feljegyzések")}</span>
                 </div>
 
                 {isSensitiveHidden ? (
                   <div className="space-y-1.5 py-1 select-none pl-5">
-                    <div className="font-mono text-ui text-slate-400/90 tracking-widest select-none break-all leading-relaxed">
+                    <div className="font-mono text-ui text-gray-400/90 tracking-widest select-none break-all leading-relaxed">
                       ••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
                     </div>
-                    <div className="h-2 bg-slate-200/70 rounded-full w-4/5" />
-                    <div className="h-2 bg-slate-200/50 rounded-full w-3/5" />
+                    <div className="h-2 bg-gray-200/70 rounded-full w-4/5" />
+                    <div className="h-2 bg-gray-200/50 rounded-full w-3/5" />
                   </div>
                 ) : employee.notes ? (
-                  <p className="text-ui text-slate-600 whitespace-pre-wrap leading-relaxed pl-5">
+                  <p className="text-ui text-gray-600 whitespace-pre-wrap leading-relaxed pl-5">
                     {employee.notes}
                   </p>
                 ) : (
-                  <p className="text-ui text-slate-400 italic pl-5">
+                  <p className="text-ui text-gray-400 italic pl-5">
                     {t("No notes recorded", "Žiadne poznámky", "Nincsenek feljegyzések")}
                   </p>
                 )}
@@ -1674,25 +1675,25 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
               {/* Quick Link to Contracts & Documents */}
               {rights.files && (
-              <div className="pt-4 border-t border-slate-100">
+              <div style={entityAccentStyle("files") as React.CSSProperties} className="pt-4 border-t border-gray-100">
                 <button
                   type="button"
                   onClick={() => handleTabClick("files")}
-                  className={`w-full flex items-center justify-between p-3 rounded-2xl border transition cursor-pointer ${
+                  className={`w-full flex items-center justify-between p-3 rounded-lg border transition cursor-pointer ${
                     activeTab === "files"
-                      ? "bg-[#c29b62]/15 border-[#c29b62]/40 text-[#9e7638] dark:text-[#d4af7a]"
-                      : "bg-slate-50/80 hover:bg-slate-100 border-slate-200/80 text-slate-700"
+                      ? "bg-entity-subtle border-entity-border text-entity-text"
+                      : "bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-700"
                   }`}
                 >
                   <div className="flex items-center gap-2.5 text-ui font-bold">
-                    <FileCheck className="w-4 h-4 text-[#c29b62]" />
+                    <FileCheck className="w-4 h-4 text-entity-text" />
                     <span>{t("Contracts & Files", "Pracovné zmluvy a súbory", "Szerződések és fájlok")}</span>
                   </div>
                   <div className="flex items-center gap-1.5 text-ui font-bold">
-                    <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200/80 text-slate-600 text-caption">
+                    <span className="px-2 py-0.5 rounded-md bg-white border border-gray-200 text-gray-600 text-caption">
                       {employee.files?.length || 0}
                     </span>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                    <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
                   </div>
                 </button>
               </div>
@@ -1704,14 +1705,15 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
         {/* RIGHT COLUMN: 3 SUB-TABS (8 cols) */}
         <div className="ws-lg:col-span-8 space-y-6">
           {/* Sub-Tabs Navigation */}
-          <div className="flex items-center gap-2 p-1.5 glass-panel rounded-2xl border border-white/60 bg-white/80 shadow-sm">
+          <div className="flex items-center gap-2 p-1 bg-gray-100 rounded-lg border border-gray-200">
             {hasTogglKey && (
               <button
+                style={activeTab === "hours" ? (entityAccentStyle("time-tracking") as React.CSSProperties) : undefined}
                 onClick={() => handleTabClick("hours")}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-ui font-bold transition shadow-sm ${
+                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-ui font-semibold transition cursor-pointer ${
                   activeTab === "hours"
-                    ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/20"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/60"
+                    ? "bg-entity-solid text-white shadow-2xs"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-white/60"
                 }`}
               >
                 <Clock className="w-4 h-4" />
@@ -1722,10 +1724,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             {rights.salaries && (
             <button
               onClick={() => handleTabClick("salaries")}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-ui font-bold transition shadow-sm ${
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-ui font-semibold transition cursor-pointer ${
                 activeTab === "salaries"
-                  ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/20"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/60"
+                  ? "bg-entity-solid text-white shadow-2xs"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-white/60"
               }`}
             >
               <Coins className="w-4 h-4" />
@@ -1736,10 +1738,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             {rights.vacations && (
             <button
               onClick={() => handleTabClick("vacations")}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-ui font-bold transition shadow-sm ${
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-ui font-semibold transition cursor-pointer ${
                 activeTab === "vacations"
-                  ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/20"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/60"
+                  ? "bg-entity-solid text-white shadow-2xs"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-white/60"
               }`}
             >
               <Calendar className="w-4 h-4" />
@@ -1749,21 +1751,22 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
             {rights.files && (
             <button
+              style={activeTab === "files" ? (entityAccentStyle("files") as React.CSSProperties) : undefined}
               onClick={() => handleTabClick("files")}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-ui font-bold transition shadow-sm ${
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-ui font-semibold transition cursor-pointer ${
                 activeTab === "files"
-                  ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/20"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/60"
+                  ? "bg-entity-solid text-white shadow-2xs"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-white/60"
               }`}
             >
               <FileCheck className="w-4 h-4" />
               <span>{t("Contracts & Files", "Zmluvy a dokumenty", "Szerződések és iratok")}</span>
               {employee.files && employee.files.length > 0 && (
                 <span
-                  className={`px-1.5 py-0.5 rounded-full text-micro font-bold ${
+                  className={`px-1.5 py-0.5 rounded-md text-micro font-bold ${
                     activeTab === "files"
-                      ? "bg-white/30 text-white"
-                      : "bg-slate-200/80 text-slate-700"
+                      ? "bg-white/25 text-white"
+                      : "bg-gray-200/80 text-gray-700"
                   }`}
                 >
                   {employee.files.length}
@@ -1775,51 +1778,53 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
           {/* TAB 1: WORKED HOURS (TOGGL) */}
           {hasTogglKey && activeTab === "hours" && (
-            <EmployeeTimesheetSummary
-              employee={employee}
-              hoursData={hoursData}
-              loading={loadingHours}
-              error={hoursError}
-              togglYear={togglYear}
-              togglMonth={togglMonth}
-              onPrevMonth={() => {
-                if (togglMonth === 1) {
-                  setTogglMonth(12);
-                  setTogglYear((y) => y - 1);
-                } else {
-                  setTogglMonth((m) => m - 1);
-                }
-              }}
-              onNextMonth={() => {
-                if (togglMonth === 12) {
-                  setTogglMonth(1);
-                  setTogglYear((y) => y + 1);
-                } else {
-                  setTogglMonth((m) => m + 1);
-                }
-              }}
-              onCurrentMonth={() => {
-                const now = new Date();
-                setTogglYear(now.getFullYear());
-                setTogglMonth(now.getMonth() + 1);
-              }}
-              systemLanguage={systemLanguage}
-              systemCurrency={systemCurrency}
-              t={t}
-              onLinkTogglUser={handleStartEdit}
-            />
+            <div style={entityAccentStyle("time-tracking") as React.CSSProperties}>
+              <EmployeeTimesheetSummary
+                employee={employee}
+                hoursData={hoursData}
+                loading={loadingHours}
+                error={hoursError}
+                togglYear={togglYear}
+                togglMonth={togglMonth}
+                onPrevMonth={() => {
+                  if (togglMonth === 1) {
+                    setTogglMonth(12);
+                    setTogglYear((y) => y - 1);
+                  } else {
+                    setTogglMonth((m) => m - 1);
+                  }
+                }}
+                onNextMonth={() => {
+                  if (togglMonth === 12) {
+                    setTogglMonth(1);
+                    setTogglYear((y) => y + 1);
+                  } else {
+                    setTogglMonth((m) => m + 1);
+                  }
+                }}
+                onCurrentMonth={() => {
+                  const now = new Date();
+                  setTogglYear(now.getFullYear());
+                  setTogglMonth(now.getMonth() + 1);
+                }}
+                systemLanguage={systemLanguage}
+                systemCurrency={systemCurrency}
+                t={t}
+                onLinkTogglUser={handleStartEdit}
+              />
+            </div>
           )}
 
           {/* TAB 2: SALARIES & PAYMENTS HISTORY */}
           {rights.salaries && activeTab === "salaries" && (
             <div className="space-y-6 animate-in fade-in duration-150">
-              <div className="p-6 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
+              <div className="p-6  rounded-lg border border-gray-200 bg-white shadow-xs space-y-4">
                 <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4">
                   <div>
-                    <h3 className="text-body font-bold text-slate-900">
+                    <h3 className="text-body font-bold text-gray-900">
                       {t("Payroll & Compensation Records", "Evidencia výplat zamestnanca", "Bér- és kifizetési nyilvántartás")}
                     </h3>
-                    <p className="text-ui text-slate-500">
+                    <p className="text-ui text-gray-500">
                       {t(
                         "History of monthly payouts, due dates, and financial sync status",
                         "História mesačných miezd, termíny splatnosti a stav úhrad",
@@ -1835,7 +1840,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                       setSalaryToEdit(null);
                       setIsSalaryModalOpen(true);
                     }}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white text-ui font-bold shadow-md shadow-[#c29b62]/20 hover:shadow-lg transition cursor-pointer self-start ws-sm:self-auto shrink-0"
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-bold shadow-md shadow-2xs hover:shadow-lg transition cursor-pointer self-start ws-sm:self-auto shrink-0"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>{t("Add Salary", "Pridať mzdu", "Bér hozzáadása")}</span>
@@ -1844,7 +1849,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                 </div>
 
                 {employeeSalaries.length === 0 ? (
-                  <div className="p-8 text-center text-ui text-slate-400 border border-slate-200/80 rounded-2xl bg-slate-50/50 flex flex-col items-center justify-center gap-3">
+                  <div className="p-8 text-center text-ui text-gray-400 border border-gray-200/80 rounded-lg bg-gray-50/50 flex flex-col items-center justify-center gap-3">
                     <p className="max-w-md">
                       {t(
                         "No salary records created for this employee yet. You can add a salary payout here or use the Salaries Matrix.",
@@ -1859,7 +1864,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                         setSalaryToEdit(null);
                         setIsSalaryModalOpen(true);
                       }}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#c29b62] hover:bg-[#b58b4c] text-white text-ui font-bold shadow transition cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-[#c29b62] hover:bg-[#b58b4c] text-white text-ui font-bold shadow transition cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       {t("Add First Salary", "Pridať prvú mzdu", "Első bér hozzáadása")}
@@ -1867,10 +1872,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     )}
                   </div>
                 ) : (
-                  <div className="border border-slate-200 rounded-2xl overflow-x-auto shadow-sm">
+                  <div className="border border-gray-200 rounded-lg overflow-x-auto shadow-sm">
                     <table className="w-full text-left text-ui whitespace-nowrap">
                       <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
+                        <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 font-semibold">
                           <th className="py-2.5 px-3">{t("Period", "Obdobie", "Időszak")}</th>
                           <th className="py-2.5 px-3">{t("Due Date", "Splatnosť", "Esedékesség")}</th>
                           <th className="py-2.5 px-3 text-right">{t("Salary", "Mzda", "Bér")}</th>
@@ -1887,7 +1892,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                           <th className="py-2.5 px-3 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
+                      <tbody className="divide-y divide-gray-100">
                         {employeeSalaries.map((sal) => {
                           // Paid against Cena práce once the payslip is in, otherwise the gross
                           const payStatus = salaryStatus(salaryDue(sal), sal.totalPaid || 0);
@@ -1901,15 +1906,15 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                                 setSalaryToEdit(sal);
                                 setIsSalaryModalOpen(true);
                               }}
-                              className="hover:bg-slate-50/70 transition cursor-pointer group"
+                              className="hover:bg-gray-50/70 transition cursor-pointer group"
                             >
-                              <td className="py-2.5 px-3 font-semibold text-slate-900">
+                              <td className="py-2.5 px-3 font-semibold text-gray-900">
                                 {sal.periodKey} ({monthNames[(sal.periodNumber || 1) - 1]} {sal.year})
                               </td>
-                              <td className="py-2.5 px-3 text-slate-500">
+                              <td className="py-2.5 px-3 text-gray-500">
                                 {sal.dueDate ? new Date(sal.dueDate).toLocaleDateString() : "—"}
                               </td>
-                              <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-900">
+                              <td className="py-2.5 px-3 text-right font-mono font-semibold text-gray-900">
                                 {formatNumber(sal.totalSalary, systemLanguage, { minimumFractionDigits: 2 })} {systemCurrency}
                               </td>
                               <td className="py-2.5 px-3 text-right font-mono font-semibold text-emerald-600">
@@ -1921,9 +1926,9 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                                   n == null ? "—" : `${formatNumber(n, systemLanguage, { minimumFractionDigits: 2 })} ${systemCurrency}`;
                                 return (
                                   <>
-                                    <td className="py-2.5 px-3 text-right font-mono text-slate-700">{cell(sal.laborCost)}</td>
-                                    <td className="py-2.5 px-3 text-right font-mono text-slate-700">{cell(sal.netPay)}</td>
-                                    <td className="py-2.5 px-3 text-right font-mono text-slate-700">{cell(levies)}</td>
+                                    <td className="py-2.5 px-3 text-right font-mono text-gray-700">{cell(sal.laborCost)}</td>
+                                    <td className="py-2.5 px-3 text-right font-mono text-gray-700">{cell(sal.netPay)}</td>
+                                    <td className="py-2.5 px-3 text-right font-mono text-gray-700">{cell(levies)}</td>
                                   </>
                                 );
                               })()}
@@ -1934,7 +1939,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                                       ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
                                       : isPartial
                                       ? "bg-amber-500/10 text-amber-700 border border-amber-500/20"
-                                      : "bg-slate-100 text-slate-600 border border-slate-200"
+                                      : "bg-gray-100 text-gray-600 border border-gray-200"
                                   }`}
                                 >
                                   {isFullyPaid
@@ -1944,7 +1949,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                                     : t("Planned", "Plánované", "Tervezett")}
                                 </span>
                               </td>
-                              <td className="py-2.5 px-3 text-slate-500">
+                              <td className="py-2.5 px-3 text-gray-500">
                                 {sal.paymentDate ? new Date(sal.paymentDate).toLocaleDateString() : "—"}
                               </td>
                               <td className="py-2.5 px-3 text-right">
@@ -1957,7 +1962,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                                     setIsSalaryModalOpen(true);
                                   }}
                                   title={t("Edit Salary", "Upraviť mzdu", "Bér szerkesztése")}
-                                  className="p-1.5 text-slate-400 group-hover:text-[#c29b62] hover:bg-[#c29b62]/10 rounded-lg transition cursor-pointer inline-flex items-center justify-center"
+                                  className="p-1.5 text-gray-400 group-hover:text-[#c29b62] hover:bg-entity-subtle rounded-lg transition cursor-pointer inline-flex items-center justify-center"
                                 >
                                   <Edit3 className="w-3.5 h-3.5" />
                                 </button>
@@ -1986,10 +1991,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   return (
                     <div
                       key={vtId}
-                      className="p-4 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-2"
+                      className="p-4  rounded-lg border border-gray-200 bg-white shadow-xs space-y-2"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-ui font-bold text-slate-800 truncate">
+                        <span className="text-ui font-bold text-gray-800 truncate">
                           {stat.name}
                         </span>
                         <span
@@ -1999,15 +2004,15 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                       </div>
 
                       <div className="flex items-baseline justify-between">
-                        <span className="text-title font-bold font-mono text-slate-900">
-                          {stat.used} <span className="text-ui font-normal text-slate-400">/ {stat.allowance} d</span>
+                        <span className="text-title font-bold font-mono text-gray-900">
+                          {stat.used} <span className="text-ui font-normal text-gray-400">/ {stat.allowance} d</span>
                         </span>
-                        <span className="text-micro text-slate-400">
+                        <span className="text-micro text-gray-400">
                           {remaining} {t("left", "zostáva", "maradt")}
                         </span>
                       </div>
 
-                      <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="w-full h-1.5 rounded-full bg-gray-100 overflow-hidden">
                         <div
                           className="h-full rounded-full transition-all duration-300"
                           style={{ width: `${pct}%`, backgroundColor: stat.color }}
@@ -2019,10 +2024,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
               </div>
 
               {/* Interactive Calendar Card */}
-              <div className="p-6 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
+              <div className="p-6  rounded-lg border border-gray-200 bg-white shadow-xs space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                    <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-md">
                       <button
                         onClick={() => {
                           if (calMonth === 1) {
@@ -2032,11 +2037,11 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                             setCalMonth((m) => m - 1);
                           }
                         }}
-                        className="p-1 rounded-lg text-slate-500 hover:text-slate-900 transition"
+                        className="p-1 rounded-lg text-gray-500 hover:text-gray-900 transition"
                       >
                         <ChevronLeft className="w-4 h-4" />
                       </button>
-                      <span className="px-3 text-ui font-bold text-slate-800">
+                      <span className="px-3 text-ui font-bold text-gray-800">
                         {monthNames[calMonth - 1]} {calYear}
                       </span>
                       <button
@@ -2048,7 +2053,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                             setCalMonth((m) => m + 1);
                           }
                         }}
-                        className="p-1 rounded-lg text-slate-500 hover:text-slate-900 transition"
+                        className="p-1 rounded-lg text-gray-500 hover:text-gray-900 transition"
                       >
                         <ChevronRight className="w-4 h-4" />
                       </button>
@@ -2061,7 +2066,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                       setVacationToEdit(null);
                       setIsVacationModalOpen(true);
                     }}
-                    className="flex items-center gap-1.5 px-3.5 py-2 text-ui font-semibold rounded-2xl bg-[#c29b62] text-white hover:bg-[#b08b53] transition shadow-md shadow-[#c29b62]/20"
+                    className="flex items-center gap-1.5 px-3.5 py-2 text-ui font-semibold rounded-lg bg-[#c29b62] text-white hover:bg-[#b08b53] transition shadow-md shadow-2xs"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>{t("Record Vacation", "Zadať voľno", "Szabadság rögzítése")}</span>
@@ -2070,7 +2075,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                 </div>
 
                 {/* Calendar Day-of-week header */}
-                <div className="grid grid-cols-7 gap-1 text-center text-caption font-bold text-slate-400 py-1 border-b border-slate-100">
+                <div className="grid grid-cols-7 gap-1 text-center text-caption font-bold text-gray-400 py-1 border-b border-gray-100">
                   <span>{t("Mon", "Po", "H")}</span>
                   <span>{t("Tue", "Ut", "K")}</span>
                   <span>{t("Wed", "St", "Sze")}</span>
@@ -2084,7 +2089,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                 <div className="grid grid-cols-7 gap-1">
                   {calendarGrid.map((cell, idx) => {
                     if (!cell.isCurrentMonth) {
-                      return <div key={idx} className="h-14 rounded-2xl bg-slate-100/40 border border-dashed border-slate-200/50" />;
+                      return <div key={idx} className="h-14 rounded-lg bg-gray-100/40 border border-dashed border-gray-200/50" />;
                     }
 
                     const hasVac = !!cell.vacation;
@@ -2093,10 +2098,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     return (
                       <div
                         key={idx}
-                        className={`h-14 p-1.5 rounded-2xl border text-ui flex flex-col justify-between transition ${
+                        className={`h-14 p-1.5 rounded-lg border text-ui flex flex-col justify-between transition ${
                           hasVac
                             ? "border-transparent text-white font-bold shadow-sm"
-                            : "bg-slate-50/70 border-slate-200/70 text-slate-700 hover:bg-slate-100/80"
+                            : "bg-gray-50/70 border-gray-200/70 text-gray-700 hover:bg-gray-100/80"
                         }`}
                         style={hasVac ? { backgroundColor: vacColor } : {}}
                       >
@@ -2115,13 +2120,13 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
               </div>
 
               {/* Vacation Records List */}
-              <div className="p-6 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
-                <h4 className="text-ui font-bold text-[#b58b4c] dark:text-[#d4af7a]">
+              <div className="p-6  rounded-lg border border-gray-200 bg-white shadow-xs space-y-4">
+                <h4 className="text-ui font-bold text-[#b58b4c]">
                   {t("Vacation Request & Approval History", "História žiadostí a čerpania", "Kérelmek és történet")}
                 </h4>
 
                 {employeeVacations.length === 0 ? (
-                  <p className="text-ui text-slate-400 text-center py-4">
+                  <p className="text-ui text-gray-400 text-center py-4">
                     {t("No vacation records found.", "Žiadne záznamy o dovolenke.", "Nincsenek szabadságrekordok.")}
                   </p>
                 ) : (
@@ -2131,7 +2136,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                       return (
                         <div
                           key={vac.id}
-                          className="flex items-center justify-between p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80 text-ui"
+                          className="flex items-center justify-between p-3 rounded-lg bg-gray-50/80 border border-gray-200/80 text-ui"
                         >
                           <div className="flex items-center gap-3">
                             <span
@@ -2139,10 +2144,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                               style={{ backgroundColor: vType?.color || "#c29b62" }}
                             />
                             <div>
-                              <span className="font-semibold text-slate-900">
+                              <span className="font-semibold text-gray-900">
                                 {vType?.name || "Leave"}: {vac.startDate} → {vac.endDate}
                               </span>
-                              <div className="flex items-center gap-2 text-micro text-slate-400 mt-0.5">
+                              <div className="flex items-center gap-2 text-micro text-gray-400 mt-0.5">
                                 <span>{vac.daysCount} {t("days", "dní", "nap")}</span>
                                 {vac.note && <span>• {vac.note}</span>}
                               </div>
@@ -2173,7 +2178,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                                 setVacationToEdit(vac);
                                 setIsVacationModalOpen(true);
                               }}
-                              className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg transition"
+                              className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg transition"
                             >
                               <Edit3 className="w-3.5 h-3.5" />
                             </button>
@@ -2185,7 +2190,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                                 lang={asLang(systemLanguage)}
                                 what={employee.name}
                                 onConfirm={() => onDeleteVacation(vac.id)}
-                                className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition"
+                                className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg transition"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </HoldToConfirmButton>
@@ -2201,18 +2206,18 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
           )}
           {/* TAB 4: CONTRACTS & DOCUMENTS (FILES) */}
           {rights.files && activeTab === "files" && (
-            <div className="space-y-6 animate-in fade-in duration-150">
+            <div style={entityAccentStyle("files") as React.CSSProperties} className="space-y-6 animate-in fade-in duration-150">
               {/* Header card with upload CTA */}
-              <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 p-5 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass">
+              <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 p-5 rounded-lg border border-gray-200 bg-white shadow-xs">
                 <div className="flex items-center gap-3.5">
-                  <div className="w-11 h-11 rounded-2xl bg-[#c29b62]/15 text-[#9e7638] dark:text-[#d4af7a] flex items-center justify-center shrink-0 shadow-sm border border-[#c29b62]/25">
-                    <FileCheck className="w-5 h-5 text-[#c29b62]" />
+                  <div className="w-11 h-11 rounded-md bg-entity-subtle text-entity-text flex items-center justify-center shrink-0 border border-entity-border">
+                    <FileCheck className="w-5 h-5 text-entity-text" />
                   </div>
                   <div>
-                    <h3 className="text-body font-bold text-slate-900">
+                    <h3 className="text-body font-bold text-gray-900">
                       {t("Contracts & Employee Documents", "Pracovné zmluvy a dokumenty zamestnanca", "Szerződések és iratok")}
                     </h3>
-                    <p className="text-ui text-slate-500">
+                    <p className="text-ui text-gray-500">
                       {employee.files && employee.files.length > 0
                         ? `${employee.files.length} ${t("file(s) attached", "súborov pripojených", "csatolt fájl")} • ${(
                             employee.files.reduce((acc, f) => acc + (f.size || 0), 0) /
@@ -2224,7 +2229,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                 </div>
 
                 {rights.editFiles && (
-                <label className="flex items-center gap-2 px-4 py-2.5 text-ui font-bold rounded-2xl bg-[#c29b62] hover:bg-[#b58b4c] text-white cursor-pointer transition shadow-md shadow-[#c29b62]/20">
+                <label className="flex items-center gap-2 px-4 py-2.5 text-ui font-bold rounded-lg bg-[#c29b62] hover:bg-[#b58b4c] text-white cursor-pointer transition shadow-md shadow-2xs">
                   {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                   <span>
                     {isUploading
@@ -2246,16 +2251,16 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                 <div
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={handleDropFile}
-                  className="p-12 text-center glass-panel rounded-3xl border-2 border-dashed border-slate-200/90 bg-white/70 hover:bg-white/95 transition space-y-4"
+                  className="p-12 text-center  rounded-lg border-2 border-dashed border-gray-200/90 bg-white/70 hover:bg-white transition space-y-4"
                 >
-                  <div className="w-14 h-14 rounded-2xl bg-[#c29b62]/10 border border-[#c29b62]/20 text-[#c29b62] flex items-center justify-center mx-auto shadow-sm">
+                  <div className="w-14 h-14 rounded-lg bg-entity-subtle border border-entity-border text-[#c29b62] flex items-center justify-center mx-auto shadow-sm">
                     <FileText className="w-7 h-7" />
                   </div>
                   <div className="max-w-md mx-auto space-y-1">
-                    <h4 className="text-body font-bold text-slate-800">
+                    <h4 className="text-body font-bold text-gray-800">
                       {t("No contracts or documents attached", "Žiadne zmluvy ani dokumenty", "Nincsenek csatolt szerződések")}
                     </h4>
-                    <p className="text-ui text-slate-500">
+                    <p className="text-ui text-gray-500">
                       {t(
                         "Upload employment agreements, NDAs, identification scans, certifications, or tax declarations. Drag and drop files here or click below to browse.",
                         "Nahrajte pracovnú zmluvu, dohodu, NDA, certifikáty alebo daňové vyhlásenia. Presuňte súbor sem alebo kliknite na tlačidlo.",
@@ -2264,7 +2269,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     </p>
                   </div>
 
-                  <label className="inline-flex items-center gap-2 px-5 py-2.5 text-ui font-bold rounded-2xl bg-[#c29b62] hover:bg-[#b58b4c] text-white cursor-pointer transition shadow-md shadow-[#c29b62]/25">
+                  <label className="inline-flex items-center gap-2 px-5 py-2.5 text-ui font-bold rounded-lg bg-[#c29b62] hover:bg-[#b58b4c] text-white cursor-pointer transition shadow-md shadow-2xs">
                     {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                     <span>{t("Select File to Upload", "Vybrať súbor z počítača", "Fájl kiválasztása")}</span>
                     <input
@@ -2286,25 +2291,25 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                       return (
                         <div
                           key={file.id}
-                          className="flex items-center justify-between p-4 glass-panel rounded-2xl border border-white/60 bg-white/95 shadow-sm hover:shadow-md transition group"
+                          className="flex items-center justify-between p-4  rounded-lg border border-gray-200 bg-white shadow-sm hover:shadow-md transition group"
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <div
-                              className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 font-bold text-ui shadow-sm ${
+                              className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 font-bold text-ui shadow-sm ${
                                 isPdf
                                   ? "bg-red-500/15 text-red-600 border border-red-500/20"
                                   : isImg
                                   ? "bg-purple-500/15 text-purple-600 border border-purple-500/20"
-                                  : "bg-[#c29b62]/15 text-[#9e7638] dark:text-[#d4af7a] border border-[#c29b62]/20"
+                                  : "bg-entity-subtle text-[#9e7638] border border-entity-border"
                               }`}
                             >
                               {isPdf ? "PDF" : isImg ? "IMG" : <FileText className="w-5 h-5" />}
                             </div>
                             <div className="min-w-0">
-                              <p className="text-ui font-bold text-slate-900 truncate" title={file.name}>
+                              <p className="text-ui font-bold text-gray-900 truncate" title={file.name}>
                                 {file.name}
                               </p>
-                              <p className="text-caption text-slate-400 mt-0.5">
+                              <p className="text-caption text-gray-400 mt-0.5">
                                 {file.size ? `${(file.size / 1024).toFixed(1)} KB` : ""}
                                 {file.uploadedAt ? ` • ${new Date(file.uploadedAt).toLocaleDateString()}` : ""}
                               </p>
@@ -2317,7 +2322,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                               href={employeeFileHref(employee.id, file) as string}
                               target="_blank"
                               rel="noreferrer"
-                              className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition"
+                              className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition"
                               title={t("Download / View", "Stiahnuť / Zobraziť", "Letöltés")}
                             >
                               <Download className="w-4 h-4" />
@@ -2329,7 +2334,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                                 lang={asLang(systemLanguage)}
                                 what={file.name}
                                 onConfirm={() => handleRemoveContract(file.id)}
-                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition"
+                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition"
                                 title={t("Delete Document", "Zmazať dokument", "Törlés")}
                             >
                               <Trash2 className="w-4 h-4" />
@@ -2345,9 +2350,9 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   <div
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={handleDropFile}
-                    className="p-4 border-2 border-dashed border-slate-200/80 rounded-2xl text-center bg-slate-50/50 hover:bg-slate-50 transition"
+                    className="p-4 border-2 border-dashed border-gray-200/80 rounded-lg text-center bg-gray-50/50 hover:bg-gray-50 transition"
                   >
-                    <label className="inline-flex items-center gap-2 text-ui font-semibold text-slate-500 hover:text-[#c29b62] cursor-pointer transition">
+                    <label className="inline-flex items-center gap-2 text-ui font-semibold text-gray-500 hover:text-[#c29b62] cursor-pointer transition">
                       {isUploading ? (
                         <Loader2 className="w-4 h-4 animate-spin text-[#c29b62]" />
                       ) : (

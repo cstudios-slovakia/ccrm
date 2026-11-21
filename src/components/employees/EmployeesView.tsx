@@ -374,7 +374,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   ];
 
   return (
-    <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
+    <div className="space-y-6 select-none animate-fade-in text-gray-800 pb-16 relative">
       {/* Module header: title first, then the sub-navigation (docs/VIEW-SIZE.md §6.1) */}
       {currentView !== "form" && (
         <PageHeader
@@ -392,7 +392,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
                 <button
                   type="button"
                   onClick={() => navigateToAddEmployee()}
-                  className="flex items-center gap-2 h-9 px-3 rounded-xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white text-ui font-semibold shadow-md shadow-[#c29b62]/20 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+                  className="flex items-center gap-2 h-9 px-3 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-semibold shadow-md shadow-2xs transition-all cursor-pointer"
                 >
                   <Plus className="size-4" />
                   <span>{t("Add Employee", "Nový zamestnanec", "Új alkalmazott")}</span>
@@ -406,7 +406,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
 
       {/* Sub-navigation (hidden when in full-screen employee form) */}
       {currentView !== "form" && (
-        <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 border-b border-slate-200/60 pb-3">
+        <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 border-b border-gray-200/60 pb-3">
           {/* Sub-view switcher tabs */}
           <div className="flex items-center gap-2">
             {tabItems.filter((i) => !i.hidden).length > 1 && (
@@ -419,7 +419,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
 
             {currentView === "detail" && selectedEmployee && (
               <div className="flex items-center gap-2 pl-2">
-                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
                 <span className="text-ui font-heading font-bold text-[#b58b4c]">
                   {selectedEmployee.name}
                 </span>
@@ -477,24 +477,24 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
         )}
 
         {currentView === "detail" && !selectedEmployee && (
-          <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-12 text-center space-y-4 animate-fade-in">
+          <div className=" rounded-lg border border-gray-200 bg-white shadow-xs p-12 text-center space-y-4 animate-fade-in">
             {employees.length === 0 ? (
               <div className="flex flex-col items-center gap-3">
                 <Loader2 className="w-8 h-8 animate-spin text-[#c29b62]" />
-                <p className="text-body font-medium text-slate-500">
+                <p className="text-body font-medium text-gray-500">
                   {t("Loading employee profile...", "Načítavam profil zamestnanca...", "Alkalmazotti profil betöltése...")}
                 </p>
               </div>
             ) : (
               <div className="flex flex-col items-center gap-4 max-w-md mx-auto">
-                <div className="w-14 h-14 rounded-3xl bg-amber-500/10 border border-amber-500/20 text-amber-600 flex items-center justify-center font-bold text-title">
+                <div className="w-14 h-14 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-600 flex items-center justify-center font-bold text-title">
                   !
                 </div>
                 <div>
-                  <h3 className="text-title-sm font-heading font-bold text-slate-900">
+                  <h3 className="text-title-sm font-heading font-bold text-gray-900">
                     {t("Employee Not Found", "Zamestnanec sa nenašiel", "Az alkalmazott nem található")}
                   </h3>
-                  <p className="text-ui text-slate-500 mt-1">
+                  <p className="text-ui text-gray-500 mt-1">
                     {t(
                       "The requested employee does not exist or may have been removed.",
                       "Požadovaný zamestnanec neexistuje alebo bol odstránený.",
@@ -505,7 +505,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
                 <button
                   type="button"
                   onClick={() => navigateToTab("list")}
-                  className="px-4 py-2 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white text-ui font-heading font-bold shadow-sm hover:shadow transition cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-heading font-bold shadow-sm hover:shadow transition cursor-pointer"
                 >
                   {t("Back to Directory", "Späť do zoznamu", "Vissza a listához")}
                 </button>
