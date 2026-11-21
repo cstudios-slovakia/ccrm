@@ -278,10 +278,10 @@ export const RentedEmployeesView: React.FC<RentedEmployeesViewProps> = ({
       {rows.length > 0 && (
         <div
           data-testid="agency-rented-list-ai-summary"
-          className={`rounded-2xl border px-4 py-3 shadow-xs transition-colors ${
+          className={`rounded-lg border px-4 py-3 shadow-xs transition-colors ${
             combinedFleetProblems.length > 0
               ? "bg-rose-50/75 border-rose-200/80"
-              : "bg-[#f3f6ea]/70 border-[#5c6f28]/30"
+              : "bg-[#f3f6ea]/70 border-entity-border"
           }`}
         >
           <div className="flex items-start justify-between gap-3">
@@ -313,7 +313,7 @@ export const RentedEmployeesView: React.FC<RentedEmployeesViewProps> = ({
                 type="button"
                 onClick={() => generateFleetSummary(true)}
                 disabled={isGeneratingFleetSummary}
-                className="p-1 rounded-lg hover:bg-white/80 text-slate-500 hover:text-slate-700 transition-colors disabled:opacity-50"
+                className="p-1 rounded-lg hover:bg-white/80 text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
                 title={t("Regenerate AI Summary", "Pregenerovať AI zhrnutie", "AI összefoglaló újragenerálása")}
               >
                 <RefreshCw className={`size-3.5 ${isGeneratingFleetSummary ? "animate-spin text-[#4a5a20]" : ""}`} />
@@ -333,9 +333,9 @@ export const RentedEmployeesView: React.FC<RentedEmployeesViewProps> = ({
               ))}
             </div>
           )}
-          <p className="mt-1.5 text-caption text-slate-700 leading-relaxed">
+          <p className="mt-1.5 text-caption text-gray-700 leading-relaxed">
             {isGeneratingFleetSummary && !fleetAiSummary ? (
-              <span className="italic text-slate-400">
+              <span className="italic text-gray-400">
                 {t(
                   "Generating AI summary for rented employees...",
                   "Generujem AI prehľad prenajatých zamestnancov...",
@@ -360,22 +360,22 @@ export const RentedEmployeesView: React.FC<RentedEmployeesViewProps> = ({
           </p>
         </div>
       )}
-      <div className="glass-panel rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+      <div className=" rounded-lg p-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-56">
           <div className="relative flex-1 min-w-48 max-w-md">
-            <Search className="size-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Search className="size-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("Filter rented workers or companies…", "Filtrovať pracovníkov alebo firmy…", "Dolgozó vagy cég keresése…")}
-              className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-slate-200 text-ui"
+              className="w-full pl-9 pr-3 py-2 rounded-md bg-white border border-gray-200 text-ui"
             />
           </div>
           <select
             value={companyFilter}
             onChange={(e) => setCompanyFilter(e.target.value)}
-            className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui"
+            className="px-3 py-2 rounded-md bg-white border border-gray-200 text-ui"
           >
             <option value="all">{t("All Client Companies", "Všetky firmy", "Minden cég")}</option>
             {companyOptions.map((c) => (
@@ -384,7 +384,7 @@ export const RentedEmployeesView: React.FC<RentedEmployeesViewProps> = ({
               </option>
             ))}
           </select>
-          <label className="inline-flex items-center gap-1.5 text-caption text-slate-600 cursor-pointer">
+          <label className="inline-flex items-center gap-1.5 text-caption text-gray-600 cursor-pointer">
             <input
               type="checkbox"
               checked={showInactive}
@@ -397,23 +397,23 @@ export const RentedEmployeesView: React.FC<RentedEmployeesViewProps> = ({
         <button
           type="button"
           onClick={onOpenSchedule}
-          className="px-3.5 py-2 rounded-xl bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-semibold inline-flex items-center gap-1.5 shadow-sm shadow-[#5c6f28]/20 transition-colors cursor-pointer"
+          className="px-3.5 py-2 rounded-md bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-semibold inline-flex items-center gap-1.5 shadow-sm shadow-[#5c6f28]/20 transition-colors cursor-pointer"
         >
           <CalendarDays className="size-4" />
           {t("Open Work Schedule", "Otvoriť rozpis zmien", "Műszakbeosztás")}
         </button>
       </div>
 
-      <div className="glass-panel rounded-2xl overflow-hidden">
+      <div className=" rounded-lg overflow-hidden">
         {rows.length === 0 ? (
-          <div className="p-10 text-center text-ui text-slate-500">
+          <div className="p-10 text-center text-ui text-gray-500">
             {t("No rented employees found for the active filters.", "Žiadni prenajatí zamestnanci.", "Nincs kölcsönzött dolgozó.")}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/80 text-micro font-bold uppercase tracking-wider text-slate-500">
+                <tr className="border-b border-gray-200 bg-gray-50/80 text-micro font-bold uppercase tracking-wider text-gray-500">
                   <th className="py-3 px-4">{t("Rented Employee", "Zamestnanec", "Dolgozó")}</th>
                   <th className="py-3 px-4">{t("Client Company & Workplace", "Firma a pracovisko", "Cég és telephely")}</th>
                   <th className="py-3 px-4">{t("Role & Start", "Pozícia a nástup", "Munkakör")}</th>
@@ -421,7 +421,7 @@ export const RentedEmployeesView: React.FC<RentedEmployeesViewProps> = ({
                   {rights.payments && <th className="py-3 px-4">{t("Rates", "Sadzby", "Díjak")}</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-gray-100">
                 {rows.map(({ worker, placement, effectiveCompanyId }) => {
                   const comp = effectiveCompanyId ? clientMap.get(effectiveCompanyId) : undefined;
                   const wp = placement?.workplaceId ? workplaceMap.get(placement.workplaceId) : undefined;
@@ -432,35 +432,35 @@ export const RentedEmployeesView: React.FC<RentedEmployeesViewProps> = ({
                       key={worker.id}
                       data-testid={`agency-rented-row-${worker.id}`}
                       onClick={() => onOpenWorker(worker.id)}
-                      className="hover:bg-slate-50/80 cursor-pointer transition-colors"
+                      className="hover:bg-gray-50/80 cursor-pointer transition-colors"
                     >
                       <td className="py-3 px-4">
-                        <div className="text-body font-semibold text-slate-900 flex items-center gap-2">
+                        <div className="text-body font-semibold text-gray-900 flex items-center gap-2">
                           <UserCheck className="size-4 text-[#5c6f28] shrink-0" />
                           <span>{worker.fullName}</span>
                           {worker.workerCode && (
-                            <span className="text-micro font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                            <span className="text-micro font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
                               {worker.workerCode}
                             </span>
                           )}
                         </div>
-                        <div className="text-micro text-slate-500">{worker.nationality || "—"}</div>
+                        <div className="text-micro text-gray-500">{worker.nationality || "—"}</div>
                       </td>
                       <td className="py-3 px-4">
-                        <div className="text-ui font-semibold text-slate-800 inline-flex items-center gap-1">
-                          <Building2 className="size-3.5 text-slate-400" />
+                        <div className="text-ui font-semibold text-gray-800 inline-flex items-center gap-1">
+                          <Building2 className="size-3.5 text-gray-400" />
                           {comp?.name || effectiveCompanyId || "—"}
                         </div>
                         {wp && (
-                          <div className="text-micro text-slate-500 flex items-center gap-1">
+                          <div className="text-micro text-gray-500 flex items-center gap-1">
                             <MapPin className="size-3" />
                             {wp.name}
                           </div>
                         )}
                       </td>
                       <td className="py-3 px-4">
-                        <div className="text-ui text-slate-800">{jobRole || "—"}</div>
-                        <div className="text-micro text-slate-500 font-mono">
+                        <div className="text-ui text-gray-800">{jobRole || "—"}</div>
+                        <div className="text-micro text-gray-500 font-mono">
                           {placement?.startDate ? formatDateLocalized(placement.startDate, lang) : ""}
                         </div>
                       </td>
@@ -505,7 +505,7 @@ export const RentedEmployeesView: React.FC<RentedEmployeesViewProps> = ({
                         )}
                       </td>
                       {rights.payments && (
-                        <td className="py-3 px-4 text-caption font-mono text-slate-700">
+                        <td className="py-3 px-4 text-caption font-mono text-gray-700">
                           {placement?.payRate ?? worker.defaultPayRate ?? 0} / {placement?.billRate ?? worker.defaultBillRate ?? 0} {placement?.currency || worker.currency}
                         </td>
                       )}

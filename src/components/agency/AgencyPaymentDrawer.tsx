@@ -8,6 +8,7 @@ import type {
 } from "../../types/agency";
 import { computePaymentTotals } from "../../utils/agencyCalculations";
 import { saveAgencyPayment } from "../../utils/agencyApi";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
 interface AgencyPaymentDrawerProps {
   payment: AgencyPayment;
@@ -104,23 +105,23 @@ export const AgencyPaymentDrawer: React.FC<AgencyPaymentDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[1000] bg-slate-900/40 backdrop-blur-2xs flex justify-end">
+    <div style={entityAccentStyle("agency") as React.CSSProperties} className="fixed inset-0 z-[1000] bg-gray-900/40 flex justify-end">
       <form
         onSubmit={handleSave}
         data-testid="agency-payment-drawer"
-        className="bg-white w-full max-w-lg h-full shadow-2xl border-l border-slate-200 flex flex-col"
+        className="bg-white w-full max-w-lg h-full shadow-xl border-l border-gray-200 flex flex-col"
       >
-        <div className="p-5 border-b border-slate-200 flex items-start justify-between gap-3">
+        <div className="p-5 border-b border-gray-200 flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-title font-bold text-slate-900">{workerName}</h2>
-            <p className="text-caption text-slate-500">
+            <h2 className="text-title font-bold text-gray-900">{workerName}</h2>
+            <p className="text-caption text-gray-500">
               {companyName} · {payment.periodYm} · {payment.regularHours}h ({payment.overtimeHours}h OT, {payment.sickDays}d {t("sick", "PN", "beteg")})
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 cursor-pointer"
           >
             <X className="size-5" />
           </button>
@@ -128,7 +129,7 @@ export const AgencyPaymentDrawer: React.FC<AgencyPaymentDrawerProps> = ({
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {isLocked && (
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-caption font-semibold flex items-center gap-2">
+            <div className="p-3 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-caption font-semibold flex items-center gap-2">
               <Lock className="size-4 shrink-0" />
               <span>
                 {t(
@@ -141,14 +142,14 @@ export const AgencyPaymentDrawer: React.FC<AgencyPaymentDrawerProps> = ({
           )}
 
           {errorMsg && (
-            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-ui font-semibold">
+            <div className="p-3 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-ui font-semibold">
               {errorMsg}
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block type-overline text-slate-500 mb-1">
+              <label className="block type-overline text-gray-500 mb-1">
                 {t("Base Worker Pay", "Základná mzda", "Alapbér")} ({payment.currency})
               </label>
               <input
@@ -157,11 +158,11 @@ export const AgencyPaymentDrawer: React.FC<AgencyPaymentDrawerProps> = ({
                 disabled={!editable}
                 value={basePay}
                 onChange={(e) => setBasePay(Number(e.target.value))}
-                className="w-full h-9 px-3 rounded-xl border border-slate-200 text-ui font-semibold"
+                className="w-full h-9 px-3 rounded-md border border-gray-200 text-ui font-semibold"
               />
             </div>
             <div>
-              <label className="block type-overline text-slate-500 mb-1">
+              <label className="block type-overline text-gray-500 mb-1">
                 {t("Client Billing Total", "Fakturácia klientovi", "Ügyfél felé számlázandó")} ({payment.currency})
               </label>
               <input
@@ -170,14 +171,14 @@ export const AgencyPaymentDrawer: React.FC<AgencyPaymentDrawerProps> = ({
                 disabled={!editable}
                 value={billableTotal}
                 onChange={(e) => setBillableTotal(Number(e.target.value))}
-                className="w-full h-9 px-3 rounded-xl border border-slate-200 text-ui font-semibold"
+                className="w-full h-9 px-3 rounded-md border border-gray-200 text-ui font-semibold"
               />
             </div>
           </div>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <span className="type-overline text-slate-600">
+              <span className="type-overline text-gray-600">
                 {t("Earnings & Deductions", "Príplatky a zrážky", "Pótlékok és levonások")}
               </span>
               {editable && (
@@ -205,7 +206,7 @@ export const AgencyPaymentDrawer: React.FC<AgencyPaymentDrawerProps> = ({
             </div>
 
             {items.length === 0 ? (
-              <p className="text-caption text-slate-400 italic">
+              <p className="text-caption text-gray-400 italic">
                 {t("No adjustments added.", "Žiadne príplatky ani zrážky.", "Nincs módosító tétel.")}
               </p>
             ) : (
@@ -230,7 +231,7 @@ export const AgencyPaymentDrawer: React.FC<AgencyPaymentDrawerProps> = ({
                           prev.map((x, i) => (i === idx ? { ...x, label: e.target.value } : x))
                         )
                       }
-                      className="flex-1 h-9 px-2.5 rounded-lg border border-slate-200 text-caption"
+                      className="flex-1 h-9 px-2.5 rounded-lg border border-gray-200 text-caption"
                     />
                     <input
                       type="number"
@@ -243,13 +244,13 @@ export const AgencyPaymentDrawer: React.FC<AgencyPaymentDrawerProps> = ({
                         )
                       }
                       data-testid={`agency-line-amount-${idx}`}
-                      className="w-24 h-9 px-2.5 rounded-lg border border-slate-200 text-ui text-right font-mono"
+                      className="w-24 h-9 px-2.5 rounded-lg border border-gray-200 text-ui text-right font-mono"
                     />
                     {editable && (
                       <button
                         type="button"
                         onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 cursor-pointer"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-rose-600 cursor-pointer"
                       >
                         <Trash2 className="size-3.5" />
                       </button>
@@ -261,27 +262,27 @@ export const AgencyPaymentDrawer: React.FC<AgencyPaymentDrawerProps> = ({
           </div>
 
           {/* Live summary */}
-          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-2 gap-2 text-caption">
+          <div className="p-3.5 rounded-md bg-gray-50 border border-gray-200 grid grid-cols-2 gap-2 text-caption">
             <div>
-              <div className="text-slate-500">{t("Gross Pay", "Hrubá mzda", "Bruttó bér")}</div>
-              <div className="text-ui font-bold text-slate-900">
+              <div className="text-gray-500">{t("Gross Pay", "Hrubá mzda", "Bruttó bér")}</div>
+              <div className="text-ui font-bold text-gray-900">
                 {totals.grossPay.toFixed(2)} {payment.currency}
               </div>
             </div>
             <div>
-              <div className="text-slate-500">{t("Deductions", "Zrážky", "Levonások")}</div>
+              <div className="text-gray-500">{t("Deductions", "Zrážky", "Levonások")}</div>
               <div className="text-ui font-bold text-rose-600">
                 -{totals.deductionsTotal.toFixed(2)} {payment.currency}
               </div>
             </div>
             <div>
-              <div className="text-slate-500">{t("Net Worker Pay", "Čistá výplata", "Nettó kifizetés")}</div>
-              <div className="text-body font-extrabold text-slate-900" data-testid="agency-drawer-net-pay">
+              <div className="text-gray-500">{t("Net Worker Pay", "Čistá výplata", "Nettó kifizetés")}</div>
+              <div className="text-body font-extrabold text-gray-900" data-testid="agency-drawer-net-pay">
                 {totals.netPay.toFixed(2)} {payment.currency}
               </div>
             </div>
             <div>
-              <div className="text-slate-500">{t("Agency Gross Margin", "Marža agentúry", "Ügynökségi árrés")}</div>
+              <div className="text-gray-500">{t("Agency Gross Margin", "Marža agentúry", "Ügynökségi árrés")}</div>
               <div className="text-body font-extrabold text-[#4a5a20]">
                 {totals.marginAmount.toFixed(2)} {payment.currency}
                 {totals.marginPct !== null ? ` (${totals.marginPct}%)` : ""}
@@ -291,7 +292,7 @@ export const AgencyPaymentDrawer: React.FC<AgencyPaymentDrawerProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block type-overline text-slate-500 mb-1">
+              <label className="block type-overline text-gray-500 mb-1">
                 {t("Status", "Stav", "Állapot")}
               </label>
               <select
@@ -299,7 +300,7 @@ export const AgencyPaymentDrawer: React.FC<AgencyPaymentDrawerProps> = ({
                 value={status}
                 onChange={(e) => setStatus(e.target.value as AgencyPaymentStatus)}
                 data-testid="agency-payment-status"
-                className="w-full h-9 px-3 rounded-xl border border-slate-200 bg-white text-ui font-semibold"
+                className="w-full h-9 px-3 rounded-md border border-gray-200 bg-white text-ui font-semibold"
               >
                 <option value="draft">{t("Draft", "Koncept", "Tervezet")}</option>
                 <option value="approved">{t("Approved", "Schválené", "Jóváhagyva")}</option>
@@ -307,7 +308,7 @@ export const AgencyPaymentDrawer: React.FC<AgencyPaymentDrawerProps> = ({
               </select>
             </div>
             <div>
-              <label className="block type-overline text-slate-500 mb-1">
+              <label className="block type-overline text-gray-500 mb-1">
                 {t("Paid Date", "Dátum výplaty", "Kifizetés dátuma")}
               </label>
               <input
@@ -315,13 +316,13 @@ export const AgencyPaymentDrawer: React.FC<AgencyPaymentDrawerProps> = ({
                 disabled={!editable}
                 value={paidAt}
                 onChange={(e) => setPaidAt(e.target.value)}
-                className="w-full h-9 px-3 rounded-xl border border-slate-200 text-ui"
+                className="w-full h-9 px-3 rounded-md border border-gray-200 text-ui"
               />
             </div>
           </div>
 
           <div>
-            <label className="block type-overline text-slate-500 mb-1">
+            <label className="block type-overline text-gray-500 mb-1">
               {t("Notes", "Poznámka", "Megjegyzés")}
             </label>
             <textarea
@@ -329,16 +330,16 @@ export const AgencyPaymentDrawer: React.FC<AgencyPaymentDrawerProps> = ({
               disabled={!editable}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full p-2.5 rounded-xl border border-slate-200 text-ui"
+              className="w-full p-2.5 rounded-md border border-gray-200 text-ui"
             />
           </div>
         </div>
 
-        <div className="p-4 border-t border-slate-200 flex items-center justify-end gap-2">
+        <div className="p-4 border-t border-gray-200 flex items-center justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-ui font-semibold text-slate-700 cursor-pointer"
+            className="px-4 py-2 rounded-md bg-white border border-gray-200 text-ui font-semibold text-gray-700 cursor-pointer"
           >
             {t("Close", "Zavrieť", "Bezárás")}
           </button>
@@ -347,7 +348,7 @@ export const AgencyPaymentDrawer: React.FC<AgencyPaymentDrawerProps> = ({
               type="submit"
               disabled={saving}
               data-testid="agency-payment-save-btn"
-              className="px-4 py-2 rounded-xl bg-[#5c6f28] text-white text-ui font-semibold hover:bg-[#4a5a20] disabled:opacity-50 cursor-pointer"
+              className="px-4 py-2 rounded-md bg-[#5c6f28] text-white text-ui font-semibold hover:bg-[#4a5a20] disabled:opacity-50 cursor-pointer"
             >
               {saving ? t("Saving…", "Ukladám…", "Mentés…") : t("Save payment", "Uložiť výplatu", "Mentés")}
             </button>

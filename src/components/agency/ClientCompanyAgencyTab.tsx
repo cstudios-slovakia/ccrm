@@ -71,7 +71,7 @@ export const ClientCompanyAgencyTab: React.FC<ClientCompanyAgencyTabProps> = ({
 
   if (loading && !data) {
     return (
-      <div className="py-8 text-center text-ui text-slate-400">
+      <div className="py-8 text-center text-ui text-gray-400">
         {t("Loading rented employees…", "Načítavam prenajatých zamestnancov…", "Kölcsönzött dolgozók betöltése…")}
       </div>
     );

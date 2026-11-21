@@ -467,13 +467,13 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
   return (
     <div className="space-y-4" data-testid="agency-schedule-view">
       {/* Toolbar */}
-      <div className="glass-panel rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+      <div className=" rounded-lg p-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center gap-1 bg-slate-100 rounded-xl p-1 border border-slate-200">
+          <div className="inline-flex items-center gap-1 bg-gray-100 rounded-md p-1 border border-gray-200">
             <button
               type="button"
               onClick={() => setPeriodYm((p) => shiftMonth(p, -1))}
-              className="p-1.5 rounded-lg hover:bg-white text-slate-600 cursor-pointer"
+              className="p-1.5 rounded-lg hover:bg-white text-gray-600 cursor-pointer"
               title={t("Previous month", "Predošlý mesiac", "Előző hónap")}
             >
               <ChevronLeft className="size-4" />
@@ -483,12 +483,12 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
               value={periodYm}
               onChange={(e) => e.target.value && setPeriodYm(e.target.value)}
               data-testid="agency-schedule-month"
-              className="bg-transparent text-ui font-bold text-slate-800 px-2 focus:outline-none"
+              className="bg-transparent text-ui font-bold text-gray-800 px-2 focus:outline-none"
             />
             <button
               type="button"
               onClick={() => setPeriodYm((p) => shiftMonth(p, 1))}
-              className="p-1.5 rounded-lg hover:bg-white text-slate-600 cursor-pointer"
+              className="p-1.5 rounded-lg hover:bg-white text-gray-600 cursor-pointer"
               title={t("Next month", "Ďalší mesiac", "Következő hónap")}
             >
               <ChevronRight className="size-4" />
@@ -504,7 +504,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
                   setWorkplaceFilter("");
                 }}
                 data-testid="agency-schedule-company-filter"
-                className="h-9 px-3 rounded-xl border border-slate-200 bg-white text-caption font-semibold text-slate-700"
+                className="h-9 px-3 rounded-md border border-gray-200 bg-white text-caption font-semibold text-gray-700"
               >
                 <option value="">{t("All companies", "Všetky firmy", "Minden cég")}</option>
                 {companyOptions.map((c) => (
@@ -517,7 +517,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
               <select
                 value={workplaceFilter}
                 onChange={(e) => setWorkplaceFilter(e.target.value)}
-                className="h-9 px-3 rounded-xl border border-slate-200 bg-white text-caption font-semibold text-slate-700"
+                className="h-9 px-3 rounded-md border border-gray-200 bg-white text-caption font-semibold text-gray-700"
               >
                 <option value="">{t("All workplaces", "Všetky pracoviská", "Minden munkahely")}</option>
                 {workplaceOptions.map((wp) => (
@@ -533,7 +533,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
             value={country}
             onChange={(e) => setCountry(e.target.value as "SK" | "HU")}
             data-testid="agency-schedule-country"
-            className="h-9 px-3 rounded-xl border border-slate-200 bg-white text-caption font-semibold text-slate-700"
+            className="h-9 px-3 rounded-md border border-gray-200 bg-white text-caption font-semibold text-gray-700"
           >
             <option value="SK">{t("Holidays: SK", "Sviatky: SK", "Ünnepek: SK")}</option>
             <option value="HU">{t("Holidays: HU", "Sviatky: HU", "Ünnepek: HU")}</option>
@@ -545,7 +545,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
             <select
               value={fillPresetId}
               onChange={(e) => setFillPresetId(e.target.value)}
-              className="h-9 px-3 rounded-xl border border-slate-200 bg-white text-caption font-semibold text-slate-700"
+              className="h-9 px-3 rounded-md border border-gray-200 bg-white text-caption font-semibold text-gray-700"
             >
               {bootstrap.settings.shiftTemplates.map((tpl) => (
                 <option key={tpl.id} value={tpl.id}>
@@ -553,7 +553,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
                 </option>
               ))}
             </select>
-            <label className="inline-flex items-center gap-1.5 text-caption text-slate-600 px-2">
+            <label className="inline-flex items-center gap-1.5 text-caption text-gray-600 px-2">
               <input
                 type="checkbox"
                 checked={skipHolidaysOnFill}
@@ -566,7 +566,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
               disabled={saving}
               onClick={handleFillMonFri}
               data-testid="agency-schedule-fill-btn"
-              className="px-3 py-1.5 rounded-xl bg-[#5c6f28] text-white text-caption font-semibold inline-flex items-center gap-1.5 hover:bg-[#4a5a20] disabled:opacity-50 cursor-pointer"
+              className="px-3 py-1.5 rounded-md bg-[#5c6f28] text-white text-caption font-semibold inline-flex items-center gap-1.5 hover:bg-[#4a5a20] disabled:opacity-50 cursor-pointer"
             >
               <Sparkles className="size-3.5" />
               <span>{t("Fill Mon–Fri", "Vyplniť Po–Pi", "H–P kitöltése")}</span>
@@ -576,7 +576,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
               disabled={saving}
               onClick={handleCopyPreviousWeek}
               data-testid="agency-schedule-copy-week-btn"
-              className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 text-caption font-semibold inline-flex items-center gap-1.5 hover:border-slate-300 disabled:opacity-50 cursor-pointer"
+              className="px-3 py-1.5 rounded-md bg-white border border-gray-200 text-gray-700 text-caption font-semibold inline-flex items-center gap-1.5 hover:border-gray-300 disabled:opacity-50 cursor-pointer"
             >
               <Copy className="size-3.5" />
               <span>{t("Copy +1 week", "Kopírovať +1 týždeň", "Másolás +1 hét")}</span>
@@ -586,16 +586,16 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
       </div>
 
       {errorMsg && (
-        <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-ui font-semibold">
+        <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-ui font-semibold">
           {errorMsg}
         </div>
       )}
 
       {/* Matrix Grid */}
-      <div className="glass-panel rounded-2xl overflow-hidden">
+      <div className=" rounded-lg overflow-hidden">
         {visibleWorkers.length === 0 ? (
-          <div className="p-10 text-center text-ui text-slate-500">
-            <CalendarDays className="size-8 mx-auto text-slate-300 mb-2" />
+          <div className="p-10 text-center text-ui text-gray-500">
+            <CalendarDays className="size-8 mx-auto text-gray-300 mb-2" />
             {t(
               "No rented employees or scheduled shifts for this selection.",
               "Pre tento výber nie sú žiadni prenajatí zamestnanci ani naplánované zmeny.",
@@ -606,8 +606,8 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-caption">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="sticky left-0 z-10 bg-slate-50 text-left px-3 py-2.5 min-w-44 font-bold text-slate-700 border-r border-slate-200">
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="sticky left-0 z-10 bg-gray-50 text-left px-3 py-2.5 min-w-44 font-bold text-gray-700 border-r border-gray-200">
                     {t("Worker / Placement", "Pracovník / Firma", "Dolgozó / Cég")}
                   </th>
                   {monthDates.map((iso) => {
@@ -625,12 +625,12 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
                         title={hol ? holidayName(hol, country, lang) : iso}
                         data-holiday={hol ? "true" : "false"}
                         data-testid={hol ? `holiday-col-${iso}` : undefined}
-                        className={`px-1 py-2 text-center min-w-9 border-r border-slate-100 ${
+                        className={`px-1 py-2 text-center min-w-9 border-r border-gray-100 ${
                           hol
                             ? "bg-amber-100/80 text-amber-900"
                             : wknd
-                            ? "bg-slate-100/80 text-slate-500"
-                            : "text-slate-600"
+                            ? "bg-gray-100/80 text-gray-500"
+                            : "text-gray-600"
                         }`}
                       >
                         <div className="font-bold leading-none">{dayNum}</div>
@@ -643,7 +643,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
                       </th>
                     );
                   })}
-                  <th className="px-3 py-2 text-right font-bold text-slate-700 min-w-20">
+                  <th className="px-3 py-2 text-right font-bold text-gray-700 min-w-20">
                     {t("Totals", "Spolu", "Össz.")}
                   </th>
                 </tr>
@@ -661,19 +661,19 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
                     else if (sh.status !== "absent") totalHrs += Number(sh.hours || 0) + Number(sh.overtimeHours || 0);
                   }
                   return (
-                    <tr key={w.id} className="border-b border-slate-100 hover:bg-slate-50/40">
-                      <td className="sticky left-0 z-10 bg-white px-3 py-2 border-r border-slate-200 align-middle">
+                    <tr key={w.id} className="border-b border-gray-100 hover:bg-gray-50/40">
+                      <td className="sticky left-0 z-10 bg-white px-3 py-2 border-r border-gray-200 align-middle">
                         <div className="flex items-center justify-between gap-1.5">
                           {onOpenWorker ? (
                             <button
                               type="button"
                               onClick={() => onOpenWorker(w.id)}
-                              className="font-bold text-slate-900 hover:text-[#4a5a20] text-left truncate cursor-pointer"
+                              className="font-bold text-gray-900 hover:text-[#4a5a20] text-left truncate cursor-pointer"
                             >
                               {w.fullName}
                             </button>
                           ) : (
-                            <span className="font-bold text-slate-900 truncate">{w.fullName}</span>
+                            <span className="font-bold text-gray-900 truncate">{w.fullName}</span>
                           )}
                           {isLocked && (
                             <span
@@ -685,7 +685,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
                           )}
                         </div>
                         {pl && (
-                          <div className="text-micro text-slate-500 truncate">
+                          <div className="text-micro text-gray-500 truncate">
                             {clientNameMap.get(pl.companyClientId) || pl.companyClientId}
                           </div>
                         )}
@@ -698,8 +698,8 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
                         return (
                           <td
                             key={iso}
-                            className={`p-0.5 border-r border-slate-100 text-center align-middle ${
-                              hol ? "bg-amber-50/60" : wknd ? "bg-slate-50/70" : ""
+                            className={`p-0.5 border-r border-gray-100 text-center align-middle ${
+                              hol ? "bg-amber-50/60" : wknd ? "bg-gray-50/70" : ""
                             }`}
                           >
                             <button
@@ -717,7 +717,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
                               className={`w-full min-h-8 rounded-md border text-micro font-bold flex flex-col items-center justify-center transition-colors ${
                                 sh && badge
                                   ? badge.cls
-                                  : "border-transparent hover:border-slate-300 text-slate-300 hover:text-slate-600"
+                                  : "border-transparent hover:border-gray-300 text-gray-300 hover:text-gray-600"
                               } ${rights.edit && !isLocked ? "cursor-pointer" : "cursor-default"}`}
                             >
                               {sh ? (
@@ -741,7 +741,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
                           </td>
                         );
                       })}
-                      <td className="px-3 py-2 text-right font-mono font-bold text-slate-800 whitespace-nowrap">
+                      <td className="px-3 py-2 text-right font-mono font-bold text-gray-800 whitespace-nowrap">
                         <div>{Math.round(totalHrs * 10) / 10}h</div>
                         {sickCount > 0 && (
                           <div className="text-micro text-rose-600 font-semibold">
@@ -760,16 +760,16 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
 
       {/* Shift & Sick Leave Modal Editor */}
       {editingCell && (
-        <div className="fixed inset-0 z-[1000] bg-slate-900/40 backdrop-blur-2xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[1000] bg-gray-900/40  flex items-center justify-center p-4">
           <form
             onSubmit={handleSaveCell}
             data-testid="agency-shift-editor"
-            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-5 space-y-4"
+            className="bg-white rounded-lg shadow-xl border border-gray-200 w-full max-w-md p-5 space-y-4"
           >
             <div className="flex items-start justify-between gap-2">
               <div>
-                <h3 className="text-body font-bold text-slate-900">{editingCell.worker.fullName}</h3>
-                <p className="text-caption text-slate-500">
+                <h3 className="text-body font-bold text-gray-900">{editingCell.worker.fullName}</h3>
+                <p className="text-caption text-gray-500">
                   {editingCell.workDate}
                   {holidayByDate.has(editingCell.workDate) && (
                     <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold">
@@ -781,7 +781,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
               <button
                 type="button"
                 onClick={() => setEditingCell(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
+                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 cursor-pointer"
               >
                 <X className="size-4" />
               </button>
@@ -798,8 +798,8 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
                     cellForm.status === st
                       ? st === "sick"
                         ? "bg-rose-600 text-white border-rose-700"
-                        : "bg-slate-900 text-white border-slate-900"
-                      : "bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300"
+                        : "bg-gray-900 text-white border-gray-900"
+                      : "bg-gray-50 text-gray-700 border-gray-200 hover:border-gray-300"
                   }`}
                 >
                   {st === "worked"
@@ -818,13 +818,13 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
             {cellForm.status !== "sick" && cellForm.status !== "absent" ? (
               <div className="space-y-3">
                 <div>
-                  <label className="block type-overline text-slate-500 mb-1">
+                  <label className="block type-overline text-gray-500 mb-1">
                     {t("Shift Template", "Šablóna zmeny", "Műszak sablon")}
                   </label>
                   <select
                     value={cellForm.shiftTemplateId}
                     onChange={(e) => applyTemplateToCellForm(e.target.value)}
-                    className="w-full h-9 px-3 rounded-xl border border-slate-200 bg-white text-ui"
+                    className="w-full h-9 px-3 rounded-md border border-gray-200 bg-white text-ui"
                   >
                     <option value="">{t("— Custom shift —", "— Vlastná zmena —", "— Egyéni műszak —")}</option>
                     {bootstrap.settings.shiftTemplates.map((tpl) => (
@@ -837,43 +837,43 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
 
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <label className="block type-overline text-slate-500 mb-1">
+                    <label className="block type-overline text-gray-500 mb-1">
                       {t("Code", "Kód", "Kód")}
                     </label>
                     <input
                       type="text"
                       value={cellForm.shiftLabel}
                       onChange={(e) => setCellForm((p) => ({ ...p, shiftLabel: e.target.value }))}
-                      className="w-full h-9 px-2.5 rounded-xl border border-slate-200 text-ui"
+                      className="w-full h-9 px-2.5 rounded-md border border-gray-200 text-ui"
                     />
                   </div>
                   <div>
-                    <label className="block type-overline text-slate-500 mb-1">
+                    <label className="block type-overline text-gray-500 mb-1">
                       {t("Start", "Od", "Kezdés")}
                     </label>
                     <input
                       type="time"
                       value={cellForm.startTime}
                       onChange={(e) => setCellForm((p) => ({ ...p, startTime: e.target.value }))}
-                      className="w-full h-9 px-2.5 rounded-xl border border-slate-200 text-ui"
+                      className="w-full h-9 px-2.5 rounded-md border border-gray-200 text-ui"
                     />
                   </div>
                   <div>
-                    <label className="block type-overline text-slate-500 mb-1">
+                    <label className="block type-overline text-gray-500 mb-1">
                       {t("End", "Do", "Vége")}
                     </label>
                     <input
                       type="time"
                       value={cellForm.endTime}
                       onChange={(e) => setCellForm((p) => ({ ...p, endTime: e.target.value }))}
-                      className="w-full h-9 px-2.5 rounded-xl border border-slate-200 text-ui"
+                      className="w-full h-9 px-2.5 rounded-md border border-gray-200 text-ui"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block type-overline text-slate-500 mb-1">
+                    <label className="block type-overline text-gray-500 mb-1">
                       {t("Regular hours", "Bežné hodiny", "Normál óra")}
                     </label>
                     <input
@@ -882,11 +882,11 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
                       min="0"
                       value={cellForm.hours}
                       onChange={(e) => setCellForm((p) => ({ ...p, hours: Number(e.target.value) }))}
-                      className="w-full h-9 px-2.5 rounded-xl border border-slate-200 text-ui"
+                      className="w-full h-9 px-2.5 rounded-md border border-gray-200 text-ui"
                     />
                   </div>
                   <div>
-                    <label className="block type-overline text-slate-500 mb-1">
+                    <label className="block type-overline text-gray-500 mb-1">
                       {t("Overtime hours", "Nadčasy (h)", "Túlóra (ó)")}
                     </label>
                     <input
@@ -895,7 +895,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
                       min="0"
                       value={cellForm.overtimeHours}
                       onChange={(e) => setCellForm((p) => ({ ...p, overtimeHours: Number(e.target.value) }))}
-                      className="w-full h-9 px-2.5 rounded-xl border border-slate-200 text-ui"
+                      className="w-full h-9 px-2.5 rounded-md border border-gray-200 text-ui"
                     />
                   </div>
                 </div>
@@ -911,20 +911,20 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
                   onChange={(e) => setCellForm((p) => ({ ...p, sickNote: e.target.value }))}
                   data-testid="agency-shift-sick-note"
                   placeholder={t("e.g. Flu, medical certificate submitted", "napr. Chrípka, potvrdenie od lekára", "pl. Influenza, orvosi igazolás")}
-                  className="w-full h-9 px-3 rounded-xl border border-rose-200 bg-rose-50/40 text-ui"
+                  className="w-full h-9 px-3 rounded-md border border-rose-200 bg-rose-50/40 text-ui"
                 />
               </div>
             )}
 
             <div>
-              <label className="block type-overline text-slate-500 mb-1">
+              <label className="block type-overline text-gray-500 mb-1">
                 {t("Notes", "Poznámka", "Megjegyzés")}
               </label>
               <input
                 type="text"
                 value={cellForm.notes}
                 onChange={(e) => setCellForm((p) => ({ ...p, notes: e.target.value }))}
-                className="w-full h-9 px-3 rounded-xl border border-slate-200 text-ui"
+                className="w-full h-9 px-3 rounded-md border border-gray-200 text-ui"
               />
             </div>
 
@@ -935,7 +935,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
                   disabled={saving}
                   onClick={handleDeleteCell}
                   data-testid="agency-shift-delete-btn"
-                  className="px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 text-caption font-semibold inline-flex items-center gap-1 hover:bg-rose-100 cursor-pointer"
+                  className="px-3 py-1.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 text-caption font-semibold inline-flex items-center gap-1 hover:bg-rose-100 cursor-pointer"
                 >
                   <Trash2 className="size-3.5" />
                   <span>{t("Clear", "Zmazať", "Törlés")}</span>
@@ -947,7 +947,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setEditingCell(null)}
-                  className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-caption font-semibold text-slate-700 cursor-pointer"
+                  className="px-3 py-1.5 rounded-md bg-white border border-gray-200 text-caption font-semibold text-gray-700 cursor-pointer"
                 >
                   {t("Cancel", "Zrušiť", "Mégse")}
                 </button>
@@ -955,7 +955,7 @@ export const AgencyScheduleView: React.FC<AgencyScheduleViewProps> = ({
                   type="submit"
                   disabled={saving}
                   data-testid="agency-shift-save-btn"
-                  className="px-4 py-1.5 rounded-xl bg-[#5c6f28] text-white text-caption font-semibold hover:bg-[#4a5a20] disabled:opacity-50 cursor-pointer"
+                  className="px-4 py-1.5 rounded-md bg-[#5c6f28] text-white text-caption font-semibold hover:bg-[#4a5a20] disabled:opacity-50 cursor-pointer"
                 >
                   {saving ? t("Saving…", "Ukladám…", "Mentés…") : t("Save shift", "Uložiť zmenu", "Mentés")}
                 </button>

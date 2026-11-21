@@ -16,6 +16,7 @@ import type {
   AgencyPaymentStatus,
 } from "../../types/agency";
 import type { AgencyRights } from "../../utils/agencyRights";
+import { entityAccentStyle } from "../../utils/entityAccent";
 import {
   calculateAgencyPayment,
   createAgencyClientBillingRecord,
@@ -45,7 +46,7 @@ function shiftMonth(ym: string, delta: number): string {
 }
 
 const STATUS_CLS: Record<AgencyPaymentStatus, string> = {
-  draft: "bg-slate-100 text-slate-700 border-slate-200",
+  draft: "bg-gray-100 text-gray-700 border-gray-200",
   approved: "bg-indigo-50 text-indigo-700 border-indigo-200",
   paid: "bg-emerald-50 text-emerald-700 border-emerald-200",
 };
@@ -240,13 +241,13 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
   return (
     <div className="space-y-4" data-testid="agency-payments-view">
       {/* Controls */}
-      <div className="glass-panel rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+      <div className=" rounded-lg p-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center gap-1 bg-slate-100 rounded-xl p-1 border border-slate-200">
+          <div className="inline-flex items-center gap-1 bg-gray-100 rounded-md p-1 border border-gray-200">
             <button
               type="button"
               onClick={() => setPeriodYm((p) => shiftMonth(p, -1))}
-              className="p-1.5 rounded-lg hover:bg-white text-slate-600 cursor-pointer"
+              className="p-1.5 rounded-lg hover:bg-white text-gray-600 cursor-pointer"
             >
               <ChevronLeft className="size-4" />
             </button>
@@ -255,12 +256,12 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
               value={periodYm}
               onChange={(e) => e.target.value && setPeriodYm(e.target.value)}
               data-testid="agency-payments-month"
-              className="bg-transparent text-ui font-bold text-slate-800 px-2 focus:outline-none"
+              className="bg-transparent text-ui font-bold text-gray-800 px-2 focus:outline-none"
             />
             <button
               type="button"
               onClick={() => setPeriodYm((p) => shiftMonth(p, 1))}
-              className="p-1.5 rounded-lg hover:bg-white text-slate-600 cursor-pointer"
+              className="p-1.5 rounded-lg hover:bg-white text-gray-600 cursor-pointer"
             >
               <ChevronRight className="size-4" />
             </button>
@@ -269,7 +270,7 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
           <select
             value={companyFilter}
             onChange={(e) => setCompanyFilter(e.target.value)}
-            className="h-9 px-3 rounded-xl border border-slate-200 bg-white text-caption font-semibold text-slate-700"
+            className="h-9 px-3 rounded-md border border-gray-200 bg-white text-caption font-semibold text-gray-700"
           >
             <option value="">{t("All companies", "Všetky firmy", "Minden cég")}</option>
             {companyOptions.map((c) => (
@@ -286,7 +287,7 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
             disabled={busy || calculableWorkerIds.length === 0}
             onClick={handleCalculateAll}
             data-testid="agency-calc-all-btn"
-            className="px-4 py-2 rounded-xl bg-[#5c6f28] text-white text-ui font-semibold inline-flex items-center gap-1.5 hover:bg-[#4a5a20] disabled:opacity-50 cursor-pointer"
+            className="px-4 py-2 rounded-md bg-[#5c6f28] text-white text-ui font-semibold inline-flex items-center gap-1.5 hover:bg-[#4a5a20] disabled:opacity-50 cursor-pointer"
           >
             <Calculator className="size-4" />
             <span>
@@ -298,7 +299,7 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
       </div>
 
       {errorMsg && (
-        <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-ui font-semibold">
+        <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-ui font-semibold">
           {errorMsg}
         </div>
       )}
@@ -308,33 +309,33 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
         const margin = tot.billableTotal - tot.netPay;
         return (
           <div key={cur} className="grid grid-cols-2 ws-md:grid-cols-5 gap-3">
-            <div className="glass-panel rounded-2xl p-3.5">
-              <div className="type-overline text-slate-400">{t("Worked Hours", "Odpracované hodiny", "Ledolgozott óra")}</div>
-              <div className="text-title font-bold text-slate-900 mt-1">
+            <div className=" rounded-lg p-3.5">
+              <div className="type-overline text-gray-400">{t("Worked Hours", "Odpracované hodiny", "Ledolgozott óra")}</div>
+              <div className="text-title font-bold text-gray-900 mt-1">
                 {tot.regularHours.toFixed(1)}h{" "}
                 {tot.overtimeHours > 0 && (
                   <span className="text-caption text-amber-600">+{tot.overtimeHours.toFixed(1)}h OT</span>
                 )}
               </div>
             </div>
-            <div className="glass-panel rounded-2xl p-3.5">
-              <div className="type-overline text-slate-400">{t("Sick Days", "Dni PN", "Betegnap")}</div>
+            <div className=" rounded-lg p-3.5">
+              <div className="type-overline text-gray-400">{t("Sick Days", "Dni PN", "Betegnap")}</div>
               <div className="text-title font-bold text-rose-600 mt-1">{tot.sickDays}</div>
             </div>
-            <div className="glass-panel rounded-2xl p-3.5">
-              <div className="type-overline text-slate-400">{t("Worker Net Pay", "Čisté výplaty", "Nettó kifizetés")}</div>
-              <div className="text-title font-bold text-slate-900 mt-1">
+            <div className=" rounded-lg p-3.5">
+              <div className="type-overline text-gray-400">{t("Worker Net Pay", "Čisté výplaty", "Nettó kifizetés")}</div>
+              <div className="text-title font-bold text-gray-900 mt-1">
                 {tot.netPay.toFixed(2)} {cur}
               </div>
             </div>
-            <div className="glass-panel rounded-2xl p-3.5">
-              <div className="type-overline text-slate-400">{t("Client Billing", "Fakturácia klientom", "Ügyfélszámlázás")}</div>
+            <div className=" rounded-lg p-3.5">
+              <div className="type-overline text-gray-400">{t("Client Billing", "Fakturácia klientom", "Ügyfélszámlázás")}</div>
               <div className="text-title font-bold text-indigo-700 mt-1">
                 {tot.billableTotal.toFixed(2)} {cur}
               </div>
             </div>
-            <div className="glass-panel rounded-2xl p-3.5">
-              <div className="type-overline text-slate-400">{t("Gross Margin", "Hrubá marža", "Bruttó árrés")}</div>
+            <div className=" rounded-lg p-3.5">
+              <div className="type-overline text-gray-400">{t("Gross Margin", "Hrubá marža", "Bruttó árrés")}</div>
               <div className="text-title font-bold text-[#4a5a20] mt-1">
                 {margin.toFixed(2)} {cur}
               </div>
@@ -345,21 +346,21 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
 
       {/* Per-company billing shortcuts */}
       {billingCompanies.length > 0 && rights.edit && (
-        <div className="glass-panel rounded-2xl p-4 space-y-2">
-          <div className="type-overline text-slate-500">
+        <div style={entityAccentStyle("financial") as React.CSSProperties} className="rounded-lg border border-gray-200 bg-white p-4 shadow-xs space-y-2">
+          <div className="type-overline text-gray-500">
             {t("Client Billing Export (Income FinancialRecord)", "Fakturácia klientovi (Príjem)", "Ügyfél számlázás")}
           </div>
           <div className="flex flex-wrap gap-2">
             {billingCompanies.map((bc) => (
               <div
                 key={bc.companyClientId}
-                className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-3"
+                className="px-3 py-2 rounded-md bg-gray-50 border border-gray-200 flex items-center gap-3"
               >
                 <div className="text-caption">
-                  <span className="font-bold text-slate-900">
+                  <span className="font-bold text-gray-900">
                     {clientNameMap.get(bc.companyClientId) || bc.companyClientId}
                   </span>
-                  <span className="text-slate-500 ml-2">
+                  <span className="text-gray-500 ml-2">
                     {bc.totalBillable.toFixed(2)} {bc.currency}
                   </span>
                 </div>
@@ -367,7 +368,7 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
                   type="button"
                   disabled={busy}
                   onClick={() => handleCreateBillingRecord(bc.companyClientId)}
-                  className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-micro font-semibold inline-flex items-center gap-1 hover:bg-indigo-700 cursor-pointer"
+                  className="px-2.5 py-1 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-micro font-semibold inline-flex items-center gap-1 cursor-pointer"
                 >
                   <FileSpreadsheet className="size-3" />
                   <span>{t("Create Billing Record", "Vytvoriť príjem", "Bevétel rögzítése")}</span>
@@ -379,10 +380,10 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
       )}
 
       {/* Matrix Table */}
-      <div className="glass-panel rounded-2xl overflow-hidden" data-testid="agency-payments-table">
+      <div className=" rounded-lg overflow-hidden" data-testid="agency-payments-table">
         {periodPayments.length === 0 ? (
-          <div className="p-10 text-center text-ui text-slate-500">
-            <Wallet className="size-8 mx-auto text-slate-300 mb-2" />
+          <div className="p-10 text-center text-ui text-gray-500">
+            <Wallet className="size-8 mx-auto text-gray-300 mb-2" />
             {t(
               "No payroll rows for this month yet. Log shifts in Work Schedule and click Calculate All.",
               "Pre tento mesiac zatiaľ nie sú výplaty. Zapíšte zmeny a kliknite na Vypočítať zo zmien.",
@@ -393,7 +394,7 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-caption">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                <tr className="bg-gray-50 border-b border-gray-200 text-gray-600">
                   <th className="px-4 py-3 font-bold">{t("Worker", "Pracovník", "Dolgozó")}</th>
                   <th className="px-3 py-3 font-bold">{t("Company", "Firma", "Cég")}</th>
                   <th className="px-3 py-3 font-bold text-right">{t("Hours / Sick", "Hodiny / PN", "Óra / Beteg")}</th>
@@ -413,9 +414,9 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
                     <tr
                       key={p.id}
                       data-testid={`agency-payment-row-${p.workerId}`}
-                      className="border-b border-slate-100 hover:bg-slate-50/70"
+                      className="border-b border-gray-100 hover:bg-gray-50/70"
                     >
-                      <td className="px-4 py-3 font-bold text-slate-900">
+                      <td className="px-4 py-3 font-bold text-gray-900">
                         {onOpenWorker ? (
                           <button
                             type="button"
@@ -428,7 +429,7 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
                           worker?.fullName || p.workerId
                         )}
                       </td>
-                      <td className="px-3 py-3 text-slate-600">{compName}</td>
+                      <td className="px-3 py-3 text-gray-600">{compName}</td>
                       <td className="px-3 py-3 text-right font-mono">
                         {Number(p.regularHours || 0)}h
                         {Number(p.overtimeHours || 0) > 0 ? ` +${Number(p.overtimeHours)}h` : ""}
@@ -442,7 +443,7 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
                       <td className="px-3 py-3 text-right font-mono text-rose-600">
                         {Number(p.deductionsTotal || 0) > 0 ? `-${Number(p.deductionsTotal).toFixed(2)}` : "0.00"}
                       </td>
-                      <td className="px-3 py-3 text-right font-mono font-bold text-slate-900">
+                      <td className="px-3 py-3 text-right font-mono font-bold text-gray-900">
                         {Number(p.netPay || 0).toFixed(2)} {p.currency}
                       </td>
                       <td className="px-3 py-3 text-right font-mono font-semibold text-indigo-700">
@@ -455,8 +456,9 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
                           </span>
                           {p.financialRecordId && (
                             <span
+                              style={entityAccentStyle("financial") as React.CSSProperties}
                               data-testid={`agency-payment-fr-${p.workerId}`}
-                              className="px-2 py-0.5 rounded-full bg-lime-50 text-lime-800 border border-lime-200 text-micro font-mono inline-flex items-center gap-1"
+                              className="px-2 py-0.5 rounded-md bg-entity-subtle text-entity-text border border-entity-border text-micro font-mono inline-flex items-center gap-1"
                             >
                               <Receipt className="size-2.5" />
                               {p.financialRecordId}
@@ -471,7 +473,7 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
                               type="button"
                               disabled={busy}
                               onClick={() => handleRecalculateOne(p)}
-                              className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-micro font-semibold cursor-pointer"
+                              className="px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-micro font-semibold cursor-pointer"
                             >
                               {t("Recalc", "Prepočítať", "Újraszámol")}
                             </button>
@@ -480,7 +482,7 @@ export const AgencyPaymentsView: React.FC<AgencyPaymentsViewProps> = ({
                             type="button"
                             onClick={() => setDrawerPayment(p)}
                             data-testid={`agency-payment-edit-${p.workerId}`}
-                            className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-[#5c6f28]/50 text-slate-700 text-micro font-semibold inline-flex items-center gap-1 cursor-pointer"
+                            className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 hover:border-entity-border text-gray-700 text-micro font-semibold inline-flex items-center gap-1 cursor-pointer"
                           >
                             <Edit3 className="size-3" />
                             <span>{t("Edit", "Upraviť", "Szerkesztés")}</span>

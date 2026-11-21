@@ -224,7 +224,7 @@ export const AgencyView: React.FC<AgencyViewProps> = ({
   void financialCategories;
 
   return (
-    <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative" data-testid="agency-module-view">
+    <div className="space-y-6 select-none animate-fade-in text-gray-800 pb-16 relative" data-testid="agency-module-view">
       <PageHeader
         icon={<SectionIcon id="agency" />}
         title={t("Agency & Workforce Leasing", "Personálna agentúra a prenájom", "Munkaerő-közvetítés és kölcsönzés")}
@@ -238,7 +238,7 @@ export const AgencyView: React.FC<AgencyViewProps> = ({
             type="button"
             onClick={loadBootstrap}
             disabled={loading}
-            className="flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white border border-slate-200 hover:border-[#5c6f28]/50 text-slate-600 hover:text-[#4a5a20] text-ui font-semibold shadow-2xs transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 h-9 px-3 rounded-md bg-white border border-gray-200 hover:border-entity-border text-gray-600 hover:text-[#4a5a20] text-ui font-semibold shadow-2xs transition-colors cursor-pointer"
             title={t("Refresh", "Obnoviť", "Frissítés")}
           >
             <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
@@ -247,7 +247,7 @@ export const AgencyView: React.FC<AgencyViewProps> = ({
         }
       />
 
-      <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 border-b border-slate-200/60 pb-3">
+      <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 border-b border-gray-200/60 pb-3">
         <div className="flex flex-wrap items-center gap-2">
           <Tabs
             value={activeSubTab}
@@ -256,7 +256,7 @@ export const AgencyView: React.FC<AgencyViewProps> = ({
           />
           {selectedWorker && (
             <div className="flex items-center gap-2 pl-2">
-              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+              <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
               <span className="text-ui font-heading font-bold text-[#4a5a20]">
                 {selectedWorker.fullName}
               </span>
@@ -266,13 +266,13 @@ export const AgencyView: React.FC<AgencyViewProps> = ({
       </div>
 
       {error && (
-        <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-ui font-semibold">
+        <div className="p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-ui font-semibold">
           {error}
         </div>
       )}
 
       {!bootstrap && loading ? (
-        <div className="glass-panel rounded-2xl p-10 text-center text-ui text-slate-500">
+        <div className=" rounded-lg p-10 text-center text-ui text-gray-500">
           {t("Loading agency data…", "Načítavam dáta agentúry…", "Adatok betöltése…")}
         </div>
       ) : bootstrap && selectedWorkerId ? (

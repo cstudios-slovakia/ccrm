@@ -1,0 +1,1 @@
+- **Agency & Workforce Leasing UI (`agency/`)**: Remade Agency views, Worker Detail, Payment Drawer, Schedule, Candidate Pipeline, Payments (`financial` billing export & records), and Worker Tasks & Tickets (`tasks` & `tickets` entity accents) in Tremor Blocks.

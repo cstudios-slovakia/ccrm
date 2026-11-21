@@ -14,6 +14,7 @@ import type { AgencyWorkerDetailPayload } from "../../types/agency";
 import type { TaskAccess } from "../../utils/taskSelectors";
 import { localDateStr, localStampStr } from "../../utils/projectTasks";
 import { EntityTasksPanel } from "../EntityTasksPanel";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
 interface WorkerTasksTicketsTabProps {
   detail: AgencyWorkerDetailPayload;
@@ -132,7 +133,7 @@ export const WorkerTasksTicketsTab: React.FC<WorkerTasksTicketsTabProps> = ({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-testid="worker-tasks-tickets-tab">
-      <div className="glass-panel rounded-2xl p-4">
+      <div style={entityAccentStyle("tasks") as React.CSSProperties} className="rounded-lg border border-gray-200 bg-white p-4 shadow-xs">
         <EntityTasksPanel
           entityType="agency_worker"
           entityId={detail.worker.id}
@@ -154,11 +155,11 @@ export const WorkerTasksTicketsTab: React.FC<WorkerTasksTicketsTabProps> = ({
         />
       </div>
 
-      <div className="glass-panel rounded-2xl p-4 space-y-3" data-testid="worker-tickets-panel">
+      <div style={entityAccentStyle("tickets") as React.CSSProperties} className="rounded-lg border border-gray-200 bg-white p-4 shadow-xs space-y-3" data-testid="worker-tickets-panel">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <TicketIcon className="size-4 text-indigo-600" />
-            <h3 className="text-body font-bold text-slate-900">
+            <TicketIcon className="size-4 text-entity-text" />
+            <h3 className="text-body font-bold text-gray-900">
               {t("Support Tickets", "Podporné tikety", "Támogatási jegyek")} ({workerTickets.length})
             </h3>
           </div>
@@ -166,7 +167,7 @@ export const WorkerTasksTicketsTab: React.FC<WorkerTasksTicketsTabProps> = ({
             type="button"
             onClick={() => setAddingTicket((v) => !v)}
             data-testid="worker-new-ticket-btn"
-            className="px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-caption font-semibold inline-flex items-center gap-1 hover:bg-indigo-700 cursor-pointer"
+            className="px-3 py-1.5 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-caption font-semibold inline-flex items-center gap-1 cursor-pointer"
           >
             <Plus className="size-3.5" />
             <span>{t("New Support Ticket", "Nový podporný tiket", "Új támogatási jegy")}</span>
@@ -174,9 +175,9 @@ export const WorkerTasksTicketsTab: React.FC<WorkerTasksTicketsTabProps> = ({
         </div>
 
         {addingTicket && (
-          <form onSubmit={handleCreateTicket} className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+          <form onSubmit={handleCreateTicket} className="p-3 rounded-lg bg-gray-50 border border-gray-200 space-y-2.5">
             <div>
-              <label className="block type-overline text-slate-500 mb-1">
+              <label className="block type-overline text-gray-500 mb-1">
                 {t("Subject", "Predmet", "Tárgy")}
               </label>
               <input
@@ -186,17 +187,17 @@ export const WorkerTasksTicketsTab: React.FC<WorkerTasksTicketsTabProps> = ({
                 onChange={(e) => setSubject(e.target.value)}
                 data-testid="worker-ticket-subject"
                 placeholder={t("e.g. Residence permit renewal check", "napr. Kontrola obnovenia pobytu", "pl. Tartózkodási engedély hosszabbítás")}
-                className="w-full h-9 px-3 rounded-lg border border-slate-200 bg-white text-ui"
+                className="w-full h-9 px-3 rounded-md border border-gray-200 bg-white text-ui focus:border-entity focus:outline-none"
               />
             </div>
             <div>
-              <label className="block type-overline text-slate-500 mb-1">
+              <label className="block type-overline text-gray-500 mb-1">
                 {t("Priority", "Priorita", "Prioritás")}
               </label>
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as TicketPriority)}
-                className="w-full h-9 px-3 rounded-lg border border-slate-200 bg-white text-ui"
+                className="w-full h-9 px-3 rounded-md border border-gray-200 bg-white text-ui focus:border-entity focus:outline-none"
               >
                 <option value="low">{t("Low", "Nízka", "Alacsony")}</option>
                 <option value="normal">{t("Normal", "Normálna", "Normál")}</option>
@@ -205,28 +206,28 @@ export const WorkerTasksTicketsTab: React.FC<WorkerTasksTicketsTabProps> = ({
               </select>
             </div>
             <div>
-              <label className="block type-overline text-slate-500 mb-1">
+              <label className="block type-overline text-gray-500 mb-1">
                 {t("Details", "Popis", "Leírás")}
               </label>
               <textarea
                 rows={2}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full p-2.5 rounded-lg border border-slate-200 bg-white text-ui"
+                className="w-full p-2.5 rounded-md border border-gray-200 bg-white text-ui focus:border-entity focus:outline-none"
               />
             </div>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setAddingTicket(false)}
-                className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-caption font-semibold text-slate-600 cursor-pointer"
+                className="px-3 py-1.5 rounded-md bg-white border border-gray-200 text-caption font-semibold text-gray-600 cursor-pointer"
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>
               <button
                 type="submit"
                 data-testid="worker-ticket-submit"
-                className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-caption font-semibold hover:bg-indigo-700 cursor-pointer"
+                className="px-3 py-1.5 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-caption font-semibold cursor-pointer"
               >
                 {t("Create Ticket", "Vytvoriť tiket", "Jegy létrehozása")}
               </button>
@@ -235,7 +236,7 @@ export const WorkerTasksTicketsTab: React.FC<WorkerTasksTicketsTabProps> = ({
         )}
 
         {workerTickets.length === 0 ? (
-          <div className="py-8 text-center text-caption text-slate-400">
+          <div className="py-8 text-center text-caption text-gray-400">
             {t("No support tickets linked to this worker yet.", "K tomuto pracovníkovi zatiaľ nie sú priradené žiadne tikety.", "Ehhez a dolgozóhoz még nincs támogatási jegy.")}
           </div>
         ) : (
@@ -246,20 +247,20 @@ export const WorkerTasksTicketsTab: React.FC<WorkerTasksTicketsTabProps> = ({
                 type="button"
                 onClick={() => onNavigate(`tickets/${encodeURIComponent(tk.id)}`)}
                 data-testid={`worker-ticket-row-${tk.id}`}
-                className="w-full text-left p-3 rounded-xl bg-white border border-slate-200 hover:border-indigo-300 transition-colors flex items-center justify-between gap-2 cursor-pointer"
+                className="w-full text-left p-3 rounded-md bg-white border border-gray-200 hover:border-indigo-300 transition-colors flex items-center justify-between gap-2 cursor-pointer"
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-micro font-bold text-indigo-600">{tk.ticketNumber}</span>
-                    <span className="text-ui font-semibold text-slate-900 truncate">{tk.subject || tk.title}</span>
+                    <span className="text-ui font-semibold text-gray-900 truncate">{tk.subject || tk.title}</span>
                   </div>
-                  <div className="text-micro text-slate-500 flex items-center gap-2 mt-0.5">
+                  <div className="text-micro text-gray-500 flex items-center gap-2 mt-0.5">
                     <span className="uppercase font-bold">{tk.status}</span>
                     <span>·</span>
                     <span>{tk.priority}</span>
                   </div>
                 </div>
-                <ArrowUpRight className="size-4 text-slate-400 shrink-0" />
+                <ArrowUpRight className="size-4 text-gray-400 shrink-0" />
               </button>
             ))}
           </div>

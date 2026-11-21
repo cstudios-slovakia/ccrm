@@ -123,12 +123,12 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
 
   return (
     <div className="space-y-4" data-testid="agency-placements-panel">
-      <div className="glass-panel rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+      <div className=" rounded-lg p-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="type-panel-title text-slate-900">
+          <h3 className="type-panel-title text-gray-900">
             {t("Company Placements & History", "Umiestnenia u klientov a história", "Céges kihelyezések és előzmények")}
           </h3>
-          <p className="text-caption text-slate-500">
+          <p className="text-caption text-gray-500">
             {t(
               "Moving a worker to a new company ends the previous active placement cleanly while keeping full history.",
               "Presun pracovníka do novej firmy zachováva celú históriu predchádzajúcich umiestnení.",
@@ -149,7 +149,7 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
               setShowModal(true);
             }}
             data-testid="agency-place-worker-btn"
-            className="px-3.5 py-2 rounded-xl bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+            className="px-3.5 py-2 rounded-md bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-semibold inline-flex items-center gap-1.5 cursor-pointer"
           >
             <ArrowRightLeft className="size-4" />
             {placements.some((p) => p.status === "active")
@@ -160,7 +160,7 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
       </div>
 
       {placements.length === 0 ? (
-        <div className="glass-panel rounded-2xl p-8 text-center text-ui text-slate-500">
+        <div className=" rounded-lg p-8 text-center text-ui text-gray-500">
           {t("Not placed at any company yet.", "Pracovník zatiaľ nemá žiadne umiestnenie.", "Még nincs céges kihelyezés.")}
         </div>
       ) : (
@@ -174,8 +174,8 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
               <div
                 key={pl.id}
                 data-testid={`agency-placement-card-${pl.id}`}
-                className={`glass-panel rounded-2xl p-4 flex flex-wrap items-start justify-between gap-3 border ${
-                  isActive ? "border-emerald-300/80" : "border-slate-200/80"
+                className={` rounded-lg p-4 flex flex-wrap items-start justify-between gap-3 border ${
+                  isActive ? "border-emerald-300/80" : "border-gray-200/80"
                 }`}
               >
                 <div className="space-y-1.5">
@@ -186,7 +186,7 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
                           ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                           : pl.status === "paused"
                           ? "bg-amber-50 text-amber-700 border-amber-200"
-                          : "bg-slate-100 text-slate-600 border-slate-200"
+                          : "bg-gray-100 text-gray-600 border-gray-200"
                       }`}
                     >
                       {isActive
@@ -195,30 +195,30 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
                         ? t("Paused", "Pozastavené", "Szüneteltetve")
                         : t("Ended", "Ukončené", "Lezárt")}
                     </span>
-                    <span className="text-body font-bold text-slate-900 inline-flex items-center gap-1.5">
+                    <span className="text-body font-bold text-gray-900 inline-flex items-center gap-1.5">
                       <Building2 className="size-4 text-[#5c6f28]" />
                       {company?.name || pl.companyClientId}
                     </span>
                     {pl.jobRole && (
-                      <span className="text-ui text-slate-600">· {pl.jobRole}</span>
+                      <span className="text-ui text-gray-600">· {pl.jobRole}</span>
                     )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-3 text-caption text-slate-600">
+                  <div className="flex flex-wrap items-center gap-3 text-caption text-gray-600">
                     <span className="inline-flex items-center gap-1">
-                      <Calendar className="size-3.5 text-slate-400" />
+                      <Calendar className="size-3.5 text-gray-400" />
                       {formatDateLocalized(pl.startDate, lang)} →{" "}
                       {pl.endDate ? formatDateLocalized(pl.endDate, lang) : t("Ongoing", "Trvá", "Folyamatban")}
                     </span>
                     {wp && (
                       <span className="inline-flex items-center gap-1">
-                        <MapPin className="size-3.5 text-slate-400" />
+                        <MapPin className="size-3.5 text-gray-400" />
                         {wp.name}
                       </span>
                     )}
                     {contact && (
                       <span className="inline-flex items-center gap-1">
-                        <User className="size-3.5 text-slate-400" />
+                        <User className="size-3.5 text-gray-400" />
                         {contact.name}
                         {contact.contactRole ? ` (${contact.contactRole})` : ""}
                       </span>
@@ -226,7 +226,7 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
                   </div>
 
                   {rights.payments && (
-                    <div className="text-caption font-mono text-slate-700 flex flex-wrap items-center gap-3">
+                    <div className="text-caption font-mono text-gray-700 flex flex-wrap items-center gap-3">
                       <span>
                         {t("Worker Pay:", "Mzda:", "Bér:")} {pl.payRate ?? 0} {pl.currency}/{pl.payRateType === "hourly" ? "h" : "m"}
                       </span>
@@ -235,14 +235,14 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
                       </span>
                     </div>
                   )}
-                  {pl.notes && <div className="text-caption text-slate-500">{pl.notes}</div>}
+                  {pl.notes && <div className="text-caption text-gray-500">{pl.notes}</div>}
                 </div>
 
                 {rights.edit && isActive && (
                   <button
                     type="button"
                     onClick={() => handleStatusChange(pl, "ended")}
-                    className="px-3 py-1.5 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 text-caption font-semibold inline-flex items-center gap-1 cursor-pointer"
+                    className="px-3 py-1.5 rounded-md border border-rose-200 text-rose-700 hover:bg-rose-50 text-caption font-semibold inline-flex items-center gap-1 cursor-pointer"
                   >
                     <StopCircle className="size-3.5" />
                     {t("End Placement", "Ukončiť umiestnenie", "Lezárás")}
@@ -255,20 +255,20 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
       )}
 
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-gray-900/40  flex items-center justify-center p-4">
           <form
             onSubmit={handleSavePlacement}
-            className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-lg p-5 space-y-4"
+            className="bg-white rounded-lg border border-gray-200 shadow-xl w-full max-w-lg p-5 space-y-4"
             data-testid="agency-placement-modal"
           >
             <div className="flex items-center justify-between">
-              <h3 className="type-panel-title text-slate-900">
+              <h3 className="type-panel-title text-gray-900">
                 {t("Assign Worker to External Company", "Prideliť pracovníka do firmy", "Dolgozó kihelyezése céghez")}
               </h3>
               <button
                 type="button"
                 onClick={() => setShowModal(false)}
-                className="text-caption font-semibold text-slate-500 cursor-pointer"
+                className="text-caption font-semibold text-gray-500 cursor-pointer"
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>
@@ -276,7 +276,7 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
 
             <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
               <div className="ws-sm:col-span-2">
-                <label className="type-overline text-slate-500 block mb-1">
+                <label className="type-overline text-gray-500 block mb-1">
                   {t("External Company (Client)", "Externá firma (klient)", "Külső cég (ügyfél)")} *
                 </label>
                 <select
@@ -291,7 +291,7 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
                       contactLeadId: "",
                     }))
                   }
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui"
+                  className="w-full px-3 py-2 rounded-md border border-gray-200 text-ui"
                 >
                   <option value="">{t("Select company…", "Vyberte firmu…", "Válasszon céget…")}</option>
                   {companyLeads.map((comp) => (
@@ -303,14 +303,14 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
               </div>
 
               <div className="ws-sm:col-span-2">
-                <label className="type-overline text-slate-500 block mb-1">
+                <label className="type-overline text-gray-500 block mb-1">
                   {t("Workplace / Site", "Pracovisko / Prevádzka", "Telephely / Munkahely")}
                 </label>
                 <div className="flex gap-2">
                   <select
                     value={form.workplaceId}
                     onChange={(e) => setForm((p) => ({ ...p, workplaceId: e.target.value }))}
-                    className="flex-1 px-3 py-2 rounded-xl border border-slate-200 text-ui"
+                    className="flex-1 px-3 py-2 rounded-md border border-gray-200 text-ui"
                   >
                     <option value="">—</option>
                     {companyWorkplaces.map((wp) => (
@@ -327,13 +327,13 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
                       value={newWorkplaceName}
                       onChange={(e) => setNewWorkplaceName(e.target.value)}
                       placeholder={t("Quick add site name…", "Rýchlo pridať pracovisko…", "Új telephely neve…")}
-                      className="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-caption"
+                      className="flex-1 px-2.5 py-1.5 rounded-lg border border-gray-200 text-caption"
                     />
                     <button
                       type="button"
                       disabled={creatingWorkplace || !newWorkplaceName.trim()}
                       onClick={handleQuickWorkplace}
-                      className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-caption font-semibold text-slate-700 inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      className="px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-caption font-semibold text-gray-700 inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
                     >
                       <Plus className="size-3.5" />
                       {t("Add Site", "Pridať", "Hozzáadás")}
@@ -343,13 +343,13 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
               </div>
 
               <div>
-                <label className="type-overline text-slate-500 block mb-1">
+                <label className="type-overline text-gray-500 block mb-1">
                   {t("Company Contact Person", "Kontaktná osoba firmy", "Céges kapcsolattartó")}
                 </label>
                 <select
                   value={form.contactLeadId}
                   onChange={(e) => setForm((p) => ({ ...p, contactLeadId: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui"
+                  className="w-full px-3 py-2 rounded-md border border-gray-200 text-ui"
                 >
                   <option value="">—</option>
                   {companyContacts.map((c) => (
@@ -361,7 +361,7 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
               </div>
 
               <div>
-                <label className="type-overline text-slate-500 block mb-1">
+                <label className="type-overline text-gray-500 block mb-1">
                   {t("Job Role", "Pracovná pozícia", "Munkakör")}
                 </label>
                 <input
@@ -369,12 +369,12 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
                   value={form.jobRole}
                   onChange={(e) => setForm((p) => ({ ...p, jobRole: e.target.value }))}
                   placeholder={t("Line Operator", "Operátor výroby", "Operátor")}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui"
+                  className="w-full px-3 py-2 rounded-md border border-gray-200 text-ui"
                 />
               </div>
 
               <div>
-                <label className="type-overline text-slate-500 block mb-1">
+                <label className="type-overline text-gray-500 block mb-1">
                   {t("Start Date", "Dátum nástupu", "Kezdés dátuma")} *
                 </label>
                 <input
@@ -382,26 +382,26 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
                   required
                   value={form.startDate}
                   onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui"
+                  className="w-full px-3 py-2 rounded-md border border-gray-200 text-ui"
                 />
               </div>
 
               <div>
-                <label className="type-overline text-slate-500 block mb-1">
+                <label className="type-overline text-gray-500 block mb-1">
                   {t("End Date (Optional)", "Dátum ukončenia", "Végdátum")}
                 </label>
                 <input
                   type="date"
                   value={form.endDate}
                   onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui"
+                  className="w-full px-3 py-2 rounded-md border border-gray-200 text-ui"
                 />
               </div>
 
               {rights.payments && (
                 <>
                   <div>
-                    <label className="type-overline text-slate-500 block mb-1">
+                    <label className="type-overline text-gray-500 block mb-1">
                       {t("Worker Pay / h", "Mzda pracovníka / h", "Dolgozói órabér")} ({form.currency})
                     </label>
                     <input
@@ -410,11 +410,11 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
                       data-testid="agency-placement-pay-rate"
                       value={form.payRate}
                       onChange={(e) => setForm((p) => ({ ...p, payRate: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui font-mono"
+                      className="w-full px-3 py-2 rounded-md border border-gray-200 text-ui font-mono"
                     />
                   </div>
                   <div>
-                    <label className="type-overline text-slate-500 block mb-1">
+                    <label className="type-overline text-gray-500 block mb-1">
                       {t("Client Bill / h", "Fakturácia klientovi / h", "Számlázási óradíj")} ({form.currency})
                     </label>
                     <input
@@ -423,7 +423,7 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
                       data-testid="agency-placement-bill-rate"
                       value={form.billRate}
                       onChange={(e) => setForm((p) => ({ ...p, billRate: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui font-mono"
+                      className="w-full px-3 py-2 rounded-md border border-gray-200 text-ui font-mono"
                     />
                   </div>
                 </>
@@ -434,7 +434,7 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
               <button
                 type="button"
                 onClick={() => setShowModal(false)}
-                className="px-4 py-2 rounded-xl border border-slate-200 text-ui font-medium cursor-pointer"
+                className="px-4 py-2 rounded-md border border-gray-200 text-ui font-medium cursor-pointer"
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>
@@ -442,7 +442,7 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
                 type="submit"
                 disabled={saving || !form.companyClientId}
                 data-testid="agency-placement-submit"
-                className="px-4 py-2 rounded-xl bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-semibold cursor-pointer disabled:opacity-50"
+                className="px-4 py-2 rounded-md bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-semibold cursor-pointer disabled:opacity-50"
               >
                 {saving ? t("Saving…", "Ukladám…", "Mentés…") : t("Save Placement", "Potvrdiť umiestnenie", "Kihelyezés mentése")}
               </button>

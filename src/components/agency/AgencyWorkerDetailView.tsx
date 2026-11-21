@@ -99,8 +99,8 @@ const TIMELINE_EVENT_META: Record<
   placement: { en: "Company Placement", sk: "Pridelenie firmy", hu: "Céges kihelyezés", badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200", Icon: Building2 },
   sick_leave: { en: "Sick Leave", sk: "Práceneschopnosť", hu: "Betegszabadság", badgeClass: "bg-rose-50 text-rose-700 border-rose-200", Icon: HeartPulse },
   compliance: { en: "Compliance", sk: "Doklady", hu: "Dokumentum", badgeClass: "bg-amber-50 text-amber-700 border-amber-200", Icon: ShieldAlert },
-  note: { en: "Note", sk: "Poznámka", hu: "Megjegyzés", badgeClass: "bg-slate-100 text-slate-700 border-slate-200", Icon: FileText },
-  work_log: { en: "Shift Worked", sk: "Odpracovaná zmena", hu: "Ledolgozott műszak", badgeClass: "bg-slate-100 text-slate-600 border-slate-200", Icon: Clock },
+  note: { en: "Note", sk: "Poznámka", hu: "Megjegyzés", badgeClass: "bg-gray-100 text-gray-700 border-gray-200", Icon: FileText },
+  work_log: { en: "Shift Worked", sk: "Odpracovaná zmena", hu: "Ledolgozott műszak", badgeClass: "bg-gray-100 text-gray-600 border-gray-200", Icon: Clock },
 };
 
 function getInitials(name: string): string {
@@ -411,7 +411,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
 
   if (loading && !detail) {
     return (
-      <div className="glass-panel rounded-2xl p-8 text-center text-ui text-slate-500">
+      <div className=" rounded-lg p-8 text-center text-ui text-gray-500">
         {t("Loading profile…", "Načítavam profil…", "Profil betöltése…")}
       </div>
     );
@@ -419,11 +419,11 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
 
   if (error || !detail) {
     return (
-      <div className="glass-panel rounded-2xl p-6 space-y-3">
+      <div className=" rounded-lg p-6 space-y-3">
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex items-center gap-1.5 text-ui font-semibold text-slate-700 hover:text-slate-900 cursor-pointer"
+          className="inline-flex items-center gap-1.5 text-ui font-semibold text-gray-700 hover:text-gray-900 cursor-pointer"
         >
           <ArrowLeft className="size-4" />
           {t("Back", "Späť", "Vissza")}
@@ -589,7 +589,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
 
     if (field.type === "checkbox") {
       return (
-        <label key={field.key} className="inline-flex items-center gap-2 text-ui text-slate-800 cursor-pointer pt-5">
+        <label key={field.key} className="inline-flex items-center gap-2 text-ui text-gray-800 cursor-pointer pt-5">
           <input
             type="checkbox"
             disabled={!rights.edit}
@@ -603,14 +603,14 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
     if (field.type === "select") {
       return (
         <div key={field.key}>
-          <label className="type-overline text-slate-500 block mb-1">
+          <label className="type-overline text-gray-500 block mb-1">
             {resolveLocalizedLabel(field.label, lang)} {field.required ? "*" : ""}
           </label>
           <select
             disabled={!rights.edit}
             value={strVal}
             onChange={(e) => setProfileValue(sectionId, field.key, e.target.value)}
-            className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui"
+            className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui"
           >
             <option value="">—</option>
             {(field.options || []).map((opt) => (
@@ -625,7 +625,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
     if (field.type === "textarea") {
       return (
         <div key={field.key} className="ws-sm:col-span-2">
-          <label className="type-overline text-slate-500 block mb-1">
+          <label className="type-overline text-gray-500 block mb-1">
             {resolveLocalizedLabel(field.label, lang)} {field.required ? "*" : ""}
           </label>
           <textarea
@@ -633,14 +633,14 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
             disabled={!rights.edit}
             value={strVal}
             onChange={(e) => setProfileValue(sectionId, field.key, e.target.value)}
-            className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui"
+            className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui"
           />
         </div>
       );
     }
     return (
       <div key={field.key}>
-        <label className="type-overline text-slate-500 block mb-1">
+        <label className="type-overline text-gray-500 block mb-1">
           {resolveLocalizedLabel(field.label, lang)} {field.required ? "*" : ""}
         </label>
         <input
@@ -648,7 +648,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
           disabled={!rights.edit}
           value={strVal}
           onChange={(e) => setProfileValue(sectionId, field.key, e.target.value)}
-          className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui"
+          className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui"
         />
       </div>
     );
@@ -736,21 +736,21 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
   return (
     <div className="space-y-5" data-testid="agency-worker-detail">
       {/* Top Action & Stage Bar */}
-      <div className="glass-panel rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+      <div className=" rounded-lg p-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <button
             type="button"
             onClick={onBack}
-            className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:border-slate-300 text-caption font-semibold text-slate-700 inline-flex items-center gap-1.5 cursor-pointer"
+            className="px-3 py-1.5 rounded-md bg-white border border-gray-200 hover:border-gray-300 text-caption font-semibold text-gray-700 inline-flex items-center gap-1.5 cursor-pointer"
           >
             <ArrowLeft className="size-3.5" />
             {t("Back", "Späť", "Vissza")}
           </button>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-title font-bold text-slate-900 truncate">{worker.fullName}</h2>
+              <h2 className="text-title font-bold text-gray-900 truncate">{worker.fullName}</h2>
               {worker.workerCode && (
-                <span className="text-micro font-mono px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600">
+                <span className="text-micro font-mono px-2 py-0.5 rounded-lg bg-gray-100 text-gray-600">
                   {worker.workerCode}
                 </span>
               )}
@@ -768,13 +768,13 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                         : "bg-sky-600 text-white border-sky-700"
                   }`}
                 >
-                  <option value="candidate" className="bg-white text-slate-900">
+                  <option value="candidate" className="bg-white text-gray-900">
                     {t("Candidate", "Kandidát", "Jelölt")}
                   </option>
-                  <option value="rented" className="bg-white text-slate-900">
+                  <option value="rented" className="bg-white text-gray-900">
                     {t("Rented Out Employee", "Prenajatý zamestnanec", "Kölcsönzött dolgozó")}
                   </option>
-                  <option value="inactive" className="bg-white text-slate-900">
+                  <option value="inactive" className="bg-white text-gray-900">
                     {t("Ended / Inactive", "Ukončený / Neaktívny", "Lezárt / Inaktív")}
                   </option>
                 </select>
@@ -826,7 +826,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
             style={{ backgroundColor: currentStageColor, color: "#ffffff" }}
           >
             {settings.stages.map((st) => (
-              <option key={st.id} value={st.id} className="bg-white text-slate-900">
+              <option key={st.id} value={st.id} className="bg-white text-gray-900">
                 {resolveLocalizedLabel(st.label, lang)}
               </option>
             ))}
@@ -835,7 +835,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
             <button
               type="button"
               onClick={handleDeleteWorker}
-              className="p-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 cursor-pointer"
+              className="p-2 rounded-md border border-rose-200 text-rose-600 hover:bg-rose-50 cursor-pointer"
               title={t("Delete profile", "Zmazať profil", "Profil törlése")}
             >
               <Trash2 className="size-4" />
@@ -847,10 +847,10 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
       {/* AI Summary & Problem Highlighting Banner */}
       <div
         data-testid="agency-worker-ai-summary"
-        className={`rounded-2xl border p-4 shadow-sm transition-colors ${
+        className={`rounded-lg border p-4 shadow-sm transition-colors ${
           combinedWorkerProblems.length > 0
             ? "bg-rose-50/75 border-rose-200/80"
-            : "bg-[#f3f6ea]/70 border-[#5c6f28]/30"
+            : "bg-[#f3f6ea]/70 border-entity-border"
         }`}
       >
         <div className="flex items-start justify-between gap-3">
@@ -883,7 +883,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
               type="button"
               onClick={() => generateWorkerAiSummary(true)}
               disabled={isGeneratingWorkerSummary}
-              className="p-1 rounded-lg hover:bg-white/80 text-slate-500 hover:text-slate-700 transition-colors disabled:opacity-50"
+              className="p-1 rounded-lg hover:bg-white/80 text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
               title={t("Regenerate AI Summary", "Pregenerovať AI zhrnutie", "AI összefoglaló újragenerálása")}
             >
               <RefreshCw className={`size-3.5 ${isGeneratingWorkerSummary ? "animate-spin text-[#4a5a20]" : ""}`} />
@@ -905,9 +905,9 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
           </div>
         )}
 
-        <p className="mt-2 text-caption text-slate-700 leading-relaxed">
+        <p className="mt-2 text-caption text-gray-700 leading-relaxed">
           {isGeneratingWorkerSummary && !workerAiSummary ? (
-            <span className="italic text-slate-400">
+            <span className="italic text-gray-400">
               {t(
                 "Analyzing worker dossier, compliance checklist, placements, and shifts...",
                 "Analyzujem profil pracovníka, kontrolný zoznam dokladov, umiestnenia a zmeny...",
@@ -937,7 +937,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
         {/* LEFT PANEL: Active Company Card + Crucial Worker Information */}
         <div className="ws-lg:col-span-5 space-y-6">
           {activePlacement && (
-            <div className="glass-panel p-5 rounded-[28px] border-2 border-emerald-400 bg-emerald-50/70 shadow-xl space-y-3 text-emerald-950">
+            <div className=" p-5 rounded-lg border-2 border-emerald-400 bg-emerald-50/70 shadow-xl space-y-3 text-emerald-950">
               <div className="border-b-2 border-emerald-200/50 pb-2 flex items-center justify-between gap-2">
                 <span className="text-ui font-bold text-emerald-700 flex items-center gap-1.5">
                   <Building2 className="size-4 text-emerald-600 shrink-0" />
@@ -952,11 +952,11 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                 </button>
               </div>
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-bold text-body shadow">
+                <div className="h-10 w-10 rounded-md bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-bold text-body shadow">
                   {getInitials(activeCompanyName || "CO")}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h4 className="text-body font-bold text-slate-900 truncate">{activeCompanyName}</h4>
+                  <h4 className="text-body font-bold text-gray-900 truncate">{activeCompanyName}</h4>
                   <div className="text-caption text-emerald-800 truncate">
                     {activePlacement.jobRole || t("Rented Worker", "Prenajatý pracovník", "Kölcsönzött dolgozó")}
                     {activeWorkplaceName ? ` · ${activeWorkplaceName}` : ""}
@@ -966,14 +966,14 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
               <div className="grid grid-cols-2 gap-2 pt-2 border-t border-emerald-200/60 text-caption">
                 <div>
                   <span className="type-overline text-emerald-700/80 block">{t("Since", "Od", "Kezdés")}</span>
-                  <span className="font-mono font-bold text-slate-900">
+                  <span className="font-mono font-bold text-gray-900">
                     {formatDateLocalized(activePlacement.startDate, lang)}
                   </span>
                 </div>
                 {rights.payments && (
                   <div>
                     <span className="type-overline text-emerald-700/80 block">{t("Pay / Bill Rate", "Mzda / Fakturácia", "Bér / Számlázás")}</span>
-                    <span className="font-mono font-bold text-slate-900">
+                    <span className="font-mono font-bold text-gray-900">
                       {activePlacement.payRate ?? "—"} / {activePlacement.billRate ?? "—"} {activePlacement.currency}
                     </span>
                   </div>
@@ -982,17 +982,17 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
             </div>
           )}
 
-          <div className="glass-panel p-6 rounded-[28px] border-2 border-[#5c6f28]/50 bg-white shadow-xl space-y-5">
-            <div className="border-b-2 border-slate-100 pb-4 flex items-center justify-between gap-2.5">
+          <div className=" p-6 rounded-lg border border-gray-200 bg-white shadow-xl space-y-5">
+            <div className="border-b-2 border-gray-100 pb-4 flex items-center justify-between gap-2.5">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[#6e8531] to-[#5c6f28] text-white border-2 border-[#4a5a20] flex items-center justify-center font-heading font-bold text-body shadow-md shrink-0">
+                <div className="h-10 w-10 rounded-md bg-gradient-to-br from-[#6e8531] to-[#5c6f28] text-white border-2 border-[#4a5a20] flex items-center justify-center font-heading font-bold text-body shadow-md shrink-0">
                   {getInitials(basicDraft.fullName || worker.fullName)}
                 </div>
                 <div className="min-w-0">
-                  <h3 className="text-body font-heading font-bold text-slate-900 uppercase tracking-tight truncate">
+                  <h3 className="text-body font-heading font-bold text-gray-900 uppercase tracking-tight truncate">
                     {t("Key Worker Details", "Kľúčové údaje pracovníka", "Kulcsadatok")}
                   </h3>
-                  <p className="type-overline text-slate-400 mt-0.5">
+                  <p className="type-overline text-gray-400 mt-0.5">
                     {t("Identity, contact & rates", "Identita, kontakt a sadzby", "Személyazonosság, kapcsolat és díjak")}
                   </p>
                 </div>
@@ -1005,10 +1005,10 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                     if (isEditingLeft) syncDraftsFromWorker(worker);
                     setIsEditingLeft(!isEditingLeft);
                   }}
-                  className={`h-9 w-9 rounded-xl flex items-center justify-center transition-all border-2 shadow-2xs cursor-pointer ${
+                  className={`h-9 w-9 rounded-md flex items-center justify-center transition-all border-2 shadow-2xs cursor-pointer ${
                     isEditingLeft
                       ? "bg-rose-50 border-rose-300 text-rose-600 hover:bg-rose-100"
-                      : "bg-[#5c6f28]/10 border-[#5c6f28]/40 text-[#4a5a20] hover:bg-[#5c6f28]/20"
+                      : "bg-entity-subtle border-entity-border text-[#4a5a20] hover:bg-entity-subtle"
                   }`}
                   title={
                     isEditingLeft
@@ -1024,7 +1024,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
             <form onSubmit={handleSaveProfile} className="space-y-4 text-ui font-bold">
               <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3.5">
                 <div className="space-y-1">
-                  <label className="type-overline text-slate-500 block">
+                  <label className="type-overline text-gray-500 block">
                     {t("Full Name", "Celé meno", "Teljes név")} *
                   </label>
                   <input
@@ -1033,15 +1033,15 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                     readOnly={!isEditingLeft}
                     value={basicDraft.fullName}
                     onChange={(e) => setBasicDraft((p) => ({ ...p, fullName: e.target.value }))}
-                    className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
+                    className={`w-full px-3 py-2 rounded-md focus:outline-none transition-all ${
                       isEditingLeft
-                        ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
-                        : "bg-transparent border-0 pl-0 text-slate-900 text-body font-bold cursor-default"
+                        ? "bg-gray-50 border-2 border-gray-200 focus:bg-white focus:border-[#5c6f28] text-gray-800"
+                        : "bg-transparent border-0 pl-0 text-gray-900 text-body font-bold cursor-default"
                     }`}
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="type-overline text-slate-500 block">
+                  <label className="type-overline text-gray-500 block">
                     {t("Nationality", "Štátna príslušnosť", "Állampolgárság")}
                   </label>
                   <input
@@ -1050,16 +1050,16 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                     value={basicDraft.nationality}
                     onChange={(e) => setBasicDraft((p) => ({ ...p, nationality: e.target.value }))}
                     placeholder="—"
-                    className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
+                    className={`w-full px-3 py-2 rounded-md focus:outline-none transition-all ${
                       isEditingLeft
-                        ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
-                        : "bg-transparent border-0 pl-0 text-slate-900 text-body font-bold cursor-default"
+                        ? "bg-gray-50 border-2 border-gray-200 focus:bg-white focus:border-[#5c6f28] text-gray-800"
+                        : "bg-transparent border-0 pl-0 text-gray-900 text-body font-bold cursor-default"
                     }`}
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="type-overline text-slate-500 block">
+                  <label className="type-overline text-gray-500 block">
                     {t("Phone", "Telefón", "Telefon")}
                   </label>
                   <input
@@ -1068,15 +1068,15 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                     value={basicDraft.phone}
                     onChange={(e) => setBasicDraft((p) => ({ ...p, phone: e.target.value }))}
                     placeholder="—"
-                    className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
+                    className={`w-full px-3 py-2 rounded-md focus:outline-none transition-all ${
                       isEditingLeft
-                        ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
-                        : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default"
+                        ? "bg-gray-50 border-2 border-gray-200 focus:bg-white focus:border-[#5c6f28] text-gray-800"
+                        : "bg-transparent border-0 pl-0 text-gray-900 font-bold cursor-default"
                     }`}
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="type-overline text-slate-500 block">
+                  <label className="type-overline text-gray-500 block">
                     {t("Email", "E-mail", "E-mail")}
                   </label>
                   <input
@@ -1085,17 +1085,17 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                     value={basicDraft.email}
                     onChange={(e) => setBasicDraft((p) => ({ ...p, email: e.target.value }))}
                     placeholder="—"
-                    className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
+                    className={`w-full px-3 py-2 rounded-md focus:outline-none transition-all ${
                       isEditingLeft
-                        ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
-                        : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default"
+                        ? "bg-gray-50 border-2 border-gray-200 focus:bg-white focus:border-[#5c6f28] text-gray-800"
+                        : "bg-transparent border-0 pl-0 text-gray-900 font-bold cursor-default"
                     }`}
                   />
                 </div>
 
                 {rights.personal && (
                   <div className="space-y-1">
-                    <label className="type-overline text-slate-500 block">
+                    <label className="type-overline text-gray-500 block">
                       {t("Date of Birth", "Dátum narodenia", "Születési dátum")}
                     </label>
                     <input
@@ -1109,17 +1109,17 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                             : "—"
                       }
                       onChange={(e) => setBasicDraft((p) => ({ ...p, dateOfBirth: e.target.value }))}
-                      className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all font-mono ${
+                      className={`w-full px-3 py-2 rounded-md focus:outline-none transition-all font-mono ${
                         isEditingLeft
-                          ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
-                          : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default"
+                          ? "bg-gray-50 border-2 border-gray-200 focus:bg-white focus:border-[#5c6f28] text-gray-800"
+                          : "bg-transparent border-0 pl-0 text-gray-900 font-bold cursor-default"
                       }`}
                     />
                   </div>
                 )}
 
                 <div className="space-y-1">
-                  <label className="type-overline text-slate-500 block">
+                  <label className="type-overline text-gray-500 block">
                     {t("Recruiter", "Náborár", "Toborzó")}
                   </label>
                   <input
@@ -1128,16 +1128,16 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                     value={basicDraft.assignedRecruiter}
                     onChange={(e) => setBasicDraft((p) => ({ ...p, assignedRecruiter: e.target.value }))}
                     placeholder="—"
-                    className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
+                    className={`w-full px-3 py-2 rounded-md focus:outline-none transition-all ${
                       isEditingLeft
-                        ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
-                        : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default"
+                        ? "bg-gray-50 border-2 border-gray-200 focus:bg-white focus:border-[#5c6f28] text-gray-800"
+                        : "bg-transparent border-0 pl-0 text-gray-900 font-bold cursor-default"
                     }`}
                   />
                 </div>
 
                 <div className="space-y-1 ws-sm:col-span-2">
-                  <label className="type-overline text-slate-500 block">
+                  <label className="type-overline text-gray-500 block">
                     {t("Recruited For (Target Company)", "Nábor pre firmu", "Célcég")}
                   </label>
                   {isEditingLeft ? (
@@ -1145,7 +1145,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                       value={basicDraft.targetCompanyClientId}
                       onChange={(e) => setBasicDraft((p) => ({ ...p, targetCompanyClientId: e.target.value }))}
                       data-testid="agency-detail-target-company-select"
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
+                      className="w-full px-3 py-2 rounded-md bg-gray-50 border-2 border-gray-200 focus:bg-white focus:border-[#5c6f28] text-gray-800"
                     >
                       <option value="">{t("— Unassigned —", "— Nepriradené —", "— Nincs hozzárendelve —")}</option>
                       {companyLeads.map((comp) => (
@@ -1155,7 +1155,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                       ))}
                     </select>
                   ) : (
-                    <div className="py-1.5 flex items-center gap-1.5 text-slate-900 font-bold">
+                    <div className="py-1.5 flex items-center gap-1.5 text-gray-900 font-bold">
                       <Building2 className="size-4 text-indigo-600 shrink-0" />
                       <span>{activeCompanyName || targetCompanyName || "—"}</span>
                     </div>
@@ -1165,7 +1165,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                 {rights.payments && (
                   <>
                     <div className="space-y-1">
-                      <label className="type-overline text-slate-500 block">
+                      <label className="type-overline text-gray-500 block">
                         {t("Default Pay Rate", "Základná mzda", "Alap órabér")} ({worker.currency})
                       </label>
                       <input
@@ -1175,15 +1175,15 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                         value={basicDraft.defaultPayRate}
                         onChange={(e) => setBasicDraft((p) => ({ ...p, defaultPayRate: e.target.value }))}
                         placeholder="0"
-                        className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all font-mono ${
+                        className={`w-full px-3 py-2 rounded-md focus:outline-none transition-all font-mono ${
                           isEditingLeft
-                            ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
-                            : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default"
+                            ? "bg-gray-50 border-2 border-gray-200 focus:bg-white focus:border-[#5c6f28] text-gray-800"
+                            : "bg-transparent border-0 pl-0 text-gray-900 font-bold cursor-default"
                         }`}
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="type-overline text-slate-500 block">
+                      <label className="type-overline text-gray-500 block">
                         {t("Default Bill Rate", "Fakturačná sadzba", "Számlázási díj")} ({worker.currency})
                       </label>
                       <input
@@ -1193,10 +1193,10 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                         value={basicDraft.defaultBillRate}
                         onChange={(e) => setBasicDraft((p) => ({ ...p, defaultBillRate: e.target.value }))}
                         placeholder="0"
-                        className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all font-mono ${
+                        className={`w-full px-3 py-2 rounded-md focus:outline-none transition-all font-mono ${
                           isEditingLeft
-                            ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
-                            : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default"
+                            ? "bg-gray-50 border-2 border-gray-200 focus:bg-white focus:border-[#5c6f28] text-gray-800"
+                            : "bg-transparent border-0 pl-0 text-gray-900 font-bold cursor-default"
                         }`}
                       />
                     </div>
@@ -1205,9 +1205,9 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
               </div>
 
               {/* Crucial Document & Compliance Summary on Left Panel */}
-              <div className="border-t-2 border-slate-100 pt-3.5 space-y-2.5">
+              <div className="border-t-2 border-gray-100 pt-3.5 space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="type-overline text-slate-500">
+                  <span className="type-overline text-gray-500">
                     {t("Documents & Compliance", "Doklady a súlad", "Okmányok és megfelelőség")}
                   </span>
                   <button
@@ -1222,7 +1222,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setTab("compliance")}
-                    className="w-full p-2.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 text-caption font-bold flex items-center gap-2 text-left cursor-pointer hover:bg-rose-100/80"
+                    className="w-full p-2.5 rounded-md bg-rose-50 border border-rose-300 text-rose-800 text-caption font-bold flex items-center gap-2 text-left cursor-pointer hover:bg-rose-100/80"
                   >
                     <AlertTriangle className="size-4 text-rose-600 shrink-0" />
                     <span>
@@ -1242,18 +1242,18 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                 )}
                 {rights.personal ? (
                   <div className="grid grid-cols-2 gap-2 text-caption">
-                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                      <span className="type-overline text-slate-400 block">{t("Passport", "Pas", "Útlevél")}</span>
-                      <span className="font-mono font-bold text-slate-800">{passportNum || "—"}</span>
+                    <div className="p-2.5 rounded-md bg-gray-50 border border-gray-200/80">
+                      <span className="type-overline text-gray-400 block">{t("Passport", "Pas", "Útlevél")}</span>
+                      <span className="font-mono font-bold text-gray-800">{passportNum || "—"}</span>
                       {passportValid && (
-                        <span className="text-micro text-slate-500 block">
+                        <span className="text-micro text-gray-500 block">
                           {formatDateLocalized(passportValid, lang)}
                         </span>
                       )}
                     </div>
-                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                      <span className="type-overline text-slate-400 block">{t("Permit", "Povolenie", "Engedély")}</span>
-                      <span className="font-mono font-bold text-slate-800">{permitNum || "—"}</span>
+                    <div className="p-2.5 rounded-md bg-gray-50 border border-gray-200/80">
+                      <span className="type-overline text-gray-400 block">{t("Permit", "Povolenie", "Engedély")}</span>
+                      <span className="font-mono font-bold text-gray-800">{permitNum || "—"}</span>
                     </div>
                   </div>
                 ) : (
@@ -1265,8 +1265,8 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
               </div>
 
               {/* Internal Notes */}
-              <div className="border-t-2 border-slate-100 pt-3.5 space-y-1">
-                <label className="type-overline text-slate-500 block">
+              <div className="border-t-2 border-gray-100 pt-3.5 space-y-1">
+                <label className="type-overline text-gray-500 block">
                   {t("Internal Notes", "Interné poznámky", "Belső megjegyzés")}
                 </label>
                 <textarea
@@ -1275,10 +1275,10 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                   value={basicDraft.notes}
                   onChange={(e) => setBasicDraft((p) => ({ ...p, notes: e.target.value }))}
                   placeholder={t("Add notes…", "Pridať poznámku…", "Megjegyzés…")}
-                  className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all font-normal ${
+                  className={`w-full px-3 py-2 rounded-md focus:outline-none transition-all font-normal ${
                     isEditingLeft
-                      ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-[#5c6f28] text-slate-800"
-                      : "bg-slate-50/60 border border-slate-200/60 text-slate-700 cursor-default"
+                      ? "bg-gray-50 border-2 border-gray-200 focus:bg-white focus:border-[#5c6f28] text-gray-800"
+                      : "bg-gray-50/60 border border-gray-200/60 text-gray-700 cursor-default"
                   }`}
                 />
               </div>
@@ -1287,7 +1287,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                 <button
                   type="submit"
                   disabled={saving}
-                  className="w-full py-2.5 rounded-xl bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-bold inline-flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                  className="w-full py-2.5 rounded-md bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-bold inline-flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
                 >
                   <Save className="size-4" />
                   {saving ? t("Saving…", "Ukladám…", "Mentés…") : t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
@@ -1299,7 +1299,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
 
         {/* RIGHT PANEL: Tabbed Workspace (Timeline, Details, Compliance, Placements, Schedule, Tasks & Tickets) */}
         <div className="ws-lg:col-span-7">
-          <div className="glass-panel p-6 rounded-[28px] border-2 border-[#5c6f28]/50 bg-white shadow-xl space-y-6">
+          <div className=" p-6 rounded-lg border border-gray-200 bg-white shadow-xl space-y-6">
             <Tabs
               value={tab}
               onChange={setTab}
@@ -1320,6 +1320,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                 {
                   key: "compliance",
                   testId: "agency-detail-tab-compliance",
+                  entity: "files",
                   icon: <ClipboardList className="size-4" />,
                   label: t("Documents", "Doklady a súbory", "Dokumentumok"),
                   count: files.length || undefined,
@@ -1340,6 +1341,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                 {
                   key: "tasks_tickets",
                   testId: "agency-detail-tab-tasks_tickets",
+                  entity: "tasks",
                   icon: <CheckSquare className="size-4" />,
                   label: t("Tasks & Tickets", "Úlohy a tikety", "Feladatok és jegyek"),
                 },
@@ -1351,16 +1353,16 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                 {rights.edit && (
                   <form
                     onSubmit={handleLogEvent}
-                    className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-3"
+                    className="p-4 rounded-lg bg-gray-50/80 border border-gray-200/80 space-y-3"
                     data-testid="agency-log-event-form"
                   >
-                    <h3 className="text-ui font-bold text-[#4a5a20] flex items-center gap-1.5 border-b border-slate-200/80 pb-2">
+                    <h3 className="text-ui font-bold text-[#4a5a20] flex items-center gap-1.5 border-b border-gray-200/80 pb-2">
                       <PencilLine className="size-4 text-[#5c6f28]" />
                       {t("Log Timeline Event", "Pridať udalosť do histórie", "Esemény rögzítése")}
                     </h3>
                     <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3">
                       <div>
-                        <label className="type-overline text-slate-500 block mb-1">
+                        <label className="type-overline text-gray-500 block mb-1">
                           {t("Event Type", "Typ udalosti", "Típus")}
                         </label>
                         <select
@@ -1371,7 +1373,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                               eventType: e.target.value as Exclude<AgencyTimelineEventType, "work_log">,
                             }))
                           }
-                          className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui"
+                          className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui"
                         >
                           <option value="contact">{t("Contacted", "Kontaktovaný", "Kapcsolatfelvétel")}</option>
                           <option value="sick_leave">{t("Sick Leave / Illness", "PN / Choroba", "Betegszabadság")}</option>
@@ -1380,7 +1382,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                         </select>
                       </div>
                       <div className="ws-sm:col-span-2">
-                        <label className="type-overline text-slate-500 block mb-1">
+                        <label className="type-overline text-gray-500 block mb-1">
                           {t("Title", "Názov", "Cím")} *
                         </label>
                         <input
@@ -1389,24 +1391,24 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                           value={tlForm.title}
                           onChange={(e) => setTlForm((p) => ({ ...p, title: e.target.value }))}
                           placeholder={t("Called candidate about onboarding…", "Telefonát ohľadom nástupu…", "Telefonhívás…")}
-                          className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui"
+                          className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui"
                         />
                       </div>
                     </div>
                     <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3 items-end">
                       <div>
-                        <label className="type-overline text-slate-500 block mb-1">
+                        <label className="type-overline text-gray-500 block mb-1">
                           {t("Date", "Dátum", "Dátum")}
                         </label>
                         <input
                           type="date"
                           value={tlForm.occurredAt}
                           onChange={(e) => setTlForm((p) => ({ ...p, occurredAt: e.target.value }))}
-                          className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui"
+                          className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui"
                         />
                       </div>
                       <div>
-                        <label className="type-overline text-slate-500 block mb-1">
+                        <label className="type-overline text-gray-500 block mb-1">
                           {t("Details", "Detaily", "Részletek")}
                         </label>
                         <input
@@ -1414,13 +1416,13 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                           value={tlForm.description}
                           onChange={(e) => setTlForm((p) => ({ ...p, description: e.target.value }))}
                           placeholder={t("Optional details…", "Voliteľný popis…", "Részletek…")}
-                          className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-ui"
+                          className="w-full px-3 py-2 rounded-md bg-white border border-gray-200 text-ui"
                         />
                       </div>
                       <button
                         type="submit"
                         disabled={saving}
-                        className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-ui font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                        className="px-3.5 py-2 rounded-md bg-gray-900 hover:bg-gray-800 text-white text-ui font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <Plus className="size-4" />
                         {t("Record Event", "Uložiť udalosť", "Mentés")}
@@ -1431,10 +1433,10 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
 
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="type-panel-title text-slate-900">
+                    <h3 className="type-panel-title text-gray-900">
                       {t("Lifecycle Timeline", "Časová os udalostí", "Életút idővonal")}
                     </h3>
-                    <label className="inline-flex items-center gap-1.5 text-caption text-slate-600 cursor-pointer">
+                    <label className="inline-flex items-center gap-1.5 text-caption text-gray-600 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={showWorkLogs}
@@ -1445,7 +1447,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                   </div>
 
                   {visibleTimeline.length === 0 ? (
-                    <div className="text-ui text-slate-400 py-6 text-center">
+                    <div className="text-ui text-gray-400 py-6 text-center">
                       {t("No timeline events yet.", "Zatiaľ žiadne udalosti.", "Még nincsenek események.")}
                     </div>
                   ) : (
@@ -1460,16 +1462,16 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                               key={ev.id}
                               data-timeline-kind="work_log"
                               data-testid={`agency-timeline-item-${ev.eventType}`}
-                              className="py-1 px-2.5 rounded-lg bg-slate-50/90 border border-slate-200/70 flex items-center justify-between gap-2 text-micro text-slate-600"
+                              className="py-1 px-2.5 rounded-lg bg-gray-50/90 border border-gray-200/70 flex items-center justify-between gap-2 text-micro text-gray-600"
                             >
                               <div className="flex items-center gap-1.5 min-w-0">
-                                <Clock className="size-3 text-slate-400 shrink-0" />
+                                <Clock className="size-3 text-gray-400 shrink-0" />
                                 <span className="truncate font-medium">{localized.title}</span>
                                 {localized.description && (
-                                  <span className="text-slate-400 truncate">· {localized.description}</span>
+                                  <span className="text-gray-400 truncate">· {localized.description}</span>
                                 )}
                               </div>
-                              <span className="font-mono text-slate-400 shrink-0">
+                              <span className="font-mono text-gray-400 shrink-0">
                                 {formatDateLocalized(ev.occurredAt.slice(0, 10), lang)}
                               </span>
                             </div>
@@ -1480,7 +1482,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                             key={ev.id}
                             data-timeline-kind="milestone"
                             data-testid={`agency-timeline-item-${ev.eventType}`}
-                            className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1.5"
+                            className="p-3.5 rounded-md bg-white border border-gray-200 shadow-2xs space-y-1.5"
                           >
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
@@ -1488,17 +1490,17 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                                   <Icon className="size-3.5" />
                                   {t(meta.en, meta.sk, meta.hu)}
                                 </span>
-                                <span className="text-body font-bold text-slate-900">{localized.title}</span>
+                                <span className="text-body font-bold text-gray-900">{localized.title}</span>
                               </div>
-                              <span className="text-caption font-mono text-slate-400">
+                              <span className="text-caption font-mono text-gray-400">
                                 {formatTimestampLocalized(ev.occurredAt.slice(0, 16), lang)}
                               </span>
                             </div>
                             {localized.description && (
-                              <p className="text-ui text-slate-600 leading-relaxed">{localized.description}</p>
+                              <p className="text-ui text-gray-600 leading-relaxed">{localized.description}</p>
                             )}
                             {ev.createdBy && (
-                              <div className="text-micro text-slate-400">{ev.createdBy}</div>
+                              <div className="text-micro text-gray-400">{ev.createdBy}</div>
                             )}
                           </div>
                         );
@@ -1512,7 +1514,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
             {tab === "profile" && (
               <form onSubmit={handleSaveProfile} className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="type-panel-title text-slate-900">
+                  <h3 className="type-panel-title text-gray-900">
                     {t("Worker Profile Details", "Podrobné údaje pracovníka", "Részletes adatok")}
                   </h3>
                   {rights.edit && (
@@ -1520,7 +1522,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                       type="submit"
                       disabled={saving}
                       data-testid="agency-save-profile-btn"
-                      className="px-3.5 py-1.5 rounded-xl bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                      className="px-3.5 py-1.5 rounded-md bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                     >
                       <Save className="size-4" />
                       {saving ? t("Saving…", "Ukladám…", "Mentés…") : t("Save Details", "Uložiť údaje", "Adatok mentése")}
@@ -1529,7 +1531,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                 </div>
 
                 {!rights.personal && (
-                  <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-ui font-semibold flex items-center gap-2">
+                  <div className="p-3.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-ui font-semibold flex items-center gap-2">
                     <Lock className="size-4 shrink-0" />
                     {t(
                       "Sensitive personal, passport, permit, address and family fields are hidden (agency.personal permission required).",
@@ -1544,11 +1546,11 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                   .map((sec) => {
                     const { color: secColor, Icon: SecIcon } = resolveSectionIconAndColor(sec);
                     return (
-                      <div key={sec.id} className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-3">
+                      <div key={sec.id} className="p-4 rounded-lg bg-gray-50/70 border border-gray-200/80 space-y-3">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2.5">
                             <span
-                              className="size-8 rounded-xl flex items-center justify-center shrink-0 border"
+                              className="size-8 rounded-md flex items-center justify-center shrink-0 border"
                               style={{
                                 backgroundColor: `${secColor}18`,
                                 borderColor: `${secColor}40`,
@@ -1557,7 +1559,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                             >
                               <SecIcon className="size-4" />
                             </span>
-                            <h4 className="type-panel-title text-slate-900">
+                            <h4 className="type-panel-title text-gray-900">
                               {resolveLocalizedLabel(sec.label, lang)}
                             </h4>
                           </div>
@@ -1580,8 +1582,8 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
 
             {tab === "compliance" && (
               <div className="space-y-5">
-                <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-3">
-                  <h3 className="type-panel-title text-slate-900 flex items-center gap-2">
+                <div className="p-4 rounded-lg bg-gray-50/70 border border-gray-200/80 space-y-3">
+                  <h3 className="type-panel-title text-gray-900 flex items-center gap-2">
                     <ClipboardList className="size-4 text-[#5c6f28]" />
                     {t("Compliance Checklist", "Kontrolný zoznam dokladov", "Megfelelőségi lista")}
                   </h3>
@@ -1611,11 +1613,11 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                         <div
                           key={item.id}
                           data-testid={`agency-checklist-row-${item.itemKey}`}
-                          className={`p-3 rounded-xl border space-y-2 transition-colors ${rowClasses}`}
+                          className={`p-3 rounded-md border space-y-2 transition-colors ${rowClasses}`}
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="flex flex-wrap items-center gap-2 min-w-0">
-                              <span className="text-ui font-bold text-slate-900">
+                              <span className="text-ui font-bold text-gray-900">
                                 {tplItem ? resolveLocalizedLabel(tplItem.label, lang) : item.label}
                               </span>
                               {isRequired ? (
@@ -1667,7 +1669,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                               <>
                                 <label
                                   className={`text-micro flex items-center gap-1 font-semibold ${
-                                    isExpiryRed ? "text-rose-700" : "text-slate-600"
+                                    isExpiryRed ? "text-rose-700" : "text-gray-600"
                                   }`}
                                 >
                                   <Calendar className="size-3" />
@@ -1683,7 +1685,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                                   className={`px-2 py-1 rounded-lg border text-caption font-semibold ${
                                     isExpiryRed
                                       ? "bg-rose-50 border-rose-400 text-rose-800 ring-1 ring-rose-300"
-                                      : "bg-white/90 border-slate-200 text-slate-800"
+                                      : "bg-white/90 border-gray-200 text-gray-800"
                                   }`}
                                 />
                                 {isMissingExpiry ? (
@@ -1720,7 +1722,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                               </button>
                             )}
                             {rights.edit && (
-                              <label className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/90 hover:bg-white border border-slate-200/90 text-micro font-semibold text-slate-700 cursor-pointer shadow-2xs">
+                              <label className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/90 hover:bg-white border border-gray-200/90 text-micro font-semibold text-gray-700 cursor-pointer shadow-2xs">
                                 <Upload className="size-3" />
                                 {attachedFile
                                   ? t("Replace", "Nahradiť", "Csere")
@@ -1762,9 +1764,9 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                   </div>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200/80 space-y-3">
+                <div className="p-4 rounded-lg bg-gray-50/70 border border-gray-200/80 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="type-panel-title text-slate-900">
+                    <h3 className="type-panel-title text-gray-900">
                       {t("Private Worker Documents", "Súkromné dokumenty", "Privát dokumentumok")}
                     </h3>
                     {rights.edit && (
@@ -1772,7 +1774,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                         <select
                           value={uploadCategory}
                           onChange={(e) => setUploadCategory(e.target.value as AgencyFileCategory)}
-                          className="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-caption"
+                          className="px-2.5 py-1.5 rounded-md bg-white border border-gray-200 text-caption"
                         >
                           <option value="cv">CV</option>
                           <option value="passport">{t("Passport", "Pas", "Útlevél")}</option>
@@ -1781,7 +1783,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                           <option value="contract">{t("Contract", "Zmluva", "Szerződés")}</option>
                           <option value="other">{t("Other", "Iné", "Egyéb")}</option>
                         </select>
-                        <label className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-caption font-semibold inline-flex items-center gap-1.5 cursor-pointer">
+                        <label className="px-3 py-1.5 rounded-md bg-gray-900 hover:bg-gray-800 text-white text-caption font-semibold inline-flex items-center gap-1.5 cursor-pointer">
                           <Upload className="size-3.5" />
                           {t("Upload", "Nahrať", "Feltöltés")}
                           <input
@@ -1798,7 +1800,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                     )}
                   </div>
                   {files.length === 0 ? (
-                    <div className="text-ui text-slate-400 py-8 text-center">
+                    <div className="text-ui text-gray-400 py-8 text-center">
                       {t("No private documents uploaded yet.", "Zatiaľ neboli nahraté žiadne dokumenty.", "Még nincsenek feltöltött dokumentumok.")}
                     </div>
                   ) : (
@@ -1806,17 +1808,17 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                       {files.map((f) => (
                         <div
                           key={f.id}
-                          className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white border border-slate-200"
+                          className="flex items-center justify-between gap-2 p-2.5 rounded-md bg-white border border-gray-200"
                         >
                           <button
                             type="button"
                             onClick={() => setPreviewFile(f)}
                             className="min-w-0 text-left hover:text-[#4a5a20] cursor-pointer flex-1"
                           >
-                            <div className="text-ui font-semibold text-slate-800 hover:text-[#4a5a20] underline decoration-slate-300 underline-offset-2 truncate">
+                            <div className="text-ui font-semibold text-gray-800 hover:text-[#4a5a20] underline decoration-gray-300 underline-offset-2 truncate">
                               {f.fileName}
                             </div>
-                            <div className="text-micro text-slate-400 uppercase">
+                            <div className="text-micro text-gray-400 uppercase">
                               {f.category} · {Math.round(f.sizeBytes / 1024)} KB
                             </div>
                           </button>
@@ -1824,7 +1826,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                             <button
                               type="button"
                               onClick={() => setPreviewFile(f)}
-                              className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer"
+                              className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-100 cursor-pointer"
                               title={t("Preview", "Náhľad", "Előnézet")}
                             >
                               <Eye className="size-4" />
@@ -1834,7 +1836,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                               download={f.fileName}
                               target="_blank"
                               rel="noreferrer"
-                              className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100"
+                              className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-100"
                               title={t("Download full resolution", "Stiahnuť v plnom rozlíšení", "Letöltés teljes felbontásban")}
                             >
                               <Download className="size-4" />
@@ -1866,7 +1868,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                 {renderPlacementsTab ? (
                   renderPlacementsTab({ detail, refresh: loadDetail })
                 ) : (
-                  <div className="p-6 text-ui text-slate-500">
+                  <div className="p-6 text-ui text-gray-500">
                     {t("Placements panel ready.", "Panel umiestnení pripravený.", "Kihelyezési panel kész.")}
                   </div>
                 )}
@@ -1878,7 +1880,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                 {renderScheduleTab ? (
                   renderScheduleTab({ detail, refresh: loadDetail })
                 ) : (
-                  <div className="p-6 text-ui text-slate-500">
+                  <div className="p-6 text-ui text-gray-500">
                     {t("Shift schedule tab ready.", "Rozpis zmien pripravený.", "Műszakbeosztás kész.")}
                   </div>
                 )}
@@ -1894,7 +1896,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                     onQuickRenewTask: onQuickRenewTask ? (item) => onQuickRenewTask(worker, item) : undefined,
                   })
                 ) : (
-                  <div className="p-6 text-ui text-slate-500">
+                  <div className="p-6 text-ui text-gray-500">
                     {t("Tasks & Tickets linked to this worker will appear here.", "Úlohy a tikety priradené k tomuto pracovníkovi.", "A dolgozóhoz rendelt feladatok és jegyek itt jelennek meg.")}
                   </div>
                 )}
@@ -1906,20 +1908,20 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
 
       {previewFile && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-950/70 "
           onClick={() => setPreviewFile(null)}
           data-testid="agency-file-preview-modal"
         >
           <div
-            className="w-full max-w-4xl max-h-[90vh] bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden"
+            className="w-full max-w-4xl max-h-[90vh] bg-white rounded-lg shadow-xl border border-gray-200 flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-b border-slate-200 bg-slate-50">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-b border-gray-200 bg-gray-50">
               <div className="flex items-center gap-2.5 min-w-0">
                 <FileText className="size-5 text-[#5c6f28] shrink-0" />
                 <div className="min-w-0">
-                  <div className="text-body font-bold text-slate-900 truncate">{previewFile.fileName}</div>
-                  <div className="text-micro text-slate-500 uppercase">
+                  <div className="text-body font-bold text-gray-900 truncate">{previewFile.fileName}</div>
+                  <div className="text-micro text-gray-500 uppercase">
                     {previewFile.category} · {Math.max(1, Math.round(previewFile.sizeBytes / 1024))} KB
                   </div>
                 </div>
@@ -1931,7 +1933,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                   target="_blank"
                   rel="noreferrer"
                   data-testid="agency-file-preview-download"
-                  className="px-3.5 py-1.5 rounded-xl bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-semibold inline-flex items-center gap-1.5"
+                  className="px-3.5 py-1.5 rounded-md bg-[#5c6f28] hover:bg-[#4a5a20] text-white text-ui font-semibold inline-flex items-center gap-1.5"
                 >
                   <Download className="size-4" />
                   {t(
@@ -1943,7 +1945,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setPreviewFile(null)}
-                  className="p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-200/70 cursor-pointer"
+                  className="p-2 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-200/70 cursor-pointer"
                   aria-label="Close"
                 >
                   <X className="size-5" />
@@ -1951,25 +1953,25 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
               </div>
             </div>
 
-            <div className="flex-1 overflow-auto bg-slate-900/5 p-4 flex items-center justify-center min-h-80">
+            <div className="flex-1 overflow-auto bg-gray-900/5 p-4 flex items-center justify-center min-h-80">
               {previewFile.mimeType.startsWith("image/") ||
               /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(previewFile.fileName) ? (
                 <img
                   src={agencyFileUrl(previewFile.id, false)}
                   alt={previewFile.fileName}
-                  className="max-w-full max-h-[74vh] object-contain rounded-xl shadow-md bg-white"
+                  className="max-w-full max-h-[74vh] object-contain rounded-md shadow-md bg-white"
                 />
               ) : previewFile.mimeType === "application/pdf" || /\.pdf$/i.test(previewFile.fileName) ? (
                 <iframe
                   src={agencyFileUrl(previewFile.id, false)}
                   title={previewFile.fileName}
-                  className="w-full h-[74vh] rounded-xl border border-slate-200 bg-white"
+                  className="w-full h-[74vh] rounded-md border border-gray-200 bg-white"
                 />
               ) : (
-                <div className="p-8 text-center space-y-3 bg-white rounded-2xl border border-slate-200 max-w-md">
+                <div className="p-8 text-center space-y-3 bg-white rounded-lg border border-gray-200 max-w-md">
                   <FileText className="size-10 text-[#5c6f28] mx-auto" />
-                  <div className="text-body font-bold text-slate-900">{previewFile.fileName}</div>
-                  <p className="text-ui text-slate-500">
+                  <div className="text-body font-bold text-gray-900">{previewFile.fileName}</div>
+                  <p className="text-ui text-gray-500">
                     {t(
                       "Direct inline preview is not available for this file format. Use the button above to download it in full resolution.",
                       "Priamy náhľad pre tento formát nie je dostupný. Použite tlačidlo vyššie na stiahnutie v plnom rozlíšení.",
