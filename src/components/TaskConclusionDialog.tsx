@@ -4,6 +4,7 @@ import { CheckSquare, X } from "lucide-react";
 import type { Task } from "../types";
 import type { Language } from "../utils/translations";
 import { CONCLUSION_MAX, cleanConclusion } from "../utils/taskConclusion";
+import { entityAccentStyle } from "../utils/entityAccent";
 
 const makeT =
   (lang: Language) =>
@@ -51,32 +52,33 @@ export const TaskConclusionDialog: React.FC<TaskConclusionDialogProps> = ({ task
         aria-modal="true"
         aria-label={t("Conclusion required", "Vyžaduje sa záver", "Összegzés szükséges")}
         data-testid="task-conclusion-dialog"
+        style={entityAccentStyle("tasks")}
         onSubmit={(e) => {
           e.preventDefault();
           if (cleaned) onConfirm(cleaned);
         }}
-        className="relative w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl space-y-4 text-ui font-bold animate-fade-in"
+        className="relative w-full max-w-md rounded-lg border border-gray-200 bg-white p-6 shadow-lg space-y-4 text-ui font-semibold animate-fade-in"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1 min-w-0">
-            <span className="type-overline text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1.5">
-              <CheckSquare className="h-3.5 w-3.5 text-indigo-600" />
+            <span className="type-overline text-entity-text bg-entity-subtle border border-entity-border px-2 py-0.5 rounded-md inline-flex items-center gap-1.5">
+              <CheckSquare className="h-3.5 w-3.5 text-entity-text" />
               {t("Conclusion required", "Vyžaduje sa záver", "Összegzés szükséges")}
             </span>
-            <h2 className="type-page-title text-slate-900 leading-snug break-words">{task.title}</h2>
+            <h2 className="type-page-title text-gray-900 leading-snug break-words">{task.title}</h2>
           </div>
           <button
             type="button"
             onClick={onCancel}
             aria-label={t("Close", "Zavrieť", "Bezárás")}
-            className="p-1 hover:bg-slate-100 active:scale-95 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+            className="p-1 hover:bg-gray-100 active:scale-95 rounded-md text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         <div className="space-y-1">
-          <label className="type-overline text-slate-500" htmlFor="task-conclusion-text">
+          <label className="type-overline text-gray-500" htmlFor="task-conclusion-text">
             {t("Conclusion", "Záver", "Összegzés")}
           </label>
           <textarea
@@ -92,7 +94,7 @@ export const TaskConclusionDialog: React.FC<TaskConclusionDialogProps> = ({ task
               "Krátka poznámka alebo správa o tom, ako úloha dopadla…",
               "Rövid jegyzet vagy beszámoló arról, hogyan zárult a feladat…",
             )}
-            className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none resize-none text-ui font-bold"
+            className="w-full px-3 py-2 rounded-md border border-gray-200 focus:border-entity-solid focus:outline-none resize-none text-ui font-medium"
           />
         </div>
 
@@ -100,14 +102,14 @@ export const TaskConclusionDialog: React.FC<TaskConclusionDialogProps> = ({ task
           <button
             type="button"
             onClick={onCancel}
-            className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-ui transition-colors cursor-pointer shrink-0"
+            className="px-4 py-2 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-md font-semibold text-ui transition-colors cursor-pointer shrink-0"
           >
             {t("Cancel", "Zrušiť", "Mégse")}
           </button>
           <button
             type="submit"
             disabled={!cleaned}
-            className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white rounded-xl font-bold text-ui shadow-lg shadow-indigo-600/20 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex-1 py-2 bg-entity-solid hover:opacity-90 active:scale-[0.98] text-white rounded-md font-semibold text-ui shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
           >
             {t("Complete task", "Dokončiť úlohu", "Feladat befejezése")}
           </button>

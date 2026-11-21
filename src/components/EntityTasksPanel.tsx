@@ -1,7 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
 import {
   Archive as ArchiveIcon,
-  ArrowUpRight,
   Calendar,
   Check,
   ChevronDown,
@@ -13,7 +12,6 @@ import {
   Pencil,
   Plus,
   RotateCcw,
-  Ticket as TicketIcon,
   Trash2,
 } from "lucide-react";
 import type { Lead, Project, Task, UserProfile } from "../types";
@@ -47,6 +45,8 @@ import { useRecurringTemplates } from "../hooks/useRecurringTemplates";
 import { TaskDescriptionMark } from "./TaskDescriptionMark";
 import { DeadlinePostponedBadge } from "./TaskDeadlineExtras";
 import { clampDeadline, todayStr } from "../utils/taskDeadline";
+import { entityAccentStyle } from "../utils/entityAccent";
+import { EntityBadge } from "./tremor/EntityBadge";
 import {
   canDeleteTask,
   canEditTask,
@@ -115,13 +115,6 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
   relatedAgencyWorkerId,
   agencyEnabled = false,
   clientAssociatedLeadIds,
-  accentColor = entityType === "project"
-    ? "indigo"
-    : entityType === "client"
-      ? "orange"
-      : entityType === "agency_worker"
-        ? "violet"
-        : "blue",
 }) => {
   const t: Translate = (en, sk, hu) => (userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en);
   const recurringTemplates = useRecurringTemplates();
@@ -335,42 +328,6 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
     );
   }
 
-  // Accent styling tokens
-  const accentClasses = {
-    indigo: {
-      btn: "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20 text-white",
-      badge: "bg-indigo-50 text-indigo-700 border-indigo-200",
-      activeTab: "bg-indigo-600 text-white shadow-sm border-indigo-700",
-      text: "text-indigo-600",
-      focusBorder: "focus-within:border-indigo-300",
-      focusInput: "focus:border-indigo-400",
-    },
-    orange: {
-      btn: "bg-orange-600 hover:bg-orange-700 shadow-orange-600/20 text-white",
-      badge: "bg-orange-50 text-orange-700 border-orange-200",
-      activeTab: "bg-orange-600 text-white shadow-sm border-orange-700",
-      text: "text-orange-600",
-      focusBorder: "focus-within:border-orange-300",
-      focusInput: "focus:border-orange-400",
-    },
-    blue: {
-      btn: "bg-blue-600 hover:bg-blue-700 shadow-blue-600/20 text-white",
-      badge: "bg-blue-50 text-blue-700 border-blue-200",
-      activeTab: "bg-blue-600 text-white shadow-sm border-blue-700",
-      text: "text-blue-600",
-      focusBorder: "focus-within:border-blue-300",
-      focusInput: "focus:border-blue-400",
-    },
-    violet: {
-      btn: "bg-violet-600 hover:bg-violet-700 shadow-violet-600/20 text-white",
-      badge: "bg-violet-50 text-violet-700 border-violet-200",
-      activeTab: "bg-violet-600 text-white shadow-sm border-violet-700",
-      text: "text-violet-600",
-      focusBorder: "focus-within:border-violet-300",
-      focusInput: "focus:border-violet-400",
-    },
-  }[accentColor];
-
   const renderRow = (task: Task) => {
     const mayEdit = canEditTask(task, currentUser, taskAccess);
     const mayDelete = canDeleteTask(task, currentUser, taskAccess);
@@ -383,11 +340,11 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
     return (
       <li
         key={task.id}
-        className={`group flex items-start gap-3 px-3.5 py-3 rounded-2xl border transition-all ${
+        className={`group flex items-start gap-3 px-3.5 py-2.5 rounded-lg border transition-all ${
           closed
-            ? "bg-slate-50/80 border-slate-200/80 opacity-80 hover:opacity-100"
-            : "bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm"
-        } ${recentIds.has(task.id) ? "border-indigo-400 animate-in fade-in slide-in-from-top-1 duration-300" : ""}`}
+            ? "bg-gray-50 border-gray-200 opacity-80 hover:opacity-100"
+            : "bg-white border-gray-200 hover:border-gray-300 shadow-2xs"
+        } ${recentIds.has(task.id) ? "border-entity-border animate-in fade-in slide-in-from-top-1 duration-300" : ""}`}
       >
         <button
           type="button"
@@ -402,10 +359,10 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                 ? t("Reopen task", "Znovu otvoriť úlohu", "Feladat újranyitása")
                 : t("Mark as done", "Označiť ako hotové", "Megjelölés készként")
           }
-          className={`mt-0.5 h-5 w-5 shrink-0 rounded-lg border-2 flex items-center justify-center transition-all active:scale-90 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+          className={`mt-0.5 h-5 w-5 shrink-0 rounded-md border flex items-center justify-center transition-all active:scale-90 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
             done
-              ? "bg-emerald-500 border-emerald-500 text-white shadow-sm"
-              : "bg-white border-slate-300 hover:border-emerald-500 cursor-pointer"
+              ? "bg-emerald-600 border-emerald-600 text-white shadow-2xs"
+              : "bg-white border-gray-300 hover:border-emerald-500 cursor-pointer"
           }`}
         >
           {done && <Check className="h-3.5 w-3.5 stroke-[3]" />}
@@ -417,27 +374,27 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
           className="flex-1 min-w-0 text-left cursor-pointer rounded-md focus-visible:outline-2 focus-visible:outline-offset-2"
         >
           <span
-            className={`block text-ui font-bold truncate transition-colors ${
-              done ? "text-slate-400 line-through" : closed ? "text-slate-500" : "text-slate-800 group-hover:text-indigo-600"
+            className={`block text-ui font-semibold truncate transition-colors ${
+              done ? "text-gray-400 line-through" : closed ? "text-gray-500" : "text-gray-900 group-hover:text-entity-text"
             }`}
           >
             <TaskPillText text={task.title} />
           </span>
-          <span className="mt-1 flex flex-wrap items-center gap-1.5 text-micro font-bold">
+          <span className="mt-1 flex flex-wrap items-center gap-1.5 text-micro font-semibold">
             <span
               className={`inline-flex items-center gap-1 ${
-                task.priority === "high" ? "text-rose-600" : task.priority === "low" ? "text-slate-400" : "text-amber-600"
+                task.priority === "high" ? "text-rose-600" : task.priority === "low" ? "text-gray-400" : "text-amber-600"
               }`}
             >
               <span
                 className={`h-1.5 w-1.5 rounded-full ${
-                  task.priority === "high" ? "bg-rose-500" : task.priority === "low" ? "bg-slate-400" : "bg-amber-500"
+                  task.priority === "high" ? "bg-rose-500" : task.priority === "low" ? "bg-gray-400" : "bg-amber-500"
                 }`}
               />
               {taskPriorityLabel(task.priority, t)}
             </span>
             <span
-              className="px-1.5 py-0.5 rounded-md border bg-slate-50 text-slate-600 border-slate-200"
+              className="px-1.5 py-0.5 rounded-md border bg-gray-50 text-gray-600 border-gray-200"
               style={hasHexColor ? { backgroundColor: `${stateColor}1A`, color: stateColor, borderColor: `${stateColor}40` } : undefined}
             >
               {taskStateLabel(task.status, t)}
@@ -445,7 +402,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
             {dateBasis === "created" ? (
               <>
                 <span
-                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md tabular-nums bg-sky-50 text-sky-700 font-semibold border border-sky-200/60"
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md tabular-nums bg-sky-50 text-sky-700 font-semibold border border-sky-200"
                   title={t("Creation date", "Dátum vytvorenia", "Létrehozás dátuma")}
                 >
                   <Calendar className="h-2.5 w-2.5 text-sky-500" />
@@ -454,7 +411,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                 {task.deadline && (
                   <span
                     className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md tabular-nums ${
-                      overdue ? "bg-rose-50 text-rose-600 font-extrabold" : "bg-slate-100 text-slate-600"
+                      overdue ? "bg-rose-50 text-rose-600 font-bold" : "bg-gray-100 text-gray-600"
                     }`}
                     title={t("Due date", "Termín", "Határidő")}
                   >
@@ -466,7 +423,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
             ) : (
               <span
                 className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md tabular-nums ${
-                  overdue ? "bg-rose-50 text-rose-600 font-extrabold" : "bg-slate-100 text-slate-600"
+                  overdue ? "bg-rose-50 text-rose-600 font-bold" : "bg-gray-100 text-gray-600"
                 }`}
                 title={t("Due date", "Termín", "Határidő")}
               >
@@ -482,20 +439,18 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
               if (!tckId) return null;
               const label = titleMatch ? titleMatch[1].toUpperCase() : tckId;
               return (
-                <a
+                <EntityBadge
+                  entity="tickets"
+                  label={label}
                   href={`#tickets/${encodeURIComponent(tckId)}`}
+                  showIcon
                   onClick={(e) => e.stopPropagation()}
                   title={`${t("Open ticket", "Otvoriť tiket", "Jegy megnyitása")}: ${label}`}
-                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/80 hover:bg-indigo-100 hover:text-indigo-900 font-mono font-extrabold transition-colors"
-                >
-                  <TicketIcon className="h-2.5 w-2.5 shrink-0 text-indigo-600" />
-                  <span>{label}</span>
-                  <ArrowUpRight className="h-2.5 w-2.5 shrink-0" />
-                </a>
+                />
               );
             })()}
             {task.assignedUsers?.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 truncate max-w-35">
+              <span className="px-1.5 py-0.5 rounded-md bg-entity-subtle text-entity-text border border-entity-border truncate max-w-35">
                 {task.assignedUsers.join(", ")}
               </span>
             )}
@@ -506,7 +461,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
             <DeadlinePostponedBadge task={task} language={userLanguage} t={t} compact />
             {task.isLocking && <Lock className="h-3 w-3 text-violet-500" />}
             {task.archived && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-500">
                 <ArchiveIcon className="h-2.5 w-2.5" />
                 {t("Archived", "Archivované", "Archivált")}
               </span>
@@ -519,7 +474,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
             type="button"
             onClick={() => setEditingTask(task)}
             title={mayEdit ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése") : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 active:scale-95 transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2"
+            className="p-1.5 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-subtle active:scale-95 transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>
@@ -530,7 +485,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
               what={task.title}
               onConfirm={() => void deleteTask(task)}
               title={t("Delete Task", "Odstrániť úlohu", "Feladat törlése")}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 active:scale-95 transition-all"
+              className="p-1.5 rounded-md text-gray-400 hover:text-rose-600 hover:bg-rose-50 active:scale-95 transition-all"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </HoldToConfirmButton>
@@ -550,12 +505,12 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
   ];
 
   return (
-    <div className="flex-1 min-h-0 ws-lg:overflow-y-auto flex flex-col gap-4 pr-0 ws-lg:pr-1">
+    <div style={entityAccentStyle("tasks")} className="flex-1 min-h-0 ws-lg:overflow-y-auto flex flex-col gap-4 pr-0 ws-lg:pr-1">
       {/* Quick Add Card */}
       {taskAccess.create && (
-        <div className={`shrink-0 rounded-2xl border border-slate-200 bg-slate-50 p-3.5 transition-all ${accentClasses.focusBorder} focus-within:bg-white focus-within:shadow-sm`}>
+        <div className="shrink-0 rounded-lg border border-gray-200 bg-gray-50 p-3.5 transition-all focus-within:border-entity-solid focus-within:bg-white focus-within:shadow-xs">
           {isNew ? (
-            <p className="px-1 py-2 text-ui font-semibold text-slate-500">
+            <p className="px-1 py-2 text-ui font-medium text-gray-500">
               {t(
                 "Save this entity first, then add its tasks here.",
                 "Najprv túto položku uložte, potom sem pridajte jej úlohy.",
@@ -565,7 +520,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
           ) : (
             <>
               <div className="flex items-start gap-2">
-                <Plus className={`h-4 w-4 mt-2.5 shrink-0 ${accentClasses.text}`} />
+                <Plus className="h-4 w-4 mt-2.5 shrink-0 text-entity-text" />
                 <textarea
                   ref={inputRef}
                   value={draft}
@@ -583,11 +538,11 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                     "Napíšte úlohu a stlačte Enter",
                     "Írjon egy feladatot és nyomjon Entert",
                   )}
-                  className="flex-1 min-w-0 resize-none bg-transparent py-2 text-ui font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none"
+                  className="flex-1 min-w-0 resize-none bg-transparent py-2 text-ui font-medium text-gray-900 placeholder:text-gray-400 focus:outline-none"
                 />
               </div>
 
-              <div className="mt-2 pt-2 border-t border-slate-200/70 flex flex-wrap items-center gap-x-4 gap-y-2 text-micro font-bold text-slate-500">
+              <div className="mt-2 pt-2 border-t border-gray-200 flex flex-wrap items-center gap-x-4 gap-y-2 text-micro font-semibold text-gray-500">
                 <label className="flex items-center gap-1.5">
                   <span className="uppercase tracking-wider">{t("Due", "Termín", "Határidő")}</span>
                   <input
@@ -595,7 +550,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                     value={deadline}
                     min={todayStr()}
                     onChange={(e) => setDeadline(clampDeadline(e.target.value, todayStr()))}
-                    className={`px-2 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 font-bold ${accentClasses.focusInput} focus:outline-none`}
+                    className="px-2 py-1 rounded-md border border-gray-200 bg-white text-gray-700 font-semibold focus:border-entity-solid focus:outline-none"
                   />
                 </label>
                 <div className="flex items-center gap-1.5">
@@ -612,7 +567,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                     />
                   </div>
                 </div>
-                <span className="ml-auto hidden ws-md:inline text-slate-400 font-semibold">
+                <span className="ml-auto hidden ws-md:inline text-gray-400 font-medium">
                   {t(
                     "One task per line · Shift+Enter new line",
                     "Každý riadok je úloha · Shift+Enter nový riadok",
@@ -621,7 +576,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                 </span>
               </div>
 
-              <div className="mt-2.5 pt-2.5 border-t border-slate-200/70">
+              <div className="mt-2.5 pt-2.5 border-t border-gray-200">
                 <VoiceTaskActionBar
                   canCreate={canCreate}
                   systemLanguage={userLanguage}
@@ -644,8 +599,8 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                       : t("Add Task", "Pridať úlohu", "Feladat hozzáadása")
                   }
                   manualButtonIcon={<CornerDownLeft className="h-3.5 w-3.5" />}
-                  manualButtonClassName={`py-2 px-3 rounded-xl ${accentClasses.btn} type-overline shadow-sm transition-all duration-300 ease-in-out hover:scale-[1.01] cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed`}
-                  voiceButtonClassName="w-[20%] py-2 px-3 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white rounded-xl type-overline shadow-sm hover:scale-[1.01] transition-all duration-300 ease-in-out cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                  manualButtonClassName="py-2 px-3 rounded-md bg-entity-solid hover:opacity-90 text-white type-overline shadow-2xs transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                  voiceButtonClassName="w-[20%] py-2 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded-md type-overline shadow-2xs transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
                   onManualCreateClick={addTasks}
                   onTasksCreated={(createdTasks) => {
                     const mapped = createdTasks.map((t) => ({
@@ -670,10 +625,10 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
       )}
 
       {/* FILTER BAR: All, Last week, Last month, Last quarter, Last year to date, Custom interval */}
-      <div className="rounded-2xl border border-slate-200/90 bg-slate-50/70 p-2.5 flex flex-col gap-2">
+      <div className="rounded-lg border border-gray-200 bg-gray-50 p-2.5 flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1.5 type-overline text-slate-500">
+            <div className="flex items-center gap-1.5 type-overline text-gray-500">
               <Filter className="h-3 w-3" />
               <span>{t("Filter tasks", "Filtrovať úlohy", "Feladatok szűrése")}</span>
             </div>
@@ -682,17 +637,17 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
             <div
               role="radiogroup"
               aria-label={t("Filter by date type", "Filtrovať podľa typu dátumu", "Szűrés dátumtípus szerint")}
-              className="inline-flex items-center p-0.5 rounded-xl bg-slate-200/80 border border-slate-300/70 shadow-inner"
+              className="inline-flex items-center p-0.5 rounded-md bg-gray-200/80 border border-gray-300"
             >
               <button
                 type="button"
                 role="radio"
                 aria-checked={dateBasis === "due"}
                 onClick={() => setDateBasis("due")}
-                className={`flex items-center gap-1 px-2.5 py-0.5 rounded-lg type-overline transition-all duration-150 cursor-pointer ${
+                className={`flex items-center gap-1 px-2.5 py-0.5 rounded-md type-overline transition-all duration-150 cursor-pointer ${
                   dateBasis === "due"
-                    ? "bg-white text-slate-900 shadow-xs"
-                    : "text-slate-500 hover:text-slate-800"
+                    ? "bg-white text-gray-900 shadow-2xs"
+                    : "text-gray-500 hover:text-gray-800"
                 }`}
               >
                 <Clock className="w-2.5 h-2.5" />
@@ -703,10 +658,10 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                 role="radio"
                 aria-checked={dateBasis === "created"}
                 onClick={() => setDateBasis("created")}
-                className={`flex items-center gap-1 px-2.5 py-0.5 rounded-lg type-overline transition-all duration-150 cursor-pointer ${
+                className={`flex items-center gap-1 px-2.5 py-0.5 rounded-md type-overline transition-all duration-150 cursor-pointer ${
                   dateBasis === "created"
-                    ? "bg-white text-slate-900 shadow-xs"
-                    : "text-slate-500 hover:text-slate-800"
+                    ? "bg-white text-gray-900 shadow-2xs"
+                    : "text-gray-500 hover:text-gray-800"
                 }`}
               >
                 <Calendar className="w-2.5 h-2.5" />
@@ -715,7 +670,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
             </div>
 
             {activeRange && (
-              <span className="hidden ws-sm:inline-block px-2 py-0.5 rounded-full bg-slate-200/80 text-slate-700 text-micro font-bold">
+              <span className="hidden ws-sm:inline-block px-2 py-0.5 rounded-md bg-gray-200/80 text-gray-700 text-micro font-semibold">
                 {formatDateRangeLabel(activeRange)}
               </span>
             )}
@@ -728,7 +683,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                 setCustomStart("");
                 setCustomEnd("");
               }}
-              className="text-micro font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-slate-200/60 transition-colors cursor-pointer"
+              className="text-micro font-semibold text-gray-500 hover:text-gray-800 flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-gray-200/60 transition-colors cursor-pointer"
             >
               <RotateCcw className="h-2.5 w-2.5" />
               {t("Reset filter", "Zrušiť filter", "Szűrő visszaállítása")}
@@ -745,10 +700,10 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
                 key={btn.id}
                 type="button"
                 onClick={() => setDateFilter(btn.id)}
-                className={`px-2.5 py-1 rounded-xl type-overline transition-all duration-150 cursor-pointer border ${
+                className={`px-2.5 py-1 rounded-md type-overline transition-all duration-150 cursor-pointer border ${
                   isSelected
-                    ? `${accentClasses.activeTab} shadow-xs`
-                    : "bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100/90 border-slate-200"
+                    ? "bg-entity-solid text-white border-entity-solid shadow-2xs"
+                    : "bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-100 border-gray-200"
                 }`}
               >
                 {btn.label}
@@ -759,27 +714,27 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
 
         {/* Custom interval date inputs */}
         {dateFilter === "custom" && (
-          <div className="mt-1 pt-2 border-t border-slate-200/60 flex flex-wrap items-center gap-3 text-micro font-bold animate-in fade-in duration-200">
+          <div className="mt-1 pt-2 border-t border-gray-200 flex flex-wrap items-center gap-3 text-micro font-semibold animate-in fade-in duration-200">
             <label className="flex items-center gap-1.5">
-              <span className="text-slate-500 uppercase">{t("From", "Od", "Tól")}:</span>
+              <span className="text-gray-500 uppercase">{t("From", "Od", "Tól")}:</span>
               <input
                 type="date"
                 value={customStart}
                 onChange={(e) => setCustomStart(e.target.value)}
-                className={`px-2 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 ${accentClasses.focusInput} focus:outline-none`}
+                className="px-2 py-1 rounded-md border border-gray-200 bg-white text-gray-700 focus:border-entity-solid focus:outline-none"
               />
             </label>
             <label className="flex items-center gap-1.5">
-              <span className="text-slate-500 uppercase">{t("To", "Do", "Ig")}:</span>
+              <span className="text-gray-500 uppercase">{t("To", "Do", "Ig")}:</span>
               <input
                 type="date"
                 value={customEnd}
                 onChange={(e) => setCustomEnd(e.target.value)}
-                className={`px-2 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 ${accentClasses.focusInput} focus:outline-none`}
+                className="px-2 py-1 rounded-md border border-gray-200 bg-white text-gray-700 focus:border-entity-solid focus:outline-none"
               />
             </label>
             {(customStart || customEnd) && (
-              <span className="text-micro text-slate-400 font-semibold">
+              <span className="text-micro text-gray-400 font-medium">
                 {t("Showing tasks matching interval", "Zobrazujú sa úlohy zodpovedajúce intervalu", "Az időszaknak megfelelő feladatok megjelenítése")}
               </span>
             )}
@@ -789,15 +744,15 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
 
       {/* OPEN TASKS SECTION */}
       <div className="flex flex-col gap-2">
-        <span className="flex items-center gap-1.5 type-overline text-slate-400">
+        <span className="flex items-center gap-1.5 type-overline text-gray-500">
           <ListTodo className="h-3.5 w-3.5" />
           {t("Open tasks", "Otvorené úlohy", "Nyitott feladatok")}
-          <span className="px-1.5 rounded-full bg-slate-100 text-slate-600 font-extrabold">{open.length}</span>
+          <span className="px-1.5 rounded-md bg-gray-100 text-gray-700 font-bold">{open.length}</span>
         </span>
         {open.length > 0 ? (
           <ul className="flex flex-col gap-2">{open.map(renderRow)}</ul>
         ) : (
-          <div className="rounded-2xl border-2 border-dashed border-slate-200 px-4 py-6 text-center text-ui font-semibold text-slate-400">
+          <div className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-ui font-medium text-gray-400">
             {allFiltered.length === 0 && dateFilter !== "all"
               ? dateBasis === "created"
                 ? t(

@@ -128,20 +128,20 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
   );
 
   return (
-    <div className="space-y-4 pt-2 border-t border-slate-200">
+    <div className="space-y-4 pt-2 border-t border-gray-200">
       {/* 1. Mode selector */}
       <div>
-        <label className="text-caption font-bold text-slate-700 block mb-1.5">
+        <label className="text-caption font-semibold text-gray-700 block mb-1.5">
           {t("Repeat Mode", "Režim opakovania", "Ismétlési mód")}
         </label>
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() => update({ mode: "schedule" })}
-            className={`py-2 px-3 rounded-xl text-ui font-bold transition-all cursor-pointer border ${
+            className={`py-2 px-3 rounded-md text-ui font-semibold transition-all cursor-pointer border ${
               recurrence.mode === "schedule"
-                ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                ? "bg-entity-solid text-white border-entity-solid shadow-2xs"
+                : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
             }`}
           >
             {t("On a schedule", "Podľa kalendára", "Ütemezés szerint")}
@@ -149,10 +149,10 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
           <button
             type="button"
             onClick={() => update({ mode: "after_completion" })}
-            className={`py-2 px-3 rounded-xl text-ui font-bold transition-all cursor-pointer border ${
+            className={`py-2 px-3 rounded-md text-ui font-semibold transition-all cursor-pointer border ${
               recurrence.mode === "after_completion"
-                ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                ? "bg-entity-solid text-white border-entity-solid shadow-2xs"
+                : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
             }`}
           >
             {t("After completion", "Po dokončení", "Befejezés után")}
@@ -163,7 +163,7 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
       {/* 2. Cadence: a preset, or Custom → every N days / weeks / months / years */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className="text-caption font-bold text-slate-700 block mb-1">
+          <label className="text-caption font-semibold text-gray-700 block mb-1">
             {t("Frequency", "Periodicita", "Gyakoriság")}
           </label>
           <CustomSelect
@@ -177,13 +177,13 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
               { value: "custom", label: t("Custom", "Vlastné", "Egyéni") },
             ]}
             size="sm"
-            className="w-full text-ui font-semibold rounded-xl"
+            className="w-full text-ui font-semibold rounded-md"
           />
         </div>
 
         {isCustom && (
           <div className="animate-in fade-in">
-            <label className="text-caption font-bold text-slate-700 block mb-1">
+            <label className="text-caption font-semibold text-gray-700 block mb-1">
               {repeatEveryLabel(recurrence.interval || 1, t)}
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -194,14 +194,14 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
                 aria-label={t("Interval", "Interval", "Intervallum")}
                 value={recurrence.interval || 1}
                 onChange={(e) => update({ interval: Math.min(999, Math.max(1, parseInt(e.target.value) || 1)) })}
-                className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-ui font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-md text-ui font-semibold focus:outline-none focus:border-entity-solid"
               />
               <CustomSelect
                 value={recurrence.frequency}
                 onChange={(val) => handleFrequencyChange(val as TaskRecurrenceFrequency)}
                 options={recurrenceUnitOptions(["daily", "weekly", "monthly", "yearly"], recurrence.interval || 1, t)}
                 size="sm"
-                className="w-full text-ui font-semibold rounded-xl"
+                className="w-full text-ui font-semibold rounded-md"
               />
             </div>
           </div>
@@ -213,7 +213,7 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
         <>
           {recurrence.frequency === "weekly" && (
             <div className="animate-in fade-in">
-              <label className="text-caption font-bold text-slate-700 block mb-1">
+              <label className="text-caption font-semibold text-gray-700 block mb-1">
                 {t("Day of the Week", "Deň v týždni", "A hét napja")}
               </label>
               <CustomSelect
@@ -229,21 +229,21 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
                   { value: "0", label: t("Sunday", "Nedeľa", "Vasárnap") },
                 ]}
                 size="sm"
-                className="w-full text-ui font-semibold rounded-xl"
+                className="w-full text-ui font-semibold rounded-md"
               />
             </div>
           )}
 
           {recurrence.frequency === "monthly" && (
             <div className="space-y-2 animate-in fade-in">
-              <div className="flex flex-wrap items-center gap-4 text-ui font-semibold text-slate-700">
+              <div className="flex flex-wrap items-center gap-4 text-ui font-medium text-gray-700">
                 <label className="flex items-center gap-1.5 cursor-pointer">
                   <input
                     type="radio"
                     name="taskMonthlyType"
                     checked={recurrence.config?.monthlyType !== "nth_weekday"}
                     onChange={() => updateConfig({ monthlyType: "day_of_month" })}
-                    className="text-indigo-600 focus:ring-indigo-500"
+                    className="accent-entity-solid"
                   />
                   <span>{t("Specific Day of Month", "Konkrétny deň v mesiaci", "A hónap adott napja")}</span>
                 </label>
@@ -253,7 +253,7 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
                     name="taskMonthlyType"
                     checked={recurrence.config?.monthlyType === "nth_weekday"}
                     onChange={() => updateConfig({ monthlyType: "nth_weekday" })}
-                    className="text-indigo-600 focus:ring-indigo-500"
+                    className="accent-entity-solid"
                   />
                   <span>{t("Relative Day (e.g. 1st Monday)", "Relatívny deň (napr. 1. pondelok)", "Relatív nap (pl. 1. hétfő)")}</span>
                 </label>
@@ -262,7 +262,7 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
               {recurrence.config?.monthlyType === "nth_weekday" ? (
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-caption font-bold text-slate-500 block mb-1">
+                    <label className="text-caption font-semibold text-gray-500 block mb-1">
                       {t("Week of Month", "Týždeň v mesiaci", "Hét a hónapban")}
                     </label>
                     <CustomSelect
@@ -276,11 +276,11 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
                         { value: "-1", label: t("Last", "Posledný", "Utolsó") },
                       ]}
                       size="sm"
-                      className="w-full text-ui font-semibold rounded-xl"
+                      className="w-full text-ui font-semibold rounded-md"
                     />
                   </div>
                   <div>
-                    <label className="text-caption font-bold text-slate-500 block mb-1">
+                    <label className="text-caption font-semibold text-gray-500 block mb-1">
                       {t("Weekday", "Deň v týždni", "Hétköznap")}
                     </label>
                     <CustomSelect
@@ -296,13 +296,13 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
                         { value: "0", label: t("Sunday", "Nedeľa", "Vasárnap") },
                       ]}
                       size="sm"
-                      className="w-full text-ui font-semibold rounded-xl"
+                      className="w-full text-ui font-semibold rounded-md"
                     />
                   </div>
                 </div>
               ) : (
                 <div>
-                  <label className="text-caption font-bold text-slate-500 block mb-1">
+                  <label className="text-caption font-semibold text-gray-500 block mb-1">
                     {t("Day of Month (1 - 31)", "Deň v mesiaci (1 - 31)", "Nap (1 - 31)")}
                   </label>
                   <input
@@ -311,7 +311,7 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
                     max="31"
                     value={recurrence.config?.dayOfMonth ?? 15}
                     onChange={(e) => updateConfig({ dayOfMonth: parseInt(e.target.value) || 1 })}
-                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-ui font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-md text-ui font-semibold focus:outline-none focus:border-entity-solid"
                   />
                 </div>
               )}
@@ -321,7 +321,7 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
           {recurrence.frequency === "yearly" && (
             <div className="grid grid-cols-2 gap-2 animate-in fade-in">
               <div>
-                <label className="text-caption font-bold text-slate-500 block mb-1">
+                <label className="text-caption font-semibold text-gray-500 block mb-1">
                   {t("Month of Year", "Mesiac v roku", "Hónap")}
                 </label>
                 <CustomSelect
@@ -342,11 +342,11 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
                     { value: "12", label: t("December", "December", "December") },
                   ]}
                   size="sm"
-                  className="w-full text-ui font-semibold rounded-xl"
+                  className="w-full text-ui font-semibold rounded-md"
                 />
               </div>
               <div>
-                <label className="text-caption font-bold text-slate-500 block mb-1">
+                <label className="text-caption font-semibold text-gray-500 block mb-1">
                   {t("Day of Month (1 - 31)", "Deň v mesiaci (1 - 31)", "Nap (1 - 31)")}
                 </label>
                 <input
@@ -355,7 +355,7 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
                   max="31"
                   value={recurrence.config?.dayOfMonth ?? 1}
                   onChange={(e) => updateConfig({ dayOfMonth: parseInt(e.target.value) || 1 })}
-                  className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-ui font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-md text-ui font-semibold focus:outline-none focus:border-entity-solid"
                 />
               </div>
             </div>
@@ -366,7 +366,7 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
       {/* 4. Weekend Rule & Lead Days */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className="text-caption font-bold text-slate-700 block mb-1">
+          <label className="text-caption font-semibold text-gray-700 block mb-1">
             {t("Weekend Rule", "Pravidlo pre víkend", "Hétvégi szabály")}
           </label>
           <CustomSelect
@@ -385,13 +385,13 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
                   ]
             }
             size="sm"
-            className="w-full text-ui font-semibold rounded-xl"
+            className="w-full text-ui font-semibold rounded-md"
           />
         </div>
 
         {leadDaysApplies(recurrence) && (
         <div>
-          <label className="text-caption font-bold text-slate-700 block mb-1">
+          <label className="text-caption font-semibold text-gray-700 block mb-1">
             {t("Show N days before due", "Zobraziť N dní vopred", "Megjelenítés N nappal előbb")}
           </label>
           <input
@@ -400,7 +400,7 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
             max="365"
             value={recurrence.leadDays ?? 0}
             onChange={(e) => update({ leadDays: Math.max(0, Math.min(365, parseInt(e.target.value) || 0)) })}
-            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-ui font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-md text-ui font-semibold focus:outline-none focus:border-entity-solid"
           />
         </div>
         )}
@@ -409,19 +409,19 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
       {/* 5. Starts On & Ends On */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className="text-caption font-bold text-slate-700 block mb-1">
+          <label className="text-caption font-semibold text-gray-700 block mb-1">
             {t("Starts on", "Začína dňa", "Kezdés dátuma")}
           </label>
           <input
             type="date"
             value={recurrence.startsOn || today}
             onChange={(e) => update({ startsOn: e.target.value || today })}
-            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-ui font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-md text-ui font-semibold focus:outline-none focus:border-entity-solid"
           />
         </div>
 
         <div>
-          <label className="text-caption font-bold text-slate-700 block mb-1">
+          <label className="text-caption font-semibold text-gray-700 block mb-1">
             {t("Ends on (optional)", "Končí dňa (voliteľné)", "Befejezés dátuma (opcionális)")}
           </label>
           <div className="flex items-center gap-2">
@@ -429,13 +429,13 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
               type="date"
               value={recurrence.endsOn || ""}
               onChange={(e) => update({ endsOn: e.target.value ? e.target.value : null })}
-              className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-ui font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-md text-ui font-semibold focus:outline-none focus:border-entity-solid"
             />
             {recurrence.endsOn && (
               <button
                 type="button"
                 onClick={() => update({ endsOn: null })}
-                className="px-2.5 py-1.5 text-caption font-bold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all cursor-pointer whitespace-nowrap"
+                className="px-2.5 py-1.5 text-caption font-semibold text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-md transition-all cursor-pointer whitespace-nowrap"
               >
                 {t("Clear", "Zrušiť", "Törlés")}
               </button>
@@ -446,7 +446,7 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
 
       {/* Rule 8: Overdue warning if startsOn is in the past */}
       {isStartsOnPast && (
-        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2.5 text-amber-900 text-caption font-medium">
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2.5 text-amber-900 text-caption font-medium">
           <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
           <span>
             {t(
@@ -459,14 +459,14 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
       )}
 
       {/* 6. Live preview */}
-      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-        <div className="flex items-center gap-1.5 text-caption font-bold text-slate-700">
-          <Calendar className="w-3.5 h-3.5 text-indigo-600" />
+      <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg space-y-1.5">
+        <div className="flex items-center gap-1.5 text-caption font-semibold text-gray-700">
+          <Calendar className="w-3.5 h-3.5 text-entity-text" />
           <span>{t("Schedule Preview", "Náhľad plánu", "Ütemezés előnézete")}</span>
         </div>
 
         {recurrence.mode === "after_completion" ? (
-          <p className="text-caption text-slate-600">
+          <p className="text-caption text-gray-600">
             {t(
               "Each task appears after the previous occurrence is closed.",
               "Každá nová úloha sa vytvorí až po uzavretí predchádzajúcej.",
@@ -477,25 +477,25 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
           <div>
             {upcomingPreview.dates.length > 0 ? (
               <div className="space-y-1">
-                <p className="text-caption font-semibold text-slate-700">
+                <p className="text-caption font-semibold text-gray-700">
                   {t("First task", "Prvá úloha", "Első feladat")}:{" "}
-                  <span className="text-indigo-600 font-bold">
+                  <span className="text-entity-text font-bold">
                     {t("due", "termín", "határidő")} {fmt(upcomingPreview.dates[0].deadline)}
                   </span>
                   {recurrence.leadDays > 0 && (
-                    <span className="text-slate-500">
+                    <span className="text-gray-500">
                       {" "}
                       ({t("appears", "zobrazí sa", "megjelenik")} {fmt(upcomingPreview.dates[0].startDate)})
                     </span>
                   )}
                 </p>
                 {upcomingPreview.dates.length > 1 && (
-                  <div className="pt-1 border-t border-slate-200/70 text-caption text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                    <span className="font-semibold text-slate-600">
+                  <div className="pt-1 border-t border-gray-200 text-caption text-gray-500 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="font-semibold text-gray-600">
                       {t("Next 5 due dates", "Ďalších 5 termínov", "Következő 5 határidő")}:
                     </span>
                     {upcomingPreview.dates.map((d, i) => (
-                      <span key={i} className="inline-block px-1.5 py-0.5 bg-white border border-slate-200 rounded-md text-slate-700 tabular-nums text-caption">
+                      <span key={i} className="inline-block px-1.5 py-0.5 bg-white border border-gray-200 rounded-md text-gray-700 tabular-nums text-caption">
                         {fmt(d.deadline)}
                       </span>
                     ))}
@@ -503,7 +503,7 @@ export const TaskRecurrenceFields: React.FC<TaskRecurrenceFieldsProps> = ({
                 )}
               </div>
             ) : (
-              <p className="text-caption text-slate-500">
+              <p className="text-caption text-gray-500">
                 {t("No upcoming occurrences within schedule limits.", "Žiadne nadchádzajúce výskyty v rámci limitov plánu.", "Nincsenek közelgő előfordulások az ütemezés határain belül.")}
               </p>
             )}

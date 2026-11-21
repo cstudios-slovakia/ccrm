@@ -753,15 +753,15 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
     return (
         <div className="space-y-4 select-none" data-testid="weekly-plan-view">
             {/* TOOLBAR */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="bg-white rounded-lg border border-gray-200 shadow-xs px-4 py-3 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2.5">
                     {/* Prev / Today / Next */}
-                    <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-0.5">
+                    <div className="inline-flex items-center bg-gray-100 p-1 rounded-md border border-gray-200 gap-0.5">
                         <button
                             type="button"
                             onClick={() => setWeekMonday((m) => addLocalDays(m, -7))}
                             data-testid="weekly-plan-prev"
-                            className="p-1.5 rounded-lg text-slate-600 hover:bg-white hover:text-indigo-600 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-md text-gray-600 hover:bg-white hover:text-entity-text transition-colors cursor-pointer"
                             title={t("Previous week", "Predošlý týždeň", "Előző hét")}
                         >
                             <ChevronLeft className="h-4 w-4" />
@@ -770,7 +770,7 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                             type="button"
                             onClick={() => setWeekMonday(getMondayOfWeek(new Date()))}
                             data-testid="weekly-plan-today"
-                            className="px-2.5 py-1 rounded-lg text-ui font-bold text-slate-700 hover:bg-white hover:text-indigo-600 transition-colors cursor-pointer"
+                            className="px-2.5 py-1 rounded-md text-ui font-semibold text-gray-700 hover:bg-white hover:text-entity-text transition-colors cursor-pointer"
                         >
                             {t("This week", "Tento týždeň", "Ez a hét")}
                         </button>
@@ -778,7 +778,7 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                             type="button"
                             onClick={() => setWeekMonday((m) => addLocalDays(m, 7))}
                             data-testid="weekly-plan-next"
-                            className="p-1.5 rounded-lg text-slate-600 hover:bg-white hover:text-indigo-600 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-md text-gray-600 hover:bg-white hover:text-entity-text transition-colors cursor-pointer"
                             title={t("Next week", "Ďalší týždeň", "Következő hét")}
                         >
                             <ChevronRight className="h-4 w-4" />
@@ -787,14 +787,14 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
 
                     {/* Week range & date jumper */}
                     <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-ui font-black tracking-tight">
+                        <span className="px-2 py-0.5 rounded-md bg-entity-subtle border border-entity-border text-entity-text text-ui font-bold tracking-tight tabular-nums">
                             W{weekNumber}
                         </span>
-                        <span className="text-title font-black text-slate-800" data-testid="weekly-plan-range">
+                        <span className="text-title font-bold text-gray-900" data-testid="weekly-plan-range">
                             {weekRangeLabel}
                         </span>
                         <label
-                            className="relative inline-flex items-center justify-center w-7 h-7 rounded-lg border border-slate-200 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-200 text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer"
+                            className="relative inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 bg-gray-50 hover:bg-entity-subtle hover:border-entity-border text-gray-500 hover:text-entity-text transition-colors cursor-pointer"
                             title={t("Jump to week", "Prejsť na týždeň", "Ugrás hétre")}
                         >
                             <CalendarIcon className="h-3.5 w-3.5 pointer-events-none" />
@@ -818,20 +818,20 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                         type="button"
                         onClick={() => toggleFilterBarOpen()}
                         data-testid="weekly-plan-filter-toggle"
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-ui font-bold transition-all cursor-pointer ${
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-ui font-semibold transition-all cursor-pointer ${
                             isFilterBarOpen || activeFilterKeys.size > 0
-                                ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
-                                : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                                ? "bg-entity-subtle border-entity-border text-entity-text hover:opacity-90"
+                                : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
                         }`}
                     >
                         <Filter className="h-3.5 w-3.5" />
                         <span>{t("References", "Referencie", "Hivatkozások")}</span>
                         {filterChips.length > 0 && (
                             <span
-                                className={`px-1.5 py-0.2 rounded-full text-micro font-black ${
+                                className={`px-1.5 py-0.2 rounded-md text-micro font-bold tabular-nums ${
                                     activeFilterKeys.size > 0
-                                        ? "bg-indigo-600 text-white"
-                                        : "bg-slate-200 text-slate-700"
+                                        ? "bg-entity-solid text-white"
+                                        : "bg-gray-200 text-gray-700"
                                 }`}
                             >
                                 {activeFilterKeys.size > 0
@@ -847,17 +847,17 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                         aria-checked={showWeekends}
                         onClick={toggleWeekends}
                         data-testid="weekly-plan-weekend-toggle"
-                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-ui font-bold transition-all cursor-pointer ${
+                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md border text-ui font-semibold transition-all cursor-pointer ${
                             showWeekends
-                                ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
-                                : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                                ? "bg-entity-subtle border-entity-border text-entity-text hover:opacity-90"
+                                : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
                         }`}
                     >
                         <CalendarDays className="h-3.5 w-3.5" />
                         <span>{t("Weekends", "Víkendy", "Hétvége")}</span>
                         <span
                             className={`inline-flex h-4 w-7 items-center rounded-full transition-colors ${
-                                showWeekends ? "bg-indigo-600" : "bg-slate-300"
+                                showWeekends ? "bg-entity-solid" : "bg-gray-300"
                             }`}
                         >
                             <span
@@ -874,16 +874,16 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
             {isFilterBarOpen && (
                 <div
                     data-testid="weekly-plan-filter-bar"
-                    className="bg-white rounded-2xl border border-slate-200 shadow-xs px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 animate-in fade-in duration-150"
+                    className="bg-white rounded-lg border border-gray-200 shadow-xs px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 animate-in fade-in duration-150"
                 >
                     <div className="flex flex-wrap items-center gap-1.5 min-w-0 flex-1">
-                        <span className="text-caption font-bold text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1 shrink-0">
+                        <span className="text-caption font-semibold text-gray-400 uppercase tracking-wider mr-1 flex items-center gap-1 shrink-0">
                             <Filter className="h-3 w-3" />
                             {t("Filter week by:", "Filtrovať týždeň:", "Hét szűrése:")}
                         </span>
 
                         {filterChips.length === 0 ? (
-                            <span className="text-ui text-slate-400 italic">
+                            <span className="text-ui text-gray-400 italic">
                                 {t(
                                     "Use @ and # inside cards to reference projects, leads, employees, tickets, tasks, or tags — they will appear here.",
                                     "Použite @ a # v kartách na označenie projektov, leadov, zamestnancov, tiketov, úloh alebo štítkov — zobrazia sa tu.",
@@ -904,12 +904,12 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                         onClick={() => toggleFilterKey(chip.key)}
                                         data-testid={`weekly-plan-chip-${chip.kind}`}
                                         title={`${chipTypeLabel(chip.kind)}: ${chip.label}`}
-                                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-ui font-bold transition-all cursor-pointer active:scale-95 ${
+                                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-ui font-semibold transition-all cursor-pointer active:scale-95 ${
                                             isActive
-                                                ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                                                ? "bg-gray-900 text-white border-gray-900 shadow-2xs"
                                                 : isTag
-                                                  ? "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100"
-                                                  : `${style?.badgeClass || "bg-slate-100 text-slate-700 border-slate-200"} hover:brightness-95`
+                                                  ? "bg-entity-subtle text-entity-text border-entity-border hover:opacity-90"
+                                                  : `${style?.badgeClass || "bg-gray-100 text-gray-700 border-gray-200"} hover:brightness-95`
                                         }`}
                                     >
                                         <IconComp className="h-3 w-3 shrink-0 opacity-80" />
@@ -920,7 +920,7 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                             className={`text-micro px-1 rounded ${
                                                 isActive
                                                     ? "bg-white/20 text-white"
-                                                    : "bg-black/5 text-slate-500"
+                                                    : "bg-black/5 text-gray-500"
                                             }`}
                                         >
                                             {chip.count}
@@ -937,7 +937,7 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                 type="button"
                                 onClick={() => setActiveFilterKeys(new Set())}
                                 data-testid="weekly-plan-clear-filters"
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-ui font-bold text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-ui font-semibold text-gray-500 hover:text-entity-text hover:bg-entity-subtle transition-colors cursor-pointer"
                             >
                                 <RotateCcw className="h-3 w-3" />
                                 {t("Clear", "Zrušiť", "Törlés")}
@@ -947,7 +947,7 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                             type="button"
                             onClick={() => toggleFilterBarOpen(false)}
                             data-testid="weekly-plan-close-filter-bar"
-                            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                            className="p-1 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
                             title={t("Close filter bar", "Zavrieť lištu filtrov", "Szűrősáv bezárása")}
                         >
                             <X className="h-4 w-4" />
@@ -1028,49 +1028,49 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                           }
                                         : undefined
                                 }
-                                className={`flex flex-col rounded-2xl border min-h-130 transition-colors ${
+                                className={`flex flex-col rounded-lg border min-h-130 transition-colors ${
                                     isColumnDragOver
-                                        ? "border-indigo-400 ring-2 ring-indigo-500/20"
+                                        ? "border-entity-solid ring-2 ring-entity-ring"
                                         : isToday
-                                          ? "border-indigo-300 shadow-sm"
+                                          ? "border-entity-border shadow-xs"
                                           : isHolidayDay
                                             ? "border-amber-200/90"
-                                            : "border-slate-200"
+                                            : "border-gray-200"
                                 } ${isHolidayDay ? "bg-amber-50/30" : "bg-white"}`}
                             >
                                 {/* DAY HEADER + PER-DAY NOTE UNDER DATE */}
                                 <div
                                     className={`p-3 border-b ${
                                         isToday
-                                            ? "bg-indigo-50/70 border-indigo-200/80 rounded-t-2xl"
+                                            ? "bg-entity-subtle border-entity-border rounded-t-lg"
                                             : isHolidayDay
-                                              ? "bg-amber-50/60 border-amber-200/70 rounded-t-2xl"
-                                              : "bg-slate-50/70 border-slate-100 rounded-t-2xl"
+                                              ? "bg-amber-50/60 border-amber-200/70 rounded-t-lg"
+                                              : "bg-gray-50 border-gray-200 rounded-t-lg"
                                     }`}
                                 >
                                     <div className="flex items-center justify-between gap-1">
                                         <div className="flex items-baseline gap-1.5 min-w-0">
                                             <span
-                                                className={`text-ui font-black uppercase tracking-wide ${
+                                                className={`text-ui font-bold uppercase tracking-wide ${
                                                     isToday
-                                                        ? "text-indigo-600"
+                                                        ? "text-entity-text"
                                                         : isHolidayDay
                                                           ? "text-amber-700"
-                                                          : "text-slate-400"
+                                                          : "text-gray-400"
                                                 }`}
                                             >
                                                 {weekdayLabel}
                                             </span>
                                             <span
-                                                className={`text-title font-black truncate ${
-                                                    isToday ? "text-indigo-900" : "text-slate-800"
+                                                className={`text-title font-bold truncate ${
+                                                    isToday ? "text-entity-text" : "text-gray-900"
                                                 }`}
                                             >
                                                 {dayMonthLabel}
                                             </span>
                                         </div>
                                         {isToday && (
-                                            <span className="px-1.5 py-0.5 rounded-md bg-indigo-600 text-white text-micro font-black shrink-0">
+                                            <span className="px-1.5 py-0.5 rounded-md bg-entity-solid text-white text-micro font-bold shrink-0">
                                                 {t("Today", "Dnes", "Ma")}
                                             </span>
                                         )}
@@ -1111,7 +1111,7 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                                     "Poznámka dňa...",
                                                     "Napi jegyzet...",
                                                 )}
-                                                className="w-full px-2 py-1 rounded-lg bg-white border border-indigo-300 text-ui text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 select-text"
+                                                className="w-full px-2 py-1 rounded-md bg-white border border-entity-border text-ui text-gray-800 focus:outline-none focus:border-entity-solid select-text"
                                             />
                                         ) : (
                                             <button
@@ -1119,12 +1119,12 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                                 disabled={!canEdit}
                                                 onClick={() => startEditingNote(dateIso)}
                                                 data-testid={`weekly-plan-note-${dateIso}`}
-                                                className={`w-full text-left flex items-start gap-1.5 px-2 py-1 rounded-lg text-ui transition-colors ${
+                                                className={`w-full text-left flex items-start gap-1.5 px-2 py-1 rounded-md text-ui transition-colors ${
                                                     dayNote
-                                                        ? "bg-white/80 border border-slate-200/80 text-slate-600 font-medium"
+                                                        ? "bg-white/90 border border-gray-200 text-gray-700 font-medium"
                                                         : canEdit
-                                                          ? "text-slate-400 hover:bg-white/70 hover:text-slate-600 border border-transparent hover:border-slate-200/70"
-                                                          : "text-slate-300 border border-transparent cursor-default"
+                                                          ? "text-gray-400 hover:bg-white/70 hover:text-gray-600 border border-transparent hover:border-gray-200"
+                                                          : "text-gray-300 border border-transparent cursor-default"
                                                 }`}
                                             >
                                                 <StickyNote className="h-3 w-3 shrink-0 mt-0.5 opacity-60" />
@@ -1231,17 +1231,17 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                                     handleDropCard(dateIso, before ? idx : idx + 1);
                                                 }}
                                                 style={isDimmed ? { opacity: 0.1 } : undefined}
-                                                className={`group relative rounded-xl border p-2.5 transition-all duration-200 ${
+                                                className={`group relative rounded-lg border p-2.5 transition-all duration-200 ${
                                                     isDimmed
                                                         ? "opacity-10"
                                                         : "opacity-100"
                                                 } ${
                                                     dragCardId === card.id
-                                                        ? "border-indigo-400 bg-indigo-50/50 shadow-md"
-                                                        : `${colorStyle.cardBg} shadow-2xs hover:shadow-sm`
+                                                        ? "border-entity-solid bg-entity-subtle shadow-sm"
+                                                        : `${colorStyle.cardBg} shadow-2xs hover:shadow-xs`
                                                 } ${
                                                     showDropBefore
-                                                        ? "ring-2 ring-indigo-500 ring-offset-1"
+                                                        ? "ring-2 ring-entity-ring ring-offset-1"
                                                         : ""
                                                 } ${isColorPopoverOpen ? "z-20" : ""}`}
                                             >
@@ -1276,7 +1276,7 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                                                 }
                                                             }}
                                                             onBlur={() => commitEditCard(card)}
-                                                            className="w-full px-2 py-1.5 rounded-lg border border-indigo-300 bg-white text-ui text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 resize-none select-text"
+                                                            className="w-full px-2 py-1.5 rounded-md border border-entity-border bg-white text-ui text-gray-900 focus:outline-none focus:border-entity-solid resize-none select-text"
                                                         />
                                                         <div className="flex items-center justify-between gap-2 px-0.5">
                                                             <div className="flex items-center gap-1">
@@ -1298,14 +1298,14 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                                                                 sw.dotBg
                                                                             } ${
                                                                                 active
-                                                                                    ? "ring-2 ring-slate-800 ring-offset-1 scale-110"
+                                                                                    ? "ring-2 ring-gray-800 ring-offset-1 scale-110"
                                                                                     : "hover:scale-110"
                                                                             }`}
                                                                         />
                                                                     );
                                                                 })}
                                                             </div>
-                                                            <span className="text-micro text-slate-400">
+                                                            <span className="text-micro text-gray-400">
                                                                 {t(
                                                                     "Enter save · Esc cancel",
                                                                     "Enter uloží · Esc zruší",
@@ -1317,9 +1317,9 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                                 ) : (
                                                     <>
                                                         {canEdit && (
-                                                            <div className="absolute top-1.5 right-1.5 z-10 flex items-center gap-0.5 bg-white/90 backdrop-blur-xs rounded-lg px-1 py-0.5 shadow-2xs border border-slate-200/80 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <div className="absolute top-1.5 right-1.5 z-10 flex items-center gap-0.5 bg-white/95 rounded-md px-1 py-0.5 shadow-2xs border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity">
                                                                 <span
-                                                                    className="p-0.5 text-slate-400 hover:text-slate-600 cursor-grab active:cursor-grabbing"
+                                                                    className="p-0.5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing"
                                                                     title={t(
                                                                         "Drag to move",
                                                                         "Presunúť ťahaním",
@@ -1334,7 +1334,7 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                                                         e.stopPropagation();
                                                                         startEditingCard(card);
                                                                     }}
-                                                                    className="p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                                                                    className="p-0.5 rounded text-gray-400 hover:text-entity-text hover:bg-entity-subtle transition-colors cursor-pointer"
                                                                     title={t("Edit", "Upraviť", "Szerkesztés")}
                                                                 >
                                                                     <Pencil className="h-3 w-3" />
@@ -1399,7 +1399,7 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                                                 {isColorPopoverOpen && canEdit && (
                                                                     <div
                                                                         data-testid={`weekly-plan-color-popover-${card.id}`}
-                                                                        className="absolute left-0 top-full mt-1.5 z-30 bg-white rounded-xl border border-slate-200 shadow-lg p-1.5 flex items-center gap-1.5"
+                                                                        className="absolute left-0 top-full mt-1.5 z-30 bg-white rounded-md border border-gray-200 shadow-lg p-1.5 flex items-center gap-1.5"
                                                                     >
                                                                         {WEEKLY_PLAN_CARD_COLORS.map(
                                                                             (cKey) => {
@@ -1474,7 +1474,7 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                         <div
                                             onClick={(e) => e.stopPropagation()}
                                             data-testid={`weekly-plan-draft-${dateIso}`}
-                                            className={`rounded-xl border-2 border-indigo-400 p-2.5 shadow-sm space-y-2 animate-in fade-in duration-100 ${
+                                            className={`rounded-lg border-2 border-entity-solid p-2.5 shadow-sm space-y-2 animate-in fade-in duration-100 ${
                                                 (
                                                     CARD_COLOR_STYLES[draftColor] ||
                                                     CARD_COLOR_STYLES[""]
@@ -1518,7 +1518,7 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                                     "Napíšte cieľ... (@ pre odkaz, # pre štítok)",
                                                     "Írja be a célt... (@ említés, # címke)",
                                                 )}
-                                                className="w-full px-1.5 py-1 rounded-lg bg-white/80 text-ui text-slate-800 placeholder:text-slate-400 focus:outline-none resize-none select-text"
+                                                className="w-full px-1.5 py-1 rounded-md bg-white/80 text-ui text-gray-900 placeholder:text-gray-400 focus:outline-none resize-none select-text"
                                             />
                                             <div className="flex items-center justify-between gap-2 px-1">
                                                 <div className="flex items-center gap-1">
@@ -1538,14 +1538,14 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                                                     sw.dotBg
                                                                 } ${
                                                                     active
-                                                                        ? "ring-2 ring-slate-800 ring-offset-1 scale-110"
+                                                                        ? "ring-2 ring-gray-800 ring-offset-1 scale-110"
                                                                         : "hover:scale-110"
                                                                 }`}
                                                             />
                                                         );
                                                     })}
                                                 </div>
-                                                <span className="text-micro text-slate-400">
+                                                <span className="text-micro text-gray-400">
                                                     {t(
                                                         "Enter: save & next · Esc: close",
                                                         "Enter: uložiť a ďalšia · Esc: zavrieť",
@@ -1560,11 +1560,11 @@ export const WeeklyPlanView: React.FC<WeeklyPlanViewProps> = ({
                                     {canEdit && (
                                         <div
                                             data-free-space="true"
-                                            className="flex-1 min-h-20 rounded-xl flex items-start justify-center pt-3 opacity-0 hover:opacity-100 transition-opacity"
+                                            className="flex-1 min-h-20 rounded-md flex items-start justify-center pt-3 opacity-0 hover:opacity-100 transition-opacity"
                                         >
                                             <span
                                                 data-free-space="true"
-                                                className="inline-flex items-center gap-1 text-micro font-bold text-slate-400 pointer-events-none"
+                                                className="inline-flex items-center gap-1 text-micro font-semibold text-gray-400 pointer-events-none"
                                             >
                                                 <Plus className="h-3 w-3" />
                                                 {t(

@@ -40,6 +40,7 @@ import { extractTagsFromText, type MentionEntity } from "./TaskPillText";
 import { TaskWhatsAppMarks } from "./WhatsAppChip";
 import { DeadlinePostponedBadge, QuickDeadlineChips, formatDeadlineDate } from "./TaskDeadlineExtras";
 import { clampDeadline, deadlineChange, minDeadlineFor, taskCreatedDate } from "../utils/taskDeadline";
+import { entityAccentStyle } from "../utils/entityAccent";
 
 // Named preset deadline times offered in the picker. "End of day (23:59)" was removed
 // in favour of a "Custom" option that lets the user type any specific time.
@@ -129,7 +130,7 @@ export const DeadlineTimePicker: React.FC<{
                     value={currentValue}
                     disabled={disabled}
                     onChange={(e) => onChange(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white font-bold disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
+                    className="w-full px-3 py-2 rounded-md border border-gray-200 focus:border-entity-solid focus:outline-none bg-white font-semibold disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
                 />
             )}
         </div>
@@ -436,27 +437,27 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     if (typeof document === "undefined") return null;
 
     return createPortal(
-        <div className="fixed inset-0 z-[100000] flex justify-end">
+        <div style={entityAccentStyle("tasks")} className="fixed inset-0 z-[100000] flex justify-end">
             <div
                 onClick={requestClose}
                 className={`absolute inset-0 bg-slate-900/40 backdrop-blur-sm ${isClosing ? "animate-fade-out" : "animate-fade-in"}`}
             />
             <div
-                className={`relative w-full max-w-md bg-white shadow-2xl h-full flex flex-col p-6 overflow-y-auto ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
+                className={`relative w-full max-w-md bg-white border-l border-gray-200 shadow-lg h-full flex flex-col p-6 overflow-y-auto ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
             >
-                <div className="pb-4 border-b border-slate-100 space-y-2">
+                <div className="pb-4 border-b border-gray-200 space-y-2">
                     <div className="flex items-center justify-between">
-                        <span className="type-overline text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
+                        <span className="type-overline text-entity-text bg-entity-subtle border border-entity-border px-2 py-0.5 rounded-md flex items-center gap-1.5">
                             {isTemplate ? (
                                 <>
-                                    <Repeat className="h-3.5 w-3.5 text-indigo-600" />
+                                    <Repeat className="h-3.5 w-3.5 text-entity-text" />
                                     {canEdit
                                         ? t("Edit Recurring Task", "Upraviť opakovanú úlohu", "Ismétlődő feladat szerkesztése")
                                         : t("View Recurring Task", "Zobraziť opakovanú úlohu", "Ismétlődő feladat megtekintése")}
                                 </>
                             ) : (
                                 <>
-                                    <CheckSquare className="h-3.5 w-3.5 text-indigo-600" />
+                                    <CheckSquare className="h-3.5 w-3.5 text-entity-text" />
                                     {canEdit
                                         ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése")
                                         : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")}
@@ -466,19 +467,19 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         <button
                             type="button"
                             onClick={requestClose}
-                            className="p-1 hover:bg-slate-100 active:scale-95 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                            className="p-1 hover:bg-gray-100 active:scale-95 rounded-md text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
                         >
                             <X className="h-5 w-5" />
                         </button>
                     </div>
-                    <h1 className="type-page-title text-slate-900 leading-snug break-words">
+                    <h1 className="type-page-title text-gray-900 leading-snug break-words">
                         {draft.title || t("Untitled Task", "Úloha bez názvu", "Névtelen feladat")}
                     </h1>
                 </div>
                 {!isTemplate && Boolean((task as Task).recurringSourceId) && (
-                    <div className="mt-3 p-3 bg-indigo-50/70 border border-indigo-200/70 rounded-2xl flex items-center justify-between text-caption font-semibold text-indigo-950">
+                    <div className="mt-3 p-3 bg-entity-subtle border border-entity-border rounded-lg flex items-center justify-between text-caption font-semibold text-entity-text">
                         <div className="flex items-center gap-2">
-                            <Repeat className="h-4 w-4 text-indigo-600 shrink-0" />
+                            <Repeat className="h-4 w-4 text-entity-text shrink-0" />
                             <span>
                                 {recurringSeriesDescription || t("Part of a recurring series", "Súčasť opakovanej série", "Egy ismétlődő sorozat része")}
                             </span>
@@ -487,7 +488,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                             <button
                                 type="button"
                                 onClick={() => onEditSeries((task as Task).recurringSourceId!)}
-                                className="text-indigo-600 hover:text-indigo-800 underline font-bold cursor-pointer shrink-0 ml-3"
+                                className="text-entity-text hover:opacity-80 underline font-bold cursor-pointer shrink-0 ml-3"
                             >
                                 {t("Edit series", "Upraviť sériu", "Sorozat szerkesztése")}
                             </button>
@@ -570,14 +571,14 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 }}
                                 mentionEntities={mentionEntities}
                                 onAssignEntity={handleAssignEntity}
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none disabled:bg-slate-50 text-ui font-bold"
+                                className="w-full px-3 py-2 rounded-md border border-gray-200 focus:border-entity-solid focus:outline-none disabled:bg-gray-50 text-ui font-medium"
                             />
                         </div>
 
                         <div className="space-y-1">
-                            <label className="type-overline text-slate-500 flex items-center justify-between">
+                            <label className="type-overline text-gray-500 flex items-center justify-between">
                                 <span>{t("Description", "Popis", "Leírás")}</span>
-                                <span className="text-micro font-normal text-indigo-500">
+                                <span className="text-micro font-normal text-entity-text">
                                     {t("Use # for tags, @ to assign", "Použite # pre tagy, @ pre priradenie", "Használjon #-et címkékhez, @-ot hozzárendeléshez")}
                                 </span>
                             </label>
@@ -594,7 +595,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 }}
                                 mentionEntities={mentionEntities}
                                 onAssignEntity={handleAssignEntity}
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none resize-none disabled:bg-slate-50 text-ui font-bold"
+                                className="w-full px-3 py-2 rounded-md border border-gray-200 focus:border-entity-solid focus:outline-none resize-none disabled:bg-gray-50 text-ui font-medium"
                             />
                         </div>
 
@@ -615,7 +616,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
 
                         {combinedTags.length > 0 && (
                             <div className="space-y-1 pt-0.5">
-                                <label className="type-overline text-slate-400 block">
+                                <label className="type-overline text-gray-400 block">
                                     {t("Active Tags", "Aktívne tagy", "Aktív címkék")}
                                 </label>
                                 <div className="flex flex-wrap gap-1.5">
@@ -628,8 +629,8 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                                     onTagClick(tag);
                                                 }
                                             }}
-                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg type-overline bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs ${
-                                                onTagClick ? "cursor-pointer hover:bg-indigo-100" : ""
+                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md type-overline bg-entity-subtle text-entity-text border border-entity-border shadow-2xs ${
+                                                onTagClick ? "cursor-pointer hover:opacity-90" : ""
                                             }`}
                                             title={onTagClick ? `Filter archive by #${tag}` : undefined}
                                         >
@@ -662,22 +663,22 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         )}
 
                         <div className="space-y-1">
-                            <label className="type-overline text-slate-500">
+                            <label className="type-overline text-gray-500">
                                 {t("Start Date", "Dátum začiatku", "Kezdő dátum")}
                             </label>
                             <input
                                 type="date"
                                 value={draft.startDate || ""}
                                 onChange={(e) => update({ startDate: e.target.value })}
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none disabled:bg-slate-50"
+                                className="w-full px-3 py-2 rounded-md border border-gray-200 focus:border-entity-solid focus:outline-none disabled:bg-gray-50"
                             />
                         </div>
 
                         {!isTemplate && !(task as Task).recurringSourceId && (
-                            <div className="flex items-center justify-between py-2 border-t border-b border-slate-100">
+                            <div className="flex items-center justify-between py-2 border-t border-b border-gray-200">
                                 <div className="flex items-center gap-1.5">
-                                    <Repeat className="w-3.5 h-3.5 text-indigo-600" />
-                                    <span className="type-overline text-slate-700 font-bold">
+                                    <Repeat className="w-3.5 h-3.5 text-entity-text" />
+                                    <span className="type-overline text-gray-700 font-semibold">
                                         {t("Make this task repeat", "Nastaviť opakovanie úlohy", "Feladat ismétlődővé tétele")}
                                     </span>
                                 </div>
@@ -688,7 +689,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                     aria-label={t("Make this task repeat", "Nastaviť opakovanie úlohy", "Feladat ismétlődővé tétele")}
                                     onClick={() => setMakeRepeating(!makeRepeating)}
                                     className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                        makeRepeating ? "bg-indigo-600" : "bg-slate-200"
+                                        makeRepeating ? "bg-entity-solid" : "bg-gray-200"
                                     }`}
                                 >
                                     <span
@@ -732,7 +733,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                         value={draft.deadline}
                                         min={minDeadline || undefined}
                                         onChange={(e) => update({ deadline: clampDeadline(e.target.value, minDeadline) })}
-                                        className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none disabled:bg-slate-50"
+                                        className="w-full px-3 py-2 rounded-md border border-gray-200 focus:border-entity-solid focus:outline-none disabled:bg-gray-50"
                                     />
                                 </div>
                                 <div className="space-y-1">
@@ -827,33 +828,33 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                         "Krátka poznámka alebo správa o tom, ako úloha dopadla…",
                                         "Rövid jegyzet vagy beszámoló arról, hogyan zárult a feladat…",
                                     )}
-                                    className={`w-full px-3 py-2 rounded-xl border-2 focus:outline-none resize-none disabled:bg-slate-50 text-ui font-bold ${
+                                    className={`w-full px-3 py-2 rounded-md border focus:outline-none resize-none disabled:bg-gray-50 text-ui font-medium ${
                                         conclusionMissing && finishingWithoutConclusion
                                             ? "border-rose-400 focus:border-rose-500"
-                                            : "border-slate-200 focus:border-indigo-600"
+                                            : "border-gray-200 focus:border-entity-solid"
                                     }`}
                                 />
                             </div>
                         )}
 
                         <div className="space-y-1.5">
-                            <label className="type-overline text-slate-500">
+                            <label className="type-overline text-gray-500">
                                 {t("Priority", "Priorita", "Prioritás")}
                             </label>
-                            <div className="grid grid-cols-3 gap-2 bg-slate-50 p-1.5 rounded-xl border-2 border-slate-200">
+                            <div className="grid grid-cols-3 gap-2 bg-gray-100 p-1 rounded-lg border border-gray-200">
                                 {(["low", "medium", "high"] as const).map((prio) => (
                                     <button
                                         key={prio}
                                         type="button"
                                         onClick={() => update({ priority: prio })}
-                                        className={`py-2 rounded-lg type-overline transition-all disabled:cursor-not-allowed ${
+                                        className={`py-1.5 rounded-md type-overline transition-all disabled:cursor-not-allowed ${
                                             draft.priority === prio
                                                 ? prio === "high"
                                                     ? "bg-rose-600 text-white"
                                                     : prio === "medium"
                                                       ? "bg-amber-500 text-white"
-                                                      : "bg-slate-600 text-white"
-                                                : "bg-white text-slate-500 hover:bg-slate-100"
+                                                      : "bg-gray-600 text-white"
+                                                : "bg-white text-gray-500 hover:bg-gray-50"
                                         }`}
                                     >
                                         {taskPriorityLabel(prio, t)}
@@ -1010,8 +1011,8 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         </div>
 
                         {draft.relatedLeadId && (
-                            <div className="p-3 rounded-xl bg-violet-50/50 border border-violet-100 flex items-center justify-between">
-                                <span className="type-overline text-violet-700 flex items-center gap-1">
+                            <div style={entityAccentStyle("leads")} className="p-3 rounded-lg bg-entity-subtle border border-entity-border flex items-center justify-between">
+                                <span className="type-overline text-entity-text flex items-center gap-1">
                                     <Lock className="h-3 w-3" />{" "}
                                     {t("Block Pipeline Stage", "Zablokovať fázu pipeline", "Folyamat szakasz zárolása")}
                                 </span>
@@ -1019,14 +1020,14 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                     type="checkbox"
                                     checked={draft.isLocking || false}
                                     onChange={(e) => update({ isLocking: e.target.checked })}
-                                    className="h-4 w-4 cursor-pointer disabled:cursor-not-allowed"
+                                    className="h-4 w-4 cursor-pointer disabled:cursor-not-allowed accent-entity-solid"
                                 />
                             </div>
                         )}
 
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                            <div className="type-label mb-2 flex items-center gap-1.5 text-slate-700">
-                                <Timer className="size-4 shrink-0 text-teal-600" />
+                        <div style={entityAccentStyle("time_tracking")} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                            <div className="type-label mb-2 flex items-center gap-1.5 text-gray-700">
+                                <Timer className="size-4 shrink-0 text-entity-text" />
                                 {t("Time tracking", "Evidencia času", "Időkövetés")}
                                 {!isTemplate && <TaskAddTimeLink task={draft} projects={projects} leads={leads} />}
                             </div>
@@ -1042,14 +1043,14 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 </>
                             )}
                             <label className="mt-3 grid gap-1">
-                                <span className="type-overline text-slate-500">{t("Estimate (minutes)", "Odhad (minúty)", "Becslés (perc)")}</span>
+                                <span className="type-overline text-gray-500">{t("Estimate (minutes)", "Odhad (minúty)", "Becslés (perc)")}</span>
                                 <input
                                     type="number"
                                     min={0}
                                     disabled={!canEdit}
                                     value={draft.estimateMinutes ?? ""}
                                     onChange={(e) => update({ estimateMinutes: e.target.value === "" ? null : Math.max(0, Number(e.target.value)) })}
-                                    className="h-10 w-28 rounded-xl border border-slate-200 bg-white px-3 text-ui tabular-nums outline-none focus:border-primary disabled:opacity-60"
+                                    className="h-10 w-28 rounded-md border border-gray-200 bg-white px-3 text-ui tabular-nums outline-none focus:border-entity-solid disabled:opacity-60"
                                 />
                             </label>
                         </div>
@@ -1066,20 +1067,20 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         />
 
                         {storedTask && taskCreatedDate(storedTask) && (
-                            <p className="type-meta font-medium text-slate-400" data-testid="task-created-on">
+                            <p className="type-meta font-medium text-gray-400" data-testid="task-created-on">
                                 {t("Created on", "Vytvorené", "Létrehozva")}{" "}
-                                <span className="font-semibold text-slate-500">
+                                <span className="font-semibold text-gray-500">
                                     {formatDeadlineDate(taskCreatedDate(storedTask), systemLanguage)}
                                     {/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(storedTask.createdAt ?? "") && `, ${(storedTask.createdAt as string).slice(11, 16)}`}
                                 </span>
-                                {storedTask.createdBy ? <> · <span className="font-semibold text-slate-500">{storedTask.createdBy}</span></> : null}
+                                {storedTask.createdBy ? <> · <span className="font-semibold text-gray-500">{storedTask.createdBy}</span></> : null}
                             </p>
                         )}
                     </fieldset>
 
                     <button
                         type="submit"
-                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 text-white rounded-xl font-bold text-ui shadow-lg shadow-indigo-600/20 transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                        className="w-full py-2.5 bg-entity-solid hover:opacity-90 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 text-white rounded-md font-semibold text-ui shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={!canEdit}
                     >
                         {t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
@@ -1102,7 +1103,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                             onToggleArchive(draft);
                             requestClose();
                         };
-                        const buttonClass = "w-full py-2.5 border-2 border-slate-200 hover:bg-slate-50 active:scale-[0.98] text-slate-600 rounded-xl type-overline flex items-center justify-center gap-1.5 transition-all";
+                        const buttonClass = "w-full py-2 border border-gray-200 hover:bg-gray-50 active:scale-[0.98] text-gray-700 rounded-md type-overline flex items-center justify-center gap-1.5 transition-all";
                         // Unarchiving is a plain click; only archiving needs the hold.
                         return draft.archived ? (
                             <button type="button" onClick={toggleArchive} className={`${buttonClass} cursor-pointer`}>
@@ -1128,7 +1129,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                             <button
                                 type="button"
                                 onClick={() => setOccurrenceDeleteDialogOpen(true)}
-                                className="w-full py-2.5 border-2 border-rose-100 hover:bg-rose-50 active:scale-[0.98] text-rose-600 rounded-xl type-overline flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                                className="w-full py-2 border border-rose-200 hover:bg-rose-50 active:scale-[0.98] text-rose-600 rounded-md type-overline flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                             >
                                 <Trash2 className="h-3.5 w-3.5" />
                                 {t("Delete Task", "Odstrániť úlohu", "Feladat törlése")}
@@ -1154,7 +1155,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 const deleted = await onDelete(draft);
                                 if (deleted) requestClose();
                             }}
-                            className="w-full py-2.5 border-2 border-rose-100 hover:bg-rose-50 active:scale-[0.98] text-rose-600 rounded-xl type-overline flex items-center justify-center gap-1.5 transition-all"
+                            className="w-full py-2 border border-rose-200 hover:bg-rose-50 active:scale-[0.98] text-rose-600 rounded-md type-overline flex items-center justify-center gap-1.5 transition-all"
                             icon={<Trash2 className="h-3.5 w-3.5" />}
                         >
                             {t("Delete Task", "Odstrániť úlohu", "Feladat törlése")}

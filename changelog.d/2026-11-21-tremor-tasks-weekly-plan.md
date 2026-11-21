@@ -1,0 +1,1 @@
+- Remake Tasks Dashboard, Weekly Plan, Entity Tasks Panel, Quick Task Modal, Task Edit Drawer, Recurrence Fields, Voice Task Action Bar, and task dialogs in the Tremor Blocks design system with burnt-orange (`#c2410c`) entity accents and cross-entity `<EntityBadge>` pills for Leads, Clients, Projects, and Tickets.

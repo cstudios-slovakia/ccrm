@@ -58,21 +58,21 @@ export const RecurringOccurrenceDeleteDialog: React.FC<RecurringOccurrenceDelete
           exit={{ opacity: 0, scale: 0.97, y: 8 }}
           transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
           onMouseDown={(e) => e.stopPropagation()}
-          className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
+          className="w-full max-w-md overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg"
         >
           <div className="p-6">
             <div className="flex items-start gap-3.5 mb-4">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 border border-amber-200/60">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-amber-50 text-amber-600 border border-amber-200">
                 <AlertTriangle className="h-5 w-5" />
               </span>
               <div className="min-w-0 pt-0.5">
                 <h2
                   id="recurring-delete-title"
-                  className="type-title-sm text-slate-900 font-bold"
+                  className="type-title-sm text-gray-900 font-semibold"
                 >
                   {t("Delete recurring task", "Odstrániť opakovanú úlohu", "Ismétlődő feladat törlése")}
                 </h2>
-                <p className="mt-1 text-ui text-slate-500 font-medium">
+                <p className="mt-1 text-ui text-gray-500 font-medium">
                   {t(
                     `"${task.title}" is part of a repeating series. How would you like to delete it?`,
                     `"${task.title}" je súčasťou opakovanej série. Ako ju chcete odstrániť?`,
@@ -86,14 +86,14 @@ export const RecurringOccurrenceDeleteDialog: React.FC<RecurringOccurrenceDelete
               <button
                 type="button"
                 onClick={() => onChoice("only_this")}
-                className="w-full p-3.5 flex items-start gap-3 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-left transition-all cursor-pointer group"
+                className="w-full p-3.5 flex items-start gap-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 text-left transition-all cursor-pointer group"
               >
-                <Trash2 className="w-5 h-5 text-slate-400 group-hover:text-slate-700 shrink-0 mt-0.5" />
+                <Trash2 className="w-5 h-5 text-gray-400 group-hover:text-gray-700 shrink-0 mt-0.5" />
                 <div>
-                  <span className="block text-ui font-bold text-slate-800">
+                  <span className="block text-ui font-semibold text-gray-900">
                     {t("Only this task", "Iba túto úlohu", "Csak ezt a feladatot")}
                   </span>
-                  <span className="block text-caption text-slate-500 mt-0.5">
+                  <span className="block text-caption text-gray-500 mt-0.5">
                     {t(
                       "Skips this occurrence. The series continues with the next scheduled date.",
                       "Vynechá tento jeden výskyt. Séria pokračuje ďalším termínom.",
@@ -106,11 +106,11 @@ export const RecurringOccurrenceDeleteDialog: React.FC<RecurringOccurrenceDelete
               <button
                 type="button"
                 onClick={() => onChoice("all_future")}
-                className="w-full p-3.5 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50/40 hover:bg-rose-50 hover:border-rose-300 text-left transition-all cursor-pointer group"
+                className="w-full p-3.5 flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50/50 hover:bg-rose-50 hover:border-rose-300 text-left transition-all cursor-pointer group"
               >
                 <StopCircle className="w-5 h-5 text-rose-500 group-hover:text-rose-600 shrink-0 mt-0.5" />
                 <div>
-                  <span className="block text-ui font-bold text-rose-700">
+                  <span className="block text-ui font-semibold text-rose-700">
                     {t("This and all future tasks", "Túto a všetky budúce úlohy", "Ezt és minden jövőbeli feladatot")}
                   </span>
                   <span className="block text-caption text-rose-600/80 mt-0.5">
@@ -124,12 +124,12 @@ export const RecurringOccurrenceDeleteDialog: React.FC<RecurringOccurrenceDelete
               </button>
             </div>
 
-            <div className="mt-5 pt-4 border-t border-slate-100 flex justify-end">
+            <div className="mt-5 pt-4 border-t border-gray-200 flex justify-end">
               <button
                 ref={cancelBtnRef}
                 type="button"
                 onClick={() => onChoice("cancel")}
-                className="px-4 py-2 text-ui font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
+                className="px-4 py-2 text-ui font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-all cursor-pointer"
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>

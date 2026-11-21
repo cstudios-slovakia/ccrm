@@ -36,6 +36,7 @@ import { TaskRecurrenceFields, createDefaultRecurrence } from "./TaskRecurrenceF
 import { describeRecurrence, describeRecurrenceWithEnd } from "../utils/recurringTasks";
 import { useTaskDictation, DICTATION_BARS, type DictationResult } from "../hooks/useTaskDictation";
 import { viewSizeScale } from "../utils/viewSize";
+import { entityAccentStyle } from "../utils/entityAccent";
 
 /* -------------------------------------------------------------------------- */
 /*  Shared bits                                                               */
@@ -1027,8 +1028,8 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                     {manyTasks ? t("Task titles", "Názvy úloh", "Feladatok címei") : t("Task title", "Názov úlohy", "Feladat címe")}
                 </FieldLabel>
                 <span
-                    className={`h-5.5 px-2.5 rounded-full text-micro font-semibold flex items-center ${
-                        manyTasks ? "bg-[#fff1e8] dark:bg-orange-100 border border-orange-300 text-orange-700" : "bg-slate-100 text-slate-600"
+                    className={`h-5.5 px-2.5 rounded-md text-micro font-semibold flex items-center ${
+                        manyTasks ? "bg-entity-subtle border border-entity-border text-entity-text" : "bg-gray-100 text-gray-600"
                     }`}
                 >
                     {countLabel(Math.max(1, lineCount), t)}
@@ -1038,10 +1039,10 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
             {isMulti ? (
                 <div
                     key={`rows-${fillKey}`}
-                    className={`rounded-xl py-1.5 transition-[border-color,box-shadow] duration-150 ${
+                    className={`rounded-md py-1.5 transition-[border-color,box-shadow] duration-150 ${
                         isDictated("title")
-                            ? "border border-blue-200 bg-[#f8fbff] dark:bg-blue-50 nt-fill"
-                            : "border-2 border-slate-200 bg-white focus-within:border-[#ff5d00] focus-within:shadow-[0_0_0_4px_rgba(255,93,0,0.12)]"
+                            ? "border border-blue-200 bg-blue-50/70 nt-fill"
+                            : "border border-gray-200 bg-white focus-within:border-entity-solid focus-within:ring-2 focus-within:ring-entity-border/40"
                     }`}
                 >
                     {rows.map((line, i) => {
@@ -1318,7 +1319,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                             role="listbox"
                             aria-labelledby="nt-prio-l"
                             style={{ left: prioBox.left, top: prioBox.top, width: prioBox.width }}
-                            className="nt-menu fixed z-[100001] p-1 bg-white border border-slate-200 rounded-2xl shadow-[0_10px_25px_-8px_rgba(15,23,42,0.18)] flex flex-col gap-0.5"
+                            className="nt-menu fixed z-[100001] p-1 bg-white border border-gray-200 rounded-lg shadow-lg flex flex-col gap-0.5"
                         >
                             {PRIORITIES.map((p, i) => {
                                 const on = priority === p;
@@ -1330,13 +1331,13 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                                         aria-selected={on}
                                         onClick={() => pickPriority(p)}
                                         onMouseEnter={() => setPrioActive(i)}
-                                        className={`h-9 px-2.5 border-0 rounded-xl text-ui text-slate-800 flex items-center gap-2.5 transition-colors duration-150 cursor-pointer ${
-                                            on ? "bg-slate-50 font-semibold" : prioActive === i ? "bg-slate-50/70 font-normal" : "bg-transparent font-normal"
+                                        className={`h-9 px-2.5 border-0 rounded-md text-ui text-gray-800 flex items-center gap-2.5 transition-colors duration-150 cursor-pointer ${
+                                            on ? "bg-gray-100 font-semibold" : prioActive === i ? "bg-gray-50 font-normal" : "bg-transparent font-normal"
                                         }`}
                                     >
                                         <span aria-hidden="true" className={`w-2 h-2 rounded-full shrink-0 ${PRIORITY_DOT[p]}`} />
                                         <span className="flex-grow text-left">{taskPriorityLabel(p, t)}</span>
-                                        {on && <Check aria-hidden="true" className="h-4 w-4 text-orange-700" strokeWidth={2.5} />}
+                                        {on && <Check aria-hidden="true" className="h-4 w-4 text-entity-text" strokeWidth={2.5} />}
                                     </button>
                                 );
                             })}
@@ -1346,7 +1347,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                 </div>
             </div>
             {repeat ? (
-                <p className="m-0 text-micro text-slate-500">
+                <p className="m-0 text-micro text-gray-500">
                     {t(
                         "The dates come from the repeat rule under Options.",
                         "Termíny určuje opakovanie v časti Možnosti.",
@@ -1363,10 +1364,10 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                             type="button"
                             aria-pressed={on}
                             onClick={() => changeDeadline(d.date)}
-                            className={`h-8 px-3.5 rounded-full text-caption font-semibold border transition-colors duration-150 cursor-pointer ${
+                            className={`h-8 px-3 rounded-md text-caption font-semibold border transition-colors duration-150 cursor-pointer ${
                                 on
-                                    ? "bg-[#fff1e8] dark:bg-orange-100 border-orange-300 text-orange-700"
-                                    : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+                                    ? "bg-entity-subtle border-entity-border text-entity-text"
+                                    : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
                             }`}
                         >
                             {d.label}
@@ -1474,7 +1475,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     const optionsSection = (
         <div className={`flex flex-col gap-3 ${rise(320).className}`} style={rise(320).style}>
             <Overline>{t("Options", "Možnosti", "Beállítások")}</Overline>
-            <div className="rounded-2xl bg-slate-50 flex flex-col">
+            <div className="rounded-lg bg-gray-50 border border-gray-200 flex flex-col">
                 {canRepeat && (
                     <>
                         <OptionRow
@@ -1584,8 +1585,8 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
             <Overline>
                 {t("Who and what for", "Kto a k čomu", "Ki és mihez")} · {t("Options", "Možnosti", "Beállítások")}
             </Overline>
-            <div className="rounded-2xl bg-slate-50 px-3.5 py-3 flex flex-wrap items-center gap-2">
-                <span className="h-7.5 pl-1 pr-2.5 rounded-full bg-white border border-slate-200 text-caption font-semibold text-slate-800 flex items-center gap-1.5">
+            <div className="rounded-lg bg-gray-50 border border-gray-200 px-3.5 py-3 flex flex-wrap items-center gap-2">
+                <span className="h-7.5 pl-1 pr-2.5 rounded-md bg-white border border-gray-200 text-caption font-semibold text-gray-800 flex items-center gap-1.5">
                     {avatar(assignedUser, true)}
                     {assignedUser ? personLabel(assignedUser) : t("Unassigned", "Nepriradený", "Kijelöletlen")}
                 </span>
@@ -1602,7 +1603,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                 <button
                     type="button"
                     onClick={() => setSummaryExpanded(true)}
-                    className="ml-auto h-7.5 px-2.5 border-0 rounded-xl bg-transparent text-orange-700 text-caption font-semibold hover:bg-orange-50 cursor-pointer"
+                    className="ml-auto h-7.5 px-2.5 border-0 rounded-md bg-transparent text-entity-text text-caption font-semibold hover:bg-entity-subtle cursor-pointer"
                 >
                     {t("Edit", "Upraviť", "Szerkesztés")}
                 </button>
@@ -1626,8 +1627,8 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
             onAnimationEnd={(e) => {
                 if (e.target === e.currentTarget && e.animationName === "nt-grow") setEntering(false);
             }}
-            style={cardStyle}
-            className={`@container bg-white border border-slate-200/80 rounded-3xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.18)] overflow-hidden flex flex-col ${cardMotionClass || (origin ? "" : "nt-rise")} ${
+            style={{ ...cardStyle, ...entityAccentStyle("tasks") }}
+            className={`@container bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden flex flex-col ${cardMotionClass || (origin ? "" : "nt-rise")} ${
                 inline
                     ? "relative w-full"
                     : "fixed top-22.5 right-2 sm:right-4 md:right-6 z-[100000] w-[calc(100vw-1rem)] sm:w-[calc(100vw-2rem)] max-w-160 max-h-[calc(100vh-6.5rem)]"
@@ -1649,15 +1650,15 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                 className="flex flex-col min-h-0"
             >
                 {/* Header: same row as the closed bar — create on the left, mic on the right */}
-                <header className="flex items-center gap-3 py-4 pr-4 pl-6 border-b border-slate-100 shrink-0">
-                    <span className="w-9 h-9 rounded-xl bg-[#fff1e8] dark:bg-orange-100 text-[#ff5d00] flex items-center justify-center shrink-0">
+                <header className="flex items-center gap-3 py-4 pr-4 pl-6 border-b border-gray-200 shrink-0">
+                    <span className="w-9 h-9 rounded-md bg-entity-subtle text-entity-text border border-entity-border flex items-center justify-center shrink-0">
                         <Plus aria-hidden="true" className="h-4.5 w-4.5" strokeWidth={2.25} />
                     </span>
                     <div className="flex-grow min-w-0">
-                        <h2 id="nt-title" className="m-0 text-title-sm font-bold text-slate-900 leading-[1.3]">
+                        <h2 id="nt-title" className="m-0 text-title-sm font-semibold text-gray-900 leading-[1.3]">
                             {manyTasks ? t("New tasks", "Nové úlohy", "Új feladatok") : t("New task", "Nová úloha", "Új feladat")}
                         </h2>
-                        <p className="mt-0.5 mb-0 text-caption text-slate-500 truncate">{subtitle}</p>
+                        <p className="mt-0.5 mb-0 text-caption text-gray-500 truncate">{subtitle}</p>
                     </div>
                     <button
                         type="button"
@@ -1665,10 +1666,10 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                         aria-pressed={isRecording}
                         disabled={isProcessing}
                         onClick={() => (isRecording ? void dictation.stop() : void dictation.start())}
-                        className={`nt-press relative h-10 px-3.5 border-0 rounded-xl text-white text-ui font-semibold flex items-center gap-2 shrink-0 cursor-pointer disabled:cursor-wait focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-400 ${
+                        className={`nt-press relative h-10 px-3.5 border-0 rounded-md text-white text-ui font-semibold flex items-center gap-2 shrink-0 cursor-pointer disabled:cursor-wait focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-400 ${
                             isRecording || isProcessing
                                 ? "bg-rose-700 shadow-none"
-                                : "bg-rose-600 hover:bg-rose-700 shadow-[0_4px_6px_-1px_rgba(225,29,72,0.25)]"
+                                : "bg-rose-600 hover:bg-rose-700 shadow-xs"
                         }`}
                     >
                         {isRecording ? (
@@ -1746,17 +1747,17 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                 </div>
 
                 <footer
-                    className={`py-3.5 pr-4 pl-6 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-end gap-2 shrink-0 ${rise(360).className}`}
+                    className={`py-3.5 pr-4 pl-6 bg-gray-50 border-t border-gray-200 flex flex-wrap items-center justify-end gap-2 shrink-0 ${rise(360).className}`}
                     style={rise(360).style}
                 >
-                    <span className="hidden @md:flex flex-grow text-micro text-slate-500 items-center gap-1.5">
+                    <span className="hidden @md:flex flex-grow text-micro text-gray-500 items-center gap-1.5">
                         <Kbd white>{ctrlLabel}</Kbd>
                         {manyTasks ? t("creates all", "vytvorí všetky", "mindet létrehozza") : t("creates", "vytvorí", "létrehozza")}
                     </span>
                     <button
                         type="button"
                         onClick={() => requestClose()}
-                        className="nt-press h-10 px-3.5 border-0 rounded-xl bg-transparent text-slate-600 text-ui font-semibold hover:bg-slate-100 cursor-pointer"
+                        className="nt-press h-10 px-3.5 border-0 rounded-md bg-transparent text-gray-600 text-ui font-semibold hover:bg-gray-100 cursor-pointer"
                     >
                         {t("Cancel", "Zrušiť", "Mégse")}
                     </button>
@@ -1764,14 +1765,14 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                         <button
                             type="button"
                             onClick={() => createTasks(false)}
-                            className="nt-press h-10 px-3.5 border border-slate-200 rounded-xl bg-white text-slate-800 text-ui font-semibold shadow-xs hover:border-slate-300 cursor-pointer"
+                            className="nt-press h-10 px-3.5 border border-gray-200 rounded-md bg-white text-gray-800 text-ui font-semibold shadow-2xs hover:border-gray-300 cursor-pointer"
                         >
                             {t("Create & next", "Vytvoriť a ďalšia", "Létrehozás és következő")}
                         </button>
                     )}
                     <button
                         type="submit"
-                        className="nt-press h-10 px-4.5 border-0 rounded-xl bg-[#ff5d00] hover:bg-[#e05200] text-white text-ui font-bold flex items-center gap-2 shadow-[0_4px_6px_-1px_rgba(255,93,0,0.25)] cursor-pointer"
+                        className="nt-press h-10 px-4.5 border-0 rounded-md bg-entity-solid hover:opacity-90 text-white text-ui font-semibold flex items-center gap-2 shadow-xs cursor-pointer"
                     >
                         <Check aria-hidden="true" className="h-4 w-4" strokeWidth={2.5} />
                         {createLabel}
@@ -1825,7 +1826,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
 };
 
 const SummaryChip: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <span className="h-7.5 px-2.5 rounded-full bg-white border border-slate-200 text-caption font-semibold text-slate-800 flex items-center max-w-full truncate">
+    <span className="h-7.5 px-2.5 rounded-md bg-white border border-gray-200 text-caption font-semibold text-gray-800 flex items-center max-w-full truncate">
         {children}
     </span>
 );
