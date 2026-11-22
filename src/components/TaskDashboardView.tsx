@@ -43,6 +43,10 @@ import {
 import type { Task, UserProfile, Lead, Project, Ticket, Employee, RecurringTaskTemplate } from "../types";
 import { describeRecurrence, getPlannedOccurrencesInRange } from "../utils/recurringTasks";
 import { TaskRecurringMark } from "./TaskRecurringMark";
+import { CalendarLensSwitcher } from "./tasks/CalendarLensSwitcher";
+import { CustomCalendarEventModal, CustomCalendarFormModal } from "./tasks/CustomCalendarModals";
+import { MultiCalendarPanel, type TaskHubData } from "./tasks/MultiCalendarPanel";
+import { useTaskCalendarHub } from "../hooks/useTaskCalendarHub";
 import { deleteRecurringOccurrenceWithUndo, deleteRecurringSeriesWithUndo } from "../utils/recurringTaskActions";
 import { RecurringOccurrenceDeleteDialog } from "./RecurringOccurrenceDeleteDialog";
 import type { Language } from "../utils/translations";
@@ -383,6 +387,8 @@ interface TaskDashboardViewProps {
     /** Lead-state settings, to keep closed leads out of the lead / client picker. */
     leadStageGroups?: Record<string, string>;
     leadStateParents?: Record<string, string>;
+    /** Multi-calendar hub data & RBAC visibility flags passed from App. */
+    hubData?: TaskHubData;
 };
 
 /** A compact micro-switch used on task cards. */
@@ -564,6 +570,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     agencyEnabled = false,
     leadStageGroups,
     leadStateParents,
+    hubData,
 }) => {
     const brand = PRODUCT_NAME;
     const isDoneState = (status: string) => isDoneTaskState(status, taskStates);
@@ -770,6 +777,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [viewMode, setViewMode] = useState<"calendar" | "archive" | "global" | "recurring" | "weekly_plan">(
         "calendar",
     );
+    const calendarHub = useTaskCalendarHub(viewMode === "calendar" || viewMode === "global");
     const [showPlannedRecurring, setShowPlannedRecurringState] = useState<boolean>(() => getShowPlannedRecurringCookie());
     const setShowPlannedRecurring = (show: boolean) => {
         setShowPlannedRecurringState(show);
@@ -2583,12 +2591,79 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // One calendar panel: the month or week grid, or the day view once a day is
     // clicked. Every tab renders its calendar through this, so the behaviour is
     // identical wherever a calendar appears.
-    const renderCalendarPanel = (cfg: CalendarPanelConfig) =>
-        cfg.selectedDay
-            ? renderDayView(cfg)
-            : cfg.scope === "week"
-              ? renderWeekGrid(cfg)
-              : renderMonthGrid(cfg);
+    const effectiveHubData: TaskHubData = hubData ?? {
+        projectTypes: [],
+        financialRecords: [],
+        invoicesOffers: [],
+        employeeSalaries: [],
+        employeeVacations: [],
+        orders: [],
+        warehouseBatches: [],
+        meetingNotes: [],
+        unifiedEntries: [],
+        unifiedEntriesData: {},
+        supportContracts: [],
+        rbac: { projects: true },
+    };
+
+    const renderCalendarPanel = (cfg: CalendarPanelConfig) => {
+        const isMainCalendar = cfg.onAddTask !== undefined;
+        const lens = isMainCalendar ? calendarHub.activeLens : "tasks";
+        return (
+            <>
+                {isMainCalendar && (
+                    <CalendarLensSwitcher
+                        activeLens={lens}
+                        onSelectLens={(id) => {
+                            calendarHub.setActiveLens(id);
+                            cfg.onSelectDay(null);
+                        }}
+                        favorites={calendarHub.favorites}
+                        onToggleFavorite={calendarHub.toggleFavorite}
+                        customCalendars={calendarHub.customCalendars}
+                        rbac={effectiveHubData.rbac}
+                        canEditCustom={taskAccess.edit}
+                        onNewCustomCalendar={() => calendarHub.setCalendarModal({ open: true, calendar: null })}
+                        onEditCustomCalendar={(cal) => calendarHub.setCalendarModal({ open: true, calendar: cal })}
+                        expanded={calendarHub.expanded}
+                        onToggleExpanded={calendarHub.toggleExpanded}
+                        lang={systemLanguage}
+                    />
+                )}
+                {lens === "tasks" ? (
+                    cfg.selectedDay ? renderDayView(cfg) : cfg.scope === "week" ? renderWeekGrid(cfg) : renderMonthGrid(cfg)
+                ) : (
+                    <MultiCalendarPanel
+                        lensId={lens}
+                        anchor={cfg.anchor}
+                        scope={cfg.scope}
+                        selectedDay={cfg.selectedDay}
+                        onSelectDay={cfg.onSelectDay}
+                        weekdayNames={weekdayNames}
+                        dateLocale={dateLocale}
+                        todayStr={todayStr}
+                        lang={systemLanguage}
+                        currentUserName={myName}
+                        tasks={tasks}
+                        leads={leads}
+                        projects={projects}
+                        tickets={tickets}
+                        employees={employees}
+                        hubData={effectiveHubData}
+                        customCalendars={calendarHub.customCalendars}
+                        customEvents={calendarHub.customEvents}
+                        canEditCustom={taskAccess.edit}
+                        onAddCustomEvent={(cal, dateStr) => calendarHub.setEventModal({ open: true, calendar: cal, event: null, initialDate: dateStr })}
+                        onEditCustomEvent={(cal, ev) => calendarHub.setEventModal({ open: true, calendar: cal, event: ev, initialDate: ev.startDate })}
+                        onOpenTask={(id) => {
+                            const found = tasks.find((tk) => tk.id === id);
+                            if (found) setEditingTask(found);
+                        }}
+                    />
+                )}
+            </>
+        );
+    };
 
     // Month/week switch plus the previous/next/today pager. Shared by all three
     // calendars; `compact` keeps the in-panel copies a touch smaller than the one
@@ -6063,7 +6138,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             {renderTimelineView()}
                         </div>
                     ) : (
-                        <div className="flex flex-col h-auto self-start ws-lg:sticky ws-lg:top-[calc(1rem-var(--gutter))] bg-white rounded-lg border border-gray-200 shadow-xs ws-lg:overflow-hidden overflow-visible">
+                        <div className={`flex flex-col h-auto self-start ws-lg:sticky ws-lg:top-[calc(1rem-var(--gutter))] bg-white rounded-lg border border-gray-200 shadow-xs ws-lg:overflow-hidden overflow-visible ${calendarHub.expanded ? "ws-lg:col-span-2 ws-lg:order-first" : ""}`}>
                             {renderCalendarPanel({
                                 anchor: currentDate,
                                 scope: calendarScope,
@@ -6317,6 +6392,31 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 );
             })()}
             {renderBulkActionToolbar()}
+            {calendarHub.calendarModal.open && (
+                <CustomCalendarFormModal
+                    calendar={calendarHub.calendarModal.calendar}
+                    lang={systemLanguage}
+                    onSave={calendarHub.handleSaveCalendar}
+                    onDelete={calendarHub.handleDeleteCalendar}
+                    onClose={() => calendarHub.setCalendarModal({ open: false })}
+                />
+            )}
+            {calendarHub.eventModal.open && calendarHub.eventModal.calendar && (
+                <CustomCalendarEventModal
+                    calendar={calendarHub.eventModal.calendar}
+                    event={calendarHub.eventModal.event}
+                    initialDate={calendarHub.eventModal.initialDate}
+                    existingEvents={calendarHub.customEvents}
+                    users={users}
+                    leads={leads}
+                    projects={projects}
+                    currentUserName={myName}
+                    lang={systemLanguage}
+                    onSave={calendarHub.handleSaveEvent}
+                    onDelete={calendarHub.handleDeleteEvent}
+                    onClose={() => calendarHub.setEventModal({ open: false })}
+                />
+            )}
         </div>
     );
 };

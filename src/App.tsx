@@ -3,6 +3,7 @@ import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
+import type { TaskHubData } from "./components/tasks/MultiCalendarPanel";
 import { TimeTrackingProvider } from "./hooks/useTimeTracking";
 import { TimeTrackingView } from "./components/timeTracking/TimeTrackingView";
 import { WhatsAppModule } from "./components/whatsapp/WhatsAppModule";
@@ -1224,6 +1225,18 @@ ${log.payload || ''}
     };
   })();
 
+
+  const taskHubData = useMemo<TaskHubData>(() => ({
+    projectTypes, projectStatuses, financialRecords, invoicesOffers, invoiceStatuses,
+    employeeSalaries, employeeVacations, orders, warehouseBatches, meetingNotes,
+    unifiedEntries, unifiedEntriesData, supportContracts, systemCurrency,
+    rbac: {
+      projects: access.can("projects"), financial: access.can("financial"), invoices: access.can("invoices"),
+      employees: access.can("employees"), leads: access.can("leads"), meetings: access.can("meetings"),
+      orders: access.can("orders"), warehouse: access.can("warehouse"), newsletter: access.can("newsletter"),
+      social: access.can("social"), tickets: access.can("tickets"),
+    },
+  }), [projectTypes, projectStatuses, financialRecords, invoicesOffers, invoiceStatuses, employeeSalaries, employeeVacations, orders, warehouseBatches, meetingNotes, unifiedEntries, unifiedEntriesData, supportContracts, systemCurrency, access]);
 
   // --- DYNAMICALLY DERIVED COMPATIBILITY PARAMETERS ---
   const projectManagers = users.map(u => u.name);
@@ -3477,6 +3490,7 @@ ${log.payload || ''}
           agencyEnabled={agencyEnabled}
           leadStageGroups={leadStageGroups}
           leadStateParents={leadStateParents}
+          hubData={taskHubData}
         />
       );
     }
@@ -3634,6 +3648,7 @@ ${log.payload || ''}
             invoiceStatuses={invoiceStatuses}
             leadStageGroups={leadStageGroups}
             leadStateParents={leadStateParents}
+            hubData={taskHubData}
           />
         );
       }
@@ -4326,6 +4341,7 @@ ${log.payload || ''}
             invoiceStatuses={invoiceStatuses}
             leadStageGroups={leadStageGroups}
             leadStateParents={leadStateParents}
+            hubData={taskHubData}
           />
         );
       case "whatsapp":
@@ -4594,6 +4610,7 @@ ${log.payload || ''}
             agencyEnabled={agencyEnabled}
             leadStageGroups={leadStageGroups}
             leadStateParents={leadStateParents}
+            hubData={taskHubData}
           />
         );
     }

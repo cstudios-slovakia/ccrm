@@ -850,6 +850,7 @@ Standalone planning cards displayed on the Weekly Plan board (by day date and ve
 * `color` VARCHAR(32) (Card color key: `''`, `'indigo'`, `'emerald'`, `'amber'`, `'rose'`, `'sky'`, `'purple'`, `'orange'`)
 * `refs_json` LONGTEXT [NULLable] (JSON array of `{ kind, id, label }`)
 * `created_by` VARCHAR(64) [NULLable]
+* `deleted_at` DATETIME [NULLable] (Soft-delete / archive timestamp for MCP and reversible archival)
 * `created_at` DATETIME
 * `updated_at` DATETIME
 
@@ -858,6 +859,36 @@ Per-day management notes displayed underneath each day header on the Weekly Plan
 * `date` VARCHAR(10) [PK] (ISO date `YYYY-MM-DD`)
 * `note` TEXT
 * `updated_by` VARCHAR(64) [NULLable]
+* `updated_at` DATETIME
+
+### `custom_calendars`
+Workspace-shared custom calendars under `#tasks` (e.g. Meeting Room, Company Van, Showroom). Written exclusively by `api/custom_calendars.php` (never by `sync.php`).
+* `id` VARCHAR(64) [PK] (`ccal_<hex>`)
+* `name` VARCHAR(150)
+* `color` VARCHAR(32) (hex color, default `#6366f1`)
+* `description` VARCHAR(500) [NULLable]
+* `created_by` VARCHAR(150) [NULLable]
+* `deleted_at` DATETIME [NULLable]
+* `created_at` DATETIME
+* `updated_at` DATETIME
+
+### `custom_calendar_events`
+Free-form events booked on a custom calendar (`custom_calendars.id`). Supports single-day, multi-day, all-day, and timed (`HH:MM`–`HH:MM`) slots with optional client/project links.
+* `id` VARCHAR(64) [PK] (`ccevt_<hex>`)
+* `calendar_id` VARCHAR(64) (references `custom_calendars.id`)
+* `title` VARCHAR(255)
+* `start_date` VARCHAR(10) (`YYYY-MM-DD`)
+* `end_date` VARCHAR(10) (`YYYY-MM-DD`)
+* `start_time` VARCHAR(5) [NULLable] (`HH:MM`; null = all-day)
+* `end_time` VARCHAR(5) [NULLable] (`HH:MM`)
+* `notes` TEXT [NULLable]
+* `color` VARCHAR(32) [NULLable] (optional per-event color override)
+* `owner` VARCHAR(150) [NULLable] (user who booked / owns the slot)
+* `related_lead_id` VARCHAR(64) [NULLable]
+* `related_project_id` VARCHAR(64) [NULLable]
+* `created_by` VARCHAR(150) [NULLable]
+* `deleted_at` DATETIME [NULLable]
+* `created_at` DATETIME
 * `updated_at` DATETIME
 
 ---

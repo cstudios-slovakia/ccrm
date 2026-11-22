@@ -253,6 +253,12 @@ export interface UserPrefs {
    */
   settingsRecents: string[];
   listFilters: Record<string, unknown>;
+  /** Pinned calendar lenses shown next to Tasks in the #tasks calendar switcher. */
+  taskCalendarFavorites: string[];
+  /** Last selected calendar lens in #tasks ("tasks", "work", "payments", ..., or "custom:<id>"). */
+  taskCalendarActiveLens: string;
+  /** Whether the #tasks calendar panel is expanded to full width. */
+  taskCalendarExpanded: boolean;
 }
 
 export const DEFAULT_USER_PREFS: UserPrefs = {
@@ -305,6 +311,9 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   settingsLayout: "tiles",
   settingsRecents: [],
   listFilters: {},
+  taskCalendarFavorites: ["work", "payments"],
+  taskCalendarActiveLens: "tasks",
+  taskCalendarExpanded: false,
 };
 
 /** Anything with a metadata_json blob — UserProfile, or a raw sync.php row. */

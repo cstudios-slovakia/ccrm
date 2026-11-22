@@ -1535,6 +1535,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `color` VARCHAR(32) NOT NULL DEFAULT '',
               `refs_json` LONGTEXT NULL,
               `created_by` VARCHAR(64) NULL,
+              `deleted_at` DATETIME NULL,
               `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
               `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               INDEX `idx_weekly_plan_cards_date` (`date`, `position`)
@@ -1546,6 +1547,40 @@ if (!function_exists('ccrm_schema_statements')) {
               `note` TEXT NOT NULL,
               `updated_by` VARCHAR(64) NULL,
               `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Custom shared calendars under #tasks (e.g. Meeting Room, Company Van)
+            "CREATE TABLE IF NOT EXISTS `custom_calendars` (
+              `id` VARCHAR(64) NOT NULL PRIMARY KEY,
+              `name` VARCHAR(150) NOT NULL,
+              `color` VARCHAR(32) NOT NULL DEFAULT '#6366f1',
+              `description` VARCHAR(500) NULL,
+              `created_by` VARCHAR(150) NULL,
+              `deleted_at` DATETIME NULL,
+              `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_ccal_deleted` (`deleted_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Events booked on custom calendars
+            "CREATE TABLE IF NOT EXISTS `custom_calendar_events` (
+              `id` VARCHAR(64) NOT NULL PRIMARY KEY,
+              `calendar_id` VARCHAR(64) NOT NULL,
+              `title` VARCHAR(255) NOT NULL,
+              `start_date` VARCHAR(10) NOT NULL,
+              `end_date` VARCHAR(10) NOT NULL,
+              `start_time` VARCHAR(5) NULL,
+              `end_time` VARCHAR(5) NULL,
+              `notes` TEXT NULL,
+              `color` VARCHAR(32) NULL,
+              `owner` VARCHAR(150) NULL,
+              `related_lead_id` VARCHAR(64) NULL,
+              `related_project_id` VARCHAR(64) NULL,
+              `created_by` VARCHAR(150) NULL,
+              `deleted_at` DATETIME NULL,
+              `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_ccevt_cal_dates` (`calendar_id`, `deleted_at`, `start_date`, `end_date`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Agency & Workforce Leasing module tables (opt-in module; separate from `leads`)
@@ -2364,6 +2399,7 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_ai_models($pdo);
         ccrm_migrate_recurring_tasks($pdo);
         ccrm_migrate_weekly_plan($pdo);
+        ccrm_migrate_custom_calendars($pdo);
         ccrm_migrate_agency($pdo);
         if (ccrm_table_exists($pdo, 'leads') && !ccrm_column_exists($pdo, 'leads', 'custom_fields_json')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `custom_fields_json` LONGTEXT NULL COMMENT 'JSON map of custom lead attribute values keyed by attribute id' AFTER `ticket_allowed_emails`");
@@ -2430,6 +2466,20 @@ if (!function_exists('ccrm_schema_statements')) {
         }
     }
 
+    /** Ensure Custom Calendar tables exist on upgrades (idempotent, pre-transaction safe). */
+    function ccrm_migrate_custom_calendars(PDO $pdo): void {
+        try {
+            if (!ccrm_table_exists($pdo, 'custom_calendars')) {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `custom_calendars` (`id` VARCHAR(64) NOT NULL PRIMARY KEY, `name` VARCHAR(150) NOT NULL, `color` VARCHAR(32) NOT NULL DEFAULT '#6366f1', `description` VARCHAR(500) NULL, `created_by` VARCHAR(150) NULL, `deleted_at` DATETIME NULL, `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP, `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX `idx_ccal_deleted` (`deleted_at`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            }
+            if (!ccrm_table_exists($pdo, 'custom_calendar_events')) {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `custom_calendar_events` (`id` VARCHAR(64) NOT NULL PRIMARY KEY, `calendar_id` VARCHAR(64) NOT NULL, `title` VARCHAR(255) NOT NULL, `start_date` VARCHAR(10) NOT NULL, `end_date` VARCHAR(10) NOT NULL, `start_time` VARCHAR(5) NULL, `end_time` VARCHAR(5) NULL, `notes` TEXT NULL, `color` VARCHAR(32) NULL, `owner` VARCHAR(150) NULL, `related_lead_id` VARCHAR(64) NULL, `related_project_id` VARCHAR(64) NULL, `created_by` VARCHAR(150) NULL, `deleted_at` DATETIME NULL, `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP, `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX `idx_ccevt_cal_dates` (`calendar_id`, `deleted_at`, `start_date`, `end_date`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] custom_calendars migration skipped: ' . $e->getMessage());
+        }
+    }
+
     /**
      * Ensure Weekly Plan tables and columns exist on upgrades (idempotent).
      */
@@ -2445,6 +2495,7 @@ if (!function_exists('ccrm_schema_statements')) {
                   `color` VARCHAR(32) NOT NULL DEFAULT '',
                   `refs_json` LONGTEXT NULL,
                   `created_by` VARCHAR(64) NULL,
+                  `deleted_at` DATETIME NULL,
                   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
                   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                   INDEX `idx_weekly_plan_cards_date` (`date`, `position`)
@@ -2456,6 +2507,7 @@ if (!function_exists('ccrm_schema_statements')) {
                     'color'      => "VARCHAR(32) NOT NULL DEFAULT '' AFTER `completed`",
                     'refs_json'  => "LONGTEXT NULL AFTER `color`",
                     'created_by' => "VARCHAR(64) NULL AFTER `refs_json`",
+                    'deleted_at' => "DATETIME NULL AFTER `created_by`",
                 ];
                 foreach ($cardCols as $col => $def) {
                     if (!ccrm_column_exists($pdo, 'weekly_plan_cards', $col)) {

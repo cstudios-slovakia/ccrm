@@ -1873,4 +1873,33 @@ export interface TicketSettingsConfig {
 export type TicketSettings = TicketSettingsConfig;
 export type TicketSystemSettings = TicketSettingsConfig;
 
+export interface CustomCalendar {
+  id: string;
+  name: string;
+  color: string;
+  description?: string | null;
+  createdBy?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface CustomCalendarEvent {
+  id: string;
+  calendarId: string;
+  title: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+  startTime?: string | null; // HH:MM
+  endTime?: string | null;   // HH:MM
+  notes?: string | null;
+  color?: string | null;
+  owner?: string | null;
+  relatedLeadId?: string | null;
+  relatedProjectId?: string | null;
+  createdBy?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+
 

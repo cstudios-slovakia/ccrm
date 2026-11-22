@@ -1634,6 +1634,65 @@ export async function installBackendMocks(
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
   });
 
+  // Stateful in-memory mock for Custom Calendars & Custom Calendar Events.
+  const customCalendarsStore = new Map<string, any>();
+  const customEventsStore = new Map<string, any>();
+  await page.route('**/api/custom_calendars.php**', async (route) => {
+    const req = route.request();
+    if (req.method() === 'GET') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          calendars: Array.from(customCalendarsStore.values()),
+          events: Array.from(customEventsStore.values()),
+        }),
+      });
+    }
+    const body = JSON.parse(req.postData() || '{}');
+    if (body.action === 'save_calendar') {
+      const calendar = {
+        id: body.id || `ccal_${Date.now()}`,
+        name: String(body.name || ''),
+        color: String(body.color || '#6366f1'),
+        description: body.description || null,
+        createdBy: signedIn.name || signedIn.id,
+      };
+      customCalendarsStore.set(calendar.id, calendar);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, calendar }) });
+    }
+    if (body.action === 'delete_calendar') {
+      customCalendarsStore.delete(body.id);
+      for (const [eid, ev] of customEventsStore.entries()) {
+        if (ev.calendarId === body.id) customEventsStore.delete(eid);
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+    }
+    if (body.action === 'save_event') {
+      const event = {
+        id: body.id || `ccevt_${Date.now()}`,
+        calendarId: body.calendarId,
+        title: String(body.title || ''),
+        startDate: body.startDate,
+        endDate: body.endDate || body.startDate,
+        startTime: body.startTime || null,
+        endTime: body.endTime || null,
+        notes: body.notes || null,
+        color: body.color || null,
+        owner: body.owner || signedIn.name || null,
+        relatedLeadId: body.relatedLeadId || null,
+        relatedProjectId: body.relatedProjectId || null,
+      };
+      customEventsStore.set(event.id, event);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, event }) });
+    }
+    if (body.action === 'delete_event') {
+      customEventsStore.delete(body.id);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+  });
+
   await page.route('**/upload.php', (route) =>
     route.fulfill({
       status: 200,
