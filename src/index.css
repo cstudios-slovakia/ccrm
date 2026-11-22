@@ -1989,21 +1989,26 @@ dialog[open]::backdrop {
     filter: none !important;
     backdrop-filter: none !important;
     contain: none !important;
+    isolation: auto !important;
+    z-index: auto !important;
   }
   .ccrm-table-fullscreen-host {
     position: fixed !important;
     inset: 0 !important;
-    z-index: 60 !important;
+    z-index: 90 !important;
+    display: flex !important;
+    flex-direction: column !important;
     width: 100vw !important;
     height: 100vh !important;
     max-width: none !important;
     max-height: none !important;
     margin: 0 !important;
-    padding: 3rem 1.25rem 2rem !important;
+    padding: 3.25rem 1.25rem 1.25rem !important;
     border-radius: 0 !important;
     border: none !important;
-    overflow: auto !important;
+    overflow: hidden !important;
     background-color: #ffffff !important;
+    box-shadow: none !important;
   }
   :is([data-theme="dark"], [data-appearance="dark"], .dark) .ccrm-table-fullscreen-host {
     background-color: #0f172a !important;
@@ -2021,15 +2026,27 @@ dialog[open]::backdrop {
   .ccrm-table-fullscreen-host > .ccrm-table-fs-btn {
     display: none !important;
   }
-  .ccrm-table-fullscreen-host .table-page-wrap {
-    overflow: visible !important;
+  .ccrm-table-fullscreen-host .table-page-wrap,
+  .ccrm-table-fullscreen-host > .overflow-x-auto,
+  .ccrm-table-fullscreen-host > .overflow-auto {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-height: none !important;
+    overflow: auto !important;
+  }
+  .ccrm-table-fullscreen-host:not(:has(.table-page-wrap, > .overflow-x-auto, > .overflow-auto)) {
+    overflow: auto !important;
+  }
+  .ccrm-table-fullscreen-host table {
+    width: 100% !important;
   }
   .ccrm-table-fullscreen-host .table-page-head-mirror {
     display: none !important;
   }
   .ccrm-table-fullscreen-host thead th {
-    position: sticky;
-    top: 0;
+    position: sticky !important;
+    top: 0 !important;
     z-index: 25;
   }
 }

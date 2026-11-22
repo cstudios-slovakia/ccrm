@@ -83,6 +83,8 @@ export const TableFullscreenEnhancer: React.FC<{ userLanguage: Language }> = ({ 
       return;
     }
 
+    const rect = activeHost.getBoundingClientRect();
+
     activeHost.classList.add(HOST_CLASS);
     const ancestors: HTMLElement[] = [];
     let cur = activeHost.parentElement;
@@ -90,6 +92,37 @@ export const TableFullscreenEnhancer: React.FC<{ userLanguage: Language }> = ({ 
       cur.classList.add(ANCESTOR_CLASS);
       ancestors.push(cur);
       cur = cur.parentElement;
+    }
+
+    // Smooth FLIP expand animation into full viewport
+    const prefersReduced =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (!prefersReduced && typeof activeHost.animate === "function" && rect.width > 0 && rect.height > 0) {
+      const vw = window.innerWidth || rect.width;
+      const vh = window.innerHeight || rect.height;
+      const sx = Math.max(0.2, Math.min(1, rect.width / vw));
+      const sy = Math.max(0.2, Math.min(1, rect.height / vh));
+      activeHost.animate(
+        [
+          {
+            transformOrigin: "top left",
+            transform: `translate(${rect.left}px, ${rect.top}px) scale(${sx}, ${sy})`,
+            opacity: 0.92,
+            borderRadius: "10px",
+          },
+          {
+            transformOrigin: "top left",
+            transform: "translate(0px, 0px) scale(1, 1)",
+            opacity: 1,
+            borderRadius: "0px",
+          },
+        ],
+        {
+          duration: 220,
+          easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+        },
+      );
     }
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -185,7 +218,7 @@ export const TableFullscreenEnhancer: React.FC<{ userLanguage: Language }> = ({ 
       title={labelExit}
       aria-label={labelExit}
       data-testid="table-fullscreen-exit"
-      className="fixed top-3 right-4 z-70 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white/95 hover:bg-white text-gray-800 border border-gray-300 shadow-md text-caption font-semibold backdrop-blur-xs transition cursor-pointer"
+      className="fixed top-3 right-4 z-95 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white/95 hover:bg-white text-gray-800 border border-gray-300 shadow-md text-caption font-semibold backdrop-blur-xs transition cursor-pointer"
     >
       <Minimize2 className="h-3.5 w-3.5" />
       <span>{labelExit}</span>
