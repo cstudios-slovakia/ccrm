@@ -283,13 +283,22 @@ test.describe('Shell navigation', () => {
     assertNoDefectsFound();
   });
 
-  test('a settings section tab switches the section', async ({ page }) => {
+  test('a settings section tab switches the section and renders a visible active pill', async ({ page }) => {
     // Regression: the hash parser split "settings/leads/sources" on "/" and "?" at
-    // once, so every sub-path was dropped and a section click did nothing.
-    await gotoView(page, '#settings/leads');
-    const sourcesTab = page
-      .getByTestId('settings-section-tabs')
-      .getByRole('tab', { name: /Lead sources|Zdroje leadov|Lead források/ });
+    // once, and missing --color-entity-soft in @theme inline left the active tab unhighlighted.
+    await gotoView(page, '#settings/leads/interests');
+    const tabs = page.getByTestId('settings-section-tabs');
+    const interestsTab = tabs.getByRole('tab', { name: /Interest categories|Kategórie záujmu|Érdeklődési kategóriák/ });
+    const fieldsTab = tabs.getByRole('tab', { name: /Custom fields|Vlastné polia|Egyedi mezők/ });
+    await expect(interestsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(fieldsTab).toBeVisible();
+    await expect(page.getByTestId('settings-section-leads-interests')).toBeVisible();
+
+    const bg = await interestsTab.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg).not.toBe('rgba(0, 0, 0, 0)');
+    expect(bg).not.toBe('transparent');
+
+    const sourcesTab = tabs.getByRole('tab', { name: /Lead sources|Zdroje leadov|Lead források/ });
     await sourcesTab.click();
     await expect(page).toHaveURL(/#settings\/leads\/sources$/);
     await expect(sourcesTab).toHaveAttribute('aria-selected', 'true');

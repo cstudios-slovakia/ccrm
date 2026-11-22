@@ -84,8 +84,7 @@ import { EntityScope } from "./components/tremor/EntityScope";
 import { resolveRouteEntityHex } from "./utils/entityAccent";
 import { useCurrentScreenContext } from "./hooks/useCurrentScreenContext";
 import { RefreshCw, AlertOctagon, Trash2, Copy, Brain, Mail, Bell, X, Plus, ArrowUpRight } from "lucide-react";
-import { FeralGradientBackground } from "./components/FeralGradientBackground";
-import { OrganicNodeDatabaseLoader } from "./components/OrganicNodeDatabaseLoader";
+import { AppLoadingScreen } from "./components/AppLoadingScreen";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { startViewSizeWatcher } from "./utils/viewSize";
 import { baselineOf, diffRecords, FINANCIAL_BLOB_KEYS, skipHoldsBaseline, skipIsLostWork, withStockRowIds, type FinancialBlobKey, type RecordBaseline } from "./utils/syncDiff";
@@ -4622,50 +4621,13 @@ ${log.payload || ''}
     );
   }
 
-  // While loading initial sync data from the database, show a premium timelapse atmospheric loader
+  // While loading initial sync data from the database, show a clean theme-aware loader
   if (isInstalled && !isInitialSyncResolved) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center p-6 relative overflow-hidden select-none font-sans">
-        <style dangerouslySetInnerHTML={{__html: `
-          @keyframes pulse-ring {
-            0% { transform: scale(0.95); opacity: 0.8; }
-            50% { transform: scale(1.05); opacity: 0.4; }
-            100% { transform: scale(0.95); opacity: 0.8; }
-          }
-          @keyframes spin-slow {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-          .loader-spin {
-            animation: spin-slow 2.4s linear infinite;
-          }
-          .pulse-ring {
-            animation: pulse-ring 3s ease-in-out infinite;
-          }
-        `}} />
-
-        {/* Dynamic Animated Timelapse Atmospheric Background (matching Login View) */}
-        <FeralGradientBackground timelapse timelapseSpeed={0.16} />
-
-        {/* Glassmorphic Executive Card */}
-        <div className="relative z-10 flex flex-col items-center max-w-sm text-center px-10 py-8 rounded-[36px] border backdrop-blur-2xl bg-white/40 dark:bg-slate-950/40 border-white/50 dark:border-white/10 shadow-2xl shadow-indigo-950/20 transition-all duration-700 animate-in fade-in zoom-in-95">
-          {/* Organic Node Database Construction Animation */}
-          <div className="relative mb-3 flex items-center justify-center">
-            <OrganicNodeDatabaseLoader size={155} />
-          </div>
-          
-          <h2 className="text-title font-heading font-bold text-slate-900 dark:text-white drop-shadow-sm">
-            {systemName}
-          </h2>
-          
-          <div className="flex items-center gap-2 mt-3.5 px-4 py-1.5 rounded-full bg-white/50 dark:bg-slate-900/50 border border-white/60 dark:border-white/10 backdrop-blur-md shadow-sm">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shadow-sm shadow-emerald-500/50"></span>
-            <p className="type-overline text-slate-800 dark:text-slate-200">
-              {t("Syncing database connection...", "Pripájam sa k databáze...", "Kapcsolódás az adatbázishoz...")}
-            </p>
-          </div>
-        </div>
-      </div>
+      <AppLoadingScreen
+        systemName={systemName}
+        label={t("Syncing database connection...", "Pripájam sa k databáze...", "Kapcsolódás az adatbázishoz...")}
+      />
     );
   }
 

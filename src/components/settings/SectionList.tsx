@@ -136,7 +136,9 @@ export const SectionTabs: React.FC<{
                   }}
                   className={cn(
                     "inline-flex min-h-10 items-center rounded-md px-4 text-ui no-underline transition-colors",
-                    current ? "bg-entity-soft font-bold text-entity-text" : "font-semibold text-gray-600 hover:bg-gray-100 hover:text-gray-900",
+                    current
+                      ? "bg-entity-soft font-bold text-entity-text ring-1 ring-inset ring-entity-border"
+                      : "font-semibold text-gray-600 hover:bg-gray-100 hover:text-gray-900",
                   )}
                 >
                   {t(sectionKey(categoryId, id, "title"))}

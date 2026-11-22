@@ -1,0 +1,1 @@
+- **Visible active tab highlight in Settings** (`src/index.css`, `src/components/settings/SectionList.tsx`): added `--color-entity-soft` to `@theme inline` so `bg-entity-soft` renders across Settings tabs and controls, and added a crisp inset `ring-entity-border` outline on the active `SectionTabs` item.
