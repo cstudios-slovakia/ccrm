@@ -270,6 +270,9 @@ function mcp_do_create_task(\PDO $pdo, array $user, array $args): array {
         }
     });
     mcp_audit($pdo, $user, 'task_create', "Created task '$title' (ID: $id, deadline: $deadline)");
+    require_once __DIR__ . '/task_activity_lib.php';
+    ccrm_migrate_task_activities($pdo);
+    ccrm_record_task_created($pdo, $id, $user['name']);
     // After the commit, so a rolled-back create never mails anyone.
     require_once __DIR__ . '/task_reminders.php';
     ccrm_notify_new_task_assignees($pdo, $id, $user['name']);
@@ -298,10 +301,14 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
     // only touch their own, created and assigned tasks (judged on the stored row,
     // like sync.php's visibleTaskIds check).
     [$scopeSql, $scopeParams] = mcp_task_scope($user);
-    $cur = $pdo->prepare("SELECT status, completed_at, requires_conclusion, conclusion FROM tasks WHERE id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
+    $cur = $pdo->prepare("SELECT status, priority, deadline, archived, completed_at, requires_conclusion, conclusion FROM tasks WHERE id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
     $cur->execute(array_merge([$id], $scopeParams));
     $row = $cur->fetch(\PDO::FETCH_ASSOC);
     if (!$row) throw new \Exception("Task not found with ID: {$id}");
+
+    $assStmtBefore = $pdo->prepare("SELECT user_name FROM task_assignees WHERE task_id = ?");
+    $assStmtBefore->execute([$id]);
+    $oldAssMcp = $assStmtBefore->fetchAll(\PDO::FETCH_COLUMN) ?: [];
 
     $sets = []; $params = []; $newOwner = null; $becameDone = false;
     $add = function (string $col, $val) use (&$sets, &$params) { $sets[] = "`{$col}` = ?"; $params[] = $val; };
@@ -327,7 +334,15 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
             $add('completed_by', $user['name']); $add('completed_at', date('Y-m-d H:i'));
             $becameDone = true;
         }
-        if (!$isDone && $wasDone) { $add('completed_by', null); $add('completed_at', null); }
+        if (!$isDone && $wasDone) {
+            $add('completed_by', null); $add('completed_at', null);
+            $sets[] = "`reopened_count` = `reopened_count` + 1";
+        }
+        require_once __DIR__ . '/project_breakdown_migrations.php';
+        $taskStates = (array)mcp_config_json($pdo, 'TASK_STATES', []);
+        if ($isDone || !ccrm_task_is_initial_state($status, $taskStates)) {
+            $sets[] = "`first_started_at` = COALESCE(`first_started_at`, NOW())";
+        }
     }
     if (array_key_exists('requires_conclusion', $args)) $add('requires_conclusion', !empty($args['requires_conclusion']) ? 1 : 0);
     if (array_key_exists('is_locking', $args)) $add('is_locking', !empty($args['is_locking']) ? 1 : 0);
@@ -360,7 +375,9 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
     $hasTags = !empty($args['tags']) && is_array($args['tags']);
     if (!$sets && $ticketId === null && !$hasTags) return ['success' => true, 'message' => 'No fields updated'];
     $params[] = $id;
-    mcp_tx($pdo, function () use ($pdo, $sets, $params, $id, $newOwner, $becameDone, $ticketId, $args, $hasTags) {
+    require_once __DIR__ . '/task_activity_lib.php';
+    ccrm_migrate_task_activities($pdo);
+    mcp_tx($pdo, function () use ($pdo, $sets, $params, $id, $newOwner, $becameDone, $ticketId, $args, $hasTags, $row, $oldAssMcp, $user) {
         if ($sets) {
             $pdo->prepare("UPDATE tasks SET " . implode(', ', $sets) . " WHERE id = ? AND " . ccrm_sql_real_tasks())->execute($params);
         }
@@ -378,6 +395,25 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
             $pdo->prepare("INSERT IGNORE INTO ticket_task_links (ticket_id, task_id, sync_mode) VALUES (?, ?, 'auto_resolve')")
                 ->execute([$ticketId, $id]);
         }
+        $afterAssMcp = $oldAssMcp;
+        if ($newOwner !== null && !in_array($newOwner, $afterAssMcp, true)) {
+            $afterAssMcp[] = $newOwner;
+        }
+        ccrm_record_task_changes($pdo, $id, [
+            'status' => $row['status'] ?? null,
+            'priority' => $row['priority'] ?? null,
+            'deadline' => $row['deadline'] ?? null,
+            'archived' => !empty($row['archived']),
+            'conclusion' => $row['conclusion'] ?? null,
+            'assignees' => $oldAssMcp,
+        ], [
+            'status' => array_key_exists('status', $args) ? (string)$args['status'] : ($row['status'] ?? null),
+            'priority' => array_key_exists('priority', $args) ? (string)$args['priority'] : ($row['priority'] ?? null),
+            'deadline' => array_key_exists('deadline', $args) ? (string)$args['deadline'] : ($row['deadline'] ?? null),
+            'archived' => array_key_exists('archived', $args) ? (bool)filter_var($args['archived'], FILTER_VALIDATE_BOOLEAN) : !empty($row['archived']),
+            'conclusion' => array_key_exists('conclusion', $args) ? trim((string)$args['conclusion']) : ($row['conclusion'] ?? null),
+            'assignees' => $afterAssMcp,
+        ], $user['name']);
         if (function_exists('mcp_crm_plus_bump_locking_projects')) mcp_crm_plus_bump_locking_projects($pdo, $id);
         if ($becameDone && function_exists('mcp_crm_plus_resolve_linked_tickets')) mcp_crm_plus_resolve_linked_tickets($pdo, $id);
     });
@@ -396,15 +432,24 @@ function mcp_do_complete_task(\PDO $pdo, array $user, array $args): array {
     // Judged on the stored row, like sync.php: without tasks.view_all only the
     // caller's own, created and assigned tasks may be completed.
     [$scopeSql, $scopeParams] = mcp_task_scope($user);
-    $chk = $pdo->prepare("SELECT requires_conclusion, conclusion FROM tasks WHERE id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
+    $chk = $pdo->prepare("SELECT status, requires_conclusion, conclusion FROM tasks WHERE id = ? AND " . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
     $chk->execute(array_merge([$id], $scopeParams));
     $row = $chk->fetch(\PDO::FETCH_ASSOC);
     if (!$row) throw new \Exception("Task not found with ID: {$id}");
     // `note` is the older name of the same field.
     $conclusion = trim((string)($args['conclusion'] ?? $args['note'] ?? ''));
     mcp_require_conclusion_to_finish($row, $conclusion);
+    require_once __DIR__ . '/task_activity_lib.php';
+    ccrm_migrate_task_activities($pdo);
     $stmt = $pdo->prepare("UPDATE tasks SET status = ?, completed_by = ?, completed_at = ?, conclusion = COALESCE(?, conclusion) WHERE id = ? AND " . ccrm_sql_real_tasks());
     $stmt->execute([$done, $user['name'], date('Y-m-d H:i'), $conclusion === '' ? null : mb_substr($conclusion, 0, 5000), $id]);
+    ccrm_record_task_changes($pdo, $id, [
+        'status' => $row['status'] ?? null,
+        'conclusion' => $row['conclusion'] ?? null,
+    ], [
+        'status' => $done,
+        'conclusion' => $conclusion !== '' ? mb_substr($conclusion, 0, 5000) : ($row['conclusion'] ?? null),
+    ], $user['name']);
     if (function_exists('mcp_crm_plus_bump_locking_projects')) mcp_crm_plus_bump_locking_projects($pdo, $id);
     if (function_exists('mcp_crm_plus_resolve_linked_tickets')) mcp_crm_plus_resolve_linked_tickets($pdo, $id);
     mcp_audit($pdo, $user, 'task_complete', "Marked task $id as done");

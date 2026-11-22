@@ -5,8 +5,10 @@ import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { createPortal } from "react-dom";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, Settings, Search, Users, User, Edit3, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, ListTree, Move, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal, Archive, ArchiveRestore, CheckSquare, Square, MinusSquare, X, PanelRightOpen } from "lucide-react";
-import type { Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory, Ticket, TicketStatusDefinition, TicketSettings, SupportContract, CompanyBillingSettings } from "../types";
+import { Plus, Trash2, Settings, Search, Users, User, Edit3, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, ListTree, FolderTree, Move, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal, Archive, ArchiveRestore, CheckSquare, Square, MinusSquare, X, PanelRightOpen } from "lucide-react";
+import type { Employee, EmployeeSalary, Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory, Ticket, TicketStatusDefinition, TicketSettings, SupportContract, CompanyBillingSettings } from "../types";
+import type { EmployeeRights } from "../utils/employeeRights";
+import { useProjectsBreakdownState } from "./projects/useProjectsBreakdownState";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import type { Task } from "../types";
 import type { TaskAccess } from "../utils/taskSelectors";
@@ -174,6 +176,9 @@ interface ProjectsViewProps {
   ticketSettings?: TicketSettings;
   supportContracts?: SupportContract[];
   setSupportContracts?: React.Dispatch<React.SetStateAction<SupportContract[]>>;
+  employees?: Employee[];
+  employeeSalaries?: EmployeeSalary[];
+  employeeRights?: EmployeeRights;
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
@@ -213,6 +218,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   ticketSettings,
   supportContracts,
   setSupportContracts,
+  employees,
+  employeeSalaries,
+  employeeRights,
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const projectStatuses = useProjectStatuses();
@@ -418,6 +426,28 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       return matchesSearch && matchesStatus && matchesType && matchesDivision && matchesManager && matchesOverdue && matchesRating && matchesArchive;
     });
   }, [projects, projectTypes, leads, searchQuery, resolvedVisibleStatuses, selectedTypeFilter, selectedDivisionFilter, selectedManagerFilter, selectedRatingFilter, selectedArchiveFilter, overdueOnly, overdueIds]);
+
+  const breakdownState = useProjectsBreakdownState({
+    enabled: viewMode === "breakdown",
+    t,
+    userLanguage,
+    defaultCurrency: currencyCode || "EUR",
+    projects: filteredProjects,
+    projectTypes,
+    projectStatuses,
+    leads,
+    financialRecords,
+    tasks: tasks || [],
+    taskStates: taskStates || ["New", "In progress", "Blocked", "Done"],
+    tickets: tickets || [],
+    ticketStatuses,
+    supportContracts: supportContracts || [],
+    users,
+    employees,
+    employeeSalaries,
+    employeeRights,
+    canSeeFinance: financeAccess.view,
+  });
 
   // Close bulk menu on outside click, and dismiss bulk selection on Escape
   useEffect(() => {
@@ -1987,6 +2017,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
               {/* Mobile Only: project list view menu & view switcher inline with search */}
               <div className="flex ws-sm:hidden items-center gap-1.5 shrink-0">
+                {viewMode === "breakdown" ? breakdownState.renderMenu() : (
                 <ProjectListViewMenu
                   t={t}
                   sort={effectiveSort}
@@ -2009,12 +2040,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     if (canEditColumns) saveColumns(null);
                   }}
                 />
+                )}
 
                 <div className="flex items-center gap-0.5 p-1 rounded-md bg-gray-100 border border-gray-200 select-none shrink-0">
                   {([
                     { mode: "structure" as const, Icon: ListTree, label: t("Structure view", "Zobrazenie štruktúry", "Struktúra nézet") },
                     { mode: "list" as const, Icon: Rows3, label: t("List view", "Zobrazenie zoznamu", "Lista nézet") },
                     { mode: "grid" as const, Icon: LayoutGrid, label: t("Grid view", "Zobrazenie kariet", "Kártyás nézet") },
+                    { mode: "breakdown" as const, Icon: FolderTree, label: t("Breakdown view", "Rozpad projektov", "Bontott nézet") },
                   ]).map(({ mode, Icon, label }) => (
                     <button
                       key={mode}
@@ -2131,6 +2164,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
             {/* Order and columns — Desktop only (sm:flex) */}
             <div className="hidden ws-sm:flex ws-sm:ml-auto shrink-0 items-center gap-2">
+              {viewMode === "breakdown" ? breakdownState.renderMenu() : (
               <ProjectListViewMenu
                 t={t}
                 sort={effectiveSort}
@@ -2154,13 +2188,15 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   if (canEditColumns) saveColumns(null);
                 }}
               />
+              )}
 
-              {/* Structure, table or cards. */}
+              {/* Structure, table, cards or breakdown. */}
               <div className="flex items-center gap-1 p-1 rounded-md bg-gray-100 border border-gray-200 select-none shrink-0">
                 {([
                   { mode: "structure" as const, Icon: ListTree, label: t("Structure view", "Zobrazenie štruktúry", "Struktúra nézet") },
                   { mode: "list" as const, Icon: Rows3, label: t("List view", "Zobrazenie zoznamu", "Lista nézet") },
                   { mode: "grid" as const, Icon: LayoutGrid, label: t("Grid view", "Zobrazenie kariet", "Kártyás nézet") },
+                  { mode: "breakdown" as const, Icon: FolderTree, label: t("Breakdown view", "Rozpad projektov", "Bontott nézet") },
                 ]).map(({ mode, Icon, label }) => (
                   <button
                     key={mode}
@@ -2212,6 +2248,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 <p className="text-body font-semibold">{t("No projects found matching filters.", "Nenašli sa žiadne projekty.", "Nem találhatóak projektek.")}</p>
               )}
             </div>
+          ) : viewMode === "breakdown" ? (
+            breakdownState.renderView(
+              (id) => {
+                const p = projects.find((pr) => pr.id === id);
+                if (p) handleOpenProject(p);
+              },
+              canEdit ? setQuickEditProjectId : undefined,
+            )
           ) : viewMode === "list" || isStructure ? (
             <div ref={resultsRef} className="overflow-clip rounded-lg border border-gray-200 bg-white shadow-xs mt-6">
               <div ref={tableWrapRef} className="table-page-wrap scrollbar-thin">

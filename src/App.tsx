@@ -4041,6 +4041,9 @@ ${log.payload || ''}
             ticketSettings={ticketSettings}
             supportContracts={supportContracts}
             setSupportContracts={updateSupportContractsAndSync}
+            employees={employeeRights.view ? employees : undefined}
+            employeeSalaries={employeeRights.salaries ? employeeSalaries : undefined}
+            employeeRights={employeeRights}
           />
         );
       }

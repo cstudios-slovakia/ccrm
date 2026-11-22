@@ -47,7 +47,12 @@ export interface UserPrefs {
    * what the screen opens on, so there is one answer to "which view do I get?"
    * rather than a stored default quietly disagreeing with the toggle.
    */
-  projectsViewMode: "structure" | "grid" | "list";
+  projectsViewMode: "structure" | "grid" | "list" | "breakdown";
+  /**
+   * Projects breakdown mode: column visibility and order, plus sort state.
+   */
+  projectsBreakdownColumns: { key: string; visible: boolean }[] | null;
+  projectsBreakdownSort: { key: string; direction: "asc" | "desc" } | null;
   /**
    * Projects screen: which column the list is ordered by, or null for the
    * stored order. Loosely typed like themeMode; ProjectsView validates it with
@@ -267,6 +272,8 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   errorSidebarEnabled: false,
   leadsViewMode: "list",
   projectsViewMode: "list",
+  projectsBreakdownColumns: null,
+  projectsBreakdownSort: null,
   projectsSort: null,
   projectsListColumns: null,
   employeesViewMode: "table",

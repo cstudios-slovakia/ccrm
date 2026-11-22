@@ -270,6 +270,9 @@ function mcp_do_create_task(\PDO $pdo, array $user, array $args): array {
         }
     });
     mcp_audit($pdo, $user, 'task_create', "Created task '$title' (ID: $id, deadline: $deadline)");
+    require_once __DIR__ . '/task_activity_lib.php';
+    ccrm_migrate_task_activities($pdo);
+    ccrm_record_task_created($pdo, $id, $user['name']);
     // After the commit, so a rolled-back create never mails anyone.
     require_once __DIR__ . '/task_reminders.php';
     ccrm_notify_new_task_assignees($pdo, $id, $user['name']);
@@ -327,7 +330,15 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
             $add('completed_by', $user['name']); $add('completed_at', date('Y-m-d H:i'));
             $becameDone = true;
         }
-        if (!$isDone && $wasDone) { $add('completed_by', null); $add('completed_at', null); }
+        if (!$isDone && $wasDone) {
+            $add('completed_by', null); $add('completed_at', null);
+            $sets[] = "`reopened_count` = `reopened_count` + 1";
+        }
+        require_once __DIR__ . '/project_breakdown_migrations.php';
+        $taskStates = (array)mcp_config_json($pdo, 'TASK_STATES', []);
+        if ($isDone || !ccrm_task_is_initial_state($status, $taskStates)) {
+            $sets[] = "`first_started_at` = COALESCE(`first_started_at`, NOW())";
+        }
     }
     if (array_key_exists('requires_conclusion', $args)) $add('requires_conclusion', !empty($args['requires_conclusion']) ? 1 : 0);
     if (array_key_exists('is_locking', $args)) $add('is_locking', !empty($args['is_locking']) ? 1 : 0);

@@ -428,7 +428,8 @@ function ccrm_poll_ticket_imap(PDO $pdo, bool $force = false): array {
 
             // Reopen ticket if waiting or resolved
             $newStatus = in_array($existingTicket['status'], ['waiting', 'waiting_client', 'resolved'], true) ? 'open' : $existingTicket['status'];
-            $pdo->prepare("UPDATE `tickets` SET `status` = ?, `updated_at` = NOW() WHERE `id` = ?")->execute([$newStatus, $existingTicket['id']]);
+            $reopenInc = in_array($existingTicket['status'], ['resolved', 'closed'], true) ? 1 : 0;
+            $pdo->prepare("UPDATE `tickets` SET `status` = ?, `reopened_count` = `reopened_count` + ?, `updated_at` = NOW() WHERE `id` = ?")->execute([$newStatus, $reopenInc, $existingTicket['id']]);
             @imap_setflag_full($inbox, (string)$uid, "\\Seen", ST_UID);
             $repliedCount++;
             continue;

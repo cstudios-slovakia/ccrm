@@ -158,6 +158,8 @@ General system and operational tasks.
 * `deadline_time` VARCHAR(5) (HH:MM)
 * `original_deadline` DATE [NULLable] (the deadline the task was first given; set on creation, or pinned to the previous date at the first postponement of an older row; written only by the sync upsert, never by a client)
 * `deadline_moves` INT NOT NULL DEFAULT 0 (how many times the deadline was pushed to a later date; incremented by the sync upsert)
+* `first_started_at` DATETIME [NULLable] (first time the task moved out of its initial unstarted status or was completed; server-maintained)
+* `reopened_count` INT NOT NULL DEFAULT 0 (how many times the task was moved out of a done state back to an open status; server-maintained)
 * `owner` VARCHAR(100) (primary assignee; empty when unassigned)
 * `created_by` VARCHAR(100) (immutable creator name; nullable for legacy rows)
 * `related_lead_id` VARCHAR(50)
@@ -171,8 +173,24 @@ General system and operational tasks.
 * `recurrence_json` TEXT [NULLable] (Template only: `{mode, frequency, interval, config, weekendRule, leadDays, startsOn, endsOn, paused, lastOccurrence, lastOccurrenceId}`)
 * `recurring_source_id` VARCHAR(50) [NULLable] (Occurrence only: template id; indexed as `idx_task_recurring_source`)
 * `recurring_occurrence_date` DATE [NULLable] (Occurrence only: the unshifted scheduled date; `(recurring_source_id, recurring_occurrence_date)` unique)
+* `comment_count` INT UNSIGNED NOT NULL DEFAULT 0 (denormalized active comment count maintained by `api/task_activity.php` so list/board queries need no JOIN; does not bump `updated_at`)
+* `reactions_json` VARCHAR(1000) [NULLable] (map `{ "<emoji>": ["User A", ...] }` for task-level reactions maintained by `api/task_activity.php`; does not bump `updated_at`)
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP(3) (indexed as `idx_task_updated`; the machine API's feed pages by it)
+
+### `task_activities`
+ClickUp-style chronological stream of chat messages (with optional WebP/image attachments) and structured field/state-change audit entries per task (`api/task_activity.php`). Excluded from `sync.php` GET and `CHECKSUM TABLE` to keep 5-second sync zero-bloat.
+* `id` BIGINT UNSIGNED [PK, AUTO_INCREMENT]
+* `task_id` VARCHAR(50) (references `tasks.id`; indexed with `(task_id, id)` and `(task_id, updated_at)`)
+* `kind` ENUM('comment', 'state_change')
+* `event_type` VARCHAR(32) [NULLable] (`created`, `status`, `priority`, `deadline`, `assignees`, `archived`, `conclusion`, or `NULL` for chat comments)
+* `author_name` VARCHAR(100)
+* `body` TEXT [NULLable] (plain/mention text for comments)
+* `meta_json` TEXT [NULLable] (compact structured diff for state changes, or `{ "images": [{ "url", "name", "w", "h", "size" }], "editedAt"? }` for comments)
+* `reactions_json` VARCHAR(1000) [NULLable] (per-message emoji reactions map `{ "<emoji>": ["User A", ...] }`)
+* `deleted_at` DATETIME [NULLable] (soft delete tombstone for delta polling removal)
+* `created_at` DATETIME(3)
+* `updated_at` DATETIME(3)
 
 ### `task_assignees`
 Junction table mapping users to tasks.
@@ -800,6 +818,7 @@ Support tickets, bug reports, and client inquiries attached to projects and clie
 * `sla_paused_seconds` INT
 * `resolved_at` DATETIME [NULLable]
 * `closed_at` DATETIME [NULLable]
+* `reopened_count` INT NOT NULL DEFAULT 0 (how many times the ticket was reopened from resolved/closed; server-maintained)
 * `satisfaction_score` TINYINT [NULLable]
 * `satisfaction_comment` TEXT [NULLable]
 * `archived` TINYINT(1)

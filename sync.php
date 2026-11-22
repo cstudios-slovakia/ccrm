@@ -1015,6 +1015,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 // Deadline history: kept by the server on every save (see the tasks upsert), read-only for clients.
                 'originalDeadline' => $row['original_deadline'] ?? null,
                 'deadlineMoves' => (int)($row['deadline_moves'] ?? 0),
+                'firstStartedAt' => $row['first_started_at'] ?? null,
+                'reopenedCount' => (int)($row['reopened_count'] ?? 0),
                 // Pushed in over the machine API (server-only columns, never written back by a client save).
                 'externalSource' => $row['external_source'] ?? null,
                 'externalUrl' => $row['external_url'] ?? null,
@@ -2352,6 +2354,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'loggedMinutes' => $loggedMins,
                     'resolvedAt' => $row['resolved_at'] ?? null,
                     'closedAt' => $row['closed_at'] ?? null,
+                    'reopenedCount' => (int)($row['reopened_count'] ?? 0),
                     'satisfactionScore' => isset($row['satisfaction_score']) && $row['satisfaction_score'] !== null ? (int)$row['satisfaction_score'] : null,
                     'satisfactionComment' => $row['satisfaction_comment'] ?? null,
                     'isArchived' => $isArch,
@@ -3074,6 +3077,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!ccrm_column_exists($pdo, 'tasks', 'deadline_moves')) {
                 $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `deadline_moves` INT NOT NULL DEFAULT 0 COMMENT 'How many times the deadline was pushed to a later date'");
             }
+            require_once __DIR__ . '/api/task_activity_lib.php';
+            ccrm_migrate_task_activities($pdo);
+        }
+        if ((isset($payload['tasks']) && is_array($payload['tasks'])) || (isset($payload['tickets']) && is_array($payload['tickets']))) {
+            require_once __DIR__ . '/api/project_breakdown_migrations.php';
+            ccrm_heal_project_breakdown_columns($pdo);
         }
         if (isset($payload['leads']) && is_array($payload['leads']) && !$ccrm_skip_writes('leads', 'leads')) {
             if (!ccrm_column_exists($pdo, 'timeline_events', 'external_url')) {
@@ -5021,7 +5030,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $oldRelatedTicketId = null;
                 $oldRelatedAgencyWorkerId = null;
                 if (!$isNewTask) {
-                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner`, `requires_conclusion`, `related_ticket_id`, `related_agency_worker_id` FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " LIMIT 1");
+                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner`, `requires_conclusion`, `related_ticket_id`, `related_agency_worker_id`, `completed_at` FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " LIMIT 1");
                     $oldStatusStmt->execute([$taskId]);
                     $oldRow = $oldStatusStmt->fetch(PDO::FETCH_ASSOC);
                     if ($oldRow) {
@@ -5097,6 +5106,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $isClosedNow = $conclusionIsDone($t['status'] ?? '') || !empty($t['completedAt']);
                 $wasClosedBefore = $oldTaskStatus !== null && ($conclusionIsDone($oldTaskStatus) || !empty($oldRow['completed_at']));
+                require_once __DIR__ . '/api/project_breakdown_migrations.php';
+                ccrm_stamp_task_breakdown_transition($pdo, (string)$taskId, (string)($t['status'] ?? ''), $oldTaskStatus, $isClosedNow, $wasClosedBefore, $conclusionTaskStates);
                 if ($isClosedNow && !$wasClosedBefore) {
                     $srcStmt = $pdo->prepare("SELECT `recurring_source_id` FROM `tasks` WHERE `id` = ?"); /* recurring-template: check occurrence source */
                     $srcStmt->execute([$taskId]);
@@ -7134,10 +7145,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 if ($pdo->query("SHOW TABLES LIKE 'tickets'")->rowCount() > 0) {
                     $existingTicketWorkers = [];
-                    $tckWStmt = $pdo->query("SELECT `id`, `agency_worker_id` FROM `tickets`");
+                    $existingTicketStatuses = [];
+                    $tckWStmt = $pdo->query("SELECT `id`, `agency_worker_id`, `status` FROM `tickets`");
                     while ($tw = $tckWStmt->fetch(PDO::FETCH_ASSOC)) {
                         $existingTicketWorkers[(string)$tw['id']] = !empty($tw['agency_worker_id']) ? (string)$tw['agency_worker_id'] : null;
+                        $existingTicketStatuses[(string)$tw['id']] = (string)($tw['status'] ?? 'new');
                     }
+                    require_once __DIR__ . '/api/project_breakdown_migrations.php';
+                    $terminalTicketKeys = ccrm_ticket_terminal_keys($pdo);
                     $existingTicketIds = array_keys($existingTicketWorkers);
                     $processedTicketIds = [];
 
@@ -7275,6 +7290,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $updatedAt,
                         ]);
                         $processedTicketIds[] = $tckId;
+                        $nextTicketStatus = (string)($tck['status'] ?? 'new');
+                        $prevTicketStatus = $existingTicketStatuses[$tckId] ?? null;
+                        if ($prevTicketStatus !== null && in_array($prevTicketStatus, $terminalTicketKeys, true) && !in_array($nextTicketStatus, $terminalTicketKeys, true)) {
+                            $pdo->prepare("UPDATE `tickets` SET `reopened_count` = `reopened_count` + 1 WHERE `id` = ?")->execute([$tckId]);
+                        }
 
                         if (isset($tck['messages']) && is_array($tck['messages'])) {
                             $keepMsgIds = [];

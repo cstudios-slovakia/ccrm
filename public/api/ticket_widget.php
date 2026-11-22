@@ -448,7 +448,8 @@ if ($action === 'followup') {
     ]);
 
     $newStatus = in_array($ticketRow['status'], ['waiting', 'waiting_client', 'resolved'], true) ? 'open' : $ticketRow['status'];
-    $pdo->prepare("UPDATE `tickets` SET `status` = ?, `updated_at` = NOW() WHERE `id` = ?")->execute([$newStatus, $ticketId]);
+    $reopenInc = in_array($ticketRow['status'], ['resolved', 'closed'], true) ? 1 : 0;
+    $pdo->prepare("UPDATE `tickets` SET `status` = ?, `reopened_count` = `reopened_count` + ?, `updated_at` = NOW() WHERE `id` = ?")->execute([$newStatus, $reopenInc, $ticketId]);
 
     echo json_encode([
         'success' => true,

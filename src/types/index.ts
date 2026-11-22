@@ -367,6 +367,10 @@ export interface Task {
   originalDeadline?: string | null;
   /** How many times the deadline was pushed to a later date. Kept by the server; read-only. */
   deadlineMoves?: number;
+  /** Server-maintained timestamp of when the task first moved out of its initial unstarted status or completed. */
+  firstStartedAt?: string | null;
+  /** Server-maintained count of how many times this task was reopened from a done status. */
+  reopenedCount?: number;
   /** Integration that pushed the task in over the machine API ("waai"); read-only, set by the server. */
   externalSource?: string | null;
   /** Path of the source chat in that system (WhatsApp: `/c/<id>`); read-only. */
@@ -1778,6 +1782,7 @@ export interface Ticket {
   updatedAt?: string;
   resolvedAt?: string | null;
   closedAt?: string | null;
+  reopenedCount?: number;
   messages?: TicketMessage[];
   taskLinks?: TicketTaskLink[];
   /**

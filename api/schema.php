@@ -15,6 +15,7 @@
 require_once __DIR__ . '/employee_name.php';
 require_once __DIR__ . '/contact_name.php';
 require_once __DIR__ . '/payroll_lib.php';
+require_once __DIR__ . '/task_activity_lib.php';
 
 if (!function_exists('ccrm_schema_statements')) {
 
@@ -179,6 +180,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `recurring_occurrence_date` DATE NULL COMMENT 'Occurrence only: the unshifted scheduled date',
               `original_deadline` DATE NULL COMMENT 'Deadline the task was first given; set when it is created or first postponed',
               `deadline_moves` INT NOT NULL DEFAULT 0 COMMENT 'How many times the deadline was pushed to a later date',
+              `first_started_at` DATETIME NULL COMMENT 'First time task left initial unstarted state or was completed',
+              `reopened_count` INT NOT NULL DEFAULT 0 COMMENT 'How many times task was reopened from a done state',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
@@ -1258,6 +1261,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `sla_paused_seconds` INT NOT NULL DEFAULT 0,
               `resolved_at` DATETIME NULL,
               `closed_at` DATETIME NULL,
+              `reopened_count` INT NOT NULL DEFAULT 0 COMMENT 'How many times ticket was reopened from resolved/closed',
               `satisfaction_score` TINYINT NULL COMMENT '1-5 CSAT score',
               `satisfaction_comment` TEXT NULL,
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
@@ -2401,6 +2405,9 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_weekly_plan($pdo);
         ccrm_migrate_custom_calendars($pdo);
         ccrm_migrate_agency($pdo);
+        require_once __DIR__ . '/project_breakdown_migrations.php';
+        ccrm_heal_project_breakdown_columns($pdo);
+        ccrm_backfill_project_breakdown_metrics($pdo);
         if (ccrm_table_exists($pdo, 'leads') && !ccrm_column_exists($pdo, 'leads', 'custom_fields_json')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `custom_fields_json` LONGTEXT NULL COMMENT 'JSON map of custom lead attribute values keyed by attribute id' AFTER `ticket_allowed_emails`");
         }
@@ -3689,7 +3696,7 @@ if (!function_exists('ccrm_schema_statements')) {
      */
     function ccrm_schema_fingerprint(): string {
         $parts = [];
-        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php'] as $file) {
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/project_breakdown_migrations.php'] as $file) {
             $parts[] = is_file($file) ? md5_file($file) : '-';
         }
         return md5(implode('|', $parts));
