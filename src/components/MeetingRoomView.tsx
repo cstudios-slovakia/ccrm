@@ -31,24 +31,7 @@ import { withSpeakerName } from "../utils/focusPanel";
 import { entityAccentStyle } from "../utils/entityAccent";
 import { useUserPref } from "../utils/userPrefs";
 import { openAiSettings } from "../utils/aiConfig";
-
-const parseNotesToBlocks = (notes?: string): EditorBlock[] => {
-  const safe = typeof notes === "string" ? notes : "";
-  if (safe.trim().startsWith("[")) {
-    try {
-      return JSON.parse(safe);
-    } catch (e) {}
-  }
-  return safe.split("\n").map((line, idx) => ({
-    id: `b-init-${idx}`,
-    type: "paragraph",
-    content: line.trim() || "<br>"
-  }));
-};
-
-const serializeBlocksToPlainText = (blocks: EditorBlock[]): string => {
-  return blocks.map(b => b.content.replace(/<[^>]*>/g, "")).join("\n");
-};
+import { parseNotesToBlocks, serializeBlocksToPlainText, serializeTaskDescription } from "../utils/blockNotes";
 
 export interface MeetingTask {
   id: string;
@@ -2866,7 +2849,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       {activeTaskForEdit && createPortal(
         <div style={entityAccentStyle("tasks") as React.CSSProperties}>
           <div className={`fixed inset-0 z-[100000] bg-gray-950/45 transition-opacity ${isClosingTaskDrawer ? "animate-fade-out" : "animate-fade-in"}`} onClick={closeTaskDrawer} />
-          <div className={`fixed top-0 right-0 bottom-0 z-[100001] w-full max-w-md bg-white shadow-xl flex flex-col border-l border-gray-200 ${isClosingTaskDrawer ? "animate-slide-out-right" : "animate-slide-in-right"}`}>
+          <div className={`fixed top-0 right-0 bottom-0 z-[100001] w-full max-w-xl bg-white shadow-xl flex flex-col border-l border-gray-200 ${isClosingTaskDrawer ? "animate-slide-out-right" : "animate-slide-in-right"}`}>
             {/* Header */}
             <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50">
               <div className="space-y-1 text-left">
@@ -2900,12 +2883,25 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               {/* Description */}
               <div className="space-y-1.5">
                 <label className="type-overline text-gray-500">{t("Description", "Popis", "Leírás")}</label>
-                <textarea
-                  rows={4}
-                  value={activeTaskForEdit.description}
-                  onChange={(e) => setActiveTaskForEdit(prev => prev ? { ...prev, description: e.target.value } : null)}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-ui font-semibold text-gray-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all leading-relaxed"
-                />
+                <div className="flex flex-col min-h-32 max-h-72 overflow-y-auto px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-md focus-within:border-indigo-500 focus-within:bg-white transition-all cursor-text">
+                  <BlockEditor
+                    key={activeTaskForEdit.id}
+                    compact
+                    fillHeight
+                    initialBlocks={parseNotesToBlocks(activeTaskForEdit.description)}
+                    onChange={(blocks) =>
+                      setActiveTaskForEdit((prev) =>
+                        prev ? { ...prev, description: serializeTaskDescription(blocks) } : null,
+                      )
+                    }
+                    systemLanguage={systemLanguage}
+                    placeholder={t(
+                      "Write task description... (type '/' for blocks)",
+                      "Napíšte popis úlohy... (napíšte '/' pre bloky)",
+                      "Írja be a feladat leírását... ('/' a blokkokhoz)",
+                    )}
+                  />
+                </div>
               </div>
 
               {/* Assigned User */}

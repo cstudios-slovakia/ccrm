@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { createPortal } from "react-dom";
 import { AlignLeft } from "lucide-react";
 import { TaskPillText, type MentionEntity } from "./TaskPillText";
+import { BlockNotesPreview } from "./BlockNotesPreview";
+import { isSerializedBlockArray, parseNotesToBlocks, serializeBlocksToPlainText } from "../utils/blockNotes";
 import { viewSizeScale } from "../utils/viewSize";
 
 /** Above the task drawer (z-[100000]) and the dropdown panels (100001). */
@@ -26,7 +28,13 @@ interface Props {
  * whole text, so a list row can stay one line tall and still give the description away.
  */
 export const TaskDescriptionMark: React.FC<Props> = ({ description, label, onTagClick, knownEntities, className = "" }) => {
-  const text = (description ?? "").trim();
+  const raw = (description ?? "").trim();
+  const isRich = isSerializedBlockArray(raw);
+  const blocks = isRich ? parseNotesToBlocks(raw) : null;
+  const text = isRich && blocks ? serializeBlocksToPlainText(blocks) : raw;
+  // Preserve structural-only blocks (e.g. an empty checklist or banner) even if plain text is blank.
+  const hasRichStructure = Boolean(blocks && blocks.some((b) => b.type !== "paragraph"));
+  const hasContent = Boolean(text || hasRichStructure);
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; width: number; maxHeight: number } | null>(null);
   const markRef = useRef<HTMLSpanElement>(null);
@@ -82,7 +90,7 @@ export const TaskDescriptionMark: React.FC<Props> = ({ description, label, onTag
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
-  if (!text) return null;
+  if (!hasContent) return null;
 
   return (
     <>
@@ -125,9 +133,15 @@ export const TaskDescriptionMark: React.FC<Props> = ({ description, label, onTag
             onMouseLeave={hideSoon}
             onClick={(e) => e.stopPropagation()}
             style={{ position: "fixed", left: pos.left, top: pos.top, bottom: pos.bottom, width: pos.width, maxHeight: pos.maxHeight, zIndex: POPOVER_Z }}
-            className="overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 text-ui font-medium text-slate-700 shadow-xl ring-4 ring-slate-900/[0.03] whitespace-pre-wrap break-words"
+            className="overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 text-ui font-medium text-slate-700 shadow-xl ring-4 ring-slate-900/[0.03] break-words"
           >
-            <TaskPillText text={text} onTagClick={onTagClick} knownEntities={knownEntities} />
+            {isRich && blocks ? (
+              <BlockNotesPreview blocks={blocks} />
+            ) : (
+              <div className="whitespace-pre-wrap">
+                <TaskPillText text={text} onTagClick={onTagClick} knownEntities={knownEntities} />
+              </div>
+            )}
           </div>,
           document.body,
         )}

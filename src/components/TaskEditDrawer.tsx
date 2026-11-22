@@ -37,6 +37,13 @@ import { useTaskSettings } from "../hooks/useTaskSettings";
 import { CONCLUSION_MAX, cleanConclusion, needsConclusionToFinish, canUntickConclusion } from "../utils/taskConclusion";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { extractTagsFromText, type MentionEntity } from "./TaskPillText";
+import { BlockEditor } from "./BlockEditor";
+import {
+    blockNotesToPlainText,
+    parseNotesToBlocks,
+    removeTagFromDescription,
+    serializeTaskDescription,
+} from "../utils/blockNotes";
 import { TaskWhatsAppMarks } from "./WhatsAppChip";
 import { DeadlinePostponedBadge, QuickDeadlineChips, formatDeadlineDate } from "./TaskDeadlineExtras";
 import { clampDeadline, deadlineChange, minDeadlineFor, taskCreatedDate } from "../utils/taskDeadline";
@@ -235,6 +242,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
     const isTemplate = isTemplateProp || Boolean((task as any).recurrence);
     const [draft, setDraft] = useState<Task>(task as Task);
+    const [descVersion, setDescVersion] = useState(0);
     const [templateRecurrence, setTemplateRecurrence] = useState<TaskRecurrence>(() =>
         (task as any).recurrence ? (task as any).recurrence : createDefaultRecurrence((task as Task).deadline)
     );
@@ -342,7 +350,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
 
     const combinedTags = useMemo(() => {
         const fromTitle = extractTagsFromText(draft.title);
-        const fromDesc = extractTagsFromText(draft.description);
+        const fromDesc = extractTagsFromText(blockNotesToPlainText(draft.description));
         const explicit = draft.tags || [];
         return Array.from(new Set([...explicit, ...fromTitle, ...fromDesc]));
     }, [draft.title, draft.description, draft.tags]);
@@ -457,7 +465,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                 role="dialog"
                 aria-modal="true"
                 aria-label={draft.title || t("Task", "Úloha", "Feladat")}
-                className={`relative w-full max-w-md bg-white border-l border-gray-200 shadow-lg h-full flex flex-col overflow-hidden ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
+                className={`relative w-full max-w-xl bg-white border-l border-gray-200 shadow-lg h-full flex flex-col overflow-hidden ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
             >
                 <div className="px-6 pt-6 pb-4 border-b border-gray-200 space-y-2 shrink-0">
                     <div className="flex items-center justify-between">
@@ -591,28 +599,35 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                             />
                         </div>
 
-                        <div className="space-y-1">
-                            <label className="type-overline text-gray-500 flex items-center justify-between">
+                        <div className="space-y-1.5">
+                            <label className="type-overline text-gray-500 flex items-center justify-between gap-2">
                                 <span>{t("Description", "Popis", "Leírás")}</span>
-                                <span className="text-micro font-normal text-entity-text">
-                                    {t("Use # for tags, @ to assign", "Použite # pre tagy, @ pre priradenie", "Használjon #-et címkékhez, @-ot hozzárendeléshez")}
+                                <span className="text-micro font-normal text-entity-text text-right">
+                                    {t("Type '/' for blocks & formatting · # for tags", "Napíšte '/' pre bloky a formátovanie · # pre tagy", "Írjon '/' jelet a blokkokhoz · # a címkékhez")}
                                 </span>
                             </label>
-                            <TaskTagMentionInput
-                                multiline
-                                rows={3}
-                                value={draft.description}
-                                onChange={(val) => update({ description: val })}
-                                disabled={!canEdit}
-                                existingTags={existingTags}
-                                onTagAdded={(tag) => {
-                                    const current = draft.tags || [];
-                                    if (!current.includes(tag)) update({ tags: [...current, tag] });
-                                }}
-                                mentionEntities={mentionEntities}
-                                onAssignEntity={handleAssignEntity}
-                                className="w-full px-3 py-2 rounded-md border border-gray-200 focus:border-entity-solid focus:outline-none resize-none disabled:bg-gray-50 text-ui font-medium"
-                            />
+                            <div
+                                className={`flex flex-col min-h-36 max-h-80 overflow-y-auto rounded-md border border-gray-200 px-3 py-2.5 transition-colors font-normal ${
+                                    !canEdit
+                                        ? "bg-gray-50 cursor-default"
+                                        : "bg-white focus-within:border-entity-solid focus-within:ring-2 focus-within:ring-entity-ring cursor-text"
+                                }`}
+                            >
+                                <BlockEditor
+                                    key={`${draft.id || "task"}-${descVersion}`}
+                                    compact
+                                    fillHeight
+                                    readOnly={!canEdit}
+                                    initialBlocks={parseNotesToBlocks(draft.description)}
+                                    onChange={(blocks) => update({ description: serializeTaskDescription(blocks) })}
+                                    systemLanguage={systemLanguage}
+                                    placeholder={t(
+                                        "Write task description... (type '/' for blocks, headings, checklists)",
+                                        "Napíšte popis úlohy... (napíšte '/' pre bloky, nadpisy, zoznam úloh)",
+                                        "Írja be a feladat leírását... (írjon '/' jelet a blokkokhoz, címsorokhoz)",
+                                    )}
+                                />
+                            </div>
                         </div>
 
                         {/* Offered while the setting is on; a task that already carries
@@ -660,7 +675,8 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                                         const nextTags = (draft.tags || []).filter((t) => t !== tag);
                                                         const tagRegex = new RegExp(`#${tag}\\b`, "gi");
                                                         const nextTitle = draft.title.replace(tagRegex, "").trim();
-                                                        const nextDesc = draft.description.replace(tagRegex, "").trim();
+                                                        const nextDesc = removeTagFromDescription(draft.description, tag);
+                                                        setDescVersion((v) => v + 1);
                                                         update({
                                                             tags: nextTags,
                                                             title: nextTitle,

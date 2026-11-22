@@ -26,6 +26,8 @@ import { taskEmailReminderHint } from "./TaskEmailReminderField";
 import { useTaskSettings } from "../hooks/useTaskSettings";
 import { TaskTagMentionInput } from "./TaskTagMentionInput";
 import { extractTagsFromText, type MentionEntity } from "./TaskPillText";
+import { BlockEditor } from "./BlockEditor";
+import { blockNotesToPlainText, parseNotesToBlocks, serializeTaskDescription } from "../utils/blockNotes";
 import { projectDisplayName } from "../utils/projects";
 import { staleLeadIdsForTasks } from "../utils/taskLeadPicker";
 import { isClientRecord } from "../utils/clientRecord";
@@ -420,6 +422,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     /* ------------------------------ dictation ----------------------------- */
     const [dictated, setDictated] = useState<Set<DictField>>(() => new Set());
     const [fillKey, setFillKey] = useState(0);
+    const [descResetKey, setDescResetKey] = useState(0);
     const [stripLeaving, setStripLeaving] = useState(false);
     const usedDictationRef = useRef(false);
     const clearDictated = (field: DictField) =>
@@ -626,7 +629,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
         tasks.forEach((tk) => {
             (tk.tags || []).forEach((tag) => tagSet.add(tag));
             extractTagsFromText(tk.title || "").forEach((tag) => tagSet.add(tag));
-            extractTagsFromText(tk.description || "").forEach((tag) => tagSet.add(tag));
+            extractTagsFromText(blockNotesToPlainText(tk.description || "")).forEach((tag) => tagSet.add(tag));
         });
         return Array.from(tagSet).sort();
     }, [tasks]);
@@ -924,7 +927,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                     id: `task-template-${now}-${index}-${Math.random().toString(36).slice(2, 7)}`,
                     title: line,
                     description: index === 0 ? description.trim() : "",
-                    tags: Array.from(new Set([...extractTagsFromText(line), ...(index === 0 ? extractTagsFromText(description) : [])])),
+                    tags: Array.from(new Set([...extractTagsFromText(line), ...(index === 0 ? extractTagsFromText(blockNotesToPlainText(description)) : [])])),
                     priority,
                     deadline: null,
                     deadlineTime: deadlineTime || null,
@@ -955,7 +958,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
             // The description hides once a second line appears; whatever was
             // typed before that still belongs to the first task.
             description: index === 0 ? description.trim() : "",
-            tags: Array.from(new Set([...extractTagsFromText(line), ...(index === 0 ? extractTagsFromText(description) : [])])),
+            tags: Array.from(new Set([...extractTagsFromText(line), ...(index === 0 ? extractTagsFromText(blockNotesToPlainText(description)) : [])])),
             status: taskStates[0] || "New",
             priority,
             deadline,
@@ -983,6 +986,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
             showComposerToast(toast, toastAnchor(true));
             setTitle("");
             setDescription("");
+            setDescResetKey((k) => k + 1);
             setDictated(new Set());
             usedDictationRef.current = false;
             setRequiresConclusion(Boolean(defaultRequiresConclusion));
@@ -1175,26 +1179,39 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
 
     const descriptionSection = !isMulti && (
         <div className="flex flex-col gap-1.5">
-            <FieldLabel htmlFor="nt-desc" badge={badge("description")}>
-                {t("Description", "Popis", "Leírás")} <span className="font-normal text-slate-500">({t("optional", "voliteľné", "opcionális")})</span>
-            </FieldLabel>
-            <TaskTagMentionInput
-                key={`desc-${fillKey}`}
+            <div className="flex items-center justify-between gap-2">
+                <FieldLabel badge={badge("description")}>
+                    {t("Description", "Popis", "Leírás")} <span className="font-normal text-slate-500">({t("optional", "voliteľné", "opcionális")})</span>
+                </FieldLabel>
+                <span className="text-micro font-normal text-slate-500">
+                    {t("Type '/' for blocks & formatting · # for tags", "Napíšte '/' pre bloky a formátovanie · # pre tagy", "Írjon '/' jelet a blokkokhoz · # a címkékhez")}
+                </span>
+            </div>
+            <div
                 id="nt-desc"
-                multiline
-                rows={2}
-                value={description}
-                onChange={(v) => {
-                    setDescription(v);
-                    clearDictated("description");
-                }}
-                existingTags={existingTags}
-                mentionEntities={mentionEntities}
-                placeholder={t("Details, links, context…", "Podrobnosti, odkazy, kontext…", "Részletek, hivatkozások, háttér…")}
-                className={`box-border w-full min-h-16 px-3.5 py-2.5 rounded-xl text-ui text-slate-800 resize-y outline-none leading-normal placeholder:text-slate-400 transition-colors duration-150 ${
-                    isDictated("description") ? "border border-blue-200 bg-[#f8fbff] dark:bg-blue-50 nt-fill" : "border border-slate-200 bg-white focus:border-[#ff5d00]"
+                className={`box-border w-full flex flex-col min-h-28 max-h-60 overflow-y-auto px-3.5 py-2.5 rounded-xl text-ui text-slate-800 transition-colors duration-150 cursor-text ${
+                    isDictated("description")
+                        ? "border border-blue-200 bg-[#f8fbff] dark:bg-blue-50 nt-fill focus-within:border-[#ff5d00]"
+                        : "border border-slate-200 bg-white focus-within:border-[#ff5d00]"
                 }`}
-            />
+            >
+                <BlockEditor
+                    key={`desc-${fillKey}-${descResetKey}`}
+                    compact
+                    fillHeight
+                    initialBlocks={parseNotesToBlocks(description)}
+                    onChange={(blocks) => {
+                        setDescription(serializeTaskDescription(blocks));
+                        clearDictated("description");
+                    }}
+                    systemLanguage={systemLanguage === "sk" || systemLanguage === "hu" ? systemLanguage : "en"}
+                    placeholder={t(
+                        "Details, links, checklists… (type '/' for blocks)",
+                        "Podrobnosti, odkazy, zoznamy… (napíšte '/' pre bloky)",
+                        "Részletek, linkek, teendők… ('/' a blokkokhoz)",
+                    )}
+                />
+            </div>
         </div>
     );
 

@@ -19,6 +19,7 @@ import { useChatTasks } from "../../hooks/useChatTasks.ts";
 import { CrmTaskInfo } from "./CrmTaskInfo.tsx";
 import { TaskUpdateComposer } from "./TaskUpdateComposer.tsx";
 import { getPanelI18n } from "./panelI18n.ts";
+import { blockNotesToPlainText } from "../../../../utils/blockNotes.ts";
 
 interface Props {
   client: WaaiClient;
@@ -223,7 +224,7 @@ export const ChatTasks = ({
 
                   {task.description && (
                     <p className="type-body mt-1 text-slate-600 whitespace-pre-line">
-                      {task.description}
+                      {blockNotesToPlainText(task.description)}
                     </p>
                   )}
 

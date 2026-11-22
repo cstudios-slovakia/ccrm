@@ -1,27 +1,22 @@
-import React, { useState, useEffect, useRef } from "react";
-import { 
-  Plus, GripVertical, Bold, Italic, Underline, Strikethrough, Code, 
-  Link2, Palette, Trash, Heading1, Heading2, Heading3, Type, CheckSquare, 
-  List, ListOrdered, ChevronRight, Info, AlertTriangle, CheckCircle2, 
-  XCircle, Terminal, Quote, FileText, Highlighter
+import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import {
+  Plus, GripVertical, Bold, Italic, Underline, Strikethrough, Code,
+  Link2, Palette, Trash, Heading1, Heading2, Heading3, Type, CheckSquare,
+  List, ListOrdered, ChevronRight, Info, AlertTriangle, CheckCircle2,
+  XCircle, Terminal, Quote, FileText, Highlighter,
 } from "lucide-react";
 import { cn } from "../utils/cn";
 import { getTranslation } from "../utils/translations";
 import { sanitizeRichHtml, htmlToText, escapeHtml } from "../utils/safeHtml";
+import {
+  type EditorBlock,
+  BANNER_COLORS,
+  BANNER_THEMES,
+  getBannerStyles,
+} from "../utils/blockNotes";
 
-export interface EditorBlock {
-  id: string;
-  type: 'paragraph' | 'h1' | 'h2' | 'h3' | 'h4' | 'todo' | 'bullet' | 'number' | 'toggle' | 'banner' | 'code' | 'quote' | 'pullquote';
-  content: string;
-  checked?: boolean;
-  toggled?: boolean;
-  toggleContent?: string;
-  bannerType?: 'info' | 'warning' | 'success' | 'danger';
-  bannerColor?: 'blue' | 'green' | 'yellow' | 'red' | 'purple' | 'orange' | 'gray';
-  bannerVariant?: 'light' | 'saturated';
-  codeLanguage?: string;
-  align?: 'left' | 'center' | 'right' | 'justify';
-}
+export type { EditorBlock };
 
 interface BlockEditorProps {
   initialBlocks?: EditorBlock[];
@@ -34,10 +29,16 @@ interface BlockEditorProps {
    * field while only the first line actually accepts clicks.
    */
   fillHeight?: boolean;
+  /** Compact spacing & inset gutter for drawers/modals (e.g. Task Description). */
+  compact?: boolean;
+  /** Render blocks non-editable (for view-only task permissions). */
+  readOnly?: boolean;
+  /** Override empty paragraph placeholder text. */
+  placeholder?: string;
 }
 
 const DEFAULT_BLOCKS: EditorBlock[] = [
-  { id: "b-1", type: "paragraph", content: "Write some meeting notes here..." }
+  { id: "b-1", type: "paragraph", content: "" },
 ];
 
 interface EditableBlockProps {
@@ -49,6 +50,7 @@ interface EditableBlockProps {
   style?: React.CSSProperties;
   innerRef: (el: HTMLDivElement | null) => void;
   placeholder?: string;
+  readOnly?: boolean;
 }
 
 const EditableBlock: React.FC<EditableBlockProps> = ({
@@ -59,7 +61,8 @@ const EditableBlock: React.FC<EditableBlockProps> = ({
   className,
   style,
   innerRef,
-  placeholder
+  placeholder,
+  readOnly = false,
 }) => {
   const elementRef = useRef<HTMLDivElement | null>(null);
   const lastContentRef = useRef(content);
@@ -79,18 +82,20 @@ const EditableBlock: React.FC<EditableBlockProps> = ({
   }, [content]);
 
   const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+    if (readOnly) return;
     const html = e.currentTarget.innerHTML;
     lastContentRef.current = html;
     onChange(html);
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    if (readOnly) return;
     e.preventDefault();
     const text = e.clipboardData.getData("text/plain");
     
     // Clean up list bullets, custom arrow artifacts, and inline bullets:
     // This targets markers like ->, =>, -->, ==>, bullet symbols, and unicode arrows
-    let cleanedText = text
+    const cleanedText = text
       .replace(/^[\s]*([-\u2014\u2013=>➔➜➢➤➝➞➟➣➥➦➛➪➫➬➭➮➯➱➲➳➴➵➶➷➸•◦▪▫]+|\-\-+|\=\=+)\s+/gm, "")
       .replace(/[\u2022\u25E6\u25AA\u25AB\u2023\u2043\u25C8]/g, "");
 
@@ -103,15 +108,15 @@ const EditableBlock: React.FC<EditableBlockProps> = ({
         elementRef.current = el;
         innerRef(el);
       }}
-      contentEditable
+      contentEditable={!readOnly}
       suppressContentEditableWarning
       onInput={handleInput}
-      onKeyDown={onKeyDown}
-      onBlur={onBlur}
-      onPaste={handlePaste}
+      onKeyDown={readOnly ? undefined : onKeyDown}
+      onBlur={readOnly ? undefined : onBlur}
+      onPaste={readOnly ? undefined : handlePaste}
       className={className}
       style={style}
-      data-placeholder={placeholder}
+      data-placeholder={readOnly ? undefined : placeholder}
     />
   );
 };
@@ -158,82 +163,12 @@ const BLOCK_LABELS: Record<string, [string, string, string]> = {
   delete: ["Delete Block", "Odstrániť blok", "Blokk törlése"],
 };
 
-const BANNER_COLORS = ["blue", "green", "yellow", "red", "purple", "orange", "gray"] as const;
-
-const BANNER_THEMES: Record<string, {
-  light: string;
-  saturated: string;
-  previewLight: string;
-  previewSat: string;
-}> = {
-  blue: {
-    light: "bg-blue-50/50 border-blue-200/50 text-blue-900",
-    saturated: "bg-blue-600 border-blue-700 text-white",
-    previewLight: "bg-blue-100 border-blue-200",
-    previewSat: "bg-blue-600 border-blue-700"
-  },
-  green: {
-    light: "bg-emerald-50/50 border-emerald-200/50 text-emerald-900",
-    saturated: "bg-emerald-600 border-emerald-700 text-white",
-    previewLight: "bg-emerald-100 border-emerald-200",
-    previewSat: "bg-emerald-600 border-emerald-700"
-  },
-  yellow: {
-    light: "bg-amber-50/50 border-amber-200/50 text-amber-900",
-    saturated: "bg-amber-500 border-amber-600 text-white",
-    previewLight: "bg-amber-100 border-amber-200",
-    previewSat: "bg-amber-500 border-amber-600"
-  },
-  red: {
-    light: "bg-rose-50/50 border-rose-200/50 text-rose-900",
-    saturated: "bg-rose-600 border-rose-700 text-white",
-    previewLight: "bg-rose-100 border-rose-200",
-    previewSat: "bg-rose-600 border-rose-700"
-  },
-  purple: {
-    light: "bg-purple-50/50 border-purple-200/50 text-purple-900",
-    saturated: "bg-purple-600 border-purple-700 text-white",
-    previewLight: "bg-purple-100 border-purple-200",
-    previewSat: "bg-purple-600 border-purple-700"
-  },
-  orange: {
-    light: "bg-orange-50/50 border-orange-200/50 text-orange-900",
-    saturated: "bg-orange-500 border-orange-600 text-white",
-    previewLight: "bg-orange-100 border-orange-200",
-    previewSat: "bg-orange-500 border-orange-600"
-  },
-  gray: {
-    light: "bg-slate-50/50 border-slate-200/50 text-slate-900",
-    saturated: "bg-slate-700 border-slate-800 text-white",
-    previewLight: "bg-slate-100 border-slate-200",
-    previewSat: "bg-slate-700 border-slate-800"
-  }
-};
-
-const getBannerStyles = (block: EditorBlock) => {
-  let color = block.bannerColor;
-  let variant = block.bannerVariant || "light";
-  
-  if (!color) {
-    if (block.bannerType === "warning") {
-      color = "yellow";
-    } else if (block.bannerType === "success") {
-      color = "green";
-    } else if (block.bannerType === "danger") {
-      color = "red";
-    } else {
-      color = "blue"; // default is blue
-    }
-  }
-
-  const theme = BANNER_THEMES[color] || BANNER_THEMES.blue;
-  const classes = variant === "saturated" ? theme.saturated : theme.light;
-  
-  return { classes, color, variant };
-};
-
-const getBannerIcon = (color: string, variant: string) => {
-  const iconClass = "h-5 w-5 shrink-0 select-none " + (variant === "saturated" ? "text-white" : "");
+export const BlockBannerIcon: React.FC<{ color: string; variant: string; className?: string }> = ({
+  color,
+  variant,
+  className = "h-5 w-5",
+}) => {
+  const iconClass = `${className} shrink-0 select-none ${variant === "saturated" ? "text-white" : ""}`;
   const colorClass = variant === "saturated" ? "" : (
     color === "yellow" ? "text-amber-500" :
     color === "green" ? "text-emerald-500" :
@@ -243,9 +178,7 @@ const getBannerIcon = (color: string, variant: string) => {
     color === "gray" ? "text-slate-500" :
     "text-blue-500"
   );
-  
   const finalClass = `${iconClass} ${colorClass}`;
-
   if (color === "yellow") return <AlertTriangle className={finalClass} />;
   if (color === "green") return <CheckCircle2 className={finalClass} />;
   if (color === "red") return <XCircle className={finalClass} />;
@@ -256,7 +189,10 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
   initialBlocks,
   onChange,
   systemLanguage = "en",
-  fillHeight = false
+  fillHeight = false,
+  compact = false,
+  readOnly = false,
+  placeholder,
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const [blocks, setBlocks] = useState<EditorBlock[]>(() => {
@@ -267,15 +203,19 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
   // Track the ID of the block that should be focused
   const [focusBlockId, setFocusBlockId] = useState<string | null>(null);
   
-  // Selection toolbar state
+  // Selection toolbar state (fixed viewport coordinates so drawer/modal overflow never clips)
   const [showToolbar, setShowToolbar] = useState(false);
   const [toolbarCoords, setToolbarCoords] = useState({ top: 0, left: 0 });
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Block menu/popover state
+  // Block menu/popover state (fixed viewport coordinates, portaled to document.body)
   const [activeMenuBlockId, setActiveMenuBlockId] = useState<string | null>(null);
   const [slashQuery, setSlashQuery] = useState("");
   const [selectedMenuIndex, setSelectedMenuIndex] = useState(0);
+  const [menuPos, setMenuPos] = useState<{ left: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
+  const blockRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const menuPopoverRef = useRef<HTMLDivElement | null>(null);
+  const didMountRef = useRef(false);
 
   const filteredOptions = BLOCK_OPTIONS
     .map(opt => {
@@ -295,10 +235,58 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
   // Refs for focusing contenteditable nodes
   const blockRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  // Notify parent on change
+  // Notify parent on user-driven block changes (skip initial mount so untouched drafts stay clean)
   useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
     onChange(blocks);
   }, [blocks]);
+
+  // Anchor the slash/format popover to the active block row in viewport coordinates
+  useLayoutEffect(() => {
+    if (!activeMenuBlockId) {
+      setMenuPos(null);
+      return;
+    }
+    const updateMenuPos = () => {
+      const row = blockRowRefs.current[activeMenuBlockId];
+      if (!row) return;
+      const r = row.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const menuWidth = Math.min(460, vw - 16);
+      const left = Math.max(8, Math.min(r.left, vw - menuWidth - 8));
+      const below = vh - r.bottom - 8;
+      const above = r.top - 8;
+      if (below >= 260 || below >= above) {
+        setMenuPos({ left, top: r.bottom + 4, maxHeight: Math.max(180, below - 4) });
+      } else {
+        setMenuPos({ left, bottom: vh - r.top + 4, maxHeight: Math.max(180, above - 4) });
+      }
+    };
+    updateMenuPos();
+    window.addEventListener("scroll", updateMenuPos, true);
+    window.addEventListener("resize", updateMenuPos);
+    return () => {
+      window.removeEventListener("scroll", updateMenuPos, true);
+      window.removeEventListener("resize", updateMenuPos);
+    };
+  }, [activeMenuBlockId]);
+
+  // Dismiss slash menu when clicking outside both the editor block and the portaled menu
+  useEffect(() => {
+    if (!activeMenuBlockId) return;
+    const handleOutside = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (menuPopoverRef.current?.contains(target)) return;
+      if (blockRowRefs.current[activeMenuBlockId]?.contains(target)) return;
+      setActiveMenuBlockId(null);
+    };
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [activeMenuBlockId]);
 
   // Focus block when ID changes
   useEffect(() => {
@@ -318,25 +306,31 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
     }
   }, [focusBlockId]);
 
-  // Inline formatting selection detection
+  // Inline formatting selection detection (confined strictly to selections inside this editor)
   const handleEditorSelectionChange = () => {
+    if (readOnly) {
+      setShowToolbar(false);
+      return;
+    }
     const selection = window.getSelection();
-    if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !selection.toString().trim()) {
       setShowToolbar(false);
       return;
     }
 
     const range = selection.getRangeAt(0);
-    const rect = range.getBoundingClientRect();
     const container = containerRef.current;
-    if (!container) return;
-    const containerRect = container.getBoundingClientRect();
-    
-    // Position floating toolbar above selection relative to container coordinates
-    setToolbarCoords({
-      top: rect.top - containerRect.top - 48,
-      left: rect.left - containerRect.left + (rect.width / 2) - 160
-    });
+    if (!container || !container.contains(range.commonAncestorContainer)) {
+      setShowToolbar(false);
+      return;
+    }
+    const rect = range.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const toolbarHalf = 160;
+    const left = Math.max(8, Math.min(rect.left + rect.width / 2 - toolbarHalf, vw - toolbarHalf * 2 - 8));
+    const top = rect.top < 56 ? Math.min(window.innerHeight - 52, rect.bottom + 8) : rect.top - 48;
+
+    setToolbarCoords({ top, left });
     setShowToolbar(true);
   };
 
@@ -345,10 +339,11 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
     return () => {
       document.removeEventListener("selectionchange", handleEditorSelectionChange);
     };
-  }, []);
+  }, [readOnly]);
 
   // Modify block content by index
   const updateBlockContent = (id: string, newContent: string) => {
+    if (readOnly) return;
     setBlocks(prev => prev.map(b => b.id === id ? { ...b, content: newContent } : b));
 
     // Check if user typed '/' to trigger formatting options popover
@@ -605,156 +600,182 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
       )}
     >
       
-      {/* FLOATING TEXT SELECTION FORMATTING BAR */}
-      {showToolbar && (
-        <div 
-          style={{ top: toolbarCoords.top, left: toolbarCoords.left }}
-          className="absolute z-[999] flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 rounded-2xl px-3 py-2 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
-          onMouseDown={(e) => e.preventDefault()} // prevent loss of selection focus
-        >
-          {/* Style Controls */}
-          <button 
-            onClick={() => applyInlineStyle("bold")}
-            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
-            title={t("Bold", "Tučné", "Félkövér")}
+      {/* FLOATING TEXT SELECTION FORMATTING BAR (portaled so overflow containers never clip) */}
+      {showToolbar && !readOnly && typeof document !== "undefined" &&
+        createPortal(
+          <div
+            style={{ top: toolbarCoords.top, left: toolbarCoords.left }}
+            className="fixed z-[100025] flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 rounded-2xl px-3 py-2 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+            onMouseDown={(e) => e.preventDefault()} // prevent loss of selection focus
           >
-            <Bold className="h-3.5 w-3.5" />
-          </button>
-          <button 
-            onClick={() => applyInlineStyle("italic")}
-            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
-            title={t("Italic", "Kurzíva", "Dőlt")}
-          >
-            <Italic className="h-3.5 w-3.5" />
-          </button>
-          <button 
-            onClick={() => applyInlineStyle("underline")}
-            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
-            title={t("Underline", "Podčiarknuté", "Aláhúzott")}
-          >
-            <Underline className="h-3.5 w-3.5" />
-          </button>
-          <button 
-            onClick={() => applyInlineStyle("strikeThrough")}
-            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
-            title={t("Strikethrough", "Prečiarknuté", "Áthúzott")}
-          >
-            <Strikethrough className="h-3.5 w-3.5" />
-          </button>
-          
-          <div className="h-4 w-px bg-slate-200 mx-1" />
-
-          {/* Inline Code */}
-          <button 
-            onClick={() => applyCustomSpan("bg-slate-100 text-pink-600 px-1 py-0.5 rounded font-mono text-ui")}
-            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
-            title={t("Code tag", "Značka kódu", "Kód címke")}
-          >
-            <Code className="h-3.5 w-3.5" />
-          </button>
-
-          {/* Text Color - Quick Palette dropdown */}
-          <div className="relative group">
-            <button 
+            {/* Style Controls */}
+            <button
+              type="button"
+              onClick={() => applyInlineStyle("bold")}
               className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
-              title={t("Text Color", "Farba textu", "Szövegszín")}
+              title={t("Bold", "Tučné", "Félkövér")}
             >
-              <Palette className="h-3.5 w-3.5" />
+              <Bold className="h-3.5 w-3.5" />
             </button>
-            <div className="absolute left-1/2 -translate-x-1/2 bottom-full pb-2 hidden group-hover:block z-50">
-              <div className="flex bg-white border border-slate-200 p-2 rounded-xl gap-1.5 shadow-xl">
-                <button onClick={() => applyInlineStyle("foreColor", "#ef4444")} className="h-4 w-4 rounded-full bg-red-500 hover:scale-110 transition-transform cursor-pointer" />
-                <button onClick={() => applyInlineStyle("foreColor", "#eab308")} className="h-4 w-4 rounded-full bg-yellow-500 hover:scale-110 transition-transform cursor-pointer" />
-                <button onClick={() => applyInlineStyle("foreColor", "#22c55e")} className="h-4 w-4 rounded-full bg-green-500 hover:scale-110 transition-transform cursor-pointer" />
-                <button onClick={() => applyInlineStyle("foreColor", "#3b82f6")} className="h-4 w-4 rounded-full bg-blue-500 hover:scale-110 transition-transform cursor-pointer" />
-                <button onClick={() => applyInlineStyle("foreColor", "#6366f1")} className="h-4 w-4 rounded-full bg-indigo-500 hover:scale-110 transition-transform cursor-pointer" />
-                <button onClick={() => applyInlineStyle("foreColor", "#0f172a")} className="h-4 w-4 rounded-full bg-slate-950 border border-slate-200 hover:scale-110 transition-transform cursor-pointer" />
+            <button
+              type="button"
+              onClick={() => applyInlineStyle("italic")}
+              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
+              title={t("Italic", "Kurzíva", "Dőlt")}
+            >
+              <Italic className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => applyInlineStyle("underline")}
+              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
+              title={t("Underline", "Podčiarknuté", "Aláhúzott")}
+            >
+              <Underline className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => applyInlineStyle("strikeThrough")}
+              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
+              title={t("Strikethrough", "Prečiarknuté", "Áthúzott")}
+            >
+              <Strikethrough className="h-3.5 w-3.5" />
+            </button>
+
+            <div className="h-4 w-px bg-slate-200 mx-1" />
+
+            {/* Inline Code */}
+            <button
+              type="button"
+              onClick={() => applyCustomSpan("bg-slate-100 text-pink-600 px-1 py-0.5 rounded font-mono text-ui")}
+              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
+              title={t("Code tag", "Značka kódu", "Kód címke")}
+            >
+              <Code className="h-3.5 w-3.5" />
+            </button>
+
+            {/* Text Color - Quick Palette dropdown */}
+            <div className="relative group">
+              <button
+                type="button"
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
+                title={t("Text Color", "Farba textu", "Szövegszín")}
+              >
+                <Palette className="h-3.5 w-3.5" />
+              </button>
+              <div className="absolute left-1/2 -translate-x-1/2 bottom-full pb-2 hidden group-hover:block z-50">
+                <div className="flex bg-white border border-slate-200 p-2 rounded-xl gap-1.5 shadow-xl">
+                  <button type="button" onClick={() => applyInlineStyle("foreColor", "#ef4444")} className="h-4 w-4 rounded-full bg-red-500 hover:scale-110 transition-transform cursor-pointer" />
+                  <button type="button" onClick={() => applyInlineStyle("foreColor", "#eab308")} className="h-4 w-4 rounded-full bg-yellow-500 hover:scale-110 transition-transform cursor-pointer" />
+                  <button type="button" onClick={() => applyInlineStyle("foreColor", "#22c55e")} className="h-4 w-4 rounded-full bg-green-500 hover:scale-110 transition-transform cursor-pointer" />
+                  <button type="button" onClick={() => applyInlineStyle("foreColor", "#3b82f6")} className="h-4 w-4 rounded-full bg-blue-500 hover:scale-110 transition-transform cursor-pointer" />
+                  <button type="button" onClick={() => applyInlineStyle("foreColor", "#6366f1")} className="h-4 w-4 rounded-full bg-indigo-500 hover:scale-110 transition-transform cursor-pointer" />
+                  <button type="button" onClick={() => applyInlineStyle("foreColor", "#0f172a")} className="h-4 w-4 rounded-full bg-slate-950 border border-slate-200 hover:scale-110 transition-transform cursor-pointer" />
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Text Highlight / Highlighter - Quick Palette dropdown */}
-          <div className="relative group">
-            <button 
-              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
-              title={t("Highlight Color", "Farba zvýraznenia", "Kiemelés színe")}
-            >
-              <Highlighter className="h-3.5 w-3.5" />
-            </button>
-            <div className="absolute left-1/2 -translate-x-1/2 bottom-full pb-2 hidden group-hover:block z-50">
-              <div className="flex bg-white border border-slate-200 p-2 rounded-xl gap-1.5 shadow-xl">
-                <button onClick={() => applyInlineStyle("hiliteColor", "#fef08a")} className="h-4 w-4 rounded-full bg-yellow-200 border border-yellow-300 hover:scale-110 transition-transform cursor-pointer" />
-                <button onClick={() => applyInlineStyle("hiliteColor", "#bbf7d0")} className="h-4 w-4 rounded-full bg-green-200 border border-green-300 hover:scale-110 transition-transform cursor-pointer" />
-                <button onClick={() => applyInlineStyle("hiliteColor", "#bfdbfe")} className="h-4 w-4 rounded-full bg-blue-200 border border-blue-300 hover:scale-110 transition-transform cursor-pointer" />
-                <button onClick={() => applyInlineStyle("hiliteColor", "#fbcfe8")} className="h-4 w-4 rounded-full bg-pink-200 border border-pink-300 hover:scale-110 transition-transform cursor-pointer" />
-                <button onClick={() => applyInlineStyle("hiliteColor", "#ddd6fe")} className="h-4 w-4 rounded-full bg-purple-200 border border-purple-300 hover:scale-110 transition-transform cursor-pointer" />
-                <button onClick={() => applyInlineStyle("hiliteColor", "transparent")} className="h-4 w-4 rounded-full bg-white border border-slate-300 hover:scale-110 transition-transform cursor-pointer flex items-center justify-center text-micro text-slate-400 font-bold font-sans">✕</button>
+            {/* Text Highlight / Highlighter - Quick Palette dropdown */}
+            <div className="relative group">
+              <button
+                type="button"
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
+                title={t("Highlight Color", "Farba zvýraznenia", "Kiemelés színe")}
+              >
+                <Highlighter className="h-3.5 w-3.5" />
+              </button>
+              <div className="absolute left-1/2 -translate-x-1/2 bottom-full pb-2 hidden group-hover:block z-50">
+                <div className="flex bg-white border border-slate-200 p-2 rounded-xl gap-1.5 shadow-xl">
+                  <button type="button" onClick={() => applyInlineStyle("hiliteColor", "#fef08a")} className="h-4 w-4 rounded-full bg-yellow-200 border border-yellow-300 hover:scale-110 transition-transform cursor-pointer" />
+                  <button type="button" onClick={() => applyInlineStyle("hiliteColor", "#bbf7d0")} className="h-4 w-4 rounded-full bg-green-200 border border-green-300 hover:scale-110 transition-transform cursor-pointer" />
+                  <button type="button" onClick={() => applyInlineStyle("hiliteColor", "#bfdbfe")} className="h-4 w-4 rounded-full bg-blue-200 border border-blue-300 hover:scale-110 transition-transform cursor-pointer" />
+                  <button type="button" onClick={() => applyInlineStyle("hiliteColor", "#fbcfe8")} className="h-4 w-4 rounded-full bg-pink-200 border border-pink-300 hover:scale-110 transition-transform cursor-pointer" />
+                  <button type="button" onClick={() => applyInlineStyle("hiliteColor", "#ddd6fe")} className="h-4 w-4 rounded-full bg-purple-200 border border-purple-300 hover:scale-110 transition-transform cursor-pointer" />
+                  <button type="button" onClick={() => applyInlineStyle("hiliteColor", "transparent")} className="h-4 w-4 rounded-full bg-white border border-slate-300 hover:scale-110 transition-transform cursor-pointer flex items-center justify-center text-micro text-slate-400 font-bold font-sans">✕</button>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="h-4 w-px bg-slate-200 mx-1" />
+            <div className="h-4 w-px bg-slate-200 mx-1" />
 
-          {/* Link Insertion */}
-          <button 
-            onClick={() => {
-              const url = prompt(t("Enter URL link:", "Zadajte URL odkaz:", "Adja meg az URL hivatkozást:"));
-              if (url) applyInlineStyle("createLink", url);
-            }}
-            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
-            title={t("Insert Link", "Vložiť odkaz", "Hivatkozás beszúrása")}
-          >
-            <Link2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
+            {/* Link Insertion */}
+            <button
+              type="button"
+              onClick={() => {
+                const url = prompt(t("Enter URL link:", "Zadajte URL odkaz:", "Adja meg az URL hivatkozást:"));
+                if (url) applyInlineStyle("createLink", url);
+              }}
+              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
+              title={t("Insert Link", "Vložiť odkaz", "Hivatkozás beszúrása")}
+            >
+              <Link2 className="h-3.5 w-3.5" />
+            </button>
+          </div>,
+          document.body,
+        )}
 
       {/* RENDER BLOCKS VERTICAL LIST */}
-      <div className="space-y-4">
+      <div className={cn(compact ? "space-y-2 pl-9" : "space-y-4")}>
         {blocks.map((block, idx) => {
-          const isMenuOpen = activeMenuBlockId === block.id;
+          const isMenuOpen = !readOnly && activeMenuBlockId === block.id;
           const bannerInfo = block.type === "banner" ? getBannerStyles(block) : null;
 
           return (
-            <div 
+            <div
               key={block.id}
-              className="group relative flex items-start gap-3 w-full"
+              ref={(el) => { blockRowRefs.current[block.id] = el; }}
+              className="group relative flex items-start gap-2.5 w-full"
             >
-              
-              {/* LEFT HOVER MENUS CONTAINER */}
-              <div className="absolute -left-12 top-1/2 -translate-y-1/2 flex items-center opacity-0 group-hover:opacity-100 transition-opacity z-10 duration-200">
-                <button
-                  type="button"
-                  onClick={() => insertBlockBelow(block.id, "paragraph")}
-                  className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-md transition-colors cursor-pointer"
-                  title={t("Insert block below", "Vložiť blok nižšie", "Blokk beszúrása alá")}
+              {/* LEFT HOVER / FOCUS MENUS CONTAINER */}
+              {!readOnly && (
+                <div
+                  className={cn(
+                    "absolute top-1.5 flex items-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-10 duration-200",
+                    compact ? "-left-9" : "-left-12",
+                  )}
                 >
-                  <Plus className="h-4 w-4" />
-                </button>
-                 <button
-                  type="button"
-                  onClick={() => {
-                    setActiveMenuBlockId(isMenuOpen ? null : block.id);
-                  }}
-                  className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-md transition-colors cursor-pointer"
-                  title={t("Block settings & formats", "Nastavenia a formáty bloku", "Blokk beállításai és formátumai")}
-                >
-                  <GripVertical className="h-4 w-4" />
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => insertBlockBelow(block.id, "paragraph")}
+                    className={cn(
+                      "hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-md transition-colors cursor-pointer",
+                      compact ? "p-0.5" : "p-1",
+                    )}
+                    title={t("Insert block below", "Vložiť blok nižšie", "Blokk beszúrása alá")}
+                  >
+                    <Plus className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSlashQuery("");
+                      setActiveMenuBlockId(isMenuOpen ? null : block.id);
+                    }}
+                    className={cn(
+                      "hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-md transition-colors cursor-pointer",
+                      compact ? "p-0.5" : "p-1",
+                    )}
+                    title={t("Block settings & formats", "Nastavenia a formáty bloku", "Blokk beállításai és formátumai")}
+                  >
+                    <GripVertical className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                  </button>
+                </div>
+              )}
 
               {/* BLOCK TYPE RENDERING STRUCTURE */}
-              <div className="flex-1 w-full min-w-0 flex items-start gap-3">
+              <div className={cn("flex-1 w-full min-w-0 flex items-start", compact ? "gap-2.5" : "gap-3")}>
                 {/* 1. Checklist block */}
                 {block.type === "todo" && (
                   <div className="flex items-center pt-1.5 shrink-0 select-none">
-                    <input 
+                    <input
                       type="checkbox"
                       checked={block.checked || false}
+                      disabled={readOnly}
                       onChange={() => {
+                        if (readOnly) return;
                         setBlocks(prev => prev.map(b => b.id === block.id ? { ...b, checked: !b.checked } : b));
                       }}
-                      className="h-4.5 w-4.5 text-slate-900 border-slate-300 rounded focus:ring-slate-900 cursor-pointer"
+                      className="h-4.5 w-4.5 text-slate-900 border-slate-300 rounded focus:ring-slate-900 cursor-pointer disabled:cursor-default"
                     />
                   </div>
                 )}
@@ -790,7 +811,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                 {/* 5. Banner block icon wrapper */}
                 {block.type === "banner" && bannerInfo && (
                   <div className="pt-2.5 shrink-0 select-none">
-                    {getBannerIcon(bannerInfo.color, bannerInfo.variant)}
+                    <BlockBannerIcon color={bannerInfo.color} variant={bannerInfo.variant} />
                   </div>
                 )}
 
@@ -807,47 +828,62 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                 )}
 
                 {/* EDITABLE WRAPPER FRAME */}
-                <div 
-                  className="flex-1 w-full min-w-0 relative group/banner"
-                >
+                <div className="flex-1 w-full min-w-0 relative group/banner">
                   <EditableBlock
                     innerRef={(el) => { blockRefs.current[block.id] = el; }}
                     content={block.content}
+                    readOnly={readOnly}
                     onChange={(html) => updateBlockContent(block.id, html)}
                     onKeyDown={(e) => handleBlockKeyDown(e, block, idx)}
                     onBlur={(e) => updateBlockContent(block.id, e.currentTarget.innerHTML)}
                     placeholder={
                       block.type === "paragraph"
-                        ? t("Write meeting notes here... (type '/' for commands)", "Napíšte sem poznámky... (napíšte '/' pre príkazy)", "Írja ide a jegyzeteket... (parancsokhoz írjon '/' jelet)")
+                        ? (placeholder ??
+                          t(
+                            "Write meeting notes here... (type '/' for commands)",
+                            "Napíšte sem poznámky... (napíšte '/' pre príkazy)",
+                            "Írja ide a jegyzeteket... (parancsokhoz írjon '/' jelet)",
+                          ))
                         : t("Write block text...", "Napíšte text...", "Írja be a blokk szövegét...")
                     }
                     className={cn(
-                      "outline-none text-slate-800 transition-all w-full leading-relaxed select-text py-1 empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300 empty:before:pointer-events-none",
-                      block.type === "paragraph" && "text-body",
-                      block.type === "h1" && "type-page-title text-slate-900 pt-3 pb-1",
-                      block.type === "h2" && "text-title font-heading font-extrabold text-slate-900 pt-2 pb-1 tracking-tight",
-                      block.type === "h3" && "text-title font-heading font-extrabold text-slate-900 pt-1.5 pb-0.5 tracking-tight",
-                      block.type === "h4" && "text-title-sm font-heading font-bold text-slate-800 pt-1 pb-0.5",
-                      block.type === "todo" && cn("text-body", block.checked && "line-through text-slate-400 font-medium"),
-                      block.type === "bullet" && "text-body",
-                      block.type === "number" && "text-body",
-                      block.type === "toggle" && "text-body font-semibold text-slate-800",
+                      "outline-none text-slate-800 transition-all w-full leading-relaxed select-text empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none",
+                      compact ? "py-0.5" : "py-1",
+                      block.type === "paragraph" && (compact ? "text-ui" : "text-body"),
+                      block.type === "h1" && (compact ? "text-title font-heading font-extrabold text-slate-900 pt-1 pb-0.5 tracking-tight" : "type-page-title text-slate-900 pt-3 pb-1"),
+                      block.type === "h2" && (compact ? "text-title-sm font-heading font-bold text-slate-900 pt-1 pb-0.5" : "text-title font-heading font-extrabold text-slate-900 pt-2 pb-1 tracking-tight"),
+                      block.type === "h3" && (compact ? "text-body font-heading font-bold text-slate-900 pt-0.5" : "text-title font-heading font-extrabold text-slate-900 pt-1.5 pb-0.5 tracking-tight"),
+                      block.type === "h4" && (compact ? "text-ui font-heading font-bold text-slate-800 pt-0.5" : "text-title-sm font-heading font-bold text-slate-800 pt-1 pb-0.5"),
+                      block.type === "todo" && cn(compact ? "text-ui" : "text-body", block.checked && "line-through text-slate-400 font-medium"),
+                      block.type === "bullet" && (compact ? "text-ui" : "text-body"),
+                      block.type === "number" && (compact ? "text-ui" : "text-body"),
+                      block.type === "toggle" && cn(compact ? "text-ui" : "text-body", "font-semibold text-slate-800"),
                       block.type === "banner" && bannerInfo && cn(
-                        "text-ui font-semibold p-3.5 pr-10 rounded-2xl border w-full relative",
-                        bannerInfo.classes
+                        "text-ui font-semibold rounded-2xl border w-full relative",
+                        compact ? "p-2.5 pr-9" : "p-3.5 pr-10",
+                        bannerInfo.classes,
                       ),
-                      block.type === "code" && "font-mono text-ui bg-slate-900 text-slate-200 p-4 rounded-2xl whitespace-pre overflow-x-auto border border-slate-800 w-full",
-                      block.type === "quote" && "italic pl-3 text-body text-slate-600 border-l-0 py-2 bg-slate-50/50 rounded-r-xl",
-                      block.type === "pullquote" && "text-center py-6 px-4 text-title-sm font-heading font-bold text-slate-700 italic border-y border-slate-100 max-w-lg mx-auto"
+                      block.type === "code" && cn(
+                        "font-mono text-ui bg-slate-900 text-slate-200 rounded-2xl whitespace-pre overflow-x-auto border border-slate-800 w-full",
+                        compact ? "p-3" : "p-4",
+                      ),
+                      block.type === "quote" && cn(
+                        "italic pl-3 text-slate-600 border-l-0 bg-slate-50/50 rounded-r-xl",
+                        compact ? "text-ui py-1.5" : "text-body py-2",
+                      ),
+                      block.type === "pullquote" && cn(
+                        "text-center font-heading font-bold text-slate-700 italic border-y border-slate-100 max-w-lg mx-auto",
+                        compact ? "py-3 px-3 text-body" : "py-6 px-4 text-title-sm",
+                      ),
                     )}
-                    style={{ 
+                    style={{
                       textAlign: block.align || "left",
-                      minHeight: block.type === "code" ? "60px" : "24px"
+                      minHeight: block.type === "code" ? (compact ? "48px" : "60px") : "24px",
                     }}
                   />
 
                   {/* Banner color options popup on top right (visible on hover) */}
-                  {block.type === "banner" && bannerInfo && (
+                  {block.type === "banner" && bannerInfo && !readOnly && (
                     <div className="absolute right-2 top-1.5 z-30 opacity-0 group-hover/banner:opacity-100 transition-opacity flex items-center gap-1 bg-white border border-slate-200 p-1 rounded-xl shadow-md">
                       <div className="relative group/palette">
                         <button
@@ -874,14 +910,14 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                                     className={cn(
                                       "h-5.5 w-5.5 rounded-full cursor-pointer transition-transform hover:scale-115 border",
                                       BANNER_THEMES[c].previewLight,
-                                      isSelected ? "ring-2 ring-slate-800 ring-offset-1" : "border-slate-200/50"
+                                      isSelected ? "ring-2 ring-slate-800 ring-offset-1" : "border-slate-200/50",
                                     )}
                                     title={`${t("Light", "Svetlá", "Világos")} ${c}`}
                                   />
                                 );
                               })}
                             </div>
-                            
+
                             <div className="type-overline text-slate-400 pt-1 border-t border-slate-100">
                               {t("Saturated variants", "Sýte varianty", "Telített változatok")}
                             </div>
@@ -896,7 +932,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                                     className={cn(
                                       "h-5.5 w-5.5 rounded-full cursor-pointer transition-transform hover:scale-115 border",
                                       BANNER_THEMES[c].previewSat,
-                                      isSelected ? "ring-2 ring-slate-800 ring-offset-1" : "border-slate-200/20"
+                                      isSelected ? "ring-2 ring-slate-800 ring-offset-1" : "border-slate-200/20",
                                     )}
                                     title={`${t("Saturated", "Sýta", "Telített")} ${c}`}
                                   />
@@ -915,7 +951,9 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                       <EditableBlock
                         innerRef={() => {}}
                         content={block.toggleContent || ""}
+                        readOnly={readOnly}
                         onChange={(html) => {
+                          if (readOnly) return;
                           setBlocks(prev => prev.map(b => b.id === block.id ? { ...b, toggleContent: html } : b));
                         }}
                         onKeyDown={(e) => {
@@ -925,6 +963,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                           }
                         }}
                         onBlur={(e) => {
+                          if (readOnly) return;
                           setBlocks(prev => prev.map(b => b.id === block.id ? { ...b, toggleContent: e.currentTarget.innerHTML } : b));
                         }}
                         className="outline-none min-h-5 text-slate-600 font-normal py-0.5 leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300"
@@ -932,107 +971,104 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                       />
                     </div>
                   )}
-
-                  {/* INDIVIDUAL ROW DROPDOWN POPOVER TYPE SELECTION */}
-                  {isMenuOpen && (
-                    <div 
-                      className="absolute left-0 top-full z-[9999] w-115 bg-white border border-slate-200 shadow-2xl rounded-2xl p-1 flex flex-col select-none animate-in fade-in slide-in-from-top-2 duration-150 mt-1"
-                      onMouseDown={(e) => e.preventDefault()}
-                    >
-                      <div className="grid grid-cols-2 gap-4 divide-x divide-slate-100 p-2.5">
-                        {/* Basic elements column */}
-                        <div className="space-y-0.5 pr-2">
-                          <div className="px-2.5 py-1 type-overline text-slate-400 mb-1 border-b border-slate-100/50 pb-1">
-                            {t("Basic Elements", "Základné prvky", "Alapelemek")}
-                          </div>
-                          {basicFiltered.length === 0 ? (
-                            <div className="text-micro text-slate-400 italic px-2.5 py-1.5">{t("No matches", "Žiadne zhody", "Nincs találat")}</div>
-                          ) : (
-                            basicFiltered.map(opt => {
-                              const globalIdx = filteredOptions.findIndex(o => o.id === opt.id);
-                              const isSelected = globalIdx === selectedMenuIndex;
-                              const Icon = opt.icon;
-                              return (
-                                <button
-                                  key={opt.id}
-                                  onClick={() => convertBlockType(block.id, opt.type, opt.extra)}
-                                  className={cn(
-                                    "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-left text-ui font-semibold cursor-pointer transition-colors",
-                                    isSelected ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-50"
-                                  )}
-                                >
-                                  <Icon className={cn("h-3.5 w-3.5", isSelected ? "text-white" : "text-slate-400")} />
-                                  {opt.label}
-                                </button>
-                              );
-                            })
-                          )}
-                        </div>
-                        
-                        {/* Advanced elements column */}
-                        <div className="space-y-0.5 pl-3">
-                          <div className="px-2.5 py-1 type-overline text-slate-400 mb-1 border-b border-slate-100/50 pb-1">
-                            {t("Advanced Elements", "Pokročilé prvky", "Speciális elemek")}
-                          </div>
-                          {advancedFiltered.length === 0 ? (
-                            <div className="text-micro text-slate-400 italic px-2.5 py-1.5">{t("No matches", "Žiadne zhody", "Nincs találat")}</div>
-                          ) : (
-                            advancedFiltered.map(opt => {
-                              const globalIdx = filteredOptions.findIndex(o => o.id === opt.id);
-                              const isSelected = globalIdx === selectedMenuIndex;
-                              const Icon = opt.icon;
-                              return (
-                                <button
-                                  key={opt.id}
-                                  onClick={() => convertBlockType(block.id, opt.type, opt.extra)}
-                                  className={cn(
-                                    "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-left text-ui font-semibold cursor-pointer transition-colors",
-                                    isSelected ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-50"
-                                  )}
-                                >
-                                  <Icon className={cn("h-3.5 w-3.5", isSelected ? "text-white" : "text-slate-400")} />
-                                  {opt.label}
-                                </button>
-                              );
-                            })
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
-
-
-
             </div>
           );
         })}
       </div>
 
+      {/* Portaled slash command / block format menu so overflow containers never clip */}
+      {!readOnly && activeMenuBlockId && menuPos && typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={menuPopoverRef}
+            style={{
+              position: "fixed",
+              left: menuPos.left,
+              top: menuPos.top,
+              bottom: menuPos.bottom,
+              maxHeight: menuPos.maxHeight,
+              zIndex: 100020,
+            }}
+            className="w-[min(28.75rem,calc(100vw-1rem))] overflow-y-auto bg-white border border-slate-200 shadow-2xl rounded-2xl p-1 flex flex-col select-none animate-in fade-in slide-in-from-top-2 duration-150"
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 sm:divide-x divide-slate-100 p-2.5">
+              {/* Basic elements column */}
+              <div className="space-y-0.5 sm:pr-2">
+                <div className="px-2.5 py-1 type-overline text-slate-400 mb-1 border-b border-slate-100/50 pb-1">
+                  {t("Basic Elements", "Základné prvky", "Alapelemek")}
+                </div>
+                {basicFiltered.length === 0 ? (
+                  <div className="text-micro text-slate-400 italic px-2.5 py-1.5">{t("No matches", "Žiadne zhody", "Nincs találat")}</div>
+                ) : (
+                  basicFiltered.map(opt => {
+                    const globalIdx = filteredOptions.findIndex(o => o.id === opt.id);
+                    const isSelected = globalIdx === selectedMenuIndex;
+                    const Icon = opt.icon;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => convertBlockType(activeMenuBlockId, opt.type, opt.extra)}
+                        className={cn(
+                          "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-left text-ui font-semibold cursor-pointer transition-colors",
+                          isSelected ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-50",
+                        )}
+                      >
+                        <Icon className={cn("h-3.5 w-3.5 shrink-0", isSelected ? "text-white" : "text-slate-400")} />
+                        {opt.label}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Advanced elements column */}
+              <div className="space-y-0.5 sm:pl-3">
+                <div className="px-2.5 py-1 type-overline text-slate-400 mb-1 border-b border-slate-100/50 pb-1">
+                  {t("Advanced Elements", "Pokročilé prvky", "Speciális elemek")}
+                </div>
+                {advancedFiltered.length === 0 ? (
+                  <div className="text-micro text-slate-400 italic px-2.5 py-1.5">{t("No matches", "Žiadne zhody", "Nincs találat")}</div>
+                ) : (
+                  advancedFiltered.map(opt => {
+                    const globalIdx = filteredOptions.findIndex(o => o.id === opt.id);
+                    const isSelected = globalIdx === selectedMenuIndex;
+                    const Icon = opt.icon;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => convertBlockType(activeMenuBlockId, opt.type, opt.extra)}
+                        className={cn(
+                          "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-left text-ui font-semibold cursor-pointer transition-colors",
+                          isSelected ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-50",
+                        )}
+                      >
+                        <Icon className={cn("h-3.5 w-3.5 shrink-0", isSelected ? "text-white" : "text-slate-400")} />
+                        {opt.label}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
       {/* Clicking the empty space below the blocks continues writing, the way a
           plain textarea would. */}
-      {fillHeight && (
+      {fillHeight && !readOnly && (
         <div
           className="flex-1 min-h-7 cursor-text"
           onMouseDown={focusTrailingBlock}
         />
       )}
-
-      {/* Click outside target to close dropdowns */}
-      {isMenuOpenAnywhere() && (
-        <div 
-          className="fixed inset-0 z-[9990] bg-transparent"
-          onClick={() => setActiveMenuBlockId(null)}
-        />
-      )}
-
     </div>
   );
-
-  function isMenuOpenAnywhere() {
-    return activeMenuBlockId !== null;
-  }
 };
 
 export default BlockEditor;

@@ -95,6 +95,7 @@ import { PRODUCT_NAME } from "../utils/brand";
 import { WeeklyPlanView } from "./WeeklyPlanView";
 import { EntityBadge } from "./tremor/EntityBadge";
 import { entityAccentStyle } from "../utils/entityAccent";
+import { blockNotesToPlainText } from "../utils/blockNotes";
 
 // Format a Date as a LOCAL calendar date (YYYY-MM-DD). Task deadlines are stored
 // as plain local date strings, so we must NOT go through toISOString() (which
@@ -661,7 +662,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             const taskTags = [
                 ...(task.tags || []),
                 ...extractTagsFromText(task.title || ""),
-                ...extractTagsFromText(task.description || ""),
+                ...extractTagsFromText(blockNotesToPlainText(task.description || "")),
                 ...extractTagsFromText(task.conclusion || ""),
             ].map((tg) => tg.toLowerCase());
             if (!taskTags.includes(target)) return false;
@@ -1028,7 +1029,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 tk.tags.forEach((t) => tagSet.add(t));
             }
             extractTagsFromText(tk.title || "").forEach((t) => tagSet.add(t));
-            extractTagsFromText(tk.description || "").forEach((t) => tagSet.add(t));
+            extractTagsFromText(blockNotesToPlainText(tk.description || "")).forEach((t) => tagSet.add(t));
         });
         return Array.from(tagSet).sort();
     }, [tasks]);
@@ -1339,7 +1340,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 const query = archiveSearchQuery.toLowerCase();
                 const matchesTitle = task.title.toLowerCase().includes(query);
                 const matchesDesc =
-                    task.description?.toLowerCase().includes(query) || false;
+                    blockNotesToPlainText(task.description || "").toLowerCase().includes(query) || false;
                 const matchesConclusion =
                     task.conclusion?.toLowerCase().includes(query) || false;
                 if (!matchesTitle && !matchesDesc && !matchesConclusion) return false;
@@ -1424,7 +1425,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 const query = archiveSearchQuery.toLowerCase();
                 const matchesTitle = task.title.toLowerCase().includes(query);
                 const matchesDesc =
-                    task.description?.toLowerCase().includes(query) || false;
+                    blockNotesToPlainText(task.description || "").toLowerCase().includes(query) || false;
                 const matchesConclusion =
                     task.conclusion?.toLowerCase().includes(query) || false;
                 if (!matchesTitle && !matchesDesc && !matchesConclusion) return false;
@@ -3252,7 +3253,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         {task.tags && task.tags.length > 0 && (() => {
                             const textTags = new Set([
                                 ...extractTagsFromText(task.title || "").map((t) => t.toLowerCase()),
-                                ...extractTagsFromText(task.description || "").map((t) => t.toLowerCase()),
+                                ...extractTagsFromText(blockNotesToPlainText(task.description || "")).map((t) => t.toLowerCase()),
                                 ...extractTagsFromText(task.conclusion || "").map((t) => t.toLowerCase()),
                             ]);
                             const extraTags = task.tags.filter((t) => !textTags.has(t.toLowerCase()));
@@ -4801,7 +4802,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             if (timelineSearch.trim()) {
                 const q = timelineSearch.toLowerCase();
                 const titleMatch = ev.task.title.toLowerCase().includes(q);
-                const descMatch = (ev.task.description || "").toLowerCase().includes(q);
+                const descMatch = blockNotesToPlainText(ev.task.description || "").toLowerCase().includes(q);
                 const creatorMatch = (ev.task.createdBy || "").toLowerCase().includes(q);
                 const actorMatch = ev.actor.toLowerCase().includes(q);
                 const assignedMatch = (ev.task.assignedUsers || []).some((u) =>
@@ -5276,11 +5277,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                     >
                                                         {tpl.title}
                                                     </button>
-                                                    {tpl.description && (
-                                                        <p className="text-caption text-gray-400 font-medium truncate mt-0.5" title={tpl.description}>
-                                                            {tpl.description}
-                                                        </p>
-                                                    )}
+                                                    {tpl.description && (() => {
+                                                        const plainTplDesc = blockNotesToPlainText(tpl.description);
+                                                        return plainTplDesc ? (
+                                                            <p className="text-caption text-gray-400 font-medium truncate mt-0.5" title={plainTplDesc}>
+                                                                {plainTplDesc}
+                                                            </p>
+                                                        ) : null;
+                                                    })()}
                                                 </td>
                                                 <td className="py-3.5 px-3 text-caption font-medium text-gray-600 max-w-56">
                                                     {describeRecurrence(tpl.recurrence, systemLanguage)}
