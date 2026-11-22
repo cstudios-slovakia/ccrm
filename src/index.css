@@ -2221,6 +2221,9 @@ dialog[open]::backdrop {
 tr[data-offscreen-row] {
   visibility: hidden;
 }
+.ccrm-table-fullscreen-host tr[data-offscreen-row] {
+  visibility: visible !important;
+}
 @media print {
   tr[data-offscreen-row] {
     visibility: visible;
