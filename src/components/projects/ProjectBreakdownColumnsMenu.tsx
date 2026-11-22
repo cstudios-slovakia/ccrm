@@ -60,7 +60,7 @@ export const ProjectBreakdownColumnsMenu: React.FC<ProjectBreakdownColumnsMenuPr
       canEditColumns={true}
       columnsScope={t(
         "Your personal breakdown layout — saved across devices.",
-        "Váš osobný rozpad stĺpcov — uložený pre všetky zariadenia.",
+        "Váš osobný rozbor stĺpcov — uložený pre všetky zariadenia.",
         "Személyes bontási elrendezés — minden eszközön mentve.",
       )}
       onReset={onReset}

@@ -2047,7 +2047,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     { mode: "structure" as const, Icon: ListTree, label: t("Structure view", "Zobrazenie štruktúry", "Struktúra nézet") },
                     { mode: "list" as const, Icon: Rows3, label: t("List view", "Zobrazenie zoznamu", "Lista nézet") },
                     { mode: "grid" as const, Icon: LayoutGrid, label: t("Grid view", "Zobrazenie kariet", "Kártyás nézet") },
-                    { mode: "breakdown" as const, Icon: FolderTree, label: t("Breakdown view", "Rozpad projektov", "Bontott nézet") },
+                    { mode: "breakdown" as const, Icon: FolderTree, label: t("Breakdown view", "Rozbor projektov", "Bontott nézet") },
                   ]).map(({ mode, Icon, label }) => (
                     <button
                       key={mode}
