@@ -7,6 +7,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/read_scope.php';
 require_once __DIR__ . '/schema.php';
+require_once __DIR__ . '/deleted_records.php';
 require_once __DIR__ . '/agency_lib.php';
 
 header('Content-Type: application/json');
@@ -463,10 +464,15 @@ try {
                     @unlink($p);
                 }
             }
+            $snap = ccrm_deleted_snapshot($pdo, 'agency_workers', $id);
             foreach (['agency_worker_files', 'agency_worker_checklists', 'agency_timeline_events', 'agency_shifts', 'agency_placements', 'agency_payments'] as $tbl) {
                 $pdo->prepare("DELETE FROM `{$tbl}` WHERE `worker_id` = ?")->execute([$id]);
             }
-            $pdo->prepare("DELETE FROM `agency_workers` WHERE `id` = ?")->execute([$id]);
+            $delWorker = $pdo->prepare("DELETE FROM `agency_workers` WHERE `id` = ?");
+            $delWorker->execute([$id]);
+            if ($delWorker->rowCount() > 0 && $snap) {
+                ccrm_record_deleted($pdo, 'agency_workers', $id, $snap, $userName);
+            }
             ccrm_agency_json(['success' => true]);
             break;
         }

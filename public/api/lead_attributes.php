@@ -172,3 +172,21 @@ if (!function_exists('ccrm_copy_lead_custom_fields_to_project')) {
         return $projectData;
     }
 }
+
+if (!function_exists('ccrm_replace_lead_categories')) {
+    /**
+     * Replace all lead_categories links for a lead cleanly from a canonical list of category names.
+     * Kept in the shared lead_attributes library so callers never duplicate category-sync SQL.
+     */
+    function ccrm_replace_lead_categories(\PDO $pdo, string $leadId, array $categories): void {
+        $pdo->prepare("DELETE FROM `lead_categories` WHERE `lead_id` = ?")->execute([$leadId]);
+        $ins = $pdo->prepare("INSERT IGNORE INTO `lead_categories` (`lead_id`, `category_name`) VALUES (?, ?)");
+        $seen = [];
+        foreach ($categories as $raw) {
+            $c = trim((string)$raw);
+            if ($c === '' || isset($seen[strtolower($c)])) continue;
+            $seen[strtolower($c)] = true;
+            $ins->execute([$leadId, mb_substr($c, 0, 100)]);
+        }
+    }
+}

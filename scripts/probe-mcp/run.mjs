@@ -79,7 +79,7 @@ const isErr = (r, re) => !!(r && r.__error && (!re || re.test(r.__error)));
 const forbidden = (r) => !!(r && r.__rpc && r.__rpc.code === -32003);
 
 // ----------------------------------------------------------------------------- setup / teardown
-const MODULES = ['dashboard', 'tasks', 'tasks.weekly_plan', 'leads', 'clients', 'projects', 'invoices', 'orders', 'warehouse', 'financial', 'employees', 'meetings', 'tickets', 'time_tracking', 'whatsapp', 'files', 'email', 'unified_entries', 'automation', 'social_media'];
+const MODULES = ['dashboard', 'tasks', 'tasks.weekly_plan', 'leads', 'clients', 'projects', 'invoices', 'orders', 'warehouse', 'financial', 'employees', 'meetings', 'tickets', 'time_tracking', 'whatsapp', 'files', 'email', 'unified_entries', 'automation', 'social_media', 'agency', 'newsletter'];
 const SETTINGS_KEYS = ['general_config', 'pm_managers', 'pipeline_stages', 'traffic_sources', 'ai_config', 'system_reset', 'nav_edit'];
 const role = (name, level) => ({
   name,
@@ -88,6 +88,9 @@ const role = (name, level) => ({
     ...Object.fromEntries(SETTINGS_KEYS.map((k) => [k, 'nothing'])),
     'tasks.view_all': 'nothing', 'employees.salaries': 'nothing', 'dashboard.custom': 'nothing', 'overview': 'nothing',
     'time_tracking_team': 'nothing', 'time_tracking_costs': 'nothing', 'tickets.time': 'nothing',
+    'agency.personal': 'nothing', 'agency.payments': 'nothing', 'agency.delete': 'nothing',
+    'newsletter_send': 'nothing', 'newsletter_settings': 'nothing',
+    'self.profile': 'nothing', 'self.vacations': 'nothing', 'self.payroll': 'nothing',
     // HR field groups, written out so nothing falls back to the legacy "edit" default: personal data and
     // documents are off; leave is on for the editor only (the leave tools need it).
     'employees.personal': 'nothing', 'employees.files': 'nothing', 'employees.vacations': level === 'edit' ? 'edit' : 'nothing',
@@ -1695,6 +1698,123 @@ async function changeReviewFixChecks() {
   cleanup();
 }
 
+async function wpExpansionChecks() {
+  section('WP1-WP6 expansion: catalog, CRM+, commercial, HR contractor_type, TT2, agency, newsletter, comms, admin diagnostics, search');
+  const A = TOKENS.admin;
+  const cleanup = () => sql(`SET FOREIGN_KEY_CHECKS=0;
+       DELETE FROM leads WHERE id LIKE 'wp-%';
+       DELETE FROM client_categories WHERE id LIKE 'wp-%' OR name LIKE 'WP Probe Category%';
+       DELETE FROM suppliers WHERE id LIKE 'wp-%' OR name = 'WP Probe Supplier';
+       DELETE FROM warehouses WHERE id LIKE 'wp-%' OR code = 'WPWH1';
+       DELETE FROM support_contracts WHERE id LIKE 'wp-%' OR client_id = 'wp-client-1' OR notes = 'WP Support Contract';
+       DELETE FROM weekly_plan_cards WHERE content = 'WP Probe Plan Card';
+       DELETE FROM employees WHERE first_name = 'WPFree' OR company_id = '99887766';
+       DELETE FROM time_entries WHERE description = 'WP TT2 entry';
+       DELETE FROM agency_worker_checklists WHERE worker_id IN (SELECT id FROM agency_workers WHERE full_name = 'WP Agency Worker');
+       DELETE FROM agency_timeline_events WHERE worker_id IN (SELECT id FROM agency_workers WHERE full_name = 'WP Agency Worker');
+       DELETE FROM agency_payments WHERE worker_id IN (SELECT id FROM agency_workers WHERE full_name = 'WP Agency Worker');
+       DELETE FROM agency_workers WHERE full_name = 'WP Agency Worker';
+       DELETE FROM newsletter_campaigns WHERE name = 'WP Probe Campaign';
+       SET FOREIGN_KEY_CHECKS=1;`);
+  cleanup();
+
+  // ---- WP1: Catalog
+  const cat = await call(A, 'get_workspace_catalog', {});
+  check('WP1 get_workspace_catalog returns lead_states, task_states, project_statuses', Array.isArray(cat?.lead_states) && Array.isArray(cat?.task_states) && Array.isArray(cat?.project_statuses), JSON.stringify(cat).slice(0, 200));
+  for (const t of ['list_lead_attributes', 'list_project_types', 'list_offer_categories', 'list_price_levels']) {
+    const r = await call(A, t, {});
+    check(`WP1 ${t} returns without error`, r && !r.__error && !r.__rpc, JSON.stringify(r).slice(0, 150));
+    check(`WP1 ${t} refused to nothing-role (-32003)`, forbidden(await call(TOKENS.none, t, {})), '');
+  }
+
+  // ---- WP2: Client categories, tags
+  const ccat = await call(A, 'create_client_category', { name: 'WP Probe Category', color: '#10b981' });
+  const ccatUp = ccat?.id ? await call(A, 'update_client_category', { id: ccat.id, name: 'WP Probe Category 2' }) : null;
+  const ccatRow = ccat?.id ? rows(`SELECT name FROM client_categories WHERE id = ${sq(ccat.id)}`)[0] : null;
+  check('WP2 client category create + update', !!ccat?.success && !!ccatUp?.success && ccatRow?.[0] === 'WP Probe Category 2', JSON.stringify([ccat, ccatUp, ccatRow]));
+  if (ccat?.id) sql(`DELETE FROM client_categories WHERE id = ${sq(ccat.id)}`);
+  const tags = await call(A, 'list_tags', {});
+  check('WP2 list_tags returns array', Array.isArray(tags) || Array.isArray(tags?.tags), JSON.stringify(tags).slice(0, 150));
+
+  // ---- WP3: Suppliers, Warehouses, Support Contracts, Weekly Plan archive/restore
+  const sup = await call(A, 'create_supplier', { name: 'WP Probe Supplier', company_id: '55443322', city: 'Bratislava' });
+  const supUp = sup?.id ? await call(A, 'update_supplier', { id: sup.id, city: 'Košice' }) : null;
+  const supGot = sup?.id ? await call(A, 'get_supplier', { id: sup.id }) : null;
+  check('WP3 supplier create/update/get', !!sup?.success && !!supUp?.success && supGot?.name === 'WP Probe Supplier' && supGot?.city === 'Košice', JSON.stringify([sup, supUp, supGot]));
+  const wh = await call(A, 'create_warehouse', { name: 'WP Probe WH', code: 'WPWH1' });
+  const whUp = wh?.id ? await call(A, 'update_warehouse', { id: wh.id, name: 'WP Probe WH 2' }) : null;
+  const whRow = wh?.id ? rows(`SELECT name FROM warehouses WHERE id = ${sq(wh.id)}`)[0] : null;
+  check('WP3 warehouse create + update', !!wh?.success && !!whUp?.success && whRow?.[0] === 'WP Probe WH 2', JSON.stringify([wh, whUp, whRow]));
+  sql(`INSERT IGNORE INTO leads (id,name,owner,status,created_at,archived,adjustment) VALUES ('wp-client-1','WP Probe Client','Probe Admin','accepted','2026-01-01',0,0);`);
+  const sc = await call(A, 'create_support_contract', { client_id: 'wp-client-1', tier: 'pro', monthly_hours: 10, hourly_rate: 45, notes: 'WP Support Contract' });
+  const scUp = sc?.id ? await call(A, 'update_support_contract', { id: sc.id, monthly_hours: 20 }) : null;
+  const scGot = sc?.id ? await call(A, 'get_support_contract', { id: sc.id }) : null;
+  check('WP3 support contract create/update/get', !!sc?.success && !!scUp?.success && scGot?.tier === 'pro' && Number(scGot?.monthly_hours) === 20, JSON.stringify([sc, scUp, scGot]));
+  const wpc = await call(A, 'create_weekly_plan_card', { date: '2026-11-16', content: 'WP Probe Plan Card' });
+  const wpcId = wpc?.id;
+  await call(A, 'update_weekly_plan_card', { id: wpcId, archived: true });
+  const wpHidden = await call(A, 'get_weekly_plan', { date: '2026-11-16' });
+  await call(A, 'update_weekly_plan_card', { id: wpcId, archived: false });
+  const wpRestored = await call(A, 'get_weekly_plan', { date: '2026-11-16' });
+  check('WP3 weekly plan card create + soft-delete archive + restore', !!wpcId && !wpHidden?.cards?.some((c) => c.id === wpcId) && !!wpRestored?.cards?.some((c) => c.id === wpcId), JSON.stringify([wpc, wpHidden?.cards?.length, wpRestored?.cards?.length]));
+
+  // ---- WP4: contractor_type, holidays, TT2 archive/restore, Agency
+  check('WP4 contractor_type=person refuses company_id', isErr(await call(A, 'create_employee', { kind: 'contractor', contractor_type: 'person', first_name: 'WPFree', last_name: 'Bad', company_id: '12345678' }), /person|company_id/i), '');
+  const empPerson = await call(A, 'create_employee', { kind: 'contractor', contractor_type: 'person', first_name: 'WPFree', last_name: 'Lancer', work_country: 'SK' });
+  const empGot = empPerson?.id ? await call(A, 'get_employee', { id: empPerson.id }) : null;
+  check('WP4 contractor_type=person creates without company_name/ICO', empPerson?.contractor_type === 'person' && empPerson?.name === 'WPFree Lancer' && empGot?.company_id === null, JSON.stringify([empPerson, empGot]));
+  const empSole = empPerson?.id ? await call(A, 'update_employee', { id: empPerson.id, contractor_type: 'sole_trader', company_name: 'WPFree Studio', company_id: '99887766' }) : null;
+  const empSoleGot = empSole?.success ? await call(A, 'get_employee', { id: empPerson.id }) : null;
+  const empBack = empPerson?.id ? await call(A, 'update_employee', { id: empPerson.id, contractor_type: 'person', first_name: 'WPFree', last_name: 'Lancer' }) : null;
+  const empBackGot = empBack?.success ? await call(A, 'get_employee', { id: empPerson.id }) : null;
+  check('WP4 contractor_type sole_trader -> person clears company_id', empSoleGot?.company_id === '99887766' && empBackGot?.contractor_type === 'person' && empBackGot?.company_id === null, JSON.stringify([empSole, empSoleGot, empBack, empBackGot]));
+
+  const hols = await call(A, 'list_public_holidays', { country: 'SK', year: 2026 });
+  check('WP4 list_public_holidays returns array for SK 2026', Array.isArray(hols?.days) && hols.days.length > 0, JSON.stringify(hols).slice(0, 200));
+
+  const te = await call(A, 'log_time_entry', { entry_date: '2026-11-18', duration_minutes: 30, description: 'WP TT2 entry', tags: ['wp-tag', 'mcp'] });
+  const teId = te?.entry?.id;
+  const teArch = teId ? await call(A, 'update_time_entry', { id: teId, archived: true }) : null;
+  const teListHidden = await call(A, 'list_time_entries', { from: '2026-11-18', to: '2026-11-18' });
+  const teRest = teId ? await call(A, 'update_time_entry', { id: teId, archived: false, tags: ['restored-tag'] }) : null;
+  check('WP4 time_entry tags + archive/restore via deleted_at', !!teId && teArch?.archived === true && Array.isArray(teListHidden) && !teListHidden.some((x) => x.id === teId) && teRest?.archived === false && teRest?.entry?.tags?.[0] === 'restored-tag', JSON.stringify([teArch, teRest]));
+
+  // Agency tools (enable temporarily in settings for probe)
+  const prevAg = rows(`SELECT \`value\` FROM system_settings WHERE \`key\` = 'AGENCY_SETTINGS'`)[0]?.[0];
+  sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('AGENCY_SETTINGS', '{"enabled":true,"stages":[{"id":"sourced","label":"Sourced"}],"checklistItems":[{"key":"id_doc","label":"ID"}]}')`);
+  const agW = await call(A, 'create_agency_worker', { fullName: 'WP Agency Worker', workerStatus: 'candidate' });
+  const agChk = agW?.id ? await call(A, 'update_agency_checklist', { workerId: agW.id, items: [{ itemKey: 'id_doc', label: 'ID Doc', status: 'submitted' }] }) : null;
+  const agPayDraft = agW?.id ? await call(A, 'record_agency_payment', { workerId: agW.id, periodYm: '2026-11', basePay: 1000, status: 'draft' }) : null;
+  const agPayPaid = agW?.id ? await call(A, 'record_agency_payment', { workerId: agW.id, periodYm: '2026-11', basePay: 1000, status: 'paid' }) : null;
+  check('WP4 agency worker + checklist + payment draft allowed & paid blocked (D2)', !!agW?.id && agChk?.checklist?.[0]?.status === 'submitted' && agPayDraft?.payment?.status === 'draft' && isErr(agPayPaid, /status|draft|approved/i), JSON.stringify([agChk, agPayDraft, agPayPaid]).slice(0, 300));
+  if (prevAg !== undefined) sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('AGENCY_SETTINGS', ${sq(prevAg)})`);
+
+  // ---- WP5: Newsletter Option A, Comms, Admin-Only Diagnostics
+  const nl = await call(A, 'create_newsletter_campaign', { name: 'WP Probe Campaign', subject: 'Hello WP' });
+  const nlId = nl?.campaign?.id;
+  const nlArch = nlId ? await call(A, 'update_newsletter_campaign', { id: nlId, archived: true }) : null;
+  const nlRest = nlId ? await call(A, 'update_newsletter_campaign', { id: nlId, archived: false, subject: 'Hello Restored' }) : null;
+  check('WP5 newsletter campaign create + archive + restore', !!nlId && nlArch?.archived === true && nlRest?.archived === false && nlRest?.campaign?.subject === 'Hello Restored', JSON.stringify([nl, nlArch, nlRest]).slice(0, 250));
+
+  const mAcc = await call(A, 'list_mail_accounts', {});
+  const aiUse = await call(A, 'get_ai_usage_summary', { month: '2026-11' });
+  check('WP5 mail accounts & AI usage summary return cleanly', Array.isArray(mAcc?.accounts) && Array.isArray(aiUse?.rows), JSON.stringify([mAcc, aiUse]).slice(0, 200));
+
+  const edToolsWp = await listTools(TOKENS.editor);
+  for (const diag of ['list_audit_logs', 'list_error_logs', 'get_vector_index_status']) {
+    const admRes = await call(A, diag, {});
+    check(`WP5 admin-only ${diag}: succeeds for admin, -32003 for editor & none`, admRes && !admRes.__error && !admRes.__rpc && !edToolsWp.includes(diag) && forbidden(await call(TOKENS.editor, diag, {})) && forbidden(await call(TOKENS.none, diag, {})), JSON.stringify(admRes).slice(0, 150));
+  }
+
+  // ---- WP6: Expanded search_entities
+  const seSup = await call(A, 'search_entities', { query: 'WP Probe Supplier', entity_types: ['suppliers'] });
+  const seEmp = await call(A, 'search_entities', { query: 'WPFree Lancer', entity_types: ['employees'] });
+  const seNone = await call(TOKENS.none, 'search_entities', { query: 'WP', entity_types: ['suppliers', 'employees', 'agency_workers'] });
+  check('WP6 search_entities finds suppliers & employees when permitted, empty for nothing-role', (seSup?.suppliers?.length || 0) >= 1 && (seEmp?.employees?.length || 0) >= 1 && Object.keys(seNone || {}).length === 0, JSON.stringify([seSup, seEmp, seNone]).slice(0, 250));
+
+  cleanup();
+}
+
 // ----------------------------------------------------------------------------- main
 try {
   setup();
@@ -1708,6 +1828,7 @@ try {
   await changePeopleChecks();
   await changeSyncChecks();
   await changeReviewFixChecks();
+  await wpExpansionChecks();
 } catch (e) {
   failures++;
   console.log('\nPROBE ERROR: ' + (e && e.stack ? e.stack : e));

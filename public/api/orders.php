@@ -4,6 +4,7 @@
  */
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
+require_once __DIR__ . '/deleted_records.php';
 
 header('Content-Type: application/json; charset=utf-8');
 ccrm_send_cors('GET, POST, DELETE, OPTIONS');
@@ -410,8 +411,12 @@ switch ($method) {
             echo json_encode(['error' => 'Missing id']);
             exit;
         }
+        $snap = ccrm_deleted_snapshot($pdo, 'orders', (string)$id);
         $del = $pdo->prepare("DELETE FROM `orders` WHERE `id` = ?");
         $del->execute([$id]);
+        if ($del->rowCount() > 0 && $snap) {
+            ccrm_record_deleted($pdo, 'orders', (string)$id, $snap, (string)($user['email'] ?? $user['id'] ?? ''));
+        }
         echo json_encode(['success' => true]);
         break;
 

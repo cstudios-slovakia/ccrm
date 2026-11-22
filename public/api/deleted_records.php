@@ -48,6 +48,9 @@ if (!function_exists('ccrm_deleted_entities')) {
             'warehouse_movements' => '`document_number`',
             'suppliers' => '`name`',
             'warehouses' => '`name`',
+            'orders' => "COALESCE(NULLIF(`order_number`, ''), `id`)",
+            'weekly_plan_cards' => 'LEFT(`content`, 120)',
+            'agency_workers' => '`full_name`',
         ];
     }
 }

@@ -308,7 +308,7 @@ function mcp_ext_ops_permissions(): array {
         'list_workflows' => $v('automation'), 'get_workflow_runs' => $v('automation'),
         'list_unified_entries' => $v('unified_entries'), 'get_unified_entry_rows' => $v('unified_entries'),
         'list_files' => $v('files'),
-        'list_documents' => $v('leads'),
+        'list_documents' => ['any' => ['leads', 'clients']],
     ];
 }
 
@@ -513,8 +513,14 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
                 elseif ((float)$r['on_hand'] <= (float)$r['min_stock']) $low++;
             }
             $month = date('Y-m');
-            $mv = $pdo->prepare("SELECT type, SUM(total_cost_value) cost, SUM(total_sell_value) sell, SUM(total_profit_value) profit FROM warehouse_movements WHERE status = 'confirmed' AND DATE_FORMAT(issued_at, '%Y-%m') = ? GROUP BY type");
-            $mv->execute([$month]);
+            $mvSql = "SELECT type, SUM(total_cost_value) cost, SUM(total_sell_value) sell, SUM(total_profit_value) profit FROM warehouse_movements WHERE status = 'confirmed' AND DATE_FORMAT(issued_at, '%Y-%m') = ?";
+            $mvParams = [$month];
+            if ($wh !== null) {
+                $mvSql .= " AND warehouse_id = ?";
+                $mvParams[] = $wh;
+            }
+            $mv = $pdo->prepare($mvSql . " GROUP BY type");
+            $mv->execute($mvParams);
             $inward = 0.0; $outward = 0.0; $profit = 0.0;
             foreach ($mv->fetchAll(\PDO::FETCH_ASSOC) as $r) {
                 if ($r['type'] === 'inward') $inward += (float)$r['cost'];
@@ -584,7 +590,7 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
                 $tp += (float)$r['planned']; $tpaid += (float)$r['paid'];
             }
             $nominal = 0.0;
-            foreach ($pdo->query("SELECT salary_type, salary_amount FROM employees WHERE is_active = 1")->fetchAll(\PDO::FETCH_ASSOC) as $e) {
+            foreach ($pdo->query("SELECT salary_type, salary_amount FROM employees WHERE is_active = 1 AND kind = 'employee'")->fetchAll(\PDO::FETCH_ASSOC) as $e) {
                 $a = (float)$e['salary_amount'];
                 $nominal += $e['salary_type'] === 'daily' ? $a * 21 : ($e['salary_type'] === 'hourly' ? $a * 168 : $a);
             }

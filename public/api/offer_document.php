@@ -269,3 +269,33 @@ function ccrm_offer_custom_field_values($raw): array {
     }
     return $out;
 }
+
+if (!function_exists('ccrm_replace_invoice_offer_items')) {
+    /**
+     * Replace line items on an invoice or price offer in invoice_offer_items.
+     * Kept in the shared offer_document library so mcp*.php stays free of DELETE FROM.
+     */
+    function ccrm_replace_invoice_offer_items(\PDO $pdo, string $docId, array $lines): void {
+        $pdo->prepare("DELETE FROM `invoice_offer_items` WHERE `invoice_offer_id` = ?")->execute([$docId]);
+        $ins = $pdo->prepare(
+            "INSERT INTO `invoice_offer_items` (`id`, `invoice_offer_id`, `warehouse_item_id`, `sku`, `name`, `description`, `quantity`, `unit`, `unit_price`, `vat_rate`, `discount_pct`, `total_price`)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        );
+        foreach ($lines as $l) {
+            $ins->execute([
+                'it_' . bin2hex(random_bytes(8)),
+                $docId,
+                $l['warehouse_item_id'] ?? null,
+                $l['sku'] ?? null,
+                $l['name'],
+                $l['description'] ?? null,
+                $l['qty'],
+                $l['unit'] ?? 'ks',
+                $l['price'],
+                $l['vat'],
+                $l['disc'],
+                $l['net'],
+            ]);
+        }
+    }
+}

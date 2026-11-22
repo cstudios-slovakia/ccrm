@@ -8,6 +8,7 @@
  */
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
+require_once __DIR__ . '/deleted_records.php';
 require_once __DIR__ . '/permissions.php';
 require_once __DIR__ . '/read_scope.php';
 
@@ -92,7 +93,7 @@ if ($method === 'GET') {
             $cardStmt = $pdo->prepare(
                 "SELECT `id`, `date`, `content`, `position`, `completed`, `color`, `refs_json`, `created_by`, `created_at`, `updated_at`
                  FROM `weekly_plan_cards`
-                 WHERE `date` BETWEEN ? AND ?
+                 WHERE `deleted_at` IS NULL AND `date` BETWEEN ? AND ?
                  ORDER BY `date` ASC, `position` ASC, `created_at` ASC"
             );
             $cardStmt->execute([$from, $to]);
@@ -108,6 +109,7 @@ if ($method === 'GET') {
             $cardStmt = $pdo->query(
                 "SELECT `id`, `date`, `content`, `position`, `completed`, `color`, `refs_json`, `created_by`, `created_at`, `updated_at`
                  FROM `weekly_plan_cards`
+                 WHERE `deleted_at` IS NULL
                  ORDER BY `date` ASC, `position` ASC, `created_at` ASC"
             );
             $noteStmt = $pdo->query(
@@ -288,8 +290,12 @@ try {
             echo json_encode(['error' => 'Card id is required']);
             exit;
         }
+        $snap = ccrm_deleted_snapshot($pdo, 'weekly_plan_cards', $id);
         $del = $pdo->prepare("DELETE FROM `weekly_plan_cards` WHERE `id` = ?");
         $del->execute([$id]);
+        if ($del->rowCount() > 0 && $snap) {
+            ccrm_record_deleted($pdo, 'weekly_plan_cards', $id, $snap, $actorId);
+        }
         echo json_encode(['ok' => true]);
         exit;
     }

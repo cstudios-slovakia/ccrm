@@ -753,7 +753,9 @@ function mcp_invoice_totals(array $rows): array {
 function mcp_search_entities(\PDO $pdo, array $user, array $args): array {
     $query = mcp_require_string($args, 'query');
     $tokens = mcp_query_tokens($query);
-    $types = is_array($args['entity_types'] ?? null) ? $args['entity_types'] : ['leads', 'clients', 'tasks', 'projects', 'invoices', 'tickets', 'orders', 'warehouse'];
+    $types = is_array($args['entity_types'] ?? null)
+        ? $args['entity_types']
+        : ['leads', 'clients', 'tasks', 'projects', 'invoices', 'tickets', 'orders', 'warehouse', 'employees', 'meetings', 'suppliers', 'agency_workers', 'unified_entries'];
     $limit = min(max(1, (int)($args['limit'] ?? 15)), 50);
     $results = [];
 
@@ -842,6 +844,57 @@ function mcp_search_entities(\PDO $pdo, array $user, array $args): array {
         $results['orders'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
+    if (in_array('employees', $types, true) && mcp_can('employees') && ccrm_table_exists($pdo, 'employees')) {
+        $canEmpContact = mcp_can('employees.contact');
+        $empSearchCols = ['name', 'first_name', 'last_name', 'position', 'department'];
+        $empSelCols = ['id', 'name', 'first_name', 'last_name', 'kind', 'contractor_type', 'position', 'department', 'is_active'];
+        if ($canEmpContact) {
+            $empSearchCols[] = 'email';
+            $empSearchCols[] = 'phone';
+            $empSelCols[] = 'email';
+            $empSelCols[] = 'phone';
+        }
+        [$w, $p] = mcp_token_where($empSearchCols, $tokens, 'name', $query);
+        $stmt = $pdo->prepare("SELECT " . implode(', ', $empSelCols) . " FROM employees WHERE ({$w}) ORDER BY is_active DESC, name ASC LIMIT {$limit}");
+        $stmt->execute($p);
+        $results['employees'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    if (in_array('meetings', $types, true) && mcp_can('meetings') && ccrm_table_exists($pdo, 'meeting_notes')) {
+        [$w, $p] = mcp_token_where(['title', 'notes', 'transcription', 'automated_notes', 'lead_name'], $tokens, 'title', $query);
+        $stmt = $pdo->prepare("SELECT id, title, date, lead_id, lead_name, duration FROM meeting_notes WHERE archived = 0 AND ({$w}) ORDER BY date DESC LIMIT {$limit}");
+        $stmt->execute($p);
+        $results['meetings'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    if (in_array('suppliers', $types, true) && mcp_can('warehouse') && ccrm_table_exists($pdo, 'suppliers')) {
+        [$w, $p] = mcp_token_where(['name', 'company_id', 'tax_id', 'vat_id', 'email', 'phone', 'city', 'notes'], $tokens, 'name', $query);
+        $stmt = $pdo->prepare("SELECT id, name, company_id, tax_id, vat_id, email, phone, city FROM suppliers WHERE ({$w}) ORDER BY name ASC LIMIT {$limit}");
+        $stmt->execute($p);
+        $results['suppliers'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    if (in_array('agency_workers', $types, true) && mcp_can('agency') && ccrm_table_exists($pdo, 'agency_workers')) {
+        $canAgencyPersonal = mcp_can('agency.personal');
+        $agCols = ['full_name', 'preferred_name', 'worker_code', 'email', 'notes'];
+        $agSel = ['id', 'worker_code', 'full_name', 'preferred_name', 'stage_id', 'worker_status', 'email'];
+        if ($canAgencyPersonal) {
+            $agCols[] = 'phone';
+            $agSel[] = 'phone';
+        }
+        [$w, $p] = mcp_token_where($agCols, $tokens, 'full_name', $query);
+        $stmt = $pdo->prepare("SELECT " . implode(', ', $agSel) . " FROM agency_workers WHERE ({$w}) ORDER BY updated_at DESC, full_name ASC LIMIT {$limit}");
+        $stmt->execute($p);
+        $results['agency_workers'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    if (in_array('unified_entries', $types, true) && mcp_can('unified_entries') && ccrm_table_exists($pdo, 'unified_entries')) {
+        [$w, $p] = mcp_token_where(['name', 'entry_name', 'folder_name'], $tokens, 'name', $query);
+        $stmt = $pdo->prepare("SELECT id, name, entry_name, folder_name, folders_enabled FROM unified_entries WHERE archived = 0 AND ({$w}) ORDER BY name ASC LIMIT {$limit}");
+        $stmt->execute($p);
+        $results['unified_entries'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
     return $results;
 }
 
@@ -859,7 +912,7 @@ function mcp_ext_intel_tool_definitions(): array {
         ],
         [
             'name' => 'get_client_invoices',
-            'description' => 'All invoices of a client with number, variable symbol (SuperFaktúra only), issue and due date, amount, paid and open amount, currency and payment status (paid, partially_paid, unpaid, overdue, planned, cancelled). Combines the Invoicing module, invoices and planned installments in the finance ledger (on the client or its projects), and — when the SuperFaktúra integration is enabled — the invoices SuperFaktúra holds for the client (found by IČO, else by name). Works in either finance mode. Each source is capped (300 rows, SuperFaktúra one page of 100): truncated=true means a source holds more than is listed and totals leave those rows out. Invoicing and ledger rows follow the overdue rule of the other money tools: \' . mcp_overdue_rule_text() . \'. A proforma or rejected invoice with no ledger movement is no receivable (payment_status null, open 0). For overdue or unpaid invoices across all clients use list_invoices with payment_status.',
+            'description' => 'All invoices of a client with number, variable symbol (SuperFaktúra only), issue and due date, amount, paid and open amount, currency and payment status (paid, partially_paid, unpaid, overdue, planned, cancelled). Combines the Invoicing module, invoices and planned installments in the finance ledger (on the client or its projects), and — when the SuperFaktúra integration is enabled — the invoices SuperFaktúra holds for the client (found by IČO, else by name). Works in either finance mode. Each source is capped (300 rows, SuperFaktúra one page of 100): truncated=true means a source holds more than is listed and totals leave those rows out. Invoicing and ledger rows follow the overdue rule of the other money tools: ' . mcp_overdue_rule_text() . '. A proforma or rejected invoice with no ledger movement is no receivable (payment_status null, open 0). For overdue or unpaid invoices across all clients use list_invoices with payment_status.',
             'inputSchema' => ['type' => 'object', 'properties' => [
                 'identifier' => $client,
                 'payment_status' => ['type' => 'string', 'enum' => ['paid', 'partially_paid', 'unpaid', 'overdue', 'planned', 'cancelled'], 'description' => 'Only invoices in this payment status'],

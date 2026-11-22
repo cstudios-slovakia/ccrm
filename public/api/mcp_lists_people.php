@@ -132,6 +132,11 @@ function mcp_list_employees(\PDO $pdo, array $user, array $args): array {
         $where[] = 'kind = ?';
         $params[] = $args['kind'];
     }
+    if (!empty($args['contractor_type'])) {
+        if (!in_array($args['contractor_type'], CCRM_CONTRACTOR_TYPES, true)) throw new \Exception('contractor_type must be one of: ' . implode(', ', CCRM_CONTRACTOR_TYPES) . '.');
+        $where[] = "kind = 'contractor' AND COALESCE(contractor_type, 'company') = ?";
+        $params[] = $args['contractor_type'];
+    }
     foreach (['position', 'department'] as $f) {
         if (!empty($args[$f])) {
             $where[] = "`$f` = ?";
@@ -144,7 +149,7 @@ function mcp_list_employees(\PDO $pdo, array $user, array $args): array {
     $win = mcp_list_window($args, MCP_EMPLOYEE_WINDOW);
     $where = array_merge($where, $win['where']);
     $params = array_merge($params, $win['params']);
-    $stmt = $pdo->prepare('SELECT id, name, first_name, last_name, kind, company_id, tax_id, vat_id, `position`, `department`, user_id, pin, email, phone, address_street, address_city, address_zip, address_country, salary_type, salary_amount, salary_due_day, vacation_allowances_json, time_tracking_user_name, auto_expense, is_active, '
+    $stmt = $pdo->prepare('SELECT id, name, first_name, last_name, kind, contractor_type, company_id, tax_id, vat_id, `position`, `department`, user_id, pin, email, phone, address_street, address_city, address_zip, address_country, work_country, salary_type, salary_amount, salary_due_day, vacation_allowances_json, time_tracking_user_name, auto_expense, is_active, '
         . mcp_people_moments_sql() . ' FROM employees WHERE ' . implode(' AND ', $where) . ' ' . $win['tail']);
     $stmt->execute($params);
     return array_map(static fn($r) => mcp_label_employee(mcp_project_employee(mcp_row_moments($r))), $stmt->fetchAll(\PDO::FETCH_ASSOC));

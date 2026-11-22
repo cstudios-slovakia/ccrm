@@ -80,6 +80,8 @@ function mcp_money_tool_def(string $name): array {
                     . mcp_window_doc('projects', MCP_PROJECT_WINDOW) . ' sort_by=deadline lists the soonest deadline first and projects without one last.',
                 'inputSchema' => ['type' => 'object', 'properties' => [
                     'status' => ['type' => 'string', 'description' => 'Filter by a configured project status'],
+                    'project_type_id' => ['type' => 'string', 'description' => 'Filter by project type ID'],
+                    'division' => ['type' => 'string', 'description' => 'Filter by division'],
                     'client_id' => ['type' => 'string', 'description' => 'Filter by client ID'],
                     'search' => ['type' => 'string', 'description' => 'Search project names'],
                     'include_archived' => ['type' => 'boolean', 'description' => 'Include archived projects (default false)'],
@@ -216,6 +218,8 @@ function mcp_list_projects(\PDO $pdo, array $user, array $args): array {
     $where = ['1=1'];
     $params = [];
     if (!empty($args['status'])) { $where[] = 'p.status = ?'; $params[] = $args['status']; }
+    if (!empty($args['project_type_id'])) { $where[] = 'p.project_type_id = ?'; $params[] = $args['project_type_id']; }
+    if (!empty($args['division'])) { $where[] = 'p.division = ?'; $params[] = $args['division']; }
     if (!empty($args['client_id'])) {
         $where[] = '(p.client_id = ? OR p.lead_id = ?)';
         array_push($params, $args['client_id'], $args['client_id']);
@@ -291,6 +295,12 @@ function mcp_get_project(\PDO $pdo, array $user, array $args): array {
         }
     }
     $proj['milestones'] = mcp_project_milestones($pdo, $user, $proj);
+    if (function_exists('mcp_crm_plus_load_project_extras')) {
+        $extras = mcp_crm_plus_load_project_extras($pdo, $proj);
+        $proj['managers'] = $extras['managers'];
+        $proj['custom_fields'] = $extras['custom_fields'];
+        $proj['timeline'] = $extras['timeline'];
+    }
 
     // Linked tasks (only for callers who can see the tasks module, scoped by tasks.view_all)
     if (mcp_can('tasks')) {

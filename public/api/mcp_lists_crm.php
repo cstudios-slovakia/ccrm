@@ -180,13 +180,13 @@ const MCP_LEAD_WINDOW = [
 function mcp_list_leads(\PDO $pdo, array $user, array $args): array {
     $where = []; $params = [];
     if (empty($args['include_archived'])) $where[] = 'l.archived = 0';
-    foreach (['status' => 'l.status', 'owner' => 'l.owner'] as $key => $col) {
+    foreach (['status' => 'l.status', 'owner' => 'l.owner', 'division' => 'l.division', 'source' => 'l.source'] as $key => $col) {
         if (!empty($args[$key])) { $where[] = "$col = ?"; $params[] = $args[$key]; }
     }
     if (!empty($args['search'])) {
         $term = '%' . $args['search'] . '%';
-        $where[] = '(l.name LIKE ? OR l.email LIKE ? OR l.phone LIKE ? OR l.city LIKE ?)';
-        array_push($params, $term, $term, $term, $term);
+        $where[] = '(l.name LIKE ? OR l.email LIKE ? OR l.phone LIKE ? OR l.city LIKE ? OR l.company_id LIKE ? OR l.contact_person LIKE ?)';
+        array_push($params, $term, $term, $term, $term, $term, $term);
     }
     // The leads/clients module split, in SQL, so a page is full and holds no row of the other kind.
     $scope = mcp_lead_scope_sql($user, 'l');
@@ -202,7 +202,7 @@ function mcp_list_leads(\PDO $pdo, array $user, array $args): array {
     $params = array_merge($params, $win['params'], $cp, $ap);
 
     $stmt = $pdo->prepare(
-        'SELECT l.id, l.name, l.city, l.client_type, l.status, l.source, l.owner, l.division, l.value, l.adjustment, l.rating, l.phone, l.email, l.contact_person, l.created_at, l.archived, '
+        'SELECT l.id, l.name, l.city, l.client_type, l.status, l.source, l.owner, l.division, l.value, l.adjustment, l.rating, l.phone, l.email, l.contact_person, l.contact_first_name, l.contact_last_name, l.company_id, l.tax_id, l.vat_id, l.website, l.client_id, l.price_level_id, l.custom_fields_json, l.created_at, l.archived, '
         . mcp_moment_select('l.updated_at', 'updated_at')
         . ' FROM leads l WHERE ' . ($where ? implode(' AND ', $where) : '1 = 1') . ' ' . $win['tail']
     );
@@ -212,6 +212,7 @@ function mcp_list_leads(\PDO $pdo, array $user, array $args): array {
     return array_map(function ($l) use ($pdo, $latest) {
         $l['last_activity_at__ts'] = mcp_last_activity_ts($l['updated_at__ts'], [$l['id']], $latest);
         $l['archived'] = (int)$l['archived'] === 1;
+        $l = function_exists('mcp_crm_plus_decode_lead_custom_fields') ? mcp_crm_plus_decode_lead_custom_fields($l) : $l;
         return mcp_row_moments($l) + ['url' => mcp_record_url($pdo, $l)];
     }, $rows);
 }
@@ -227,6 +228,9 @@ function mcp_get_lead(\PDO $pdo, array $user, array $args): array {
 
     $updatedTs = $lead['updated_at__ts'];
     $lead = mcp_row_moments($lead);
+    if (function_exists('mcp_crm_plus_decode_lead_custom_fields')) {
+        $lead = mcp_crm_plus_decode_lead_custom_fields($lead);
+    }
     $evStmt = $pdo->prepare('SELECT id, type, timestamp, title, content, amount, author FROM timeline_events WHERE lead_id = ? AND hidden = 0' . (mcp_can('email') ? '' : " AND type <> 'email'") . ' ORDER BY timestamp DESC, id ASC LIMIT 20');
     $evStmt->execute([$args['id']]);
     $lead['timeline_events'] = mcp_rows_timestamp_iso($evStmt->fetchAll(\PDO::FETCH_ASSOC));
@@ -277,12 +281,34 @@ function mcp_list_contacts(\PDO $pdo, array $args): array {
     // The record's kind needs its module, as everywhere else (the answer for "not readable" is the answer for "not there").
     if (!$lead || !mcp_lead_module_visible($lead)) return [];
     $rows = [[
+        'id' => $lead['id'],
+        'is_primary' => true,
         'name' => $lead['contact_person'] ?: $lead['name'],
         'email' => $lead['email'],
         'phone' => $lead['phone'],
         'role' => 'Primary Contact',
         'updated_at' => mcp_format_moment($lead['updated_at__ts']),
     ]];
+    $linked = $pdo->prepare(
+        'SELECT id, name, contact_person, contact_first_name, contact_last_name, contact_role, email, phone, adjustment, '
+        . mcp_moment_select('updated_at', 'updated_at')
+        . " FROM leads WHERE company_client_id = ? AND archived = 0 ORDER BY name ASC, id ASC"
+    );
+    $linked->execute([$args['client_id']]);
+    foreach ($linked->fetchAll(\PDO::FETCH_ASSOC) as $c) {
+        if (!mcp_lead_module_visible($c)) continue;
+        $rows[] = [
+            'id' => $c['id'],
+            'is_primary' => false,
+            'name' => $c['contact_person'] ?: $c['name'],
+            'first_name' => $c['contact_first_name'],
+            'last_name' => $c['contact_last_name'],
+            'email' => $c['email'],
+            'phone' => $c['phone'],
+            'role' => $c['contact_role'] ?: 'Contact',
+            'updated_at' => mcp_format_moment($c['updated_at__ts']),
+        ];
+    }
     return array_slice($rows, max(0, (int)($args['offset'] ?? 0)), mcp_limit($args));
 }
 
@@ -340,6 +366,12 @@ function mcp_list_meetings(\PDO $pdo, array $args): array {
     if (!empty($args['upcoming_only'])) { $where[] = 'date >= ?'; $params[] = mcp_today(); }
     $start = mcp_optional_date($args, 'start_date');
     if ($start !== null) { $where[] = 'date >= ?'; $params[] = $start; }
+    if (!empty($args['lead_id'])) {
+        $lid = trim((string)$args['lead_id']);
+        $where[] = '(lead_id = ? OR attached_leads_json LIKE ? OR attached_clients_json LIKE ?)';
+        $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $lid) . '%';
+        array_push($params, $lid, $like, $like);
+    }
     if (!empty($args['search'])) {
         $where[] = '(title LIKE ? OR notes LIKE ?)';
         array_push($params, '%' . $args['search'] . '%', '%' . $args['search'] . '%');
@@ -542,7 +574,9 @@ function mcp_crm_defs(): array {
                 'type' => 'object',
                 'properties' => [
                     'status' => $s('Filter by status: new, contacted, proposal_sent, negotiation, won, lost'),
-                    'search' => $s('Search across lead name, email, phone, city'),
+                    'division' => $s('Filter by division'),
+                    'source' => $s('Filter by lead source'),
+                    'search' => $s('Search across lead name, email, phone, city, ICO, contact person'),
                     'owner' => $s('Filter by assigned owner/manager name'),
                     'include_archived' => ['type' => 'boolean', 'description' => 'Also list archived leads (default false)'],
                     'activity_from' => $s('Record changed or timeline entry at or after: YYYY-MM-DD or YYYY-MM-DD HH:MM'),
@@ -579,7 +613,7 @@ function mcp_crm_defs(): array {
         ],
         'list_contacts' => [
             'name' => 'list_contacts',
-            'description' => 'List contacts associated with a specific client: its primary contact (contact person, email, phone). updated_at is the last change of the record the contact is stored on, as an ISO moment. Contacts added with create_contact are timeline notes and are not listed here. Pages: limit + offset.',
+            'description' => 'List contacts associated with a specific client: its primary contact and linked contact person records (via company_client_id). updated_at is an ISO moment. Pages: limit + offset.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -629,6 +663,7 @@ function mcp_crm_defs(): array {
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
+                    'lead_id' => $s('Filter by linked lead or client ID'),
                     'upcoming_only' => ['type' => 'boolean', 'description' => 'Only meetings dated today or later'],
                     'start_date' => $s('From date (YYYY-MM-DD)'),
                     'search' => $s('Search meeting title or notes'),

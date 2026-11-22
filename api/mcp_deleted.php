@@ -36,6 +36,9 @@ function mcp_deleted_entity_rules(): array {
         'warehouse_movements' => ['warehouse'],
         'suppliers' => ['warehouse'],
         'warehouses' => ['warehouse'],
+        'orders' => ['orders'],
+        'weekly_plan_cards' => ['tasks.weekly_plan'],
+        'agency_workers' => ['agency'],
     ];
 }
 
