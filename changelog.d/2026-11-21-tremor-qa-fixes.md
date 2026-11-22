@@ -1,0 +1,1 @@
+- **Module Setup Wizard & Leads Kanban (`ModuleSetupWizard.tsx`, `LeadsDatagrid.tsx`)**: Preserved the `90rem` max width of the Module Setup Wizard dialog in Compact view mode and added `data-kanban-col-header` to Leads Kanban column headers.

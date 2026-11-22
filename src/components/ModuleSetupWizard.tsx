@@ -692,7 +692,7 @@ const WizardDialog: React.FC<WizardDialogProps> = ({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 24, scale: 0.98 }}
           transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-          className="relative flex min-h-0 w-full max-w-360 flex-col overflow-hidden border-gray-200 bg-white shadow-2xl focus:outline-none sm:rounded-lg sm:border"
+          className="relative flex min-h-0 w-full max-w-[90rem] flex-col overflow-hidden border-gray-200 bg-white shadow-2xl focus:outline-none sm:rounded-lg sm:border"
         >
           {/* Header — a flex child, not an overlay, so it can never cover content. */}
           <header className="shrink-0 border-b border-gray-200 bg-white px-4 py-4 sm:px-6 sm:py-5">

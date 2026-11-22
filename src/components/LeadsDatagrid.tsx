@@ -11842,7 +11842,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 stateColor,
                                                         }}
                                                     />
-                                                    <span className="type-overline text-gray-800">
+                                                    <span data-kanban-col-header="" className="type-overline text-gray-800">
                                                         {isFavoritesGroup
                                                             ? t("Favorites", "Obľúbené", "Kedvencek")
                                                             : group.state}
