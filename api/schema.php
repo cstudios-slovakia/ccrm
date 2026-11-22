@@ -1033,6 +1033,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `first_name` VARCHAR(100) NULL,
               `last_name` VARCHAR(100) NULL,
               `kind` VARCHAR(20) NOT NULL DEFAULT 'employee' COMMENT 'employee | contractor | ledger',
+              `contractor_type` VARCHAR(20) NULL COMMENT 'person | sole_trader | company (for kind = contractor)',
               `company_id` VARCHAR(32) NULL COMMENT 'IČO of an external supplier',
               `tax_id` VARCHAR(32) NULL COMMENT 'DIČ of an external supplier',
               `vat_id` VARCHAR(32) NULL COMMENT 'IČ DPH of an external supplier',
@@ -2688,18 +2689,24 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
-     * Employees: IČO / DIČ / IČ DPH of an external supplier (a company or a sole trader). Only
-     * `contractor` rows use them; they are filled from the business register in the employee form.
+     * Employees: IČO / DIČ / IČ DPH and subtype (`contractor_type`: person | sole_trader | company)
+     * of an external supplier. Only `contractor` rows use them.
      */
     function ccrm_migrate_employee_company_ids(PDO $pdo): void {
         try {
             $hasEmp = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'")->fetchColumn();
-            if ($hasEmp === 0 || ccrm_column_exists($pdo, 'employees', 'company_id')) return;
+            if ($hasEmp === 0) return;
 
-            $pdo->exec("ALTER TABLE `employees`
-                ADD COLUMN `company_id` VARCHAR(32) NULL AFTER `kind`,
-                ADD COLUMN `tax_id` VARCHAR(32) NULL AFTER `company_id`,
-                ADD COLUMN `vat_id` VARCHAR(32) NULL AFTER `tax_id`");
+            if (!ccrm_column_exists($pdo, 'employees', 'company_id')) {
+                $pdo->exec("ALTER TABLE `employees`
+                    ADD COLUMN `company_id` VARCHAR(32) NULL AFTER `kind`,
+                    ADD COLUMN `tax_id` VARCHAR(32) NULL AFTER `company_id`,
+                    ADD COLUMN `vat_id` VARCHAR(32) NULL AFTER `tax_id`");
+            }
+            if (!ccrm_column_exists($pdo, 'employees', 'contractor_type')) {
+                $pdo->exec("ALTER TABLE `employees`
+                    ADD COLUMN `contractor_type` VARCHAR(20) NULL COMMENT 'person | sole_trader | company (for kind = contractor)' AFTER `kind`");
+            }
         } catch (\Throwable $e) {
             error_log('[ccrm schema] employee company ids migration skipped: ' . $e->getMessage());
         }
@@ -3235,6 +3242,7 @@ if (!function_exists('ccrm_schema_statements')) {
                   `first_name` VARCHAR(100) NULL,
                   `last_name` VARCHAR(100) NULL,
                   `kind` VARCHAR(20) NOT NULL DEFAULT 'employee' COMMENT 'employee | contractor | ledger',
+                  `contractor_type` VARCHAR(20) NULL COMMENT 'person | sole_trader | company (for kind = contractor)',
                   `company_id` VARCHAR(32) NULL COMMENT 'IČO of an external supplier',
                   `tax_id` VARCHAR(32) NULL COMMENT 'DIČ of an external supplier',
                   `vat_id` VARCHAR(32) NULL COMMENT 'IČ DPH of an external supplier',

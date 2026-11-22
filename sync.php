@@ -2026,6 +2026,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'firstName' => $row['first_name'] ?? null,
                     'lastName' => $row['last_name'] ?? null,
                     'kind' => $row['kind'] ?? 'employee',
+                    'contractorType' => $row['contractor_type'] ?? null,
                     'companyId' => $row['company_id'] ?? null,
                     'taxId' => $row['tax_id'] ?? null,
                     'vatId' => $row['vat_id'] ?? null,
@@ -3143,6 +3144,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if (!ccrm_index_exists($pdo, 'tasks', 'uq_recurring_occurrence')) {
                 try { $pdo->exec("ALTER TABLE `tasks` ADD UNIQUE KEY `uq_recurring_occurrence` (`recurring_source_id`, `recurring_occurrence_date`)"); } catch (\Throwable $e) {}
+            }
+        }
+
+        if (isset($payload['employees']) && is_array($payload['employees']) && !$ccrm_skip_writes('employees', 'employees')) {
+            if (ccrm_table_exists($pdo, 'employees') && !ccrm_column_exists($pdo, 'employees', 'contractor_type')) {
+                $pdo->exec("ALTER TABLE `employees` ADD COLUMN `contractor_type` VARCHAR(20) NULL COMMENT 'person | sole_trader | company (for kind = contractor)' AFTER `kind`");
             }
         }
 
@@ -6387,15 +6394,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $canLinkEmpUsers = ccrm_can_link_employee_user($scope) && ccrm_column_exists($pdo, 'employees', 'user_id');
 
             $insEmp = $pdo->prepare("INSERT INTO `employees` (
-                `id`, `name`, `first_name`, `last_name`, `kind`, `company_id`, `tax_id`, `vat_id`, `position`, `department`, `pin`, `email`, `phone`, `address_street`, `address_city`,
+                `id`, `name`, `first_name`, `last_name`, `kind`, `contractor_type`, `company_id`, `tax_id`, `vat_id`, `position`, `department`, `pin`, `email`, `phone`, `address_street`, `address_city`,
                 `address_zip`, `address_country`, `salary_type`, `salary_amount`, `salary_due_day`,
                 `vacation_allowances_json`, `time_tracking_provider`, `time_tracking_user_id`,
                 `time_tracking_user_name`, `auto_expense`, `expense_category_id`, `files_json`,
                 `is_active`, `notes`, `work_country`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 `name` = VALUES(`name`), `first_name` = VALUES(`first_name`), `last_name` = VALUES(`last_name`),
-                `kind` = VALUES(`kind`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`),
+                `kind` = VALUES(`kind`), `contractor_type` = VALUES(`contractor_type`),
+                `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`),
                 `position` = VALUES(`position`), `department` = VALUES(`department`),
                 `pin` = VALUES(`pin`), `email` = VALUES(`email`), `phone` = VALUES(`phone`),
                 `address_street` = VALUES(`address_street`), `address_city` = VALUES(`address_city`),
@@ -6429,20 +6437,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 };
                 $kind = array_key_exists('kind', $emp) ? (string)$emp['kind'] : (string)$keep('kind', 'employee');
                 if (!in_array($kind, CCRM_EMPLOYEE_KINDS, true)) $kind = 'employee';
-                // A contractor keeps its contact person's name beside the trade name; a ledger item has none.
+                $rawContractorType = array_key_exists('contractorType', $emp)
+                    ? (string)$emp['contractorType']
+                    : (string)$keep('contractor_type', 'company');
+                $contractorType = $kind === 'contractor'
+                    ? (in_array($rawContractorType, CCRM_CONTRACTOR_TYPES, true) ? $rawContractorType : 'company')
+                    : null;
+                // A contractor keeps its contact person's name (or freelancer person's own name); a ledger item has none.
                 $firstName = $kind !== 'ledger' ? $idField('firstName', 'first_name') : null;
                 $lastName = $kind !== 'ledger' ? $idField('lastName', 'last_name') : null;
-                // IČO / DIČ / IČ DPH belong to an external supplier only.
-                $companyId = $kind === 'contractor' ? $idField('companyId', 'company_id') : null;
-                $taxId = $kind === 'contractor' ? $idField('taxId', 'tax_id') : null;
-                $vatId = $kind === 'contractor' ? $idField('vatId', 'vat_id') : null;
-                $displayName = ccrm_compose_employee_name($kind, $firstName, $lastName, (string)($emp['name'] ?? $keep('name', 'Unnamed Employee')));
+                // IČO / DIČ / IČ DPH belong to a business external supplier (sole trader or company) only.
+                $hasCompanyIds = $kind === 'contractor' && $contractorType !== 'person';
+                $companyId = $hasCompanyIds ? $idField('companyId', 'company_id') : null;
+                $taxId = $hasCompanyIds ? $idField('taxId', 'tax_id') : null;
+                $vatId = $hasCompanyIds ? $idField('vatId', 'vat_id') : null;
+                $displayName = ccrm_compose_employee_name($kind, $firstName, $lastName, (string)($emp['name'] ?? $keep('name', 'Unnamed Employee')), $contractorType);
                 $insEmp->execute([
                     $empId,
                     $displayName !== '' ? $displayName : 'Unnamed Employee',
                     $firstName,
                     $lastName,
                     $kind,
+                    $contractorType,
                     $companyId,
                     $taxId,
                     $vatId,

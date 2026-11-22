@@ -1340,9 +1340,11 @@ export interface Employee {
   name: string;
   firstName?: string | null;
   lastName?: string | null;
-  /** employee = a person; contractor = an external supplier (company or sole trader); ledger = a payroll-only line such as commission. */
+  /** employee = a person; contractor = an external supplier (person/freelancer, sole trader, or company); ledger = a payroll-only line such as commission. */
   kind?: 'employee' | 'contractor' | 'ledger';
-  /** IČO, DIČ and IČ DPH of a contractor; null for the other kinds. */
+  /** Subtype of an external supplier (`kind === 'contractor'`): person (freelancer, no IČO/DIČ/company name), sole_trader (živnostník), or company (firma). */
+  contractorType?: 'person' | 'sole_trader' | 'company' | null;
+  /** IČO, DIČ and IČ DPH of a business contractor (sole trader or company); null for person freelancers and other kinds. */
   companyId?: string | null;
   taxId?: string | null;
   vatId?: string | null;

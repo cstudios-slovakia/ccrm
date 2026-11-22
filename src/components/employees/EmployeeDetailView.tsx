@@ -37,7 +37,7 @@ import { employeeFileHref } from "../../utils/employeeFiles";
 import { FULL_EMPLOYEE_RIGHTS, type EmployeeRights } from "../../utils/employeeRights";
 import { LinkedUserPicker } from "./LinkedUserPicker";
 import { EmployeeIdentityFields } from "./EmployeeIdentityFields";
-import { employeeKind, identityComplete, identityFields, identityOf, type EmployeeIdentity } from "../../utils/employeeIdentity";
+import { contractorTypeOf, employeeKind, identityComplete, identityFields, identityOf, usesPersonFullName, type EmployeeIdentity } from "../../utils/employeeIdentity";
 import { useEmployeeAiSummary, EmployeeAiSummaryBanner } from "./EmployeeAiSummary";
 import { VacationRequestModal } from "./VacationRequestModal";
 import { EntityHeader } from "../layout";
@@ -608,7 +608,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
   const handleSaveCard = () => {
     if (!identityComplete(editIdentity)) {
       setCardSaveError(
-        editIdentity.kind === "employee"
+        usesPersonFullName(editIdentity)
           ? t("First name and last name are required", "Meno aj priezvisko sú povinné", "A kereszt- és vezetéknév kötelező")
           : t("Name is required", "Názov je povinný", "A név kötelező")
       );
@@ -820,7 +820,13 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             {employeeKind(employee) !== "employee" && (
               <span className="bg-gray-100 text-gray-600 border border-gray-200 px-2.5 py-0.5 rounded-full type-overline">
                 {employeeKind(employee) === "contractor"
-                  ? t("External supplier", "Externý dodávateľ", "Külső beszállító")
+                  ? `${t("External supplier", "Externý dodávateľ", "Külső beszállító")} · ${
+                      contractorTypeOf(employee) === "person"
+                        ? t("Person (freelancer)", "Osoba (freelancer)", "Magánszemély (szabadúszó)")
+                        : contractorTypeOf(employee) === "sole_trader"
+                        ? t("Sole trader", "Živnostník", "Egyéni vállalkozó")
+                        : t("Company", "Firma", "Cég")
+                    }`
                   : t("Accounting item", "Účtovná položka", "Könyvelési tétel")}
               </span>
             )}

@@ -12,13 +12,17 @@ import {
   type CompanySuggestion,
 } from "../../utils/companyRegistry";
 import {
+  CONTRACTOR_TYPES,
   DEFAULT_DEPARTMENTS,
   DEFAULT_POSITIONS,
   EMPLOYEE_KINDS,
   fieldSuggestions,
+  hasCompanyRegistryFields,
   hasPersonName,
   identityFromCompany,
   isSupplier,
+  splitPersonName,
+  type ContractorType,
   type EmployeeIdentity,
   type EmployeeKind,
 } from "../../utils/employeeIdentity";
@@ -78,8 +82,9 @@ export const EmployeeIdentityFields: React.FC<Props> = ({
   );
 
   const supplier = isSupplier(value.kind);
+  const businessSupplier = hasCompanyRegistryFields(value);
   const lookupCountry = country?.trim() ? country : "Slovakia";
-  const lookup = useCompanyLookup<SupplierField>({ country: lookupCountry, enabled: supplier });
+  const lookup = useCompanyLookup<SupplierField>({ country: lookupCountry, enabled: businessSupplier });
   const [isFetching, setIsFetching] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
   // A picked suggestion resolves asynchronously; merge into the identity as it is then, not as it was.
@@ -90,6 +95,12 @@ export const EmployeeIdentityFields: React.FC<Props> = ({
     employee: t("Employee", "Zamestnanec", "Alkalmazott"),
     contractor: t("External supplier", "Externý dodávateľ", "Külső beszállító"),
     ledger: t("Accounting item", "Účtovná položka", "Könyvelési tétel"),
+  };
+
+  const contractorTypeLabel: Record<ContractorType, string> = {
+    person: t("Person (freelancer)", "Osoba (freelancer)", "Magánszemély (szabadúszó)"),
+    sole_trader: t("Sole trader", "Živnostník", "Egyéni vállalkozó"),
+    company: t("Company", "Firma", "Cég"),
   };
 
   const label = compact ? "type-overline text-gray-500 block mb-0.5" : "block text-ui font-bold text-gray-600 mb-1.5";
@@ -231,6 +242,48 @@ export const EmployeeIdentityFields: React.FC<Props> = ({
       </div>
 
       {supplier && (
+        <div className={wide}>
+          <label className={label}>{t("Supplier type", "Typ dodávateľa", "Beszállító típusa")}</label>
+          <div
+            role="radiogroup"
+            aria-label={t("Supplier type", "Typ dodávateľa", "Beszállító típusa")}
+            className="grid grid-cols-3 gap-1.5 p-1 rounded-lg bg-gray-100 border border-gray-200"
+          >
+            {CONTRACTOR_TYPES.map((ct) => {
+              const active = (value.contractorType || "company") === ct;
+              return (
+                <button
+                  key={ct}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => {
+                    const patch: Partial<EmployeeIdentity> = { contractorType: ct };
+                    if (ct === "person" && !value.firstName.trim() && !value.lastName.trim() && value.name.trim()) {
+                      const split = splitPersonName(value.name);
+                      if (split) Object.assign(patch, split);
+                    }
+                    setLookupError(null);
+                    lookup.close();
+                    onChange(patch);
+                  }}
+                  className={`rounded-md font-bold transition cursor-pointer ${
+                    compact ? "px-2 py-1 text-micro" : "px-3 py-2 text-ui"
+                  } ${
+                    active
+                      ? "bg-entity-solid text-white shadow-xs"
+                      : "text-gray-600 hover:bg-white/70 hover:text-gray-900"
+                  }`}
+                >
+                  {contractorTypeLabel[ct]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {businessSupplier && (
         <>
           <div className={`${wide} relative`}>
             <label className={label} htmlFor={`${uid}-company`}>
@@ -275,13 +328,13 @@ export const EmployeeIdentityFields: React.FC<Props> = ({
         <>
           <div>
             <label className={label} htmlFor={`${uid}-first`}>
-              {supplier ? t("Contact person: first name", "Kontaktná osoba: meno", "Kapcsolattartó: keresztnév") : t("First name", "Meno", "Keresztnév")}
-              {!supplier && " *"}
+              {businessSupplier ? t("Contact person: first name", "Kontaktná osoba: meno", "Kapcsolattartó: keresztnév") : t("First name", "Meno", "Keresztnév")}
+              {!businessSupplier && " *"}
             </label>
             <input
               id={`${uid}-first`}
               type="text"
-              required={!supplier}
+              required={!businessSupplier}
               value={value.firstName}
               onChange={(e) => onChange({ firstName: e.target.value })}
               placeholder="Peter"
@@ -291,13 +344,13 @@ export const EmployeeIdentityFields: React.FC<Props> = ({
           </div>
           <div>
             <label className={label} htmlFor={`${uid}-last`}>
-              {supplier ? t("Contact person: last name", "Kontaktná osoba: priezvisko", "Kapcsolattartó: vezetéknév") : t("Last name", "Priezvisko", "Vezetéknév")}
-              {!supplier && " *"}
+              {businessSupplier ? t("Contact person: last name", "Kontaktná osoba: priezvisko", "Kapcsolattartó: vezetéknév") : t("Last name", "Priezvisko", "Vezetéknév")}
+              {!businessSupplier && " *"}
             </label>
             <input
               id={`${uid}-last`}
               type="text"
-              required={!supplier}
+              required={!businessSupplier}
               value={value.lastName}
               onChange={(e) => onChange({ lastName: e.target.value })}
               placeholder="Varga"

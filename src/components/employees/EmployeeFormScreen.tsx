@@ -26,7 +26,7 @@ import { FULL_EMPLOYEE_RIGHTS, type EmployeeRights } from "../../utils/employeeR
 import { LinkedUserPicker } from "./LinkedUserPicker";
 import { employeeFileHref } from "../../utils/employeeFiles";
 import { EmployeeIdentityFields } from "./EmployeeIdentityFields";
-import { identityComplete, identityFields, identityOf, type EmployeeIdentity } from "../../utils/employeeIdentity";
+import { identityComplete, identityFields, identityOf, usesPersonFullName, type EmployeeIdentity } from "../../utils/employeeIdentity";
 import { CustomSelect, type DropdownOption } from "../ui/CustomSelect";
 
 interface EmployeeFormScreenProps {
@@ -376,7 +376,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
 
     if (!identityComplete(identity)) {
       setValidationError(
-        identity.kind === "employee"
+        usesPersonFullName(identity)
           ? t("Please enter the employee's first name and last name", "Zadajte prosím meno aj priezvisko zamestnanca", "Kérjük, adja meg az alkalmazott kereszt- és vezetéknevét")
           : t("Please enter a name", "Zadajte prosím názov", "Kérjük, adjon meg egy nevet")
       );

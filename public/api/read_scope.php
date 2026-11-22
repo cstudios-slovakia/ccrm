@@ -230,6 +230,7 @@ function ccrm_project_employee_row(array $row, array $scope): ?array {
         'firstName' => $row['firstName'] ?? $row['first_name'] ?? null,
         'lastName' => $row['lastName'] ?? $row['last_name'] ?? null,
         'kind' => $row['kind'] ?? 'employee',
+        'contractorType' => $row['contractorType'] ?? $row['contractor_type'] ?? null,
         'companyId' => $row['companyId'] ?? $row['company_id'] ?? null,
         'taxId' => $row['taxId'] ?? $row['tax_id'] ?? null,
         'vatId' => $row['vatId'] ?? $row['vat_id'] ?? null,
