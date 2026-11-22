@@ -840,7 +840,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
       )}
 
       {/* RENDER BLOCKS VERTICAL LIST */}
-      <div className={cn(compact ? "space-y-1 pl-7" : "space-y-4")}>
+      <div className={cn(compact ? "space-y-1 pl-9" : "space-y-4")}>
         {blocks.map((block, idx) => {
           const isMenuOpen = !readOnly && activeMenuBlockId === block.id;
           const bannerInfo = block.type === "banner" ? getBannerStyles(block) : null;
@@ -855,8 +855,8 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
               {!readOnly && (
                 <div
                   className={cn(
-                    "absolute top-1.5 flex items-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-10 duration-200",
-                    compact ? "-left-7" : "-left-12",
+                    "absolute flex items-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-10 duration-200",
+                    compact ? "-left-9 top-1" : "-left-12 top-1.5",
                   )}
                 >
                   <button
@@ -976,15 +976,15 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                     className={cn(
                       "outline-none text-slate-800 transition-all w-full leading-relaxed select-text empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none",
                       compact ? "py-0.5" : "py-1",
-                      block.type === "paragraph" && (compact ? "text-ui" : "text-body"),
+                      block.type === "paragraph" && "text-body",
                       block.type === "h1" && (compact ? "text-title font-heading font-extrabold text-slate-900 pt-1 pb-0.5 tracking-tight" : "type-page-title text-slate-900 pt-3 pb-1"),
                       block.type === "h2" && (compact ? "text-title-sm font-heading font-bold text-slate-900 pt-1 pb-0.5" : "text-title font-heading font-extrabold text-slate-900 pt-2 pb-1 tracking-tight"),
                       block.type === "h3" && (compact ? "text-body font-heading font-bold text-slate-900 pt-0.5" : "text-title font-heading font-extrabold text-slate-900 pt-1.5 pb-0.5 tracking-tight"),
                       block.type === "h4" && (compact ? "text-ui font-heading font-bold text-slate-800 pt-0.5" : "text-title-sm font-heading font-bold text-slate-800 pt-1 pb-0.5"),
-                      block.type === "todo" && cn(compact ? "text-ui" : "text-body", block.checked && "line-through text-slate-400 font-medium"),
-                      block.type === "bullet" && (compact ? "text-ui" : "text-body"),
-                      block.type === "number" && (compact ? "text-ui" : "text-body"),
-                      block.type === "toggle" && cn(compact ? "text-ui" : "text-body", "font-semibold text-slate-800"),
+                      block.type === "todo" && cn("text-body", block.checked && "line-through text-slate-400 font-medium"),
+                      block.type === "bullet" && "text-body",
+                      block.type === "number" && "text-body",
+                      block.type === "toggle" && "text-body font-semibold text-slate-800",
                       block.type === "banner" && bannerInfo && cn(
                         "text-ui font-semibold rounded-2xl border w-full relative",
                         compact ? "p-2.5 pr-9" : "p-3.5 pr-10",
