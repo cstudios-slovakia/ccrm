@@ -254,8 +254,8 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
       data-testid="entry-drawer"
     >
       <div onClick={close} className={`absolute inset-0 bg-gray-900/40 ${closing ? "animate-fade-out" : "animate-fade-in"}`} />
-      <div className={`relative flex h-full w-full max-w-md flex-col overflow-y-auto bg-white p-6 shadow-xl ${closing ? "animate-slide-out-right" : "animate-slide-in-right"}`}>
-        <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+      <div className={`relative flex h-full w-full max-w-md flex-col overflow-hidden bg-white shadow-xl ${closing ? "animate-slide-out-right" : "animate-slide-in-right"}`}>
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 pt-6 pb-4 shrink-0">
           <span className="type-overline inline-flex items-center gap-1.5 rounded-md border border-entity-border bg-entity-subtle px-2.5 py-0.5 text-entity-text">
             <Clock className="size-3.5" />
             {readOnly ? t("Time entry", "Záznam času", "Időbejegyzés") : isNew ? t("New time entry", "Nový záznam času", "Új időbejegyzés") : t("Edit time entry", "Upraviť záznam času", "Időbejegyzés szerkesztése")}
@@ -269,15 +269,16 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
           </button>
         </div>
 
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
         {reason && (
-          <p className={`mt-4 rounded-md px-3 py-2 text-ui ${isAdmin ? "bg-amber-50 text-amber-900" : "bg-gray-100 text-gray-700"}`} data-testid="entry-locked">
+          <p className={`mb-4 rounded-md px-3 py-2 text-ui ${isAdmin ? "bg-amber-50 text-amber-900" : "bg-gray-100 text-gray-700"}`} data-testid="entry-locked">
             {isAdmin
               ? t(`Locked because ${reasonText(reason)}. Saving writes an audit log entry.`, `Zamknuté, pretože ${reasonText(reason)}. Uloženie zapíše záznam do auditu.`, `Zárolva, mert ${reasonText(reason)}. A mentés auditbejegyzést ír.`)
               : t(`This entry is read-only because ${reasonText(reason)}.`, `Tento záznam je len na čítanie, pretože ${reasonText(reason)}.`, `Ez a bejegyzés csak olvasható, mert ${reasonText(reason)}.`)}
           </p>
         )}
 
-        <div className="mt-4 grid gap-4">
+        <div className="grid gap-4">
           {/* Title */}
           <label className="grid gap-1">
             <span className="type-label text-gray-600">{t("Title", "Názov", "Cím")}</span>
@@ -502,8 +503,9 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
             {person_ && entry.userId !== entry.recordedByUserId ? ` · ${t("time of", "čas používateľa", "személy:")} ${person_.name}` : ""}
           </p>
         </div>
+        </div>
 
-        <div className="mt-auto flex items-center justify-between gap-2 border-t border-gray-100 pt-4">
+        <div className="shrink-0 flex items-center justify-between gap-2 border-t border-gray-200 bg-gray-50/90 px-6 py-4">
           <div className="flex items-center gap-1">
             {!readOnly && !isNew && (
               <>

@@ -1,0 +1,1 @@
+- **Sticky Right-Slideout Footers (`TaskEditDrawer.tsx`, `EntryDrawer.tsx`, `Drawer.tsx`)**: Pinned the Save and action footer at the bottom of right-hand slideout drawers so the primary save action stays visible without scrolling to the end of the form.

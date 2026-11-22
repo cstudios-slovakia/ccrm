@@ -132,7 +132,7 @@ const DrawerFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
   return (
     <div
       className={cx(
-        "flex flex-col-reverse border-t border-gray-200 pt-4 sm:flex-row sm:justify-end gap-2",
+        "sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-col-reverse border-t border-gray-200 bg-white px-4 py-4 sm:-mx-6 sm:-mb-6 sm:flex-row sm:justify-end sm:px-6 gap-2 shrink-0",
         className
       )}
       {...props}

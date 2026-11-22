@@ -457,9 +457,9 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                 role="dialog"
                 aria-modal="true"
                 aria-label={draft.title || t("Task", "Úloha", "Feladat")}
-                className={`relative w-full max-w-md bg-white border-l border-gray-200 shadow-lg h-full flex flex-col p-6 overflow-y-auto ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
+                className={`relative w-full max-w-md bg-white border-l border-gray-200 shadow-lg h-full flex flex-col overflow-hidden ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
             >
-                <div className="pb-4 border-b border-gray-200 space-y-2">
+                <div className="px-6 pt-6 pb-4 border-b border-gray-200 space-y-2 shrink-0">
                     <div className="flex items-center justify-between">
                         <span className="type-overline text-entity-text bg-entity-subtle border border-entity-border px-2 py-0.5 rounded-md flex items-center gap-1.5">
                             {isTemplate ? (
@@ -492,26 +492,6 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         {draft.title || t("Untitled Task", "Úloha bez názvu", "Névtelen feladat")}
                     </h1>
                 </div>
-                {!isTemplate && Boolean((task as Task).recurringSourceId) && (
-                    <div className="mt-3 p-3 bg-entity-subtle border border-entity-border rounded-lg flex items-center justify-between text-caption font-semibold text-entity-text">
-                        <div className="flex items-center gap-2">
-                            <Repeat className="h-4 w-4 text-entity-text shrink-0" />
-                            <span>
-                                {recurringSeriesDescription || t("Part of a recurring series", "Súčasť opakovanej série", "Egy ismétlődő sorozat része")}
-                            </span>
-                        </div>
-                        {onEditSeries && (
-                            <button
-                                type="button"
-                                onClick={() => onEditSeries((task as Task).recurringSourceId!)}
-                                className="text-entity-text hover:opacity-80 underline font-bold cursor-pointer shrink-0 ml-3"
-                            >
-                                {t("Edit series", "Upraviť sériu", "Sorozat szerkesztése")}
-                            </button>
-                        )}
-                    </div>
-                )}
-
                 <form
                     onSubmit={(e) => {
                         e.preventDefault();
@@ -564,8 +544,28 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         }));
                         requestClose();
                     }}
-                    className="flex-1 py-5 space-y-5 text-ui font-bold"
+                    className="flex-1 min-h-0 flex flex-col"
                 >
+                    <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 text-ui font-bold">
+                        {!isTemplate && Boolean((task as Task).recurringSourceId) && (
+                            <div className="p-3 bg-entity-subtle border border-entity-border rounded-lg flex items-center justify-between text-caption font-semibold text-entity-text">
+                                <div className="flex items-center gap-2">
+                                    <Repeat className="h-4 w-4 text-entity-text shrink-0" />
+                                    <span>
+                                        {recurringSeriesDescription || t("Part of a recurring series", "Súčasť opakovanej série", "Egy ismétlődő sorozat része")}
+                                    </span>
+                                </div>
+                                {onEditSeries && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onEditSeries((task as Task).recurringSourceId!)}
+                                        className="text-entity-text hover:opacity-80 underline font-bold cursor-pointer shrink-0 ml-3"
+                                    >
+                                        {t("Edit series", "Upraviť sériu", "Sorozat szerkesztése")}
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     <fieldset disabled={!canEdit} className="space-y-5 min-w-0">
                         <div className="space-y-1">
                             <label className="type-overline text-slate-500 flex items-center justify-between">
@@ -1093,90 +1093,97 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                             </p>
                         )}
                     </fieldset>
+                    </div>
 
-                    <button
-                        type="submit"
-                        className="w-full py-2.5 bg-entity-solid hover:opacity-90 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 text-white rounded-md font-semibold text-ui shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={!canEdit}
-                    >
-                        {t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
-                    </button>
-
-                    {draft.id && canArchive && !isTemplate && onToggleArchive && (() => {
-                        // Both parents flip only the stored task's flag, so
-                        // edits made in the drawer before archiving were
-                        // dropped without a word. Keep them first.
-                        const toggleArchive = () => {
-                            if (canEdit && draft.title.trim() && !finishingWithoutConclusion && JSON.stringify(draft) !== JSON.stringify(task)) {
-                                onSave(withDeadlineHistory({
-                                    ...draft,
-                                    requiresConclusion: (!canUntick && task.requiresConclusion)
-                                        ? true
-                                        : (draft.requiresConclusion ? true : undefined),
-                                    tags: combinedTags,
-                                }));
-                            }
-                            onToggleArchive(draft);
-                            requestClose();
-                        };
-                        const buttonClass = "w-full py-2 border border-gray-200 hover:bg-gray-50 active:scale-[0.98] text-gray-700 rounded-md type-overline flex items-center justify-center gap-1.5 transition-all";
-                        // Unarchiving is a plain click; only archiving needs the hold.
-                        return draft.archived ? (
-                            <button type="button" onClick={toggleArchive} className={`${buttonClass} cursor-pointer`}>
-                                <RotateCcw className="h-3.5 w-3.5" />
-                                {t("Unarchive Task", "Zrušiť archiváciu úlohy", "Feladat archiválásának visszavonása")}
-                            </button>
-                        ) : (
-                            <HoldToConfirmButton
-                                tone="archive"
-                                lang={systemLanguage}
-                                what={draft.title}
-                                onConfirm={toggleArchive}
-                                className={buttonClass}
-                                icon={<ArchiveIcon className="h-3.5 w-3.5" />}
-                            >
-                                {t("Archive Task", "Archivovať úlohu", "Feladat archiválása")}
-                            </HoldToConfirmButton>
-                        );
-                    })()}
-
-                    {draft.id && canDelete && !isTemplate && Boolean((task as Task).recurringSourceId) && onDeleteOccurrence ? (
-                        <>
-                            <button
-                                type="button"
-                                onClick={() => setOccurrenceDeleteDialogOpen(true)}
-                                className="w-full py-2 border border-rose-200 hover:bg-rose-50 active:scale-[0.98] text-rose-600 rounded-md type-overline flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                            >
-                                <Trash2 className="h-3.5 w-3.5" />
-                                {t("Delete Task", "Odstrániť úlohu", "Feladat törlése")}
-                            </button>
-                            <RecurringOccurrenceDeleteDialog
-                                task={occurrenceDeleteDialogOpen ? (task as Task) : null}
-                                onChoice={(c) => {
-                                    setOccurrenceDeleteDialogOpen(false);
-                                    if (c !== "cancel") {
-                                        onDeleteOccurrence(task as Task, c);
-                                        requestClose();
-                                    }
-                                }}
-                                t={t}
-                            />
-                        </>
-                    ) : draft.id && canDelete && onDelete && (
-                        <HoldToConfirmButton
-                            tone="danger"
-                            lang={systemLanguage}
-                            what={draft.title}
-                            onConfirm={async () => {
-                                const deleted = await onDelete(draft);
-                                if (deleted) requestClose();
-                            }}
-                            className="w-full py-2 border border-rose-200 hover:bg-rose-50 active:scale-[0.98] text-rose-600 rounded-md type-overline flex items-center justify-center gap-1.5 transition-all"
-                            icon={<Trash2 className="h-3.5 w-3.5" />}
+                    <div className="shrink-0 border-t border-gray-200 bg-gray-50/90 px-6 py-4 space-y-2">
+                        <button
+                            type="submit"
+                            className="w-full py-2.5 bg-entity-solid hover:opacity-90 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 text-white rounded-md font-semibold text-ui shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={!canEdit}
                         >
-                            {t("Delete Task", "Odstrániť úlohu", "Feladat törlése")}
-                        </HoldToConfirmButton>
-                    )}
+                            {t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
+                        </button>
+
+                        {((draft.id && canArchive && !isTemplate && onToggleArchive) || (draft.id && canDelete && (onDelete || onDeleteOccurrence))) && (
+                            <div className="flex items-center gap-2 [&>*]:flex-1">
+                                {draft.id && canArchive && !isTemplate && onToggleArchive && (() => {
+                                    // Both parents flip only the stored task's flag, so
+                                    // edits made in the drawer before archiving were
+                                    // dropped without a word. Keep them first.
+                                    const toggleArchive = () => {
+                                        if (canEdit && draft.title.trim() && !finishingWithoutConclusion && JSON.stringify(draft) !== JSON.stringify(task)) {
+                                            onSave(withDeadlineHistory({
+                                                ...draft,
+                                                requiresConclusion: (!canUntick && task.requiresConclusion)
+                                                    ? true
+                                                    : (draft.requiresConclusion ? true : undefined),
+                                                tags: combinedTags,
+                                            }));
+                                        }
+                                        onToggleArchive(draft);
+                                        requestClose();
+                                    };
+                                    const buttonClass = "w-full py-2 px-2 border border-gray-200 bg-white hover:bg-gray-50 active:scale-[0.98] text-gray-700 rounded-md type-overline flex items-center justify-center gap-1.5 transition-all";
+                                    // Unarchiving is a plain click; only archiving needs the hold.
+                                    return draft.archived ? (
+                                        <button type="button" onClick={toggleArchive} className={`${buttonClass} cursor-pointer`}>
+                                            <RotateCcw className="h-3.5 w-3.5 shrink-0" />
+                                            {t("Unarchive Task", "Zrušiť archiváciu úlohy", "Feladat archiválásának visszavonása")}
+                                        </button>
+                                    ) : (
+                                        <HoldToConfirmButton
+                                            tone="archive"
+                                            lang={systemLanguage}
+                                            what={draft.title}
+                                            onConfirm={toggleArchive}
+                                            className={buttonClass}
+                                            icon={<ArchiveIcon className="h-3.5 w-3.5 shrink-0" />}
+                                        >
+                                            {t("Archive Task", "Archivovať úlohu", "Feladat archiválása")}
+                                        </HoldToConfirmButton>
+                                    );
+                                })()}
+
+                                {draft.id && canDelete && !isTemplate && Boolean((task as Task).recurringSourceId) && onDeleteOccurrence ? (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => setOccurrenceDeleteDialogOpen(true)}
+                                            className="w-full py-2 px-2 border border-rose-200 bg-white hover:bg-rose-50 active:scale-[0.98] text-rose-600 rounded-md type-overline flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                                        >
+                                            <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                                            {t("Delete Task", "Odstrániť úlohu", "Feladat törlése")}
+                                        </button>
+                                        <RecurringOccurrenceDeleteDialog
+                                            task={occurrenceDeleteDialogOpen ? (task as Task) : null}
+                                            onChoice={(c) => {
+                                                setOccurrenceDeleteDialogOpen(false);
+                                                if (c !== "cancel") {
+                                                    onDeleteOccurrence(task as Task, c);
+                                                    requestClose();
+                                                }
+                                            }}
+                                            t={t}
+                                        />
+                                    </>
+                                ) : draft.id && canDelete && onDelete && (
+                                    <HoldToConfirmButton
+                                        tone="danger"
+                                        lang={systemLanguage}
+                                        what={draft.title}
+                                        onConfirm={async () => {
+                                            const deleted = await onDelete(draft);
+                                            if (deleted) requestClose();
+                                        }}
+                                        className="w-full py-2 px-2 border border-rose-200 bg-white hover:bg-rose-50 active:scale-[0.98] text-rose-600 rounded-md type-overline flex items-center justify-center gap-1.5 transition-all"
+                                        icon={<Trash2 className="h-3.5 w-3.5 shrink-0" />}
+                                    >
+                                        {t("Delete Task", "Odstrániť úlohu", "Feladat törlése")}
+                                    </HoldToConfirmButton>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </form>
             </div>
         </div>,
