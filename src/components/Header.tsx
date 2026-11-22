@@ -923,15 +923,6 @@ export const Header: React.FC<HeaderProps> = ({
                             </button>
 
                             {/* Popover Dropdown Panel */}
-                            {isMeetingsOpen && typeof document !== "undefined" &&
-                                createPortal(
-                                    <div
-                                        className="fixed inset-0 z-40"
-                                        aria-hidden="true"
-                                        onClick={() => setIsMeetingsOpen(false)}
-                                    />,
-                                    document.body,
-                                )}
                             {isMeetingsOpen && (
                                 <div role="menu" className="absolute right-0 mt-2.5 w-60 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-2.5 z-50 flex flex-col gap-1 select-none animate-in fade-in slide-in-from-top-2 duration-200">
                                     <div className="px-3 py-1.5 type-overline text-slate-400 border-b border-slate-100 mb-1">
@@ -1038,15 +1029,6 @@ export const Header: React.FC<HeaderProps> = ({
                                 <Workflow className="h-5 w-5 text-purple-700" />
                             </button>
 
-                            {isToolboxOpen && typeof document !== "undefined" &&
-                                createPortal(
-                                    <div
-                                        className="fixed inset-0 z-40"
-                                        aria-hidden="true"
-                                        onClick={() => setIsToolboxOpen(false)}
-                                    />,
-                                    document.body,
-                                )}
                             {isToolboxOpen && (
                                 <div role="menu" className="absolute right-0 mt-2.5 w-64 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-3.5 z-50 flex flex-col gap-2 select-none animate-in fade-in slide-in-from-top-2 duration-200">
                                     <div className="px-1.5 pb-2 type-overline text-slate-400 border-b border-slate-100 mb-1 flex items-center justify-between">

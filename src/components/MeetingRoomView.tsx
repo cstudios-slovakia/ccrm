@@ -1188,7 +1188,8 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   }, [viewState, currentNoteId]);
 
   useEffect(() => {
-    if (initialView && !window.location.hash.includes("/")) {
+    if (!initialView) return;
+    if (!window.location.hash.includes("/")) {
       if (initialView === "record") {
         setViewState(canEdit ? "new" : "list");
         setSelectedMeeting(null);
@@ -1201,9 +1202,13 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           setSelectedMeeting(null);
         }
       }
-      if (onClearInitialView) {
-        onClearInitialView();
-      }
+    } else if (initialView === "record" && canEdit && window.location.hash.startsWith("#meetings/new")) {
+      setViewState("new");
+      setSelectedMeeting(null);
+      setRecordingState((prev) => (prev === "none" ? "idle" : prev));
+    }
+    if (onClearInitialView) {
+      onClearInitialView();
     }
   }, [initialView, canEdit]);
 

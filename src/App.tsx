@@ -5037,15 +5037,15 @@ ${log.payload || ''}
               window.location.hash = "personal-settings";
             }}
             onNavigateMeetings={(action) => {
+              const targetHash =
+                action === "record"
+                  ? "meetings/new?record=true"
+                  : action === "new"
+                    ? "meetings/new"
+                    : "meetings";
               setMeetingsAction(action);
-              setActiveTab("meetings");
-              if (action === "record") {
-                window.location.hash = "meetings/new?record=true";
-              } else if (action === "new") {
-                window.location.hash = "meetings/new";
-              } else {
-                window.location.hash = "meetings";
-              }
+              setActiveTab(targetHash);
+              window.location.hash = targetHash;
             }}
             onAddTask={(e) => openQuickTask(e)}
             onNavigateUpdates={() => {
