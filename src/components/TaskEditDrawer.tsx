@@ -281,6 +281,17 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
         closeTimer.current = window.setTimeout(() => onCloseRef.current(), CLOSE_ANIMATION_MS);
     };
 
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape" && !occurrenceDeleteDialogOpen) {
+                e.stopPropagation();
+                requestClose();
+            }
+        };
+        document.addEventListener("keydown", onKeyDown);
+        return () => document.removeEventListener("keydown", onKeyDown);
+    }, [occurrenceDeleteDialogOpen]);
+
     const update = (patch: Partial<Task>) => setDraft((prev) => ({ ...prev, ...patch }));
 
     const mentionEntities: MentionEntity[] = useMemo(() => {
@@ -443,6 +454,9 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                 className={`absolute inset-0 bg-slate-900/40 backdrop-blur-sm ${isClosing ? "animate-fade-out" : "animate-fade-in"}`}
             />
             <div
+                role="dialog"
+                aria-modal="true"
+                aria-label={draft.title || t("Task", "Úloha", "Feladat")}
                 className={`relative w-full max-w-md bg-white border-l border-gray-200 shadow-lg h-full flex flex-col p-6 overflow-y-auto ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
             >
                 <div className="pb-4 border-b border-gray-200 space-y-2">
@@ -467,6 +481,8 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         <button
                             type="button"
                             onClick={requestClose}
+                            aria-label={t("Close", "Zavrieť", "Bezárás")}
+                            title={t("Close", "Zavrieť", "Bezárás")}
                             className="p-1 hover:bg-gray-100 active:scale-95 rounded-md text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
                         >
                             <X className="h-5 w-5" />

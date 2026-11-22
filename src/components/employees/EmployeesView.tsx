@@ -408,7 +408,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
       {currentView !== "form" && (
         <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 border-b border-gray-200/60 pb-3">
           {/* Sub-view switcher tabs */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
             {tabItems.filter((i) => !i.hidden).length > 1 && (
               <Tabs
                 value={currentView === "list" || currentView === "matrix" || currentView === "me" || currentView === "settings" ? currentView : "list"}
@@ -418,9 +418,9 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             )}
 
             {currentView === "detail" && selectedEmployee && (
-              <div className="flex items-center gap-2 pl-2">
-                <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
-                <span className="text-ui font-heading font-bold text-[#b58b4c]">
+              <div className="flex items-center gap-2 pl-2 min-w-0 max-w-full">
+                <ChevronRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                <span className="text-ui font-heading font-bold text-[#b58b4c] truncate">
                   {selectedEmployee.name}
                 </span>
               </div>

@@ -1782,9 +1782,10 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="border border-gray-200 rounded-lg overflow-hidden shadow-2xs divide-y divide-gray-200">
-                  {/* Table Header */}
-                  <div className="px-4 py-2.5 bg-gray-50 text-micro font-semibold text-gray-500 uppercase tracking-wider grid grid-cols-12 gap-2 items-center">
+                <div className="border border-gray-200 rounded-lg overflow-x-auto shadow-2xs">
+                  <div className="min-w-[38rem] divide-y divide-gray-200">
+                    {/* Table Header */}
+                    <div className="px-4 py-2.5 bg-gray-50 text-micro font-semibold text-gray-500 uppercase tracking-wider grid grid-cols-12 gap-2 items-center">
                     <div className="col-span-5">{t("Item Description", "Položka / Názov", "Megnevezés")}</div>
                     <div className="col-span-2 text-center">{t("Qty", "Počet", "Menny.")}</div>
                     <div className="col-span-2 text-right">{t("Price / Unit", "Cena / ks", "Egységár")}</div>
@@ -1887,6 +1888,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                       </div>
                     </div>
                   ))}
+                  </div>
                 </div>
               )}
             </div>

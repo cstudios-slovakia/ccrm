@@ -1959,17 +1959,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return createPortal(
             <div
                 ref={bulkToolbarRef}
-                className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100000] max-w-[95vw] sm:max-w-3xl lg:max-w-4xl bg-gray-900/95 text-white backdrop-blur-md px-4 py-2.5 rounded-lg shadow-xl border border-gray-700 flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-200"
+                className="fixed bottom-20 ws-lg:bottom-6 left-1/2 -translate-x-1/2 z-[100000] w-[calc(100vw-1.5rem)] ws-sm:w-auto max-w-[95vw] sm:max-w-3xl lg:max-w-4xl bg-gray-900/95 text-white backdrop-blur-md px-4 py-2.5 rounded-lg shadow-xl border border-gray-700 flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-200"
             >
                 {/* Left: Count and selection management */}
-                <div className="flex items-center gap-2">
-                    <span className="bg-entity-solid/25 text-white border border-entity-border text-ui font-semibold px-2.5 py-1 rounded-md">
+                <div className="flex items-center gap-2 flex-wrap">
+                    <span className="bg-entity-solid/25 text-white border border-entity-border text-ui font-semibold px-2.5 py-1 rounded-md whitespace-nowrap">
                         {countLabel}
                     </span>
                     <button
                         type="button"
                         onClick={handleSelectAllVisible}
-                        className="text-caption font-semibold text-gray-300 hover:text-white px-2 py-1 rounded-md hover:bg-gray-800 transition-colors cursor-pointer"
+                        className="text-caption font-semibold text-gray-300 hover:text-white px-2 py-1 rounded-md hover:bg-gray-800 transition-colors cursor-pointer whitespace-nowrap"
                     >
                         {areAllVisibleSelected
                             ? t("Deselect visible", "Zrušiť výber zobrazených", "Láthatók kijelölésének törlése")
@@ -5547,7 +5547,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                       "Kézzel archivált feladatok — elrejtve a naptárból és a feladatlistákból.",
                                   )}
               actions={<>
-                  <div className="flex flex-col ws-sm:flex-row ws-sm:items-center gap-3 ws-sm:gap-4 flex-wrap">
+                  <div className="flex flex-col ws-sm:flex-row ws-sm:items-center gap-3 ws-sm:gap-4 flex-wrap min-w-0 w-full ws-sm:w-auto max-w-full">
                       <div className="flex items-center bg-gray-100 p-1 rounded-md border border-gray-200 gap-1 self-start ws-sm:self-auto overflow-x-auto max-w-full">
                           <button
                               onClick={() => setViewMode("calendar")}

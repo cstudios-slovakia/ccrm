@@ -33,7 +33,7 @@ export const PageHeader = ({ icon, title, subtitle, badge, actions, className = 
         {badge}
       </div>
     </div>
-    {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+    {actions && <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">{actions}</div>}
   </div>
 );
 
@@ -79,7 +79,7 @@ export const EntityHeader = ({
         </button>
       )}
       {avatar && <div className="shrink-0">{avatar}</div>}
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <h2 className="type-entity-title text-gray-900 truncate">{title}</h2>
         {(badges || meta) && (
           <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
@@ -90,7 +90,7 @@ export const EntityHeader = ({
       </div>
     </div>
     {(primaryAction || actions) && (
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
         {actions}
         {primaryAction}
       </div>

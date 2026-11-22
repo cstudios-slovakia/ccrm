@@ -43,19 +43,19 @@ export const WidgetCard: React.FC<{
       className
     )}
   >
-    <div className="flex items-center justify-between gap-3 h-7 shrink-0">
-      <div className="flex items-center gap-2.5 min-w-0">
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 min-h-7 shrink-0">
+      <div className="flex items-center gap-2.5 min-w-0 flex-1 basis-40">
         <span
           className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
           style={{ backgroundColor: accent }}
         >
           <Icon className="h-4 w-4 text-white" strokeWidth={2.25} />
         </span>
-        <h2 className="m-0 type-overline text-gray-600 truncate" title={titleTooltip || title}>
+        <h2 className="m-0 type-overline text-gray-600 leading-tight line-clamp-2 ws-sm:truncate" title={titleTooltip || title}>
           {title}
         </h2>
       </div>
-      {actions ? <div className="flex items-center gap-2 shrink-0">{actions}</div> : null}
+      {actions ? <div className="flex items-center gap-2 shrink-0 flex-wrap max-w-full">{actions}</div> : null}
     </div>
     {children}
   </div>

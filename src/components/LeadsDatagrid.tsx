@@ -4744,7 +4744,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         return createPortal(
             <div
                 ref={bulkToolbarRef}
-                className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100000] flex items-center gap-3 px-4 py-2.5 bg-slate-900/95 backdrop-blur-xl border border-slate-700/70 rounded-2xl shadow-2xl shadow-black/40 text-white animate-in fade-in slide-in-from-bottom-5 duration-200"
+                className="fixed bottom-20 ws-lg:bottom-6 left-1/2 -translate-x-1/2 z-[100000] w-[calc(100vw-1.5rem)] ws-sm:w-auto max-w-[95vw] flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 bg-slate-900/95 backdrop-blur-xl border border-slate-700/70 rounded-2xl shadow-2xl shadow-black/40 text-white animate-in fade-in slide-in-from-bottom-5 duration-200"
             >
                 <div className="flex items-center gap-2 pr-3 border-r border-slate-700/80">
                     <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-caption font-bold text-white">
@@ -7475,7 +7475,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         <div className="space-y-1.5 bg-gray-100 p-1 rounded-md border border-gray-200">
                                             {/* Communication events */}
                                             {activeDetailTab === "timeline" && (
-                                            <div className="grid grid-cols-5 gap-1.5">
+                                            <div className="grid grid-cols-3 ws-sm:grid-cols-5 gap-1.5">
                                                 {(
                                                     [
                                                         "phone",

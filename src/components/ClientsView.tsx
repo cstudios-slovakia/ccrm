@@ -4208,7 +4208,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       {/* Event Category Switcher */}
                       <div className="space-y-1">
                         <label className="type-overline text-slate-400">{getTranslation(systemLanguage, "common.event_type")}</label>
-                        <div className="grid grid-cols-5 gap-1.5 bg-slate-100 p-1.5 rounded-xl border-2 border-slate-200">
+                        <div className="grid grid-cols-3 ws-sm:grid-cols-5 gap-1.5 bg-slate-100 p-1.5 rounded-xl border-2 border-slate-200">
                           {(["phone", "email", "note", "offer", "appointment"] as const).map(type => {
                             const colors = getEventColors(type);
                             return (

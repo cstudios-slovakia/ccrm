@@ -646,7 +646,7 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                     )
                   ) : (
                     <>
-                      <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-3 shrink-0">
+                      <div className="px-4 ws-sm:px-6 py-3 ws-sm:py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <h3 className="text-title font-heading font-bold text-gray-900 truncate">
@@ -667,9 +667,9 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                             · {selectedAccount?.name}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                        <div className="flex items-center gap-2 flex-wrap justify-start ws-sm:justify-end min-w-0 max-w-full">
                           <div
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border transition-all ${
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border max-w-full min-w-0 transition-all ${
                               activeChatTakeover.isAgentActive
                                 ? "bg-violet-600 text-white border-violet-700 shadow-xs"
                                 : activeChatTakeover.isPausedForSession
@@ -718,7 +718,7 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                                   );
                                 }
                               }}
-                              className={`bg-transparent text-caption font-bold focus:outline-none cursor-pointer pr-1 ${
+                              className={`bg-transparent text-caption font-bold focus:outline-none cursor-pointer pr-1 max-w-full min-w-0 truncate ${
                                 activeChatTakeover.isAgentActive ? "text-white" : "text-gray-800"
                               }`}
                             >
@@ -777,7 +777,7 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                             {t("Sync latest", "Synchronizovať najnovšie", "Legfrissebbek szinkronizálása")}
                           </button>
                           {canEdit && (
-                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-gray-200 bg-white shadow-2xs">
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-gray-200 bg-white shadow-2xs max-w-full min-w-0 [&>select]:max-w-full [&>select]:min-w-0">
                               <Users size={13} className="text-gray-500 shrink-0" />
                               <select
                                 data-testid="wa-client-select"

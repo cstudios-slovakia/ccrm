@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowDownNarrowWide, ArrowDownWideNarrow, ChevronDown, GripVertical, Lock, SlidersHorizontal } from "lucide-react";
 import { CustomSelect } from "../ui/CustomSelect";
 import { cn } from "../../utils/cn";
@@ -94,6 +94,35 @@ export function ListViewMenu<K extends string, C extends ListViewColumn>({
   const tone = ACCENTS[accent];
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const [panelPos, setPanelPos] = useState<{ left: number; maxHeight: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPanelPos(null);
+      return;
+    }
+    const updatePosition = () => {
+      const rect = rootRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const pad = 16;
+      const menuWidth = Math.min(416, vw - pad * 2);
+      const desiredLeft = rect.right - menuWidth;
+      const clampedViewportLeft = Math.max(pad, Math.min(desiredLeft, vw - menuWidth - pad));
+      setPanelPos({
+        left: Math.round(clampedViewportLeft - rect.left),
+        maxHeight: Math.max(220, vh - rect.bottom - pad - 8),
+      });
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -158,7 +187,8 @@ export function ListViewMenu<K extends string, C extends ListViewColumn>({
         <div
           role="dialog"
           aria-label={t("View settings", "Nastavenia pohľadu", "Nézet beállításai")}
-          className="absolute right-0 top-full mt-2 z-50 w-[min(26rem,calc(100vw-2rem))] rounded-lg border border-gray-200 bg-white shadow-xl overflow-hidden text-left animate-in fade-in zoom-in-95 slide-in-from-top-1 duration-150 origin-top-right"
+          style={panelPos ? { left: panelPos.left, maxHeight: panelPos.maxHeight } : undefined}
+          className="absolute top-full mt-2 z-50 w-[min(26rem,calc(100vw-2rem))] rounded-lg border border-gray-200 bg-white shadow-xl overflow-x-hidden overflow-y-auto text-left animate-in fade-in zoom-in-95 slide-in-from-top-1 duration-150 origin-top-right"
         >
           {/* Sort */}
           <div className="grid grid-cols-[6.5rem_1fr] items-center gap-3 px-4 py-3.5 border-b border-gray-200">

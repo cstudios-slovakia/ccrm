@@ -7973,7 +7973,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             <div
               ref={movementBulkToolbarRef}
               style={entityAccentStyle("financial") as React.CSSProperties}
-              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100000] max-w-[95vw] sm:max-w-3xl lg:max-w-4xl bg-gray-900 text-white px-4 py-2.5 rounded-lg shadow-xl border border-gray-700 flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-200"
+              className="fixed bottom-20 ws-lg:bottom-6 left-1/2 -translate-x-1/2 z-[100000] w-[calc(100vw-1.5rem)] ws-sm:w-auto max-w-[95vw] sm:max-w-3xl lg:max-w-4xl bg-gray-900 text-white px-4 py-2.5 rounded-lg shadow-xl border border-gray-700 flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-200"
             >
               <div className="flex items-center gap-2">
                 <span className="bg-entity-solid text-white text-ui font-semibold px-2.5 py-1 rounded-md tabular-nums">

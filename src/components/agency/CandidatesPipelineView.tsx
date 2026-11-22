@@ -282,7 +282,7 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
             value={stageFilter}
             onChange={(e) => setStageFilter(e.target.value)}
             data-testid="agency-candidates-stage-filter"
-            className="px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-700"
+            className="w-full ws-sm:w-auto max-w-full min-w-0 px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-700"
           >
             <option value="all">{t("All stages", "Všetky fázy", "Minden fázis")}</option>
             {settings.stages.map((st) => (
@@ -295,7 +295,7 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
             value={companyFilter}
             onChange={(e) => setCompanyFilter(e.target.value)}
             data-testid="agency-candidates-company-filter"
-            className="px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-700"
+            className="w-full ws-sm:w-auto max-w-full min-w-0 px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-700"
           >
             <option value="all">{t("All companies", "Všetky firmy", "Minden cég")}</option>
             <option value="__unassigned__">{t("Unassigned company", "Bez firmy", "Cég nélkül")}</option>
@@ -310,7 +310,7 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
               value={nationalityFilter}
               onChange={(e) => setNationalityFilter(e.target.value)}
               data-testid="agency-candidates-nationality-filter"
-              className="px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-700"
+              className="w-full ws-sm:w-auto max-w-full min-w-0 px-3 py-2 rounded-md bg-white border border-gray-200 text-ui text-gray-700"
             >
               <option value="all">{t("All nationalities", "Všetky príslušnosti", "Minden állampolgárság")}</option>
               {nationalityOptions.map((nat) => (

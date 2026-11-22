@@ -419,20 +419,32 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     });
   }, [projects, projectTypes, leads, searchQuery, resolvedVisibleStatuses, selectedTypeFilter, selectedDivisionFilter, selectedManagerFilter, selectedRatingFilter, selectedArchiveFilter, overdueOnly, overdueIds]);
 
-  // Close bulk menu when clicking outside
+  // Close bulk menu on outside click, and dismiss bulk selection on Escape
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (bulkToolbarRef.current && !bulkToolbarRef.current.contains(e.target as Node)) {
         setActiveBulkMenu(null);
       }
     };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (activeBulkMenu) {
+        setActiveBulkMenu(null);
+      } else if (selectedProjectIds.size > 0) {
+        setSelectedProjectIds(new Set());
+      }
+    };
     if (activeBulkMenu) {
       document.addEventListener("mousedown", handleClickOutside);
     }
+    if (activeBulkMenu || selectedProjectIds.size > 0) {
+      document.addEventListener("keydown", handleKeyDown);
+    }
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [activeBulkMenu]);
+  }, [activeBulkMenu, selectedProjectIds.size]);
 
 
 
@@ -1077,17 +1089,17 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     return createPortal(
       <div
         ref={bulkToolbarRef}
-        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100000] max-w-[95vw] sm:max-w-3xl lg:max-w-4xl bg-slate-900/95 text-white backdrop-blur-xl px-4 py-2.5 rounded-2xl shadow-2xl border border-slate-700/70 flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-200"
+        className="fixed bottom-20 ws-lg:bottom-6 left-1/2 -translate-x-1/2 z-[100000] w-[calc(100vw-1.5rem)] ws-sm:w-auto max-w-[95vw] sm:max-w-3xl lg:max-w-4xl bg-slate-900/95 text-white backdrop-blur-xl px-4 py-2.5 rounded-2xl shadow-2xl border border-slate-700/70 flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-200"
       >
         {/* Left: Count and selection management */}
-        <div className="flex items-center gap-2">
-          <span className="bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-ui font-bold px-2.5 py-1 rounded-xl">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-ui font-bold px-2.5 py-1 rounded-xl whitespace-nowrap">
             {countLabel}
           </span>
           <button
             type="button"
             onClick={handleSelectAllVisible}
-            className="text-caption font-bold text-slate-300 hover:text-white px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            className="text-caption font-bold text-slate-300 hover:text-white px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer whitespace-nowrap"
           >
             {areAllVisibleSelected
               ? t("Deselect visible", "Zrušiť výber zobrazených", "Láthatók kijelölésének törlése")

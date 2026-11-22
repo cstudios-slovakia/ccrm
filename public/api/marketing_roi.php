@@ -143,6 +143,12 @@ function ccrm_marketing_roi_newsletter(\PDO $pdo): array {
     return array_values(array_filter($byId, static fn ($c) => $c['sentAt'] !== null));
 }
 
+$configFile = dirname(__DIR__) . '/config.php';
+if (!file_exists($configFile)) {
+    ccrm_mroi_respond(['code' => 'database_unavailable'], 503);
+}
+require_once $configFile;
+
 try {
     $pdo = get_db_connection();
     ccrm_apply_schema($pdo);

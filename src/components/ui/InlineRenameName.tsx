@@ -58,8 +58,8 @@ export const InlineRenameName: React.FC<{
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5">
-      <span onDoubleClick={startEdit} className={canEdit ? "cursor-text" : undefined}>{children}</span>
+    <span className="inline-flex items-center gap-1.5 min-w-0 max-w-full">
+      <span onDoubleClick={startEdit} className={canEdit ? "cursor-text truncate min-w-0" : "truncate min-w-0"}>{children}</span>
       {canEdit && !hideButton && (
         <button
           type="button"

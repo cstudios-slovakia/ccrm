@@ -48,7 +48,7 @@ export const NewOfferMenu: React.FC<NewOfferMenuProps> = ({
   const t = (en: string, sk: string, hu: string) => (lang === "sk" ? sk : lang === "hu" ? hu : en);
   const [open, setOpen] = useState(false);
   const [aiExpanded, setAiExpanded] = useState(false);
-  const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null);
+  const [anchor, setAnchor] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -62,7 +62,17 @@ export const NewOfferMenu: React.FC<NewOfferMenuProps> = ({
   const place = () => {
     const rect = buttonRef.current?.getBoundingClientRect();
     if (!rect) return;
-    setAnchor({ top: rect.bottom + 8, right: Math.max(8, window.innerWidth - rect.right) });
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const pad = 8;
+    const menuWidth = Math.min(384, vw - pad * 2);
+    const left = Math.max(pad, Math.min(rect.right - menuWidth, vw - menuWidth - pad));
+    const top = rect.bottom + 8;
+    setAnchor({
+      top,
+      left,
+      maxHeight: Math.max(200, vh - top - 16),
+    });
   };
 
   useLayoutEffect(() => {
@@ -182,7 +192,7 @@ export const NewOfferMenu: React.FC<NewOfferMenuProps> = ({
             role="menu"
             aria-label={t("New price offer", "Nová cenová ponuka", "Új árajánlat")}
             onKeyDown={onMenuKeyDown}
-            style={{ ...entityAccentStyle("invoices"), top: anchor.top, right: anchor.right, zIndex: MENU_Z }}
+            style={{ ...entityAccentStyle("invoices"), top: anchor.top, left: anchor.left, maxHeight: anchor.maxHeight, zIndex: MENU_Z }}
             className="fixed w-(--drawer-sm) max-w-[calc(100vw-1rem)] max-h-[calc(100dvh-8rem)] overflow-y-auto rounded-lg border border-gray-200 bg-white p-1.5 shadow-2xl animate-fade-in"
           >
             <button

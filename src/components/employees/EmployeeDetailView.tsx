@@ -1705,18 +1705,18 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
         {/* RIGHT COLUMN: 3 SUB-TABS (8 cols) */}
         <div className="ws-lg:col-span-8 space-y-6">
           {/* Sub-Tabs Navigation */}
-          <div className="flex items-center gap-2 p-1 bg-gray-100 rounded-lg border border-gray-200">
+          <div className="flex flex-wrap items-center gap-1.5 p-1 bg-gray-100 rounded-lg border border-gray-200 max-w-full">
             {hasTogglKey && (
               <button
                 style={activeTab === "hours" ? (entityAccentStyle("time-tracking") as React.CSSProperties) : undefined}
                 onClick={() => handleTabClick("hours")}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-ui font-semibold transition cursor-pointer ${
+                className={`flex-1 min-w-[calc(50%-0.25rem)] ws-sm:min-w-0 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-ui font-semibold whitespace-nowrap transition cursor-pointer ${
                   activeTab === "hours"
                     ? "bg-entity-solid text-white shadow-2xs"
                     : "text-gray-600 hover:text-gray-900 hover:bg-white/60"
                 }`}
               >
-                <Clock className="w-4 h-4" />
+                <Clock className="w-4 h-4 shrink-0" />
                 <span>{t("Worked Hours (Toggl)", "Odpracované hodiny (Toggl)", "Ledolgozott órák (Toggl)")}</span>
               </button>
             )}
@@ -1724,13 +1724,13 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             {rights.salaries && (
             <button
               onClick={() => handleTabClick("salaries")}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-ui font-semibold transition cursor-pointer ${
+              className={`flex-1 min-w-[calc(50%-0.25rem)] ws-sm:min-w-0 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-ui font-semibold whitespace-nowrap transition cursor-pointer ${
                 activeTab === "salaries"
                   ? "bg-entity-solid text-white shadow-2xs"
                   : "text-gray-600 hover:text-gray-900 hover:bg-white/60"
               }`}
             >
-              <Coins className="w-4 h-4" />
+              <Coins className="w-4 h-4 shrink-0" />
               <span>{t("Salaries & Payments", "História miezd a výplat", "Bérek és kifizetések")}</span>
             </button>
             )}
@@ -1738,13 +1738,13 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             {rights.vacations && (
             <button
               onClick={() => handleTabClick("vacations")}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-ui font-semibold transition cursor-pointer ${
+              className={`flex-1 min-w-[calc(50%-0.25rem)] ws-sm:min-w-0 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-ui font-semibold whitespace-nowrap transition cursor-pointer ${
                 activeTab === "vacations"
                   ? "bg-entity-solid text-white shadow-2xs"
                   : "text-gray-600 hover:text-gray-900 hover:bg-white/60"
               }`}
             >
-              <Calendar className="w-4 h-4" />
+              <Calendar className="w-4 h-4 shrink-0" />
               <span>{t("Vacation & Absences", "Dovolenka a absencie", "Szabadság és távollét")}</span>
             </button>
             )}
@@ -1753,13 +1753,13 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             <button
               style={activeTab === "files" ? (entityAccentStyle("files") as React.CSSProperties) : undefined}
               onClick={() => handleTabClick("files")}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-ui font-semibold transition cursor-pointer ${
+              className={`flex-1 min-w-[calc(50%-0.25rem)] ws-sm:min-w-0 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-ui font-semibold whitespace-nowrap transition cursor-pointer ${
                 activeTab === "files"
                   ? "bg-entity-solid text-white shadow-2xs"
                   : "text-gray-600 hover:text-gray-900 hover:bg-white/60"
               }`}
             >
-              <FileCheck className="w-4 h-4" />
+              <FileCheck className="w-4 h-4 shrink-0" />
               <span>{t("Contracts & Files", "Zmluvy a dokumenty", "Szerződések és iratok")}</span>
               {employee.files && employee.files.length > 0 && (
                 <span
