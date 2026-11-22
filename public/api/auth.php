@@ -17,6 +17,8 @@
 @ini_set('log_errors', '1');
 error_reporting(E_ALL);
 
+require_once __DIR__ . '/lead_attributes.php';
+
 if (!function_exists('ccrm_send_cors')) {
 
     /**
@@ -1517,15 +1519,7 @@ if (!function_exists('ccrm_send_cors')) {
                 // The per-type attribute row. Optional — sync.php's GET falls back to
                 // empty data when it is missing — so a type whose table has not been
                 // built yet must not take the project down with it.
-                try {
-                    $dataTable = 'proj_data_' . preg_replace('/[^a-z0-9_]/', '', strtolower($typeId));
-                    if ($pdo->query("SHOW TABLES LIKE " . $pdo->quote($dataTable))->rowCount() > 0) {
-                        $pdo->prepare("INSERT IGNORE INTO `{$dataTable}` (`id`, `project_id`) VALUES (?, ?)")
-                            ->execute([$projectId, $projectId]);
-                    }
-                } catch (\Throwable $e) {
-                    // Attributes stay empty; the project itself is already saved.
-                }
+                $projectData = ccrm_copy_lead_custom_fields_to_project($pdo, $leadId, $typeId, $projectId);
 
                 $created[] = [
                     'id' => $projectId,
@@ -1539,7 +1533,7 @@ if (!function_exists('ccrm_send_cors')) {
                     'clientId' => $leadId,
                     'status' => 'new',
                     'managers' => $managers,
-                    'data' => (object)[],
+                    'data' => !empty($projectData) ? $projectData : (object)[],
                     'timeline' => [],
                     'gantt' => [],
                 ];

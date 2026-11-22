@@ -1,5 +1,13 @@
+import type { ProjectAttribute } from "../types";
 import type { DropPosition } from "./reorder.ts";
 import { moveRelative } from "./reorder.ts";
+import {
+  attributeColumnKey,
+  attributeIdFromColumnKey,
+  isAttributeColumnKey,
+} from "./projectColumns.ts";
+
+export { attributeColumnKey, attributeIdFromColumnKey, isAttributeColumnKey };
 
 export type BuiltinLeadColumnKey =
   | "client"
@@ -52,11 +60,20 @@ export interface StoredLeadColumn {
 }
 
 export interface ResolvedLeadColumn {
-  key: BuiltinLeadColumnKey;
+  key: string;
   visible: boolean;
+  /** Set only for an `attr:<id>` column — the Lead custom field it displays. */
+  attribute?: ProjectAttribute;
 }
 
-export type LeadSortKey = "state" | "pm" | "created" | "size" | "client" | "rating";
+export type LeadSortKey =
+  | "state"
+  | "pm"
+  | "created"
+  | "size"
+  | "client"
+  | "rating"
+  | `attr:${string}`;
 
 export interface LeadSort {
   key: LeadSortKey;
@@ -68,41 +85,65 @@ export const DEFAULT_LEAD_SORT: LeadSort = {
   direction: "asc",
 };
 
+const isBuiltinLeadColumnKey = (key: string): key is BuiltinLeadColumnKey =>
+  (BUILTIN_LEAD_COLUMNS as readonly string[]).includes(key);
+
 export function resolveLeadColumns(
   stored?: readonly StoredLeadColumn[] | null,
+  attributes?: readonly ProjectAttribute[] | null,
 ): ResolvedLeadColumn[] {
-  if (!stored || stored.length === 0) {
-    return BUILTIN_LEAD_COLUMNS.map(key => ({
-      key,
-      visible: defaultVisible(key),
-    }));
-  }
+  const attrs = attributes ?? [];
+  const byId = new Map(attrs.map(a => [a.id, a]));
 
-  const seen = new Set<string>();
   const resolved: ResolvedLeadColumn[] = [];
+  const seen = new Set<string>();
 
-  for (const item of stored) {
-    if (BUILTIN_LEAD_COLUMNS.includes(item.key as BuiltinLeadColumnKey)) {
-      const key = item.key as BuiltinLeadColumnKey;
+  for (const item of stored ?? []) {
+    const key = item?.key;
+    if (typeof key !== "string" || seen.has(key)) continue;
+
+    if (isBuiltinLeadColumnKey(key)) {
       seen.add(key);
       resolved.push({
         key,
-        visible: key === LOCKED_LEAD_COLUMN ? true : !!item.visible,
+        visible: key === LOCKED_LEAD_COLUMN ? true : item.visible !== false,
       });
+      continue;
     }
+
+    const attrId = attributeIdFromColumnKey(key);
+    const attribute = attrId ? byId.get(attrId) : undefined;
+    // Drop keys for deleted custom fields cleanly.
+    if (!attribute) continue;
+    seen.add(key);
+    resolved.push({
+      key,
+      visible: item.visible !== false,
+      attribute,
+    });
   }
 
-  // Ensure any missing builtin columns are appended with default visibility
   for (const key of BUILTIN_LEAD_COLUMNS) {
-    if (!seen.has(key)) {
-      resolved.push({
-        key,
-        visible: defaultVisible(key),
-      });
-    }
+    if (seen.has(key)) continue;
+    seen.add(key);
+    resolved.push({
+      key,
+      visible: defaultVisible(key),
+    });
   }
 
-  // Ensure locked column is first
+  // Newly added custom fields append hidden so the table never widens without opt-in.
+  for (const attribute of attrs) {
+    const key = attributeColumnKey(attribute.id);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    resolved.push({
+      key,
+      visible: false,
+      attribute,
+    });
+  }
+
   const lockedIdx = resolved.findIndex(c => c.key === LOCKED_LEAD_COLUMN);
   if (lockedIdx > 0) {
     const [locked] = resolved.splice(lockedIdx, 1);
@@ -121,12 +162,12 @@ export function toStoredLeadColumns(columns: readonly ResolvedLeadColumn[]): Sto
   }));
 }
 
-export function moveLeadColumn(
-  columns: readonly ResolvedLeadColumn[],
+export function moveLeadColumn<T extends { key: string }>(
+  columns: readonly T[],
   dragKey: string,
   targetKey: string,
   position: DropPosition,
-): ResolvedLeadColumn[] {
+): T[] {
   if (dragKey === LOCKED_LEAD_COLUMN || targetKey === LOCKED_LEAD_COLUMN) {
     return columns.slice();
   }

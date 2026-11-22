@@ -12,10 +12,11 @@ import { ProjectRequestDialog } from "./components/timeTracking/ProjectRequestDi
 import type { TimeDeps } from "./components/timeTracking/shared";
 import { canEditTask as userMayEditTask } from "./utils/taskSelectors";
 import { QuickTaskModal, composerOriginFrom, type ComposerOrigin } from "./components/QuickTaskModal";
-import type { Lead, UserProfile, RolePermission, Task, RecurringTaskTemplate, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, OfferCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order, Ticket, SupportContract, TicketStatusDef, TicketSystemSettings } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, RecurringTaskTemplate, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, ProjectAttribute, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, OfferCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order, Ticket, SupportContract, TicketStatusDef, TicketSystemSettings } from "./types";
 import { clearedSecretKeys } from "./utils/secretClears";
 import { findSelf, isDifferentSessionUser } from "./utils/sessionIdentity";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
+import { normalizeLeadAttributes } from "./utils/leadAttributes";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { DEFAULT_TASK_SETTINGS, normalizeTaskSettings } from "./utils/taskConclusion";
 import { defaultProjectStatus, normalizeProjectStatusDefs, type ProjectStatusDef } from "./utils/projects";
@@ -37,6 +38,7 @@ import {
 } from "./utils/browserNotifications";
 import { isDoneTaskState } from "./utils/projectTasks";
 import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listIds";
+import { computeSettingsSig, computePushSig } from "./utils/settingsSig";
 import { agencyRightsFrom } from "./utils/agencyRights";
 import { VERSION } from "./utils/version";
 import { reconcileInvoiceMovements } from "./utils/invoiceFinanceBridge";
@@ -212,103 +214,6 @@ const AgencyView = safeLazy(() => import("./components/agency/AgencyView").then(
 const OrdersView = safeLazy(() => import("./components/OrdersView").then(m => ({ default: m.OrdersView })));
 const TicketsView = safeLazy(() => import("./components/TicketsView").then(m => ({ default: m.TicketsView })));
 const PublicProjectTicketsView = safeLazy(() => import("./components/PublicProjectTicketsView").then(m => ({ default: m.PublicProjectTicketsView })));
-
-// Stable, order-fixed fingerprint of the settings block. Used to tell a genuine
-// user edit apart from merely re-receiving the server's own settings, so the
-// settings-sync effect never echoes server data back. Field order must be fixed
-// (hence an array) and must match on both the client-state and server-data sides.
-//
-// Empty containers are normalised to null because the two sides represent "empty"
-// differently: the server falls back to `[]` for colour maps but `{}` for
-// leadStateParents/leadStateFollowUp (and `null` for a malformed column), while
-// the client defaults to `{}`. Without this an "empty" field would look different
-// depending on which side you asked, so saving settings from an empty field would
-// continuously fight with the initial sync.
-const computeSettingsSig = (s: any): string => {
-  if (!s || typeof s !== "object") return "null";
-  return JSON.stringify([
-    // Trimmed, so server and client agree on what "no custom name" looks like ("").
-    normalizeSystemTitleOverride(s.systemName),
-    s.systemLanguage ?? "",
-    s.systemCurrency ?? "",
-    s.leadStates ?? [],
-    s.leadSources ?? [],
-    s.leadCategories ?? [],
-    s.divisions ?? [],
-    // Normalized on both sides so an install that has never stored an id map
-    // compares equal to the one the server derives. Reduced to a sorted array
-    // of pairs because two equal maps with their keys written in a different
-    // order would stringify differently and push forever. See listIdsSignature.
-    listIdsSignature(normalizeListIds(s.leadSources ?? [], s.leadSourceIds)),
-    listIdsSignature(normalizeListIds(s.leadCategories ?? [], s.leadCategoryIds)),
-    s.leadStateColors && Object.keys(s.leadStateColors).length ? s.leadStateColors : null,
-    s.leadSourceColors && Object.keys(s.leadSourceColors).length ? s.leadSourceColors : null,
-    s.leadCategoryColors && Object.keys(s.leadCategoryColors).length ? s.leadCategoryColors : null,
-    s.divisionColors && Object.keys(s.divisionColors).length ? s.divisionColors : null,
-    s.leadStageGroups && Object.keys(s.leadStageGroups).length ? s.leadStageGroups : null,
-    s.leadStateParents && Object.keys(s.leadStateParents).length ? s.leadStateParents : null,
-    s.leadStateFollowUp && Object.keys(s.leadStateFollowUp).length ? s.leadStateFollowUp : null,
-    // Normalized on both sides so "no SLA anywhere" has one spelling whichever
-    // side you ask. See normalizeLeadStateSla / ccrm_normalize_lead_state_sla.
-    normalizeLeadStateSla(s.leadStateSla),
-    // Normalized on both sides so an absent value and an explicit "off" blob
-    // (which is what the server sends back) compare equal instead of pushing
-    // forever. See normalizeLeadAssignment / ccrm_normalize_lead_assignment.
-    normalizeLeadAssignment(s.leadAssignment),
-    // Normalized on both sides for the same reason. See normalizeProjectAutoCreate
-    // / ccrm_normalize_project_auto_create.
-    normalizeProjectAutoCreate(s.projectAutoCreate),
-    s.taskStates ?? [],
-    s.taskStateColors && Object.keys(s.taskStateColors).length ? s.taskStateColors : null,
-    // Normalized on both sides, like the project auto-creation blob above. See
-    // normalizeTaskSettings / ccrm_normalize_task_settings.
-    normalizeTaskSettings(s.taskSettings),
-    // Normalized on both sides: an install that never opened the editor has
-    // nothing stored, and that must compare equal to the built-ins it is shown.
-    normalizeProjectStatusDefs(s.projectStatuses),
-    normalizeOfferStatusDefs(s.offerStatuses),
-    normalizeInvoiceStatusDefs(s.invoiceStatuses),
-    normalizePriceLevels(s.priceLevels),
-    normalizeOrderStatusDefs(s.orderStatuses),
-    normalizeTicketStatuses(s.ticketStatuses),
-    normalizeTicketSettings(s.ticketSettings),
-    s.integrationsConfig ?? null,
-    s.companyBillingSettings ?? null,
-    s.invoicingIntegrations ?? null,
-    s.financialMode ?? "connected",
-    s.financialSimplifiedTable ?? null,
-  ]);
-};
-
-// Signature of an entire sync.php push payload (minus baseSyncedAt, which is
-// just a concurrency token and changes on every request regardless of content).
-// Used to tell a genuine unsaved edit apart from an automatic background push
-// (e.g. the settings-resync effect) that happens to land after the session died.
-const computePushSig = (p: {
-  leads?: unknown; tasks?: unknown; recurringTasks?: unknown; users?: unknown; roles?: unknown;
-  meetingNotes?: unknown; unifiedEntries?: unknown; unifiedEntriesData?: unknown;
-  customDashboards?: unknown; projectTypes?: unknown; projects?: unknown;
-  warehouses?: unknown; suppliers?: unknown; warehouseItems?: unknown;
-  warehouseStock?: unknown; warehouseBatches?: unknown; warehouseMovements?: unknown;
-  financialCategories?: unknown; financialRecords?: unknown;
-  financialMode?: unknown; financialSimplifiedTable?: unknown;
-  invoicesOffers?: unknown; aiCustomTemplates?: unknown; clientCategories?: unknown; offerCategories?: unknown;
-  employees?: unknown; employeeSalaries?: unknown; employeeVacations?: unknown; employeeSettings?: unknown;
-  orders?: unknown;
-  tickets?: unknown; supportContracts?: unknown;
-  settings?: any;
-}): string => JSON.stringify([
-  p.leads, p.tasks, p.recurringTasks, p.users, p.roles, p.meetingNotes, p.unifiedEntries,
-  p.unifiedEntriesData, p.customDashboards, p.projectTypes, p.projects,
-  p.warehouses, p.suppliers, p.warehouseItems, p.warehouseStock, p.warehouseBatches, p.warehouseMovements,
-  p.financialCategories, p.financialRecords,
-  p.financialMode, p.financialSimplifiedTable,
-  p.invoicesOffers, p.aiCustomTemplates, p.clientCategories, p.offerCategories,
-  p.employees, p.employeeSalaries, p.employeeVacations, p.employeeSettings,
-  p.orders,
-  p.tickets, p.supportContracts,
-  computeSettingsSig(p.settings),
-]);
 
 
 function App() {
@@ -971,6 +876,7 @@ function App() {
   // every device and by leads that never pass through this app at all (the
   // public webhook, workflow actions, imports).
   const [leadAssignment, setLeadAssignment] = useState<LeadAssignmentSettings>(DEFAULT_LEAD_ASSIGNMENT);
+  const [leadAttributes, setLeadAttributes] = useState<ProjectAttribute[]>([]);
 
   // Whether every new lead is paired with a freshly created project, and of
   // which type (Projects → Settings). Like the rules above, the creation itself
@@ -1512,6 +1418,7 @@ ${log.payload || ''}
         leadStateFollowUp,
         leadStateSla,
         leadAssignment,
+        leadAttributes,
         projectAutoCreate,
         taskStates,
         taskStateColors,
@@ -2750,7 +2657,7 @@ ${log.payload || ''}
       leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds,
       systemName: systemNameOverride, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
-      leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, taskSettings,
+      leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, leadAttributes, projectAutoCreate, taskStates, taskStateColors, taskSettings,
       projectStatuses,
       offerStatuses,
       invoiceStatuses,
@@ -2786,7 +2693,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemNameOverride, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, offerStatuses, invoiceStatuses, priceLevels, orderStatuses, ticketStatuses, ticketSettings, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
+  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemNameOverride, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, leadAttributes, projectAutoCreate, taskStates, taskStateColors, projectStatuses, offerStatuses, invoiceStatuses, priceLevels, orderStatuses, ticketStatuses, ticketSettings, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -3144,6 +3051,10 @@ ${log.payload || ''}
         });
         setLeadAssignment((prev) => {
           const next = normalizeLeadAssignment(s.leadAssignment);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
+        setLeadAttributes((prev) => {
+          const next = normalizeLeadAttributes(s.leadAttributes);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
         });
         setProjectAutoCreate((prev) => {
@@ -3648,6 +3559,8 @@ ${log.payload || ''}
           setLeadStateSla={setLeadStateSla}
           leadAssignment={leadAssignment}
           setLeadAssignment={setLeadAssignment}
+          leadAttributes={leadAttributes}
+          setLeadAttributes={setLeadAttributes}
           systemLanguage={systemLanguage}
           setSystemLanguage={setSystemLanguage}
           systemCurrency={systemCurrency}
@@ -3876,6 +3789,7 @@ ${log.payload || ''}
           leadStateFollowUp={leadStateFollowUp}
           leadStateSla={leadStateSla}
           leadAssignment={leadAssignment}
+          leadAttributes={leadAttributes}
           currencyCode={currencyCode}
           taskAccess={taskAccess}
         />
@@ -3922,6 +3836,8 @@ ${log.payload || ''}
           setLeadStateSla={setLeadStateSla}
           leadAssignment={leadAssignment}
           setLeadAssignment={setLeadAssignment}
+          leadAttributes={leadAttributes}
+          setLeadAttributes={setLeadAttributes}
           systemLanguage={systemLanguage}
           setSystemLanguage={setSystemLanguage}
           systemCurrency={systemCurrency}
@@ -4060,6 +3976,7 @@ ${log.payload || ''}
             leadStateFollowUp={leadStateFollowUp}
             leadStateSla={leadStateSla}
             leadAssignment={leadAssignment}
+            leadAttributes={leadAttributes}
             currencyCode={currencyCode}
             taskAccess={taskAccess}
             initialSelectedLeadId={subLeadId}

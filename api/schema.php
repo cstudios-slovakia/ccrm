@@ -99,6 +99,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `company_client_id` VARCHAR(50) NULL COMMENT 'leads.id of parent company for person client-side contacts (never rented workers)',
               `contact_role` VARCHAR(120) NULL COMMENT 'Role at company for attached person contacts (e.g. HR, Site Manager)',
               `ticket_allowed_emails` TEXT NULL COMMENT 'JSON array of whitelisted sender emails/domains for support tickets',
+              `custom_fields_json` LONGTEXT NULL COMMENT 'JSON map of custom lead attribute values keyed by attribute id',
               `archived` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Archived from the client register',
               `created_at` DATE NOT NULL,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -2363,6 +2364,9 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_recurring_tasks($pdo);
         ccrm_migrate_weekly_plan($pdo);
         ccrm_migrate_agency($pdo);
+        if (ccrm_table_exists($pdo, 'leads') && !ccrm_column_exists($pdo, 'leads', 'custom_fields_json')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `custom_fields_json` LONGTEXT NULL COMMENT 'JSON map of custom lead attribute values keyed by attribute id' AFTER `ticket_allowed_emails`");
+        }
     }
 
     /**

@@ -6,7 +6,7 @@ import {
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Check,
   Menu, ArrowUp, FolderOpen, Search, Building2, RotateCcw
 } from "lucide-react";
-import type { WarehouseItem, Employee, UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, LeadAssignmentSettings, ProjectAutoCreateSettings, TaskSettings, CustomDashboard } from "../types";
+import type { WarehouseItem, Employee, UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, ProjectAttribute, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, LeadAssignmentSettings, ProjectAutoCreateSettings, TaskSettings, CustomDashboard } from "../types";
 import { DEFAULT_VAT_RATES, DEFAULT_STANDARD_VAT_RATE, getAvailableVatRates, sanitizeVatRates } from "../utils/vat";
 import { DEFAULT_SHIPPING_METHODS } from "../utils/shipping";
 import { DEFAULT_PAYMENT_METHODS, DEFAULT_STANDARD_PAYMENT_METHOD } from "../utils/payment";
@@ -29,6 +29,7 @@ import { ShippingMethodSettings } from "./ShippingMethodSettings";
 import { PaymentMethodSettings } from "./PaymentMethodSettings";
 import { FinanceSettings } from "./FinanceSettings";
 import { MarketingRoiSettings } from "./settings/MarketingRoiSettings";
+import { LeadCustomFieldsSettings } from "./settings/LeadCustomFieldsSettings";
 import type { ProjectStatusDef } from "../utils/projects";
 import type { OrderStatusDef } from "../utils/orders";
 import type { Order, Ticket, TicketStatusDef, TicketSettingsConfig, OfferCategory, InvoiceOffer } from "../types";
@@ -538,6 +539,8 @@ interface SettingsViewProps {
   setLeadStateSla: React.Dispatch<React.SetStateAction<LeadStateSla>>;
   leadAssignment: LeadAssignmentSettings;
   setLeadAssignment: React.Dispatch<React.SetStateAction<LeadAssignmentSettings>>;
+  leadAttributes?: ProjectAttribute[];
+  setLeadAttributes?: React.Dispatch<React.SetStateAction<ProjectAttribute[]>>;
 
   systemLanguage: Language;
   setSystemLanguage: (lang: Language) => void;
@@ -680,6 +683,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setLeadStateSla,
   leadAssignment,
   setLeadAssignment,
+  leadAttributes = [],
+  setLeadAttributes,
   systemLanguage,
   setSystemLanguage,
   systemCurrency,
@@ -5441,6 +5446,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       setLeadAssignment={setLeadAssignment}
                       canEdit={getPermission("pipeline_stages") === "edit"}
                       userLanguage={userLanguage}
+                    />
+        );
+      case "leads/fields":
+        return (
+                    <LeadCustomFieldsSettings
+                      leadAttributes={leadAttributes}
+                      setLeadAttributes={setLeadAttributes || (() => {})}
+                      userLanguage={userLanguage}
+                      canEdit={getPermission("pipeline_stages") === "edit" && !!setLeadAttributes}
                     />
         );
       case "leads/sources":

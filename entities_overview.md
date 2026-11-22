@@ -98,6 +98,7 @@ Main table representing potential deals, customers, and client accounts.
 * `data_source` VARCHAR(100)
 * `ownership_type` VARCHAR(50)
 * `ticket_allowed_emails` TEXT [NULLable] (JSON array of whitelisted sender emails/domains for support tickets)
+* `custom_fields_json` LONGTEXT [NULLable] (JSON object mapping configured Lead custom attribute IDs from `LEAD_ATTRIBUTES` to values; absent `data` on sync leaves column unchanged)
 * `client_id` VARCHAR(50) [NULLable, indexed] (the client record - a `client-*` row of this table - the lead belongs to; not a foreign key. NULL = not linked, the app then falls back to matching by name)
 * `price_level_id` VARCHAR(50) [NULLable] (the price level - an `id` of the `PRICE_LEVELS` setting - this client buys on; NULL = the items' default sell prices)
 * `company_client_id` VARCHAR(50) [NULLable, indexed] (for person clients: optional parent Business/Partner company `leads.id` where they act as a client-side contact; rented agency employees never live in `leads`)
@@ -357,7 +358,7 @@ Saved AI-generated dashboard configurations.
 
 ### `system_settings`
 Global system configurations.
-* `key` VARCHAR(100) [PK] (e.g. INTEGRATIONS_CONFIG, SYSTEM_NAME, SYSTEM_LANGUAGE, NEWSLETTER_CONFIG: see section 12)
+* `key` VARCHAR(100) [PK] (e.g. INTEGRATIONS_CONFIG, SYSTEM_NAME, SYSTEM_LANGUAGE, NEWSLETTER_CONFIG, `LEAD_ATTRIBUTES`: see section 12)
 * `value` LONGTEXT
 * `updated_at` TIMESTAMP
 

@@ -238,6 +238,10 @@ export interface Lead {
   // restored. Like clientCategoryId, set on every lead of the profile.
   archived?: boolean;
 
+  // Custom fields configured under Settings -> Leads -> Custom fields (`LEAD_ATTRIBUTES`).
+  // Keyed by attribute id, mirroring `Project.data` (stored in `leads.custom_fields_json`).
+  data?: Record<string, any>;
+
   // Whitelist of e-mail addresses (or @domain patterns) allowed to submit tickets
   // for this client. Empty or absent means any sender is accepted verbatim.
   ticketAllowedEmails?: string[];
@@ -574,6 +578,8 @@ export type ProjectAttributeType =
   | "files"
   | "contact";
 
+export type LeadAttributeType = ProjectAttributeType;
+
 export interface ProjectAttribute {
   id: string;
   name: string;
@@ -588,6 +594,8 @@ export interface ProjectAttribute {
    */
   requiredOptions?: string[];
 }
+
+export type LeadAttribute = ProjectAttribute;
 
 /**
  * A checkbox added to one project only, on top of its type's options — the

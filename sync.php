@@ -517,6 +517,23 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         $dbEmails = (!empty($db['ticket_allowed_emails'])) ? (json_decode($db['ticket_allowed_emails'], true) ?: []) : [];
         if ($incEmails !== $dbEmails) return false;
     }
+
+    if (array_key_exists('data', $inc)) {
+        $sortRec = static function (&$v) use (&$sortRec): void {
+            if (!is_array($v)) return;
+            $isList = array_keys($v) === range(0, count($v) - 1);
+            if (!$isList) ksort($v);
+            foreach ($v as &$item) $sortRec($item);
+        };
+        $incData = is_array($inc['data']) ? $inc['data'] : [];
+        $dbData = (!empty($db['custom_fields_json'])) ? (json_decode($db['custom_fields_json'], true) ?: []) : [];
+        if (!is_array($dbData)) $dbData = [];
+        $sortRec($incData);
+        $sortRec($dbData);
+        if (json_encode($incData, JSON_UNESCAPED_UNICODE) !== json_encode($dbData, JSON_UNESCAPED_UNICODE)) {
+            return false;
+        }
+    }
     
     foreach ($fields as $col => $val) {
         $dbVal = $db[$col] ?? null;
@@ -907,6 +924,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'contactRole' => ($row['contact_role'] ?? '') !== '' ? $row['contact_role'] : null,
                 // Ticket-module data riding on the lead row: withheld without `tickets`.
                 'ticketAllowedEmails' => (ccrm_can($scope, 'tickets') && !empty($row['ticket_allowed_emails'])) ? (json_decode($row['ticket_allowed_emails'], true) ?: []) : [],
+                'data' => (!empty($row['custom_fields_json']) && is_array($cf = json_decode($row['custom_fields_json'], true))) ? (object)$cf : (object)[],
                 'archived' => intval($row['archived'] ?? 0) === 1,
                 'followUps' => (isset($row['follow_ups']) && $row['follow_ups'] !== '' && $row['follow_ups'] !== null) ? json_decode($row['follow_ups'], true) : (object)[]
             ];
@@ -1143,6 +1161,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // on the way out so the UI never has to defend against a malformed blob.
     $leadAssignment = ccrm_normalize_lead_assignment(
         isset($settings['LEAD_ASSIGNMENT']) ? json_decode($settings['LEAD_ASSIGNMENT'], true) : null
+    );
+    $leadAttributes = ccrm_normalize_lead_attributes(
+        isset($settings['LEAD_ATTRIBUTES']) ? json_decode($settings['LEAD_ATTRIBUTES'], true) : null
     );
     // Whether every incoming lead is paired with a freshly created project, and
     // of which type. Normalized on the way out for the same reason.
@@ -2691,6 +2712,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             // the client would read as a list and normalize back to {} forever.
             'leadStateSla' => $leadStateSla ?: (object)[],
             'leadAssignment' => $leadAssignment,
+            'leadAttributes' => $leadAttributes,
             'projectAutoCreate' => $projectAutoCreate,
             'taskStates' => $taskStates,
             'taskStateColors' => $taskStateColors,
@@ -3204,6 +3226,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!ccrm_column_exists($pdo, 'leads', 'contact_role')) {
                 $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_role` VARCHAR(120) NULL AFTER `company_client_id`");
             }
+            if (!ccrm_column_exists($pdo, 'leads', 'custom_fields_json')) {
+                $pdo->exec("ALTER TABLE `leads` ADD COLUMN `custom_fields_json` LONGTEXT NULL COMMENT 'JSON map of custom lead attribute values keyed by attribute id' AFTER `ticket_allowed_emails`");
+            }
             if (!ccrm_index_exists($pdo, 'leads', 'idx_lead_company_client')) {
                 try { $pdo->exec("ALTER TABLE `leads` ADD INDEX `idx_lead_company_client` (`company_client_id`)"); } catch (\Throwable $e) {}
             }
@@ -3362,6 +3387,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'LEAD_ASSIGNMENT' => isset($s['leadAssignment']) && is_array($s['leadAssignment'])
                     ? json_encode(ccrm_normalize_lead_assignment($s['leadAssignment']))
                     : null,
+                'LEAD_ATTRIBUTES' => isset($s['leadAttributes']) && is_array($s['leadAttributes'])
+                    ? json_encode(ccrm_normalize_lead_attributes($s['leadAttributes']), JSON_UNESCAPED_UNICODE)
+                    : null,
                 // Same contract: omitted means unchanged, so an older client
                 // cannot switch automatic project creation off for everyone.
                 // The per-category rules get the contract one level down as
@@ -3434,6 +3462,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'COMPANY_BILLING_SETTINGS', 'INVOICING_INTEGRATIONS',
                     'PROJECT_AUTO_CREATE', 'PROJECT_STATUSES', 'OFFER_STATUSES', 'INVOICE_STATUSES', 'ORDER_STATUSES', 'PRICE_LEVELS', 'TASK_SETTINGS',
                     'TICKET_STATUSES', 'TICKET_SETTINGS',
+                    'LEAD_ATTRIBUTES',
                 ]);
             }
             if ($canSettingsPipeline) {
@@ -3441,7 +3470,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'LEAD_STATES', 'LEAD_CATEGORIES', 'LEAD_CATEGORY_IDS',
                     'LEAD_STATE_COLORS', 'LEAD_CATEGORY_COLORS',
                     'LEAD_STAGE_GROUPS', 'LEAD_STATE_PARENTS', 'LEAD_STATE_FOLLOWUP',
-                    'LEAD_STATE_SLA', 'LEAD_ASSIGNMENT',
+                    'LEAD_STATE_SLA', 'LEAD_ASSIGNMENT', 'LEAD_ATTRIBUTES',
                 ]);
             }
             if ($canSettingsSources) {
@@ -4584,6 +4613,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (array_key_exists('contactRole', $l)) {
                     $pdo->prepare("UPDATE `leads` SET `contact_role` = ? WHERE `id` = ?")
                         ->execute([($l['contactRole'] ?? '') !== '' ? trim((string)$l['contactRole']) : null, $leadId]);
+                }
+                // Custom Lead fields (`leads.custom_fields_json`): only touch when `data` is supplied
+                // so partial callers (`ClientsView`, legacy bundles) never clear stored values.
+                if (array_key_exists('data', $l)) {
+                    $cfJson = (is_array($l['data']) && !empty($l['data']))
+                        ? json_encode($l['data'], JSON_UNESCAPED_UNICODE)
+                        : null;
+                    $pdo->prepare("UPDATE `leads` SET `custom_fields_json` = ? WHERE `id` = ?")
+                        ->execute([$cfJson, $leadId]);
                 }
 
                 // Automatic project creation (Projects → Settings). Runs before

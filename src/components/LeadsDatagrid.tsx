@@ -39,13 +39,20 @@ import { LeadListViewMenu } from "./LeadListViewMenu";
 import {
     resolveLeadColumns,
     toStoredLeadColumns,
+    attributeIdFromColumnKey,
     BUILTIN_LEAD_COLUMN_LABELS,
     DEFAULT_LEAD_SORT,
     type ResolvedLeadColumn,
     type LeadSort,
     type LeadSortKey,
-    type BuiltinLeadColumnKey,
 } from "../utils/leadColumns";
+import { projectAttributeSortValue } from "../utils/projectColumns";
+import {
+    buildProjectDataFromLead,
+    isLeadAttributeMissing,
+    leadMatchesCustomFieldQuery,
+} from "../utils/leadAttributes";
+import { CustomAttributesGrid, renderCustomAttributeCell } from "./common/CustomAttributeControls";
 import { clampDeadline, todayStr } from "../utils/taskDeadline";
 import {
     Users,
@@ -106,6 +113,7 @@ import {
     AlertTriangle,
     Building2,
     Heart,
+    Settings,
 } from "lucide-react";
 import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
 import { EntityTasksPanel } from "./EntityTasksPanel";
@@ -119,6 +127,7 @@ import type {
     UserProfile,
     Project,
     ProjectType,
+    ProjectAttribute,
     LeadAssignmentSettings,
 } from "../types";
 import { DOCUMENT_EVENT_TYPES } from "../types";
@@ -285,7 +294,7 @@ import {
     formatDateLocalized,
     // formatTimestampLocalized — only used by the commented-out e-mail full view
 } from "../utils/localTime";
-import { formatMoney } from "../utils/currency";
+import { formatMoney, isMoneyValueEmpty, parseMoneyValue } from "../utils/currency";
 import { typePx, useViewSize } from "../utils/viewSize";
 import { WhatsAppChip, OpenInChatLink } from "./WhatsAppChip";
 import { EntityHeader, PageHeader, Tabs } from "./layout";
@@ -934,6 +943,8 @@ interface LeadsDatagridProps {
     taskAccess?: TaskAccess;
     divisions?: string[];
     divisionColors?: Record<string, string>;
+    /** Global custom fields configured in Settings -> Leads -> Custom fields. */
+    leadAttributes?: ProjectAttribute[];
 }
 
 /** List/kanban, favorites, view menu and the expand chevron — the right cluster of the leads filter bar. */
@@ -1118,6 +1129,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     taskAccess,
     divisions = [],
     divisionColors = {},
+    leadAttributes = [],
 }) => {
     const projectStatuses = useProjectStatuses();
     const t = (en: string, sk: string, hu: string) =>
@@ -1148,8 +1160,20 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
         </div>
     ) : null;
+    const defaultCurrency = currencyCode || "EUR";
     const money = (value: number, opts?: Intl.NumberFormatOptions) =>
         formatMoney(value, currencyCode, systemLanguage, opts);
+    const resolveContactName = useCallback(
+        (id: string) => leads.find((l) => l.id === id)?.name ?? null,
+        [leads],
+    );
+    const moneyAmount = useCallback(
+        (raw: unknown): number | null =>
+            isMoneyValueEmpty(raw, defaultCurrency)
+                ? null
+                : parseMoneyValue(raw, defaultCurrency).amount,
+        [defaultCurrency],
+    );
 
     // True when a new lead left without a project manager will actually be given
     // one (Settings -> Users -> automatic lead assignment). The server makes the
@@ -1756,8 +1780,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const [storedColumns, setStoredColumns] = useUserPref("leadsListColumns");
     const allColumns = useMemo(
-        () => resolveLeadColumns(storedColumns),
-        [storedColumns],
+        () => resolveLeadColumns(storedColumns, leadAttributes),
+        [storedColumns, leadAttributes],
     );
     const activeColumns = useMemo(
         () => allColumns.filter((c) => c.visible),
@@ -1792,13 +1816,20 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 label: t("Client Name", "Názov klienta", "Ügyfél neve"),
             },
             { value: "rating", label: t("Rating", "Hodnotenie", "Értékelés") },
+            ...allColumns
+                .filter((c) => c.visible && c.attribute)
+                .map((c) => ({
+                    value: c.key as LeadSortKey,
+                    label: c.attribute!.name,
+                })),
         ],
-        [t],
+        [t, allColumns],
     );
 
     const getLeadColumnLabel = useCallback(
         (col: ResolvedLeadColumn) => {
-            const labels = BUILTIN_LEAD_COLUMN_LABELS[col.key];
+            if (col.attribute) return col.attribute.name;
+            const labels = BUILTIN_LEAD_COLUMN_LABELS[col.key as keyof typeof BUILTIN_LEAD_COLUMN_LABELS];
             if (!labels) return col.key;
             const [en, sk, hu] = labels;
             return t(en, sk, hu);
@@ -2130,6 +2161,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [newLeadPhone, setNewLeadPhone] = useState("");
     const [newLeadEmail, setNewLeadEmail] = useState("");
     const [newLeadInterestNote, setNewLeadInterestNote] = useState("");
+    const [newLeadData, setNewLeadData] = useState<Record<string, any>>({});
 
     const [clientMode, setClientMode] = useState<"none" | "existing" | "new">("none");
     const [selectedExistingClient, setSelectedExistingClient] = useState("");
@@ -2236,44 +2268,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
         setIsConvertDropdownOpen(false);
 
-        // Heuristic autofill for custom fields
-        const dynamicData: Record<string, any> = {};
-        (type.attributes || []).forEach((attr) => {
-            const attrNameLower = attr.name.toLowerCase();
-            const attrIdLower = attr.id.toLowerCase();
-            if (
-                attrNameLower.includes("email") ||
-                attrIdLower.includes("email")
-            ) {
-                dynamicData[attr.id] = activeLead.email || "";
-            } else if (
-                attrNameLower.includes("phone") ||
-                attrIdLower.includes("phone") ||
-                attrNameLower.includes("tel") ||
-                attrIdLower.includes("tel")
-            ) {
-                dynamicData[attr.id] = activeLead.phone || "";
-            } else if (
-                attrNameLower.includes("city") ||
-                attrIdLower.includes("city")
-            ) {
-                dynamicData[attr.id] = activeLead.city || "";
-            } else if (
-                attrNameLower.includes("address") ||
-                attrIdLower.includes("address") ||
-                attrNameLower.includes("street") ||
-                attrIdLower.includes("street")
-            ) {
-                dynamicData[attr.id] = activeLead.address?.street || "";
-            } else if (
-                attrNameLower.includes("company") ||
-                attrIdLower.includes("company") ||
-                attrNameLower.includes("firma") ||
-                attrIdLower.includes("firma")
-            ) {
-                dynamicData[attr.id] = activeLead.companyId || "";
-            }
-        });
+        // Copy matching Lead custom fields (by name + type) plus built-in contact heuristics.
+        const dynamicData = buildProjectDataFromLead(
+            activeLead,
+            leadAttributes,
+            type.attributes || [],
+            defaultCurrency,
+        );
 
         const newProj: Project = {
             id: "proj-" + Date.now(),
@@ -4109,6 +4110,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             setIsClosingModal(false);
             setClientMode("none");
             setSelectedExistingClient("");
+            setNewLeadData({});
         }, 350);
     };
 
@@ -4356,7 +4358,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const handleCreateLead = (e: React.FormEvent) => {
         e.preventDefault();
         if (!canEdit) return;
-        if (!newLeadName.trim() || !newLeadValue.trim()) {
+        const missingRequiredCustom = leadAttributes.some((attr) =>
+            isLeadAttributeMissing(attr, newLeadData[attr.id], defaultCurrency),
+        );
+        if (!newLeadName.trim() || !newLeadValue.trim() || missingRequiredCustom) {
             (window as any).showToast(
                 t(
                     "Please fill in all required fields!",
@@ -4409,6 +4414,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             phone: newLeadPhone.trim() || undefined,
             email: newLeadEmail.trim() || undefined,
             interestNote: newLeadInterestNote.trim() || undefined,
+            ...(Object.keys(newLeadData).length > 0 ? { data: newLeadData } : {}),
         };
 
         if (clientMode === "new") {
@@ -4447,6 +4453,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setNewLeadPhone("");
         setNewLeadEmail("");
         setNewLeadInterestNote("");
+        setNewLeadData({});
         setClientMode("none");
         setSelectedExistingClient("");
     };
@@ -4479,7 +4486,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     (lead.city || "").toLowerCase().includes(query) ||
                     (lead.owner || "").toLowerCase().includes(query) ||
                     (lead.email || "").toLowerCase().includes(query) ||
-                    (lead.phone || "").toLowerCase().includes(query);
+                    (lead.phone || "").toLowerCase().includes(query) ||
+                    leadMatchesCustomFieldQuery(
+                        lead,
+                        leadAttributes,
+                        query,
+                        (id) => resolveContactName(id) || "",
+                    );
                 const matchesState =
                     selectedState === "all" ||
                     (lead.status || "").toLowerCase() ===
@@ -4612,6 +4625,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         filterOfferEndDate,
         offerPresetName,
         selectedArchiveFilter,
+        leadAttributes,
+        resolveContactName,
     ]);
 
     // Bulk selection and action handlers
@@ -5030,6 +5045,22 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         ? (b.name || "").localeCompare(a.name || "")
                         : (a.name || "").localeCompare(b.name || ""),
                 );
+            } else {
+                const attrId = attributeIdFromColumnKey(leadSort.key);
+                const sortAttr = attrId ? leadAttributes.find((a) => a.id === attrId) : undefined;
+                if (sortAttr) {
+                    const dir = leadSort.direction === "desc" ? -1 : 1;
+                    const sortCtx = { moneyAmount, contactName: resolveContactName };
+                    sorted.sort((a, b) => {
+                        const va = projectAttributeSortValue(sortAttr, a.data?.[sortAttr.id], sortCtx);
+                        const vb = projectAttributeSortValue(sortAttr, b.data?.[sortAttr.id], sortCtx);
+                        if (va === null && vb === null) return 0;
+                        if (va === null) return 1;
+                        if (vb === null) return -1;
+                        if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+                        return String(va).localeCompare(String(vb), undefined, { sensitivity: "base" }) * dir;
+                    });
+                }
             }
 
             rawGrouped = [
@@ -5078,6 +5109,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         favoritesFirst,
         isFavorite,
         t,
+        leadAttributes,
+        moneyAmount,
+        resolveContactName,
     ]);
 
     // Kanban columns: the stages, with the favorites as a column of their own first.
@@ -6718,6 +6752,39 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 )}
                             </form>
                         </div>
+
+                        {/* 2b. Custom Fields Card (In-place editing like ProjectDetailsView) */}
+                        {leadAttributes.length > 0 && (
+                            <div className="p-6 rounded-lg border border-gray-200 border-t-2 border-t-entity-solid bg-white shadow-xs space-y-4">
+                                <div className="border-b border-gray-200 pb-3 flex items-center justify-between gap-2">
+                                    <span className="text-ui font-semibold text-entity-text flex items-center gap-1.5">
+                                        <SlidersHorizontal className="h-4 w-4 text-entity-text shrink-0" />
+                                        {t("Custom Fields", "Vlastné polia", "Egyedi mezők")}
+                                    </span>
+                                </div>
+                                <CustomAttributesGrid
+                                    instanceKey={`lead-${activeLead.id}`}
+                                    attributes={leadAttributes}
+                                    values={activeLead.data || {}}
+                                    onChange={(attrId, nextVal) => {
+                                        if (!canEdit) return;
+                                        setLeads((prev) =>
+                                            prev.map((l) =>
+                                                l.id === activeLead.id
+                                                    ? { ...l, data: { ...(l.data || {}), [attrId]: nextVal } }
+                                                    : l,
+                                            ),
+                                        );
+                                    }}
+                                    leads={leads}
+                                    defaultCurrency={defaultCurrency}
+                                    userLanguage={systemLanguage}
+                                    t={t}
+                                    canEdit={canEdit}
+                                    canDelete={canDelete}
+                                />
+                            </div>
+                        )}
 
                         {/* Remove Old Duplicate Client Profile Card since it was moved to the top */}
 
@@ -9378,11 +9445,35 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const renderLeadCell = (
         lead: Lead,
-        columnKey: BuiltinLeadColumnKey,
+        col: ResolvedLeadColumn,
         isInlineEditing: boolean,
         leadColor: string,
     ) => {
-        switch (columnKey) {
+        if (col.attribute) {
+            return (
+                <td
+                    key={col.key}
+                    onClick={() => {
+                        if (!isInlineEditing) {
+                            window.location.hash = `lead-${lead.id}`;
+                        }
+                    }}
+                    className={`hidden ws-lg:table-cell px-0 ws-lg:px-4 text-slate-600 cursor-pointer ${cellPy}`}
+                >
+                    {renderCustomAttributeCell(
+                        col.attribute,
+                        lead.data?.[col.attribute.id],
+                        {
+                            leads,
+                            defaultCurrency,
+                            userLanguage: systemLanguage,
+                            t,
+                        },
+                    )}
+                </td>
+            );
+        }
+        switch (col.key) {
             case "client":
                 return (
                     <td
@@ -10541,22 +10632,38 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
               icon={<SectionIcon id="leads" />}
               title={getTranslation(systemLanguage, "leads.title")}
               subtitle={getTranslation(systemLanguage, "leads.subtitle")}
-              actions={canEdit ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNewLeadStatus(leadStates[0] || "");
-                    setNewLeadSource(leadSources[0] || "");
-                    setNewLeadDivision("");
-                    setNewLeadOwner(autoAssignActive ? "" : projectManagers[0] || "");
-                    setIsModalOpen(true);
-                  }}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-entity-solid text-white font-semibold text-ui hover:bg-entity-solid-hover shadow-2xs cursor-pointer transition-colors"
-                >
-                  <Plus className="h-4.5 w-4.5" />
-                  <span>{getTranslation(systemLanguage, "leads.btn.add")}</span>
-                </button>
-              ) : undefined}
+              actions={
+                <div className="flex flex-wrap items-center gap-2 self-start ws-md:self-auto">
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewLeadStatus(leadStates[0] || "");
+                        setNewLeadSource(leadSources[0] || "");
+                        setNewLeadDivision("");
+                        setNewLeadOwner(autoAssignActive ? "" : projectManagers[0] || "");
+                        setIsModalOpen(true);
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-entity-solid text-white font-semibold text-ui hover:bg-entity-solid-hover shadow-2xs cursor-pointer transition-colors"
+                    >
+                      <Plus className="h-4.5 w-4.5" />
+                      <span>{getTranslation(systemLanguage, "leads.btn.add")}</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.location.hash = "settings/leads/fields";
+                    }}
+                    title={t("Custom fields", "Vlastné polia", "Egyedi mezők")}
+                    aria-label={t("Custom fields", "Vlastné polia", "Egyedi mezők")}
+                    className="flex items-center gap-1.5 p-2 ws-lg:px-3 ws-lg:py-2 rounded-md border border-gray-200 bg-white text-gray-600 font-heading font-semibold text-ui hover:bg-gray-50 hover:text-gray-900 shadow-2xs transition-all cursor-pointer"
+                  >
+                    <Settings className="h-4 w-4 shrink-0" />
+                    <span className="hidden ws-lg:inline">{t("Custom fields", "Vlastné polia", "Egyedi mezők")}</span>
+                  </button>
+                </div>
+              }
             />
 
             {/* Active Leads Value Equation Statistics */}
@@ -10849,6 +10956,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     </th>
                                                 );
                                             default:
+                                                if (col.attribute) {
+                                                    return (
+                                                        <th key={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100 whitespace-nowrap">
+                                                            {col.attribute.name}
+                                                        </th>
+                                                    );
+                                                }
                                                 return null;
                                         }
                                     })}
@@ -11359,7 +11473,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             {activeColumns.map((col) =>
                                                                                 renderLeadCell(
                                                                                     lead,
-                                                                                    col.key,
+                                                                                    col,
                                                                                     isInlineEditing,
                                                                                     leadColor,
                                                                                 ),
@@ -12963,6 +13077,32 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     )}
                                 </div>
                             </div>
+
+                            {leadAttributes.length > 0 && (
+                                <div className="space-y-3 border-t border-gray-200 pt-4">
+                                    <label className="type-overline text-slate-500 flex items-center gap-1.5">
+                                        <SlidersHorizontal className="h-3.5 w-3.5 text-blue-500" />
+                                        {t("Custom Fields", "Vlastné polia", "Egyedi mezők")}
+                                    </label>
+                                    <CustomAttributesGrid
+                                        instanceKey="lead-new"
+                                        attributes={leadAttributes}
+                                        values={newLeadData}
+                                        onChange={(attrId, nextVal) =>
+                                            setNewLeadData((prev) => ({
+                                                ...prev,
+                                                [attrId]: nextVal,
+                                            }))
+                                        }
+                                        leads={leads}
+                                        defaultCurrency={defaultCurrency}
+                                        userLanguage={systemLanguage}
+                                        t={t}
+                                        canEdit={canEdit}
+                                        canDelete={canDelete}
+                                    />
+                                </div>
+                            )}
 
                             <div className="pt-4 border-t border-gray-200 flex justify-end gap-3">
                                 <button

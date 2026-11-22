@@ -5,6 +5,7 @@ import {
   Webhook, CircleDot, Sparkles, ListChecks, ListTodo, Percent, BadgePercent, CreditCard,
   LayoutTemplate, BadgeCheck, PackageCheck, Truck, BookOpen, FolderTree, Inbox, Send,
   MailCheck, Key, Bot, Megaphone, Share2, KeyRound, Database, Bug, TriangleAlert, FileText, Timer, MessageCircle, UserCheck,
+  SlidersHorizontal,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -127,6 +128,7 @@ export const SETTINGS_CATEGORIES: SettingsCategoryDef[] = [
       S("stages", Workflow, "pipeline_stages"),
       S("sources", Signpost, "traffic_sources"),
       S("interests", Tags, "traffic_sources"),
+      S("fields", SlidersHorizontal, "pipeline_stages"),
       S("assignment", Shuffle, "pipeline_stages"),
       S("intake", Webhook, "general_config"),
     ],
