@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  blockNotesToMarkdown,
   blockNotesToPlainText,
+  blocksToMarkdown,
+  exportMarkdownFilename,
   getBannerStyles,
+  inlineHtmlToMarkdown,
   isSerializedBlockArray,
   parseNotesToBlocks,
   removeTagFromDescription,
@@ -87,3 +91,70 @@ test("getBannerStyles resolves explicit color and fallback bannerType variants",
   assert.equal(getBannerStyles({ bannerType: "danger" }).color, "red");
   assert.equal(getBannerStyles({ bannerColor: "purple", bannerVariant: "saturated" }).color, "purple");
 });
+
+test("inlineHtmlToMarkdown converts formatting tags, code spans, links, and styles cleanly", () => {
+  const sample =
+    'Start <b>bold </b><i>italic</i> <s>old</s> <u>keep</u> <span class="bg-slate-100 font-mono">const a = 1</span> &amp; <a href="https://cstudios.sk/a(1)" target="_blank">Site</a> <span style="color: #ef4444">colored</span>';
+  assert.equal(
+    inlineHtmlToMarkdown(sample),
+    "Start **bold** *italic* ~~old~~ <u>keep</u> `const a = 1` & [Site](https://cstudios.sk/a(1%29) colored",
+  );
+  assert.equal(inlineHtmlToMarkdown("<code>a `b` c</code>"), "``a `b` c``");
+  assert.equal(inlineHtmlToMarkdown("<code>`edge`</code>"), "`` `edge` ``");
+});
+
+test("blocksToMarkdown exports all block types with tight list grouping", () => {
+  const blocks: EditorBlock[] = [
+    { id: "1", type: "h1", content: "Project Plan" },
+    { id: "2", type: "paragraph", content: "Intro <strong>notes</strong>." },
+    { id: "3", type: "todo", content: "Done item", checked: true },
+    { id: "4", type: "todo", content: "Open item", checked: false },
+    { id: "5", type: "bullet", content: "First" },
+    { id: "6", type: "bullet", content: "Second" },
+    { id: "7", type: "number", content: "Step A" },
+    { id: "8", type: "number", content: "Step B" },
+    { id: "9", type: "toggle", content: "FAQ", toggled: true, toggleContent: "Line 1<br>Line 2" },
+    { id: "10", type: "banner", content: "Check DNS", bannerType: "warning" },
+    { id: "11", type: "code", content: "npm run check\n# ok", codeLanguage: "bash" },
+    { id: "12", type: "quote", content: "Quote line" },
+    { id: "13", type: "pullquote", content: "Highlight" },
+  ];
+
+  const md = blocksToMarkdown(blocks);
+  assert.equal(
+    md,
+    [
+      "# Project Plan",
+      "",
+      "Intro **notes**.",
+      "",
+      "- [x] Done item",
+      "- [ ] Open item",
+      "",
+      "- First",
+      "- Second",
+      "",
+      "1. Step A",
+      "2. Step B",
+      "",
+      "- **FAQ**\n  Line 1\n  Line 2",
+      "",
+      "> [!WARNING]\n> Check DNS",
+      "",
+      "```bash\nnpm run check\n# ok\n```",
+      "",
+      "> Quote line",
+      "",
+      "> *Highlight*",
+    ].join("\n"),
+  );
+  assert.equal(blockNotesToMarkdown(JSON.stringify(blocks)), md);
+  assert.equal(blockNotesToMarkdown("  Plain note  "), "Plain note");
+});
+
+test("exportMarkdownFilename generates sanitized .md slugs", () => {
+  assert.equal(exportMarkdownFilename("Zavolať klientke Silvii (#58)"), "zavolat-klientke-silvii-58.md");
+  assert.equal(exportMarkdownFilename(""), "notes.md");
+  assert.equal(exportMarkdownFilename(null, "meeting-notes"), "meeting-notes.md");
+});
+

@@ -2249,6 +2249,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                       setMeetingNotes((prev) => prev.map((m) => m.id === selectedMeeting.id ? updated : m));
                     }}
                     systemLanguage={systemLanguage}
+                    exportTitle={selectedMeeting.title}
                   />
                 </div>
               )}
@@ -2766,6 +2767,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                           initialBlocks={newBlocks}
                           onChange={(blocks) => setNewBlocks(blocks)}
                           systemLanguage={systemLanguage}
+                          exportTitle={newTitle}
                         />
                       </div>
                     )}
@@ -2825,6 +2827,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                       initialBlocks={newBlocks}
                       onChange={(blocks) => setNewBlocks(blocks)}
                       systemLanguage={systemLanguage}
+                      exportTitle={newTitle}
                     />
                   </div>
                 )}
@@ -2895,6 +2898,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                       )
                     }
                     systemLanguage={systemLanguage}
+                    exportTitle={activeTaskForEdit.title}
                     placeholder={t(
                       "Write task description... (type '/' for blocks)",
                       "Napíšte popis úlohy... (napíšte '/' pre bloky)",

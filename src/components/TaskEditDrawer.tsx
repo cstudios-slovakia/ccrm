@@ -621,6 +621,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                     initialBlocks={parseNotesToBlocks(draft.description)}
                                     onChange={(blocks) => update({ description: serializeTaskDescription(blocks) })}
                                     systemLanguage={systemLanguage}
+                                    exportTitle={draft.title}
                                     placeholder={t(
                                         "Write task description... (type '/' for blocks, headings, checklists)",
                                         "Napíšte popis úlohy... (napíšte '/' pre bloky, nadpisy, zoznam úloh)",

@@ -1205,6 +1205,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                         clearDictated("description");
                     }}
                     systemLanguage={systemLanguage === "sk" || systemLanguage === "hu" ? systemLanguage : "en"}
+                    exportTitle={title.split("\n")[0]}
                     placeholder={t(
                         "Details, links, checklists… (type '/' for blocks)",
                         "Podrobnosti, odkazy, zoznamy… (napíšte '/' pre bloky)",

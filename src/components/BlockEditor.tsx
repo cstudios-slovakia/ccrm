@@ -4,7 +4,7 @@ import {
   Plus, GripVertical, Bold, Italic, Underline, Strikethrough, Code,
   Link2, Palette, Trash, Heading1, Heading2, Heading3, Type, CheckSquare,
   List, ListOrdered, ChevronRight, Info, AlertTriangle, CheckCircle2,
-  XCircle, Terminal, Quote, FileText, Highlighter,
+  XCircle, Terminal, Quote, FileText, Highlighter, Copy, Check, Download,
 } from "lucide-react";
 import { cn } from "../utils/cn";
 import { getTranslation } from "../utils/translations";
@@ -13,6 +13,8 @@ import {
   type EditorBlock,
   BANNER_COLORS,
   BANNER_THEMES,
+  blocksToMarkdown,
+  exportMarkdownFilename,
   getBannerStyles,
 } from "../utils/blockNotes";
 
@@ -35,6 +37,10 @@ interface BlockEditorProps {
   readOnly?: boolean;
   /** Override empty paragraph placeholder text. */
   placeholder?: string;
+  /** Show Copy .md / Export .md controls on the editor (enabled everywhere by default). */
+  showMarkdownExport?: boolean;
+  /** Optional title used to derive the `.md` filename when downloading. */
+  exportTitle?: string;
 }
 
 const DEFAULT_BLOCKS: EditorBlock[] = [
@@ -193,12 +199,69 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
   compact = false,
   readOnly = false,
   placeholder,
+  showMarkdownExport = true,
+  exportTitle,
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const [blocks, setBlocks] = useState<EditorBlock[]>(() => {
     if (initialBlocks && initialBlocks.length > 0) return initialBlocks;
     return DEFAULT_BLOCKS;
   });
+  const [copiedMarkdown, setCopiedMarkdown] = useState(false);
+  const copiedTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
+  }, []);
+
+  const markdownPreview = showMarkdownExport ? blocksToMarkdown(blocks) : "";
+
+  const handleCopyMarkdown = async () => {
+    if (!markdownPreview) return;
+    let copied = false;
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(markdownPreview);
+        copied = true;
+      } catch {
+        // Fallback for non-HTTPS LAN origins
+      }
+    }
+    if (!copied && typeof document !== "undefined") {
+      const ta = document.createElement("textarea");
+      ta.value = markdownPreview;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        copied = document.execCommand("copy");
+      } finally {
+        document.body.removeChild(ta);
+      }
+    }
+    if (copied) {
+      setCopiedMarkdown(true);
+      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => setCopiedMarkdown(false), 1800);
+      (window as any).showToast?.(
+        t("Markdown copied to clipboard", "Markdown bol skopírovaný do schránky", "Markdown a vágólapra másolva"),
+      );
+    }
+  };
+
+  const handleDownloadMarkdown = () => {
+    if (!markdownPreview || typeof document === "undefined") return;
+    const blob = new Blob([`${markdownPreview}\n`], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = exportMarkdownFilename(exportTitle);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   // Track the ID of the block that should be focused
   const [focusBlockId, setFocusBlockId] = useState<string | null>(null);
@@ -713,6 +776,48 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
           </div>,
           document.body,
         )}
+
+      {/* MARKDOWN EXPORT BAR (available across every editor instance) */}
+      {showMarkdownExport && (
+        <div
+          data-testid="block-editor-export-bar"
+          className={cn(
+            "flex flex-wrap items-center justify-end gap-1.5 select-none",
+            compact ? "mb-1.5" : "mb-3",
+          )}
+        >
+          <button
+            type="button"
+            disabled={!markdownPreview}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => void handleCopyMarkdown()}
+            title={t("Copy content as Markdown", "Kopírovať obsah ako Markdown", "Tartalom másolása Markdownként")}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-slate-200 bg-white/95 hover:bg-slate-50 text-slate-600 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-micro font-semibold cursor-pointer shadow-2xs"
+          >
+            {copiedMarkdown ? (
+              <Check className="h-3 w-3 text-emerald-600 shrink-0" />
+            ) : (
+              <Copy className="h-3 w-3 shrink-0" />
+            )}
+            <span>
+              {copiedMarkdown
+                ? t("Copied", "Skopírované", "Másolva")
+                : t("Copy .md", "Kopírovať .md", "Másolás .md")}
+            </span>
+          </button>
+          <button
+            type="button"
+            disabled={!markdownPreview}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={handleDownloadMarkdown}
+            title={t("Download Markdown (.md)", "Stiahnuť ako Markdown (.md)", "Letöltés Markdownként (.md)")}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-slate-200 bg-white/95 hover:bg-slate-50 text-slate-600 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-micro font-semibold cursor-pointer shadow-2xs"
+          >
+            <Download className="h-3 w-3 shrink-0" />
+            <span>{t("Export .md", "Export .md", "Export .md")}</span>
+          </button>
+        </div>
+      )}
 
       {/* RENDER BLOCKS VERTICAL LIST */}
       <div className={cn(compact ? "space-y-2 pl-9" : "space-y-4")}>

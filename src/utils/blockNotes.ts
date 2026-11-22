@@ -277,3 +277,320 @@ export const removeTagFromDescription = (raw: string, tag: string): string => {
   }
   return raw.replace(tagRegex, "").replace(/[ \t]{2,}/g, " ").trim();
 };
+
+const VOID_TAGS = new Set(["br", "hr", "img", "input", "meta", "link"]);
+
+const decodeHtmlEntities = (text: string): string =>
+  text
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+
+interface HtmlTokenNode {
+  tag: string;
+  attrs: Record<string, string>;
+  children: (HtmlTokenNode | string)[];
+}
+
+const parseHtmlAttrs = (rawAttrs: string): Record<string, string> => {
+  const attrs: Record<string, string> = {};
+  const attrRe = /([a-zA-Z0-9_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
+  let m: RegExpExecArray | null;
+  while ((m = attrRe.exec(rawAttrs)) !== null) {
+    attrs[m[1].toLowerCase()] = decodeHtmlEntities(m[2] ?? m[3] ?? m[4] ?? "");
+  }
+  return attrs;
+};
+
+const parseInlineHtmlTree = (html: string): HtmlTokenNode => {
+  const root: HtmlTokenNode = { tag: "root", attrs: {}, children: [] };
+  const stack: HtmlTokenNode[] = [root];
+  const tokenRe = /<(\/?)([a-zA-Z0-9-]+)([^>]*?)(\/?)>/g;
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+
+  while ((m = tokenRe.exec(html)) !== null) {
+    if (m.index > lastIndex) {
+      stack[stack.length - 1].children.push(decodeHtmlEntities(html.slice(lastIndex, m.index)));
+    }
+    const isClosing = m[1] === "/";
+    const tag = m[2].toLowerCase();
+    const rawAttrs = m[3] || "";
+    const selfClosing = m[4] === "/" || VOID_TAGS.has(tag);
+
+    if (isClosing) {
+      for (let i = stack.length - 1; i >= 1; i--) {
+        if (stack[i].tag === tag) {
+          stack.length = i;
+          break;
+        }
+      }
+    } else {
+      const node: HtmlTokenNode = { tag, attrs: parseHtmlAttrs(rawAttrs), children: [] };
+      stack[stack.length - 1].children.push(node);
+      if (!selfClosing) {
+        stack.push(node);
+      }
+    }
+    lastIndex = tokenRe.lastIndex;
+  }
+
+  if (lastIndex < html.length) {
+    stack[stack.length - 1].children.push(decodeHtmlEntities(html.slice(lastIndex)));
+  }
+  return root;
+};
+
+const wrapInlineMarker = (inner: string, open: string, close = open): string => {
+  if (!inner) return "";
+  const trimmed = inner.trim();
+  if (!trimmed) return inner;
+  const lead = inner.match(/^\s*/)?.[0] ?? "";
+  const trail = inner.match(/\s*$/)?.[0] ?? "";
+  return `${lead}${open}${trimmed}${close}${trail}`;
+};
+
+const formatInlineCode = (text: string): string => {
+  if (!text) return "";
+  const maxRun = (text.match(/`+/g) || []).reduce((max, run) => Math.max(max, run.length), 0);
+  const fence = "`".repeat(maxRun + 1);
+  const needsPad = text.startsWith("`") || text.endsWith("`");
+  return needsPad ? `${fence} ${text} ${fence}` : `${fence}${text}${fence}`;
+};
+
+const renderNodeChildren = (node: HtmlTokenNode): string => {
+  let out = "";
+  node.children.forEach((child, idx) => {
+    if (typeof child === "string") {
+      out += child;
+      return;
+    }
+    if ((child.tag === "div" || child.tag === "p") && idx > 0 && out && !out.endsWith("\n")) {
+      out += "\n";
+    }
+    out += nodeToMarkdown(child);
+  });
+  return out;
+};
+
+const extractPlainFromNode = (node: HtmlTokenNode): string =>
+  node.children
+    .map((child) => {
+      if (typeof child === "string") return child;
+      if (child.tag === "br") return "\n";
+      return extractPlainFromNode(child);
+    })
+    .join("");
+
+const nodeToMarkdown = (node: HtmlTokenNode): string => {
+  if (node.tag === "br") return "\n";
+
+  const cls = node.attrs.class || "";
+  const style = node.attrs.style || "";
+
+  if (node.tag === "code" || (node.tag === "span" && /\bfont-mono\b/.test(cls))) {
+    return formatInlineCode(extractPlainFromNode(node).replace(/\u00a0/g, " "));
+  }
+
+  const inner = renderNodeChildren(node);
+
+  if (node.tag === "b" || node.tag === "strong") {
+    return wrapInlineMarker(inner, "**");
+  }
+  if (node.tag === "i" || node.tag === "em") {
+    return wrapInlineMarker(inner, "*");
+  }
+  if (node.tag === "s" || node.tag === "strike" || node.tag === "del") {
+    return wrapInlineMarker(inner, "~~");
+  }
+  if (node.tag === "u") {
+    return wrapInlineMarker(inner, "<u>", "</u>");
+  }
+  if (node.tag === "a") {
+    const href = (node.attrs.href || "").trim();
+    const label = inner.trim() || href;
+    if (!href) return label;
+    return `[${label}](${href.replace(/\)/g, "%29")})`;
+  }
+  if (node.tag === "span") {
+    let styled = inner;
+    if (/font-weight\s*:\s*(?:bold|[6-9]00)/i.test(style)) styled = wrapInlineMarker(styled, "**");
+    if (/font-style\s*:\s*italic/i.test(style)) styled = wrapInlineMarker(styled, "*");
+    if (/text-decoration(?:-line)?\s*:[^;]*line-through/i.test(style)) styled = wrapInlineMarker(styled, "~~");
+    return styled;
+  }
+
+  return inner;
+};
+
+/**
+ * Converts `BlockEditor` inline HTML (`<b>`, `<i>`, `<s>`, `<u>`, links, inline code spans)
+ * into clean Markdown text. Runs deterministically in both Browser and Node.js.
+ */
+export const inlineHtmlToMarkdown = (html: string): string => {
+  if (!html) return "";
+  const tree = parseInlineHtmlTree(html);
+  return renderNodeChildren(tree)
+    .replace(/\u00a0/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]+\n/g, "\n");
+};
+
+const bannerAlertTag = (block: Pick<EditorBlock, "bannerColor" | "bannerType">): string => {
+  const { color } = getBannerStyles(block);
+  if (color === "yellow") return "[!WARNING]";
+  if (color === "green") return "[!TIP]";
+  if (color === "red") return "[!CAUTION]";
+  return "[!NOTE]";
+};
+
+const isListBlockType = (type: EditorBlock["type"]): boolean =>
+  type === "bullet" || type === "number" || type === "todo";
+
+/**
+ * Converts an array of `EditorBlock` objects into GitHub-Flavored Markdown.
+ */
+export const blocksToMarkdown = (blocks: EditorBlock[]): string => {
+  if (!Array.isArray(blocks) || blocks.length === 0) return "";
+
+  const rendered: { type: EditorBlock["type"]; text: string }[] = [];
+  let numberSeq = 0;
+
+  for (const block of blocks) {
+    if (block.type === "number") {
+      numberSeq += 1;
+    } else {
+      numberSeq = 0;
+    }
+
+    if (block.type === "code") {
+      const codeText = plainBlockText(block.content || "").replace(/\s+$/g, "");
+      const maxFence = (codeText.match(/`{3,}/g) || []).reduce((m, run) => Math.max(m, run.length), 2);
+      const fence = "`".repeat(maxFence + 1);
+      const lang = (block.codeLanguage || "").trim();
+      rendered.push({ type: block.type, text: `${fence}${lang}\n${codeText}\n${fence}` });
+      continue;
+    }
+
+    const mdText = inlineHtmlToMarkdown(block.content || "").trim();
+
+    switch (block.type) {
+      case "h1":
+        if (mdText) rendered.push({ type: block.type, text: `# ${mdText.replace(/\n+/g, " ")}` });
+        break;
+      case "h2":
+        if (mdText) rendered.push({ type: block.type, text: `## ${mdText.replace(/\n+/g, " ")}` });
+        break;
+      case "h3":
+        if (mdText) rendered.push({ type: block.type, text: `### ${mdText.replace(/\n+/g, " ")}` });
+        break;
+      case "h4":
+        if (mdText) rendered.push({ type: block.type, text: `#### ${mdText.replace(/\n+/g, " ")}` });
+        break;
+      case "todo":
+        rendered.push({
+          type: block.type,
+          text: `- [${block.checked ? "x" : " "}] ${mdText.replace(/\n+/g, "\n  ")}`,
+        });
+        break;
+      case "bullet":
+        rendered.push({ type: block.type, text: `- ${mdText.replace(/\n+/g, "\n  ")}` });
+        break;
+      case "number":
+        rendered.push({ type: block.type, text: `${numberSeq}. ${mdText.replace(/\n+/g, "\n   ")}` });
+        break;
+      case "toggle": {
+        const sub = block.toggleContent ? inlineHtmlToMarkdown(block.toggleContent).trim() : "";
+        if (!mdText && !sub) break;
+        const header = mdText ? `- **${mdText.replace(/\n+/g, " ")}**` : "-";
+        if (sub) {
+          const indented = sub
+            .split("\n")
+            .map((line) => (line.trim() ? `  ${line}` : ""))
+            .join("\n");
+          rendered.push({ type: block.type, text: `${header}\n${indented}` });
+        } else {
+          rendered.push({ type: block.type, text: header });
+        }
+        break;
+      }
+      case "banner": {
+        const tag = bannerAlertTag(block);
+        const bodyLines = mdText
+          ? mdText.split("\n").map((line) => (line ? `> ${line}` : ">"))
+          : [];
+        rendered.push({
+          type: block.type,
+          text: [`> ${tag}`, ...bodyLines].join("\n"),
+        });
+        break;
+      }
+      case "quote":
+        if (mdText) {
+          rendered.push({
+            type: block.type,
+            text: mdText
+              .split("\n")
+              .map((line) => (line ? `> ${line}` : ">"))
+              .join("\n"),
+          });
+        }
+        break;
+      case "pullquote":
+        if (mdText) {
+          rendered.push({
+            type: block.type,
+            text: mdText
+              .split("\n")
+              .map((line) => (line.trim() ? `> *${line.trim()}*` : ">"))
+              .join("\n"),
+          });
+        }
+        break;
+      default:
+        if (mdText) rendered.push({ type: block.type, text: mdText });
+        break;
+    }
+  }
+
+  let out = "";
+  for (let i = 0; i < rendered.length; i++) {
+    if (i > 0) {
+      const prev = rendered[i - 1];
+      const curr = rendered[i];
+      const sameListRun = isListBlockType(prev.type) && prev.type === curr.type;
+      out += sameListRun ? "\n" : "\n\n";
+    }
+    out += rendered[i].text;
+  }
+  return out.trim();
+};
+
+/**
+ * Converts any stored note or task description string (JSON blocks or plain text) into Markdown.
+ */
+export const blockNotesToMarkdown = (raw?: string | null): string => {
+  if (!raw) return "";
+  if (isSerializedBlockArray(raw)) {
+    return blocksToMarkdown(parseNotesToBlocks(raw));
+  }
+  return raw.trim();
+};
+
+/**
+ * Derives a clean `.md` download filename from an optional document/task title.
+ */
+export const exportMarkdownFilename = (title?: string | null, fallback = "notes"): string => {
+  const base = (title || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 72);
+  return `${base || fallback}.md`;
+};
+

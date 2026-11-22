@@ -7945,7 +7945,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         <div className="flex flex-col border border-slate-200 rounded-xl bg-white p-3 min-h-45 max-h-80 overflow-y-auto outline-none text-ui cursor-text">
                                                             <BlockEditor
                                                                 key={editorKey}
+                                                                compact
                                                                 fillHeight
+                                                                exportTitle={
+                                                                    activeLead?.name
+                                                                }
                                                                 initialBlocks={
                                                                     noteBlocks
                                                                 }

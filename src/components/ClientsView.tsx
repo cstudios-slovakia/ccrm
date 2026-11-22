@@ -4380,7 +4380,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 <div className="flex flex-col border border-slate-200 rounded-xl bg-white p-3 min-h-45 max-h-80 overflow-y-auto outline-none text-ui cursor-text">
                                   <BlockEditor
                                     key={editorKey}
+                                    compact
                                     fillHeight
+                                    exportTitle={activeClient?.name}
                                     initialBlocks={noteBlocks}
                                     onChange={(blocks) => {
                                       setNoteBlocks(blocks);
