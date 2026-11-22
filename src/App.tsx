@@ -13,6 +13,7 @@ import { ProjectRequestDialog } from "./components/timeTracking/ProjectRequestDi
 import type { TimeDeps } from "./components/timeTracking/shared";
 import { canEditTask as userMayEditTask } from "./utils/taskSelectors";
 import { QuickTaskModal, composerOriginFrom, type ComposerOrigin } from "./components/QuickTaskModal";
+import { TableFullscreenEnhancer } from "./components/ui/TableFullscreenEnhancer";
 import type { Lead, UserProfile, RolePermission, Task, RecurringTaskTemplate, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, ProjectAttribute, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, OfferCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order, Ticket, SupportContract, TicketStatusDef, TicketSystemSettings } from "./types";
 import { clearedSecretKeys } from "./utils/secretClears";
 import { findSelf, isDifferentSessionUser } from "./utils/sessionIdentity";
@@ -5066,6 +5067,7 @@ ${log.payload || ''}
                 </Suspense>
               </ErrorBoundary>
             </div>
+            <TableFullscreenEnhancer userLanguage={userLanguage} />
             {whatsappHost}
             <footer className={`mt-12 pt-4 border-t border-gray-200/70 flex justify-end items-center type-overline text-gray-400 select-none${whatsappActive ? " hidden" : ""}`}>
               <span>
