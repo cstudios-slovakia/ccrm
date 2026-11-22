@@ -321,12 +321,22 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
       const vh = window.innerHeight;
       const menuWidth = Math.min(460, vw - 16);
       const left = Math.max(8, Math.min(r.left, vw - menuWidth - 8));
-      const below = vh - r.bottom - 8;
-      const above = r.top - 8;
-      if (below >= 260 || below >= above) {
-        setMenuPos({ left, top: r.bottom + 4, maxHeight: Math.max(180, below - 4) });
+      const clampedTop = Math.max(8, Math.min(r.bottom + 4, vh - 180));
+      const clampedBottom = Math.max(8, Math.min(vh - r.top + 4, vh - 180));
+      const belowRaw = vh - r.bottom - 8;
+      const aboveRaw = r.top - 8;
+      if (belowRaw >= 260 || belowRaw >= aboveRaw) {
+        setMenuPos({
+          left,
+          top: clampedTop,
+          maxHeight: Math.max(160, Math.min(vh - clampedTop - 8, vh - 16)),
+        });
       } else {
-        setMenuPos({ left, bottom: vh - r.top + 4, maxHeight: Math.max(180, above - 4) });
+        setMenuPos({
+          left,
+          bottom: clampedBottom,
+          maxHeight: Math.max(160, Math.min(vh - clampedBottom - 8, vh - 16)),
+        });
       }
     };
     updateMenuPos();
