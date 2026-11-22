@@ -5248,6 +5248,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     if (!empty($addedAssignees)) {
                         $reassignedTask = array_merge($t, ['assignedUsers' => $addedAssignees, 'owner' => null]);
+                        ccrm_send_task_assigned_email_notification($pdo, $reassignedTask, $sessionUserName);
                         ccrm_send_task_assigned_push_notification($pdo, $reassignedTask, $sessionUserName);
                     }
                 }

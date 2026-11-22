@@ -304,8 +304,16 @@ function ccrm_task_priority_mail_headers(?string $priority): array {
 }
 
 /**
- * Send an email notification when a task is assigned to a user.
- * Silently skipped if outgoing mail is not configured.
+ * Only mid ("medium") or higher ("high") priority tasks trigger delegation
+ * email and push notifications; "low" priority stays quiet.
+ */
+function ccrm_task_priority_notifies_assignee(?string $priority): bool {
+    return strtolower(trim((string)($priority ?? 'medium'))) !== 'low';
+}
+
+/**
+ * Send an email notification when a task is assigned/delegated to a user
+ * with medium or higher priority. Silently skipped if outgoing mail is not configured.
  *
  * The priority is shown as a coloured badge in the body and set as the
  * message's importance through the mail headers, never written into the
@@ -313,6 +321,9 @@ function ccrm_task_priority_mail_headers(?string $priority): array {
  */
 function ccrm_send_task_assigned_email_notification(PDO $pdo, array $task, ?string $actorName = null): bool {
     try {
+        if (!ccrm_task_priority_notifies_assignee($task['priority'] ?? null)) {
+            return false;
+        }
         $config = ccrm_load_integrations_config($pdo);
         if (!ccrm_system_mail_configured($config)) {
             return false;
@@ -358,8 +369,8 @@ function ccrm_send_task_assigned_email_notification(PDO $pdo, array $task, ?stri
             $leadName = $lStmt->fetchColumn() ?: null;
         }
 
-        $creator = !empty($task['createdBy']) ? $task['createdBy'] : ($actorName ?: 'System');
-        $actorLower = mb_strtolower(trim((string)$creator));
+        $creator = trim((string)($actorName ?: ($task['createdBy'] ?? 'System')));
+        $actorLower = mb_strtolower($creator);
 
         $sentCount = 0;
         foreach ($assignees as $assignee) {

@@ -449,10 +449,14 @@ if (!function_exists('ccrm_send_push_notification')) {
 
 if (!function_exists('ccrm_send_task_assigned_push_notification')) {
     /**
-     * Sends a push notification when a task is created and assigned to users.
+     * Sends a push notification when a task with medium or higher priority is
+     * created or delegated to other users.
      */
     function ccrm_send_task_assigned_push_notification(PDO $pdo, array $task, ?string $authorName = null): void {
         try {
+            if (strtolower(trim((string)($task['priority'] ?? 'medium'))) === 'low') {
+                return;
+            }
             $candidates = [];
             if (!empty($task['owner'])) {
                 $candidates[] = trim((string)$task['owner']);
