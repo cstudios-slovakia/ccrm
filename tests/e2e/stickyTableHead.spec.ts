@@ -75,14 +75,20 @@ test.describe('page-sticky table heads', () => {
     expect(Math.round(box.y + box.height)).toBeGreaterThanOrEqual(Math.round(mainBox.y + mainBox.height) - 1);
 
     // Dragging it (here: scrolling it) moves the table, and the table moves it back.
-    await proxy.evaluate((el) => {
-      el.scrollLeft = 120;
-    });
-    await expect.poll(() => wrap.evaluate((el) => el.scrollLeft)).toBeGreaterThan(100);
-    await wrap.evaluate((el) => {
-      el.scrollLeft = 40;
-    });
-    await expect.poll(() => proxy.evaluate((el) => el.scrollLeft)).toBeLessThan(60);
+    // Compact mode fits more columns on screen, so measure the real horizontal overflow
+    // instead of assuming >120px of hidden width at 1440px.
+    const maxScroll = await wrap.evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(maxScroll).toBeGreaterThan(20);
+    const target = Math.min(120, maxScroll);
+    const back = Math.floor(target / 3);
+    await proxy.evaluate((el, x) => {
+      el.scrollLeft = x;
+    }, target);
+    await expect.poll(() => wrap.evaluate((el) => el.scrollLeft)).toBeGreaterThanOrEqual(target - 5);
+    await wrap.evaluate((el, x) => {
+      el.scrollLeft = x;
+    }, back);
+    await expect.poll(() => proxy.evaluate((el) => el.scrollLeft)).toBeLessThanOrEqual(back + 5);
 
     // The head is a copy outside the sideways scroller, pinned by plain CSS
     // sticky (nothing moves it per scroll step), lying exactly over the real one.
