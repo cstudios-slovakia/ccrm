@@ -1189,7 +1189,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
             </div>
             <div
                 id="nt-desc"
-                className={`box-border w-full flex flex-col min-h-48 max-h-96 overflow-y-auto px-3.5 py-2.5 rounded-xl text-ui text-slate-800 transition-colors duration-150 cursor-text ${
+                className={`box-border w-full flex flex-col min-h-52 max-h-96 overflow-y-auto px-2.5 py-1.5 rounded-xl text-ui text-slate-800 transition-colors duration-150 cursor-text ${
                     isDictated("description")
                         ? "border border-blue-200 bg-[#f8fbff] dark:bg-blue-50 nt-fill focus-within:border-[#ff5d00]"
                         : "border border-slate-200 bg-white focus-within:border-[#ff5d00]"

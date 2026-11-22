@@ -2886,7 +2886,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               {/* Description */}
               <div className="space-y-1.5">
                 <label className="type-overline text-gray-500">{t("Description", "Popis", "Leírás")}</label>
-                <div className="flex flex-col min-h-52 max-h-96 overflow-y-auto px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-md focus-within:border-indigo-500 focus-within:bg-white transition-all cursor-text">
+                <div className="flex flex-col min-h-52 max-h-96 overflow-y-auto px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-md focus-within:border-indigo-500 focus-within:bg-white transition-all cursor-text">
                   <BlockEditor
                     key={activeTaskForEdit.id}
                     compact

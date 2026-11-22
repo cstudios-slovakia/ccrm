@@ -664,6 +664,16 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
     return count;
   };
 
+  const isEditorEmpty = blocks.every(
+    (b) =>
+      b.type === "paragraph" &&
+      (b.content || "")
+        .replace(/<br\s*\/?>/gi, "")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/<[^>]*>/g, "")
+        .trim() === "",
+  );
+
     return (
     <div
       ref={containerRef}
@@ -793,7 +803,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
           data-testid="block-editor-export-bar"
           className={cn(
             "flex flex-wrap items-center justify-end gap-1.5 select-none",
-            compact ? "mb-1.5" : "mb-3",
+            compact ? "mb-1" : "mb-3",
           )}
         >
           <button
@@ -830,7 +840,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
       )}
 
       {/* RENDER BLOCKS VERTICAL LIST */}
-      <div className={cn(compact ? "space-y-2 pl-9" : "space-y-4")}>
+      <div className={cn(compact ? "space-y-1 pl-7" : "space-y-4")}>
         {blocks.map((block, idx) => {
           const isMenuOpen = !readOnly && activeMenuBlockId === block.id;
           const bannerInfo = block.type === "banner" ? getBannerStyles(block) : null;
@@ -839,14 +849,14 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
             <div
               key={block.id}
               ref={(el) => { blockRowRefs.current[block.id] = el; }}
-              className="group relative flex items-start gap-2.5 w-full"
+              className="group relative flex items-start gap-2 w-full"
             >
               {/* LEFT HOVER / FOCUS MENUS CONTAINER */}
               {!readOnly && (
                 <div
                   className={cn(
                     "absolute top-1.5 flex items-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-10 duration-200",
-                    compact ? "-left-9" : "-left-12",
+                    compact ? "-left-7" : "-left-12",
                   )}
                 >
                   <button
@@ -953,12 +963,14 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                     onBlur={(e) => updateBlockContent(block.id, e.currentTarget.innerHTML)}
                     placeholder={
                       block.type === "paragraph"
-                        ? (placeholder ??
-                          t(
-                            "Write meeting notes here... (type '/' for commands)",
-                            "Napíšte sem poznámky... (napíšte '/' pre príkazy)",
-                            "Írja ide a jegyzeteket... (parancsokhoz írjon '/' jelet)",
-                          ))
+                        ? (isEditorEmpty && idx === 0
+                            ? (placeholder ??
+                              t(
+                                "Write meeting notes here... (type '/' for commands)",
+                                "Napíšte sem poznámky... (napíšte '/' pre príkazy)",
+                                "Írja ide a jegyzeteket... (parancsokhoz írjon '/' jelet)",
+                              ))
+                            : undefined)
                         : t("Write block text...", "Napíšte text...", "Írja be a blokk szövegét...")
                     }
                     className={cn(
@@ -1178,7 +1190,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
           plain textarea would. */}
       {fillHeight && !readOnly && (
         <div
-          className="flex-1 min-h-7 cursor-text"
+          className={cn("flex-1 cursor-text", compact ? "min-h-24" : "min-h-7")}
           onMouseDown={focusTrailingBlock}
         />
       )}
