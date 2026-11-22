@@ -218,7 +218,8 @@ export const TableFullscreenEnhancer: React.FC<{ userLanguage: Language }> = ({ 
       title={labelExit}
       aria-label={labelExit}
       data-testid="table-fullscreen-exit"
-      className="fixed top-3 right-4 z-95 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white/95 hover:bg-white text-gray-800 border border-gray-300 shadow-md text-caption font-semibold backdrop-blur-xs transition cursor-pointer"
+      style={{ zIndex: 9999 }}
+      className="fixed top-3 right-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white/95 hover:bg-white text-gray-800 border border-gray-300 shadow-md text-caption font-semibold backdrop-blur-xs transition cursor-pointer"
     >
       <Minimize2 className="h-3.5 w-3.5" />
       <span>{labelExit}</span>
