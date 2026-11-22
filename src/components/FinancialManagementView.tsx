@@ -3700,7 +3700,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 )}
               </div>
               {canEdit && !isRenamingCat && (
-                <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover/catrow:opacity-100 focus-within:opacity-100 transition-opacity">
+                <div className="flex items-center gap-0.5 shrink-0">
                   {level > 1 && (
                     <button
                       type="button"

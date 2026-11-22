@@ -443,7 +443,7 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
                 }
               }}
               data-testid={`rename-category-input-${cat.id}`}
-              className="min-w-0 flex-1 px-2 py-0.5 rounded-md border border-entity bg-white text-ui font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-entity-ring"
+              className="min-w-0 flex-1 max-w-80 px-2 py-0.5 rounded-md border border-entity bg-white text-ui font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-entity-ring"
             />
           ) : (
             <span
@@ -457,10 +457,21 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
               {cat.name}
             </span>
           )}
-          <span className={`shrink-0 ${styles.badge}`}>{styles.badgeText}</span>
-        </div>
-        <div className="flex items-center gap-0.5 shrink-0">
-          {canEdit && level > 1 && (
+          {canEdit && !isRenaming && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                startRename(cat);
+              }}
+              data-testid={`rename-category-${cat.id}`}
+              className="p-1 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-subtle transition-colors duration-150 cursor-pointer shrink-0"
+              title={t("Rename category", "Premenovať kategóriu", "Kategória átnevezése")}
+            >
+              <Pencil className={styles.trash} />
+            </button>
+          )}
+          {canEdit && !isRenaming && level > 1 && (
             <button
               type="button"
               onClick={(e) => {
@@ -468,7 +479,7 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
                 handlePromoteCategory(cat.id);
               }}
               data-testid={`promote-category-${cat.id}`}
-              className="p-1 text-gray-400 hover:text-entity-text transition-colors duration-150 cursor-pointer"
+              className="p-1 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-subtle transition-colors duration-150 cursor-pointer shrink-0"
               title={t(
                 "Move outside group (promote one level up)",
                 "Presunúť mimo skupiny (o úroveň vyššie)",
@@ -478,20 +489,9 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
               <CornerLeftUp className={styles.trash} />
             </button>
           )}
-          {canEdit && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                startRename(cat);
-              }}
-              data-testid={`rename-category-${cat.id}`}
-              className="p-1 text-gray-400 hover:text-entity-text transition-colors duration-150 cursor-pointer"
-              title={t("Rename category", "Premenovať kategóriu", "Kategória átnevezése")}
-            >
-              <Pencil className={styles.trash} />
-            </button>
-          )}
+          <span className={`shrink-0 ${styles.badge}`}>{styles.badgeText}</span>
+        </div>
+        <div className="flex items-center gap-0.5 shrink-0">
           {canDelete && (
             <HoldToConfirmButton
                 tone="danger"
