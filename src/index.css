@@ -1943,6 +1943,12 @@ dialog[open]::backdrop {
     z-index: 26;
     overflow: hidden;
   }
+  .table-page-foot-mirror {
+    position: sticky;
+    bottom: calc(var(--gutter) * -1);
+    z-index: 26;
+    overflow: hidden;
+  }
   .table-page-sticky-head th {
     position: sticky;
     /* Sticky offsets are measured from the scroller's content box, so the
@@ -2072,7 +2078,8 @@ dialog[open]::backdrop {
 .ccrm-table-fullscreen-host table {
   width: 100% !important;
 }
-.ccrm-table-fullscreen-host .table-page-head-mirror {
+.ccrm-table-fullscreen-host .table-page-head-mirror,
+.ccrm-table-fullscreen-host .table-page-foot-mirror {
   display: none !important;
 }
 .ccrm-table-fullscreen-host thead th {

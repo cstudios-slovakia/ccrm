@@ -10,7 +10,7 @@ const HOST_CLASS = "ccrm-table-fullscreen-host";
 const ANCESTOR_CLASS = "ccrm-fs-ancestor";
 
 function isEligibleTable(table: HTMLTableElement): boolean {
-  if (table.closest(".table-page-head-mirror")) return false;
+  if (table.closest(".table-page-head-mirror, .table-page-foot-mirror")) return false;
   if (table.closest(".view-size-fixed")) return false;
   if (table.closest("[data-no-fullscreen]")) return false;
   if (table.closest("[data-email-body], [data-pdf-preview], .prose")) return false;
