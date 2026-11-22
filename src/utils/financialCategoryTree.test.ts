@@ -6,7 +6,10 @@ import {
   categorySubtreeDepth,
   moveCategory,
   nextCategorySortOrder,
+  promoteCategory,
+  renameCategory,
   resolveCategoryDrop,
+  resolveCategoryPointerDrop,
 } from "./financialCategoryTree.ts";
 
 const cat = (id: string, parentId: string | null, level: 1 | 2 | 3, sortOrder = 0, type: "income" | "expense" = "expense"): FinancialCategory =>
@@ -119,4 +122,43 @@ test("a new category is placed after its last sibling", () => {
   assert.equal(nextCategorySortOrder(TREE(), "expense", null), 3);
   assert.equal(nextCategorySortOrder(TREE(), "expense", "A2"), 0);
   assert.equal(nextCategorySortOrder(TREE(), "income", null), 0);
+});
+
+test("dragging a subcategory onto its own parent resolves to before/after so it can be moved outside the group", () => {
+  const cats = TREE();
+  assert.deepEqual(resolveCategoryPointerDrop(cats, "A1", "A", 0.3), { targetId: "A", position: "before" });
+  assert.deepEqual(resolveCategoryPointerDrop(cats, "A2", "A", 0.5), { targetId: "A", position: "after" });
+  assert.deepEqual(resolveCategoryPointerDrop(cats, "A1x", "A1", 0.5), { targetId: "A1", position: "after" });
+});
+
+test("dragging along the left handle gutter or edge zones prefers reordering over nesting", () => {
+  const cats = TREE();
+  assert.deepEqual(resolveCategoryPointerDrop(cats, "A2", "A1", 0.5, true), { targetId: "A1", position: "after" });
+  assert.deepEqual(resolveCategoryPointerDrop(cats, "A2", "A1", 0.3, false), { targetId: "A1", position: "before" });
+  assert.deepEqual(resolveCategoryPointerDrop(cats, "A2", "A1", 0.5, false), { targetId: "A1", position: "inside" });
+});
+
+test("promoteCategory moves a subcategory one level up outside its parent group", () => {
+  const cats = TREE();
+  const promotedL2 = promoteCategory(cats, "A1")!;
+  assert.equal(byId(promotedL2, "A1").level, 1);
+  assert.equal(byId(promotedL2, "A1").parentId, null);
+  assert.equal(byId(promotedL2, "A1x").level, 2);
+  assert.deepEqual(order(promotedL2, null), ["A", "A1", "B", "C"]);
+
+  const promotedL3 = promoteCategory(cats, "A1x")!;
+  assert.equal(byId(promotedL3, "A1x").level, 2);
+  assert.equal(byId(promotedL3, "A1x").parentId, "A");
+  assert.deepEqual(order(promotedL3, "A"), ["A1", "A1x", "A2"]);
+
+  assert.equal(promoteCategory(cats, "A"), null);
+});
+
+test("renameCategory updates only the target row and ignores blank or unchanged names", () => {
+  const cats = TREE();
+  assert.equal(renameCategory(cats, "A1", "   "), cats);
+  assert.equal(renameCategory(cats, "A1", "A1"), cats);
+  const renamed = renameCategory(cats, "A1", "  Marketing Ads  ");
+  assert.equal(byId(renamed, "A1").name, "Marketing Ads");
+  assert.equal(byId(renamed, "A"), byId(cats, "A"));
 });

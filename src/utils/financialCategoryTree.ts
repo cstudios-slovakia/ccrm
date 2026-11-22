@@ -208,3 +208,81 @@ export function moveCategory(
     return changed ? { ...c, ...fields } : c;
   });
 }
+
+/**
+ * Resolves a pointer position on a target row (`targetId`, or `null` for the
+ * end-of-list root zone) into the best valid drop target.
+ *
+ * - Dragging a subcategory onto its own current parent (`effectiveParentId(drag) === target.id`)
+ *   resolves to `"before"` / `"after"` that parent instead of `"inside"` (which
+ *   would keep it trapped in the same group).
+ * - Wider edge zones (`ratioY < 0.35` -> `"before"`, `ratioY > 0.65` -> `"after"`)
+ *   and dragging along the left grip/indent gutter (`preferEdge = true`) prioritize
+ *   reordering (`[nearerEdge, "inside"]`) over nesting (`["inside", nearerEdge]`).
+ * - A drop that `moveCategory` treats as a no-op is skipped in favor of the next
+ *   valid candidate so the user never gets a dead drop target.
+ */
+export function resolveCategoryPointerDrop(
+  cats: FinancialCategory[],
+  dragId: string,
+  targetId: string | null,
+  ratioY = 0.5,
+  preferEdge = false
+): CategoryDropTarget | null {
+  if (targetId === null) {
+    const drop: CategoryDropTarget = { targetId: null, position: "after" };
+    return resolveCategoryDrop(cats, dragId, drop) ? drop : null;
+  }
+  const byId = indexById(cats);
+  const drag = byId.get(dragId);
+  const target = byId.get(targetId);
+  if (!drag || !target || drag.id === target.id || drag.type !== target.type) return null;
+
+  const nearerEdge: CategoryDropPosition = ratioY < 0.5 ? "before" : "after";
+  const fartherEdge: CategoryDropPosition = ratioY < 0.5 ? "after" : "before";
+  const isCurrentParent = effectiveParentId(drag, byId) === target.id;
+
+  let candidates: CategoryDropPosition[];
+  if (isCurrentParent) {
+    candidates = [nearerEdge, fartherEdge];
+  } else if (preferEdge || ratioY < 0.35 || ratioY > 0.65) {
+    candidates = [nearerEdge, "inside", fartherEdge];
+  } else {
+    candidates = ["inside", nearerEdge, fartherEdge];
+  }
+
+  for (const position of candidates) {
+    const drop: CategoryDropTarget = { targetId, position };
+    if (!resolveCategoryDrop(cats, dragId, drop)) continue;
+    if (position === "inside" && moveCategory(cats, dragId, drop) === cats) continue;
+    return drop;
+  }
+  return null;
+}
+
+/**
+ * Moves a subcategory one level up (outside its current parent group), placing
+ * it right after its former parent. Returns null for a Level 1 root category.
+ */
+export function promoteCategory(cats: FinancialCategory[], id: string): FinancialCategory[] | null {
+  const byId = indexById(cats);
+  const cat = byId.get(id);
+  const parentId = cat ? effectiveParentId(cat, byId) : null;
+  return parentId ? moveCategory(cats, id, { targetId: parentId, position: "after" }) : null;
+}
+
+/**
+ * Renames a category when the trimmed name is non-empty and changed.
+ * Returns the original array when nothing changed so delta sync stays quiet.
+ */
+export function renameCategory(cats: FinancialCategory[], id: string, rawName: string): FinancialCategory[] {
+  const name = rawName.trim();
+  if (!name) return cats;
+  let changed = false;
+  const next = cats.map((c) => {
+    if (c.id !== id || c.name === name) return c;
+    changed = true;
+    return { ...c, name };
+  });
+  return changed ? next : cats;
+}

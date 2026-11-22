@@ -15,7 +15,8 @@ import {
   CalendarDays, Target, Maximize2, Minimize2, History,
   ArrowUpRight, ArrowDownRight, ArrowUpDown,
   SlidersHorizontal,
-  Copy, Sparkles, UserPlus, ChevronLeft, Settings, Tags
+  Copy, Sparkles, UserPlus, ChevronLeft, Settings, Tags,
+  CornerLeftUp, GripVertical
 } from "lucide-react";
 import type {
   FinancialRecord,
@@ -43,7 +44,12 @@ import { todayLocal, formatDateLocalized } from "../utils/localTime";
 import {
   categoryBreadcrumbs,
   categoryChildren,
-  categoryDescendantIds
+  categoryDescendantIds,
+  moveCategory,
+  promoteCategory,
+  renameCategory,
+  resolveCategoryPointerDrop,
+  type CategoryDropTarget
 } from "../utils/financialCategoryTree";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 import { useUserPref } from "../utils/userPrefs";
@@ -1055,6 +1061,75 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   const cancelCellEdit = () => {
     setEditingCell(null);
+  };
+
+  // Overview Table Category Inline Rename & Drag-and-Drop State
+  const [renamingTableCatId, setRenamingTableCatId] = useState<string | null>(null);
+  const [renamingTableCatDraft, setRenamingTableCatDraft] = useState("");
+  const [draggedTableCatId, setDraggedTableCatId] = useState<string | null>(null);
+  const [tableCatDropTarget, setTableCatDropTarget] = useState<CategoryDropTarget | null>(null);
+  const draggedTableCat = useMemo(
+    () => (draggedTableCatId ? financialCategories.find((c) => c.id === draggedTableCatId) ?? null : null),
+    [financialCategories, draggedTableCatId]
+  );
+
+  const startTableCategoryRename = (cat: FinancialCategory) => {
+    if (!canEdit) return;
+    setRenamingTableCatId(cat.id);
+    setRenamingTableCatDraft(cat.name);
+  };
+  const commitTableCategoryRename = () => {
+    const id = renamingTableCatId;
+    const draft = renamingTableCatDraft;
+    setRenamingTableCatId(null);
+    if (canEdit && id && draft.trim()) setFinancialCategories((prev) => renameCategory(prev, id, draft));
+  };
+  const endTableCategoryDrag = () => {
+    setDraggedTableCatId(null);
+    setTableCatDropTarget(null);
+  };
+  const handleTableCategoryDragStart = (e: React.DragEvent<HTMLElement>, id: string) => {
+    if (!canEdit) return e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", id);
+    setDraggedTableCatId(id);
+  };
+  const handleTableCategoryDragOver = (e: React.DragEvent<HTMLElement>, targetId: string | null, expectedType?: FinancialType) => {
+    if (!draggedTableCatId || (expectedType && draggedTableCat?.type !== expectedType)) return;
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const drop = targetId === null
+      ? resolveCategoryPointerDrop(financialCategories, draggedTableCatId, null)
+      : resolveCategoryPointerDrop(financialCategories, draggedTableCatId, targetId, (e.clientY - rect.top) / Math.max(rect.height, 1), e.clientX - rect.left < 40);
+    if (!drop) {
+      e.dataTransfer.dropEffect = "none";
+      if (tableCatDropTarget) setTableCatDropTarget(null);
+      return;
+    }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (tableCatDropTarget?.targetId !== drop.targetId || tableCatDropTarget?.position !== drop.position) setTableCatDropTarget(drop);
+  };
+  const handleTableCategoryDrop = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const dragId = draggedTableCatId;
+    const drop = tableCatDropTarget;
+    endTableCategoryDrag();
+    if (!canEdit || !dragId || !drop) return;
+    const next = moveCategory(financialCategories, dragId, drop);
+    if (!next || next === financialCategories) return;
+    setFinancialCategories((prev) => moveCategory(prev, dragId, drop) ?? prev);
+    if (drop.targetId && drop.position === "inside") setExpandedCatIds((prev) => new Set(prev).add(drop.targetId!));
+    (window as any).showToast?.(t("Category moved", "Kategória bola presunutá", "Kategória áthelyezve"));
+  };
+  const handleTablePromoteCategory = (id: string) => {
+    if (!canEdit) return;
+    const next = promoteCategory(financialCategories, id);
+    if (!next || next === financialCategories) return;
+    setFinancialCategories((prev) => promoteCategory(prev, id) ?? prev);
+    (window as any).showToast?.(t("Category moved outside group", "Kategória bola presunutá mimo skupiny", "Kategória áthelyezve a csoporton kívülre"));
   };
 
   const toggleCategoryExpand = (catId: string) => {
@@ -3544,58 +3619,110 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       if (!matchesSelf && !matchesChild) return null;
     }
 
+    const isRenamingCat = renamingTableCatId === cat.id;
+    const dropPos = draggedTableCatId && tableCatDropTarget?.targetId === cat.id ? tableCatDropTarget.position : null;
+    const rowBg = level === 1 ? "bg-gray-50/60 font-bold" : level === 2 ? "bg-white text-ui font-semibold" : "bg-white text-ui font-normal text-gray-600";
+    const dropCls = dropPos === "before"
+      ? "shadow-[inset_0_2px_0_0_var(--entity-accent-solid)]"
+      : dropPos === "after"
+      ? "shadow-[inset_0_-2px_0_0_var(--entity-accent-solid)]"
+      : dropPos === "inside"
+      ? "!bg-entity-subtle ring-2 ring-inset ring-entity"
+      : "";
+    const cellCls = level === 1
+      ? "bg-gray-50 font-bold text-caption text-gray-900"
+      : level === 2
+      ? "bg-white pl-3.5 ws-sm:pl-7 pr-1 ws-sm:pr-3 font-semibold text-micro text-gray-800"
+      : "bg-white pl-5 ws-sm:pl-12 pr-1 ws-sm:pr-3 font-normal text-micro text-gray-600";
+
     return (
       <React.Fragment key={"cat-row-" + cat.id}>
         <tr
-          className={`hover:bg-gray-50  transition-colors ${
-            level === 1
-              ? "bg-gray-50/60  font-bold"
-              : level === 2
-              ? "bg-white  text-ui font-semibold"
-              : "bg-white  text-ui font-normal text-gray-600 "
-          }`}
+          data-table-category-row={cat.id}
+          draggable={canEdit && !isRenamingCat && !editingCell}
+          onDragStart={(e) => handleTableCategoryDragStart(e, cat.id)}
+          onDragEnd={endTableCategoryDrag}
+          onDragOver={(e) => handleTableCategoryDragOver(e, cat.id)}
+          onDrop={handleTableCategoryDrop}
+          className={`group/catrow hover:bg-gray-50 transition-colors ${rowBg} ${draggedTableCatId === cat.id ? "opacity-40" : ""} ${dropCls}`}
         >
           {/* Category Name Cell (Sticky Left with solid background and crisp right border) */}
-          <td
-            className={`w-35 min-w-35 max-w-35 ws-sm:w-80 ws-sm:min-w-80 ws-sm:max-w-80 py-1.5 ws-sm:py-2 px-1.5 ws-sm:px-3 sticky left-0 z-20 border-r-2 border-gray-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)] select-none ${
-              level === 1
-                ? "bg-gray-50  font-bold text-caption text-gray-900 "
-                : level === 2
-                ? "bg-white  pl-3.5 ws-sm:pl-7 pr-1 ws-sm:pr-3 font-semibold text-micro text-gray-800 "
-                : "bg-white  pl-5 ws-sm:pl-12 pr-1 ws-sm:pr-3 font-normal text-micro text-gray-600 "
-            }`}
-          >
+          <td className={`w-35 min-w-35 max-w-35 ws-sm:w-80 ws-sm:min-w-80 ws-sm:max-w-80 py-1.5 ws-sm:py-2 px-1.5 ws-sm:px-3 sticky left-0 z-20 border-r-2 border-gray-200 shadow-[2px_0_4px_rgba(0,0,0,0.04)] select-none ${cellCls}`}>
             <div
-              className={`flex items-center gap-1 ws-sm:gap-1.5 ${hasChildren ? "cursor-pointer" : ""}`}
-              onClick={() => hasChildren && toggleCategoryExpand(cat.id)}
+              className={`flex items-center justify-between gap-1 ws-sm:gap-1.5 ${hasChildren && !isRenamingCat ? "cursor-pointer" : ""}`}
+              onClick={() => { if (hasChildren && !isRenamingCat) toggleCategoryExpand(cat.id); }}
             >
-              {hasChildren ? (
-                <button
-                  type="button"
-                  className="p-0.5 text-gray-400 hover:text-gray-700  transition-transform cursor-pointer shrink-0"
-                >
-                  <ChevronRight
-                    className={`h-3 w-3 ws-sm:h-3.5 ws-sm:w-3.5 transition-transform duration-150 ${isExpanded ? "rotate-90 text-purple-600" : ""}`}
+              <div className="flex items-center gap-1 ws-sm:gap-1.5 min-w-0 flex-1">
+                {canEdit && <GripVertical className="hidden ws-sm:block h-3 w-3 shrink-0 text-gray-300 group-hover/catrow:text-entity-text cursor-grab active:cursor-grabbing" />}
+                {hasChildren ? (
+                  <button type="button" className="p-0.5 text-gray-400 hover:text-gray-700 transition-transform cursor-pointer shrink-0">
+                    <ChevronRight className={`h-3 w-3 ws-sm:h-3.5 ws-sm:w-3.5 transition-transform duration-150 ${isExpanded ? "rotate-90 text-purple-600" : ""}`} />
+                  </button>
+                ) : (
+                  <span className="w-3 ws-sm:w-3.5 shrink-0" />
+                )}
+                {level === 1 ? (
+                  <span className="h-2 w-2 ws-sm:h-2.5 ws-sm:w-2.5 rounded-full shrink-0 shadow-xs" style={{ backgroundColor: cat.color || (type === "expense" ? "#f43f5e" : "#10b981") }} />
+                ) : (
+                  <span className="text-gray-400 text-micro shrink-0">{level === 2 ? "↳" : "↳↳"}</span>
+                )}
+                {isRenamingCat && canEdit ? (
+                  <input
+                    autoFocus
+                    type="text"
+                    maxLength={150}
+                    value={renamingTableCatDraft}
+                    onChange={(e) => setRenamingTableCatDraft(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onBlur={commitTableCategoryRename}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                        commitTableCategoryRename();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setRenamingTableCatId(null);
+                      }
+                    }}
+                    data-testid={`table-rename-category-input-${cat.id}`}
+                    className="min-w-0 flex-1 px-1.5 py-0.5 rounded border border-entity bg-white text-caption font-semibold text-gray-900 focus:outline-none focus:ring-1 focus:ring-entity-ring"
                   />
-                </button>
-              ) : (
-                <span className="w-3 ws-sm:w-3.5 shrink-0" />
+                ) : (
+                  <span
+                    className={`truncate max-w-21.25 ws-sm:max-w-45 ${canEdit ? "cursor-text" : ""}`}
+                    title={cat.name}
+                    onDoubleClick={(e) => { if (canEdit) { e.stopPropagation(); startTableCategoryRename(cat); } }}
+                  >
+                    {cat.name}
+                  </span>
+                )}
+              </div>
+              {canEdit && !isRenamingCat && (
+                <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover/catrow:opacity-100 focus-within:opacity-100 transition-opacity">
+                  {level > 1 && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); handleTablePromoteCategory(cat.id); }}
+                      data-testid={`table-promote-category-${cat.id}`}
+                      className="p-0.5 text-gray-400 hover:text-entity-text rounded cursor-pointer"
+                      title={t("Move outside group (promote one level up)", "Presunúť mimo skupiny (o úroveň vyššie)", "Áthelyezés a csoporton kívülre (egy szinttel feljebb)")}
+                    >
+                      <CornerLeftUp className="h-3 w-3" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); startTableCategoryRename(cat); }}
+                    data-testid={`table-rename-category-${cat.id}`}
+                    className="p-0.5 text-gray-400 hover:text-entity-text rounded cursor-pointer"
+                    title={t("Rename category", "Premenovať kategóriu", "Kategória átnevezése")}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                </div>
               )}
-
-              {level === 1 ? (
-                <span
-                  className="h-2 w-2 ws-sm:h-2.5 ws-sm:w-2.5 rounded-full shrink-0 shadow-xs"
-                  style={{ backgroundColor: cat.color || (type === "expense" ? "#f43f5e" : "#10b981") }}
-                />
-              ) : (
-                <span className="text-gray-400  text-micro shrink-0">
-                  {level === 2 ? "↳" : "↳↳"}
-                </span>
-              )}
-
-              <span className="truncate max-w-21.25 ws-sm:max-w-55" title={cat.name}>
-                {cat.name}
-              </span>
             </div>
           </td>
 
@@ -6758,7 +6885,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   {/* ======================================================== */}
                   {/* SECTION 1: EXPENSES (TOP OF TABLE) */}
                   {/* ======================================================== */}
-                  <tr className="bg-rose-50  border-y-2 border-rose-200 ">
+                  <tr
+                    onDragOver={(e) => handleTableCategoryDragOver(e, null, "expense")}
+                    onDrop={handleTableCategoryDrop}
+                    className={`bg-rose-50 border-y-2 border-rose-200 ${draggedTableCat?.type === "expense" && tableCatDropTarget?.targetId === null ? "ring-2 ring-inset ring-rose-500" : ""}`}
+                  >
                     <td className="w-35 min-w-35 max-w-35 ws-sm:w-80 ws-sm:min-w-80 ws-sm:max-w-80 py-2 ws-sm:py-2.5 px-2 ws-sm:px-4 sticky left-0 z-20 bg-rose-50  border-r-2 border-rose-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
                       <div className="flex items-center justify-between gap-1 type-overline text-rose-700 ">
                         <div className="flex items-center gap-1 ws-sm:gap-2 truncate">
@@ -6784,7 +6915,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   {renderUncategorizedMatrixRow("expense")}
 
                   {/* SUB-TOTAL EXPENSES ROW */}
-                  <tr className="bg-rose-100/60  font-bold border-y-2 border-rose-300 ">
+                  <tr
+                    onDragOver={(e) => handleTableCategoryDragOver(e, null, "expense")}
+                    onDrop={handleTableCategoryDrop}
+                    className={`bg-rose-100/60 font-bold border-y-2 border-rose-300 ${draggedTableCat?.type === "expense" && tableCatDropTarget?.targetId === null ? "ring-2 ring-inset ring-rose-500" : ""}`}
+                  >
                     <td className="w-35 min-w-35 max-w-35 ws-sm:w-80 ws-sm:min-w-80 ws-sm:max-w-80 py-2 ws-sm:py-3 px-2 ws-sm:px-4 sticky left-0 bg-rose-100  z-20 text-rose-800  border-r-2 border-rose-300  shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                       <div className="flex items-center gap-1 ws-sm:gap-2">
                         <ArrowDownRight className="h-3.5 w-3.5 ws-sm:h-4 ws-sm:w-4 text-rose-600 shrink-0" />
@@ -6807,7 +6942,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   {/* ======================================================== */}
                   {/* SECTION 2: INCOMES (RIGHT BELOW EXPENSES) */}
                   {/* ======================================================== */}
-                  <tr className="bg-emerald-50  border-y-2 border-emerald-200 ">
+                  <tr
+                    onDragOver={(e) => handleTableCategoryDragOver(e, null, "income")}
+                    onDrop={handleTableCategoryDrop}
+                    className={`bg-emerald-50 border-y-2 border-emerald-200 ${draggedTableCat?.type === "income" && tableCatDropTarget?.targetId === null ? "ring-2 ring-inset ring-emerald-500" : ""}`}
+                  >
                     <td className="w-35 min-w-35 max-w-35 ws-sm:w-80 ws-sm:min-w-80 ws-sm:max-w-80 py-2 ws-sm:py-2.5 px-2 ws-sm:px-4 sticky left-0 z-20 bg-emerald-50  border-r-2 border-emerald-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
                       <div className="flex items-center justify-between gap-1 type-overline text-emerald-700 ">
                         <div className="flex items-center gap-1 ws-sm:gap-2 truncate">
@@ -6833,7 +6972,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   {renderUncategorizedMatrixRow("income")}
 
                   {/* SUB-TOTAL INCOMES ROW */}
-                  <tr className="bg-emerald-100/60  font-bold border-y-2 border-emerald-300 ">
+                  <tr
+                    onDragOver={(e) => handleTableCategoryDragOver(e, null, "income")}
+                    onDrop={handleTableCategoryDrop}
+                    className={`bg-emerald-100/60 font-bold border-y-2 border-emerald-300 ${draggedTableCat?.type === "income" && tableCatDropTarget?.targetId === null ? "ring-2 ring-inset ring-emerald-500" : ""}`}
+                  >
                     <td className="w-35 min-w-35 max-w-35 ws-sm:w-80 ws-sm:min-w-80 ws-sm:max-w-80 py-2 ws-sm:py-3 px-2 ws-sm:px-4 sticky left-0 bg-emerald-100  z-20 text-emerald-800  border-r-2 border-emerald-300  shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                       <div className="flex items-center gap-1 ws-sm:gap-2">
                         <ArrowUpRight className="h-3.5 w-3.5 ws-sm:h-4 ws-sm:w-4 text-emerald-600 shrink-0" />

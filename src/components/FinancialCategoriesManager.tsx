@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
 import { SectionCard } from "./settings/SectionCard";
-import { GripVertical, Trash2 } from "lucide-react";
+import { CornerLeftUp, GripVertical, Pencil, Trash2 } from "lucide-react";
 import type { FinancialCategory, FinancialRecord, FinancialType } from "../types";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ColorPicker } from "./ui/ColorPicker";
@@ -10,10 +10,12 @@ import { inheritedColor, nextCategoryColor } from "../utils/color";
 import type { Language } from "../utils/translations";
 import {
   categoryChildren,
+  categoryDescendantIds,
   moveCategory,
   nextCategorySortOrder,
-  resolveCategoryDrop,
-  type CategoryDropPosition,
+  promoteCategory,
+  renameCategory,
+  resolveCategoryPointerDrop,
   type CategoryDropTarget
 } from "../utils/financialCategoryTree";
 import { useDragAutoScroll } from "../hooks/useDragAutoScroll";
@@ -112,6 +114,32 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
   const [categoryDropTarget, setCategoryDropTarget] = useState<CategoryDropTarget | null>(null);
   const categoryTreeRef = useRef<HTMLDivElement | null>(null);
   useDragAutoScroll(draggedCategoryId !== null, categoryTreeRef);
+
+  // Inline rename state
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+
+  const startRename = (cat: FinancialCategory) => {
+    if (!canEdit) return;
+    setRenamingId(cat.id);
+    setRenameDraft(cat.name);
+  };
+
+  const commitRename = () => {
+    const id = renamingId;
+    const draft = renameDraft;
+    setRenamingId(null);
+    if (!canEdit || !id || !draft.trim()) return;
+    setFinancialCategories((prev) => renameCategory(prev, id, draft));
+  };
+
+  const handlePromoteCategory = (id: string) => {
+    if (refuseWithoutEdit()) return;
+    const next = promoteCategory(financialCategories, id);
+    if (!next || next === financialCategories) return;
+    setFinancialCategories((prev) => promoteCategory(prev, id) ?? prev);
+    (window as any).showToast?.(t("Category moved outside group", "Kategória bola presunutá mimo skupiny", "Kategória áthelyezve a csoporton kívülre"));
+  };
 
   // A colour picker fires on every pixel the pointer crosses, so the swatch
   // previews a local draft and only the colour the user settles on is saved.
@@ -256,30 +284,22 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
   };
 
   /**
-   * The top quarter of a row drops before it, the bottom quarter after it and
-   * the middle inside it. When the row cannot take the dragged category as a
-   * child (too deep), the middle falls back to the nearer edge.
+   * Resolves pointer coordinates on a row into a drop target. Dragging along the
+   * left handle gutter or top/bottom 35% reorders; dragging onto the category's
+   * own parent header promotes it outside that group.
    */
   const categoryDropFromPointer = (e: React.DragEvent<HTMLElement>, targetId: string | null): CategoryDropTarget | null => {
     if (!draggedCategoryId) return null;
-    let candidates: CategoryDropPosition[] = ["after"];
-    if (targetId !== null) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const ratio = (e.clientY - rect.top) / Math.max(rect.height, 1);
-      const nearerEdge: CategoryDropPosition = ratio < 0.5 ? "before" : "after";
-      candidates = ratio < 0.25 ? ["before"] : ratio > 0.75 ? ["after"] : ["inside", nearerEdge];
+    if (targetId === null) {
+      return resolveCategoryPointerDrop(financialCategories, draggedCategoryId, null);
     }
-    for (const position of candidates) {
-      const drop = { targetId, position };
-      if (resolveCategoryDrop(financialCategories, draggedCategoryId, drop)) return drop;
-    }
-    return null;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratioY = (e.clientY - rect.top) / Math.max(rect.height, 1);
+    const preferEdge = e.clientX - rect.left < 40;
+    return resolveCategoryPointerDrop(financialCategories, draggedCategoryId, targetId, ratioY, preferEdge);
   };
 
-  const handleCategoryDragOver = (e: React.DragEvent<HTMLElement>, targetId: string | null) => {
-    if (!draggedCategoryId) return;
-    e.stopPropagation();
-    const drop = categoryDropFromPointer(e, targetId);
+  const applyDropTarget = (e: React.DragEvent<HTMLElement>, drop: CategoryDropTarget | null) => {
     if (!drop) {
       e.dataTransfer.dropEffect = "none";
       if (categoryDropTarget) setCategoryDropTarget(null);
@@ -290,6 +310,40 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
     if (categoryDropTarget?.targetId !== drop.targetId || categoryDropTarget?.position !== drop.position) {
       setCategoryDropTarget(drop);
     }
+  };
+
+  const handleCategoryDragOver = (e: React.DragEvent<HTMLElement>, targetId: string | null) => {
+    if (!draggedCategoryId) return;
+    e.stopPropagation();
+    applyDropTarget(e, categoryDropFromPointer(e, targetId));
+  };
+
+  /**
+   * Dropping in the gaps between L1 group cards (or outside rows inside the tree
+   * container) resolves to the nearest L1 boundary so a subcategory dragged into
+   * the space between groups becomes a Level 1 main category there.
+   */
+  const handleTreeGapDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!draggedCategoryId || !categoryTreeRef.current) return;
+    const groupNodes = Array.from(categoryTreeRef.current.querySelectorAll<HTMLElement>("[data-l1-group-id]"));
+    let drop: CategoryDropTarget | null = null;
+    for (const node of groupNodes) {
+      const groupId = node.dataset.l1GroupId;
+      if (!groupId) continue;
+      const rect = node.getBoundingClientRect();
+      const midY = (rect.top + rect.bottom) / 2;
+      if (e.clientY < midY) {
+        drop = resolveCategoryPointerDrop(financialCategories, draggedCategoryId, groupId, 0, true);
+        if (drop) break;
+      } else {
+        const afterDrop = resolveCategoryPointerDrop(financialCategories, draggedCategoryId, groupId, 1, true);
+        if (afterDrop) drop = afterDrop;
+      }
+    }
+    if (!drop) {
+      drop = resolveCategoryPointerDrop(financialCategories, draggedCategoryId, null);
+    }
+    applyDropTarget(e, drop);
   };
 
   const handleCategoryDrop = (e: React.DragEvent<HTMLElement>) => {
@@ -330,22 +384,24 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
   };
 
   /** One draggable row of the category tree; `inherited` is shown while the category has none of its own. */
-  const renderCategoryRow = (cat: FinancialCategory, level: 1 | 2 | 3, inherited?: string | null) => {
+  const renderCategoryRow = (cat: FinancialCategory, level: 1 | 2 | 3, inherited?: string | null, hasRenderedChildren = false) => {
     const styles = CATEGORY_ROW_STYLES[level];
     const drop = draggedCategoryId && categoryDropTarget?.targetId === cat.id ? categoryDropTarget.position : null;
     const shownColor = categoryColor(cat) || inherited || "#6366f1";
+    const isRenaming = renamingId === cat.id;
 
     return (
       <div
         key={cat.id}
-        draggable={canEdit}
+        data-financial-category-row={cat.id}
+        draggable={canEdit && !isRenaming}
         onDragStart={(e) => handleCategoryDragStart(e, cat.id)}
         onDragEnd={endCategoryDrag}
         onDragOver={(e) => handleCategoryDragOver(e, cat.id)}
         onDrop={handleCategoryDrop}
-        title={canEdit ? t("Drag to reorder or move under another category", "Potiahnutím zmeníte poradie alebo nadradenú kategóriu", "Húzza az átrendezéshez vagy áthelyezéshez") : undefined}
-        className={`group relative flex items-center justify-between transition-[opacity,background-color,box-shadow] duration-150 ${
-          canEdit ? "cursor-grab active:cursor-grabbing" : ""
+        title={canEdit && !isRenaming ? t("Drag to reorder or move under another category; double-click name to rename", "Potiahnutím zmeníte poradie alebo nadradenú kategóriu; dvojklikom premenujete", "Húzza az átrendezéshez vagy áthelyezéshez; dupla kattintás az átnevezéshez") : undefined}
+        className={`group relative flex items-center justify-between gap-2 transition-[opacity,background-color,box-shadow] duration-150 ${
+          canEdit && !isRenaming ? "cursor-grab active:cursor-grabbing select-none" : ""
         } ${styles.row} ${
           draggedCategoryId === cat.id ? "opacity-40" : ""
         } ${drop === "inside" ? "ring-2 ring-inset ring-entity !bg-entity-subtle" : ""}`}
@@ -353,11 +409,11 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
         {drop === "before" && (
           <span className="pointer-events-none absolute inset-x-2 top-0 h-0.5 rounded-full bg-entity-solid animate-in fade-in duration-150" />
         )}
-        {drop === "after" && (
+        {drop === "after" && !hasRenderedChildren && (
           <span className="pointer-events-none absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-entity-solid animate-in fade-in duration-150" />
         )}
 
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
           <GripVertical className="h-3.5 w-3.5 shrink-0 text-gray-300 group-hover:text-entity-text transition-colors duration-150" />
           <ColorPicker
             value={shownColor}
@@ -366,26 +422,98 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
             className={styles.swatch}
           />
           {canEdit ? <ListIconPicker kind="financialCategories" itemKey={cat.id} /> : <ListIcon kind="financialCategories" itemKey={cat.id} />}
-          <span className={`truncate ${styles.name}`}>{cat.name}</span>
+          {isRenaming && canEdit ? (
+            <input
+              autoFocus
+              type="text"
+              maxLength={150}
+              value={renameDraft}
+              onChange={(e) => setRenameDraft(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onBlur={commitRename}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                  commitRename();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  setRenamingId(null);
+                }
+              }}
+              data-testid={`rename-category-input-${cat.id}`}
+              className="min-w-0 flex-1 px-2 py-0.5 rounded-md border border-entity bg-white text-ui font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-entity-ring"
+            />
+          ) : (
+            <span
+              className={`truncate ${styles.name} ${canEdit ? "cursor-text" : ""}`}
+              onDoubleClick={(e) => {
+                if (!canEdit) return;
+                e.stopPropagation();
+                startRename(cat);
+              }}
+            >
+              {cat.name}
+            </span>
+          )}
           <span className={`shrink-0 ${styles.badge}`}>{styles.badgeText}</span>
         </div>
-        {canDelete && (
-          <HoldToConfirmButton
-              tone="danger"
-              lang={userLanguage}
-              what={cat.name}
-              onConfirm={() => handleDeleteCategory(cat.id)}
-              className="p-1 text-gray-400 hover:text-rose-600 transition-colors duration-150"
-              title={t("Delete category", "Vymazať", "Törlés")}
-          >
-            <Trash2 className={styles.trash} />
-          </HoldToConfirmButton>
-        )}
+        <div className="flex items-center gap-0.5 shrink-0">
+          {canEdit && level > 1 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handlePromoteCategory(cat.id);
+              }}
+              data-testid={`promote-category-${cat.id}`}
+              className="p-1 text-gray-400 hover:text-entity-text transition-colors duration-150 cursor-pointer"
+              title={t(
+                "Move outside group (promote one level up)",
+                "Presunúť mimo skupiny (o úroveň vyššie)",
+                "Áthelyezés a csoporton kívülre (egy szinttel feljebb)"
+              )}
+            >
+              <CornerLeftUp className={styles.trash} />
+            </button>
+          )}
+          {canEdit && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                startRename(cat);
+              }}
+              data-testid={`rename-category-${cat.id}`}
+              className="p-1 text-gray-400 hover:text-entity-text transition-colors duration-150 cursor-pointer"
+              title={t("Rename category", "Premenovať kategóriu", "Kategória átnevezése")}
+            >
+              <Pencil className={styles.trash} />
+            </button>
+          )}
+          {canDelete && (
+            <HoldToConfirmButton
+                tone="danger"
+                lang={userLanguage}
+                what={cat.name}
+                onConfirm={() => handleDeleteCategory(cat.id)}
+                className="p-1 text-gray-400 hover:text-rose-600 transition-colors duration-150"
+                title={t("Delete category", "Vymazať", "Törlés")}
+            >
+              <Trash2 className={styles.trash} />
+            </HoldToConfirmButton>
+          )}
+        </div>
       </div>
     );
   };
 
   const activeTree = catTreeType === "expense" ? categoryTree.expenseTree : categoryTree.incomeTree;
+  const draggedCategory = useMemo(
+    () => (draggedCategoryId ? financialCategories.find((c) => c.id === draggedCategoryId) ?? null : null),
+    [financialCategories, draggedCategoryId]
+  );
 
   return (
     <div style={entityAccentStyle("financial") as React.CSSProperties}>
@@ -490,43 +618,131 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
         <p className="-mt-3 text-caption text-gray-500 flex items-center gap-1.5">
           <GripVertical className="h-3.5 w-3.5 shrink-0" />
           {t(
-            "Drag a category to reorder it or move it under another one; click its colour dot to recolour it.",
-            "Potiahnutím kategórie zmeníte poradie alebo ju presuniete pod inú; kliknutím na farebnú bodku zmeníte farbu.",
-            "Húzással átrendezheti vagy más kategória alá helyezheti; a színes pontra kattintva módosíthatja a színét."
+            "Drag a category to reorder it or move it outside/under another group; double-click its name or click the pencil to rename it.",
+            "Potiahnutím kategórie zmeníte poradie alebo ju presuniete mimo/pod inú skupinu; dvojklikom na názov alebo ceruzkou ju premenujete.",
+            "Húzással átrendezheti vagy csoporton kívülre/alá helyezheti; dupla kattintással vagy a ceruzával átnevezheti."
           )}
         </p>
       )}
       <div
         ref={categoryTreeRef}
         className="space-y-3"
+        onDragOver={handleTreeGapDragOver}
+        onDrop={handleCategoryDrop}
         onDragLeave={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setCategoryDropTarget(null);
+          const rt = e.relatedTarget as Node | null;
+          if (rt && !e.currentTarget.contains(rt)) {
+            setCategoryDropTarget(null);
+            return;
+          }
+          const rect = e.currentTarget.getBoundingClientRect();
+          if (
+            e.clientX < rect.left ||
+            e.clientX > rect.right ||
+            e.clientY < rect.top ||
+            e.clientY > rect.bottom
+          ) {
+            setCategoryDropTarget(null);
+          }
         }}
       >
-        {activeTree.map((l1) => (
-          <div key={l1.id} className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-2xs">
-            {/* Level 1 Header */}
-            {renderCategoryRow(l1, 1)}
+        {activeTree.map((l1) => {
+          const isDraggingDescendantOfL1 = Boolean(
+            draggedCategory && categoryDescendantIds(financialCategories, l1.id).has(draggedCategory.id)
+          );
+          const l1DropAfter = draggedCategoryId && categoryDropTarget?.targetId === l1.id && categoryDropTarget.position === "after";
 
-            {/* Level 2 Children */}
-            {l1.children.length > 0 && (
-              <div className="p-3 space-y-2 bg-gray-50">
-                {l1.children.map((l2) => (
-                  <div key={l2.id} className="pl-4 border-l-2 border-gray-200 space-y-2">
-                    {renderCategoryRow(l2, 2, categoryColor(l1))}
+          return (
+            <div
+              key={l1.id}
+              data-l1-group-id={l1.id}
+              className="relative border border-gray-200 rounded-lg overflow-hidden bg-white shadow-2xs"
+            >
+              {/* Level 1 Header */}
+              {renderCategoryRow(l1, 1, null, l1.children.length > 0)}
 
-                    {/* Level 3 Children */}
-                    {l2.children.length > 0 && (
-                      <div className="pl-6 space-y-1">
-                        {l2.children.map((l3) => renderCategoryRow(l3, 3, categoryColor(l2) || categoryColor(l1)))}
+              {/* Level 2 Children */}
+              {l1.children.length > 0 && (
+                <div className="p-3 space-y-2 bg-gray-50">
+                  {l1.children.map((l2) => {
+                    const isDraggingChildOfL2 = Boolean(draggedCategory && draggedCategory.parentId === l2.id);
+                    const l2DropAfter = draggedCategoryId && categoryDropTarget?.targetId === l2.id && categoryDropTarget.position === "after";
+
+                    return (
+                      <div key={l2.id} className="relative pl-4 border-l-2 border-gray-200 space-y-2">
+                        {renderCategoryRow(l2, 2, categoryColor(l1), l2.children.length > 0)}
+
+                        {/* Level 3 Children */}
+                        {l2.children.length > 0 && (
+                          <div className="pl-6 space-y-1">
+                            {l2.children.map((l3) => renderCategoryRow(l3, 3, categoryColor(l2) || categoryColor(l1)))}
+                          </div>
+                        )}
+
+                        {isDraggingChildOfL2 && (
+                          <div
+                            data-testid={`drop-outside-group-${l2.id}`}
+                            onDragOver={(e) => {
+                              e.stopPropagation();
+                              applyDropTarget(e, resolveCategoryPointerDrop(financialCategories, draggedCategoryId!, l2.id, 1, true));
+                            }}
+                            onDrop={handleCategoryDrop}
+                            className={`flex items-center justify-center gap-1.5 rounded-md border border-dashed px-2.5 py-1 text-micro font-semibold transition-colors ${
+                              l2DropAfter
+                                ? "border-entity-border bg-entity-subtle text-entity-text"
+                                : "border-gray-300 bg-white/80 text-gray-500"
+                            }`}
+                          >
+                            <CornerLeftUp className="h-3 w-3 shrink-0" />
+                            <span>
+                              {t(
+                                `Drop here to move outside "${l2.name}" (Level 2)`,
+                                `Pustite sem pre presun mimo „${l2.name}“ (Podkategória L2)`,
+                                `Engedje el ide a(z) „${l2.name}” csoporton kívülre helyezéshez (L2)`
+                              )}
+                            </span>
+                          </div>
+                        )}
+                        {l2DropAfter && l2.children.length > 0 && !isDraggingChildOfL2 && (
+                          <span className="pointer-events-none block h-0.5 rounded-full bg-entity-solid animate-in fade-in duration-150" />
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
+                    );
+                  })}
+
+                  {isDraggingDescendantOfL1 && (
+                    <div
+                      data-testid={`drop-outside-group-${l1.id}`}
+                      onDragOver={(e) => {
+                        e.stopPropagation();
+                        applyDropTarget(e, resolveCategoryPointerDrop(financialCategories, draggedCategoryId!, l1.id, 1, true));
+                      }}
+                      onDrop={handleCategoryDrop}
+                      className={`mt-2 flex items-center justify-center gap-1.5 rounded-md border border-dashed px-3 py-1.5 text-caption font-semibold transition-colors ${
+                        l1DropAfter
+                          ? "border-entity-border bg-entity-subtle text-entity-text"
+                          : "border-gray-300 bg-white text-gray-600"
+                      }`}
+                    >
+                      <CornerLeftUp className="h-3.5 w-3.5 shrink-0" />
+                      <span>
+                        {t(
+                          `Drop here to move outside "${l1.name}" (make Level 1)`,
+                          `Pustite sem pre presun mimo „${l1.name}“ (Hlavná kategória L1)`,
+                          `Engedje el ide a(z) „${l1.name}” csoporton kívülre helyezéshez (L1)`
+                        )}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {l1DropAfter && l1.children.length > 0 && !isDraggingDescendantOfL1 && (
+                <span className="pointer-events-none absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-entity-solid animate-in fade-in duration-150" />
+              )}
+            </div>
+          );
+        })}
 
         {/* Drop zone: the end of the main categories */}
         {draggedCategoryId && (
