@@ -1989,6 +1989,7 @@ dialog[open]::backdrop {
     filter: none !important;
     backdrop-filter: none !important;
     contain: none !important;
+    container-type: normal !important;
     isolation: auto !important;
     z-index: auto !important;
   }
@@ -1996,6 +1997,7 @@ dialog[open]::backdrop {
     position: fixed !important;
     inset: 0 !important;
     z-index: 90 !important;
+    container: workspace / inline-size;
     display: flex !important;
     flex-direction: column !important;
     width: 100vw !important;
