@@ -43,6 +43,7 @@ import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { TaskRecurringMark } from "./TaskRecurringMark";
 import { useRecurringTemplates } from "../hooks/useRecurringTemplates";
 import { TaskDescriptionMark } from "./TaskDescriptionMark";
+import { TaskActivityMarks } from "./tasks/TaskActivityMarks";
 import { DeadlinePostponedBadge } from "./TaskDeadlineExtras";
 import { clampDeadline, todayStr } from "../utils/taskDeadline";
 import { entityAccentStyle } from "../utils/entityAccent";
@@ -457,6 +458,11 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
             <TaskDescriptionMark
               description={task.description}
               label={t("Has a description", "Má popis", "Van leírása")}
+            />
+            <TaskActivityMarks
+              task={task}
+              onClick={() => setEditingTask(task)}
+              title={t("Open activity & chat", "Otvoriť aktivitu a chat", "Aktivitás és csevegés megnyitása")}
             />
             <DeadlinePostponedBadge task={task} language={userLanguage} t={t} compact />
             {task.isLocking && <Lock className="h-3 w-3 text-violet-500" />}

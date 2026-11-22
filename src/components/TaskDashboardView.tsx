@@ -92,6 +92,7 @@ import { isEmbedUrl } from "../utils/pwaInstallLogic";
 import { openTasksMiniWindow } from "../utils/popOut";
 import { clampDeadline, deadlineChange, taskCreatedDate, todayStr as todayDateStr } from "../utils/taskDeadline";
 import { TaskDescriptionMark } from "./TaskDescriptionMark";
+import { TaskActivityMarks } from "./tasks/TaskActivityMarks";
 import { DeadlinePostponedBadge } from "./TaskDeadlineExtras";
 import { useListFilter } from "../hooks/useListFilter";
 import { TaskWhatsAppMarks } from "./WhatsAppChip";
@@ -973,6 +974,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     // Edit Task Drawer State
     const [editingTask, setEditingTask] = useState<Task | null>(null);
+    const [openChatWithTask, setOpenChatWithTask] = useState(false);
 
     // Completing a task that requires a conclusion asks for it first.
     const { ask: askConclusion, dialog: conclusionDialog } = useTaskConclusionPrompt(systemLanguage);
@@ -3307,6 +3309,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             onTagClick={handleTagClick}
                             knownEntities={mentionEntities}
                         />
+                        <TaskActivityMarks task={task} onClick={() => { setOpenChatWithTask(true); setEditingTask(task); }} />
                         {task.conclusion && (
                             <span
                                 className="inline-flex items-center gap-1 text-micro font-medium text-emerald-700 bg-emerald-50/80 border border-emerald-200/60 rounded-md px-1.5 py-0.5 truncate max-w-60 ws-sm:max-w-45"
@@ -3457,6 +3460,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 onTagClick={handleTagClick}
                                 knownEntities={mentionEntities}
                             />
+                            <TaskActivityMarks task={task} onClick={() => { setOpenChatWithTask(true); setEditingTask(task); }} />
                         </div>
                         {task.conclusion && (
                             <div
@@ -3654,6 +3658,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 onTagClick={handleTagClick}
                                 knownEntities={mentionEntities}
                             />
+                            <TaskActivityMarks task={task} onClick={() => { setOpenChatWithTask(true); setEditingTask(task); }} />
                         </div>
                         {task.conclusion && (
                             <div
@@ -6249,6 +6254,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             });
                         }
                     }}
+                    initialChatOpen={openChatWithTask || undefined}
                     onSave={(next) => {
                         if (!mayEditTask(next)) return;
                         setTasks((prev) =>
@@ -6260,7 +6266,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             ? handleUnarchiveTask(next)
                             : handleArchiveTask(next)
                     }
-                    onClose={() => setEditingTask(null)}
+                    onClose={() => { setOpenChatWithTask(false); setEditingTask(null); }}
                 />
             )}
 

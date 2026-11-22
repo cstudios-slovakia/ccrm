@@ -1098,6 +1098,12 @@ export async function installBackendMocks(
   /** task id -> the title the app last pushed: time tracking joins a linked entry's title from it. */
   const pushedTaskTitles = new Map<string, string>();
   const pushedTicketTitles = new Map<string, string>();
+  const taskActivitiesStore = new Map<string, any[]>();
+  const taskReactionsStore = new Map<string, Record<string, string[]>>();
+  const taskSnapshotStore = new Map<string, { status?: string; priority?: string; deadline?: string }>(
+    TASKS.map((t) => [t.id, { status: t.status, priority: t.priority, deadline: t.deadline }]),
+  );
+  let nextActivityId = 100;
 
   await page.route('**/sync.php**', (route) => {
     const request = route.request();
@@ -1108,6 +1114,11 @@ export async function installBackendMocks(
         contentType: 'application/json',
         body: JSON.stringify({
           ...payload,
+          tasks: payload.tasks.map((tk: any) => ({
+            ...tk,
+            commentCount: (taskActivitiesStore.get(tk.id) ?? []).filter((it) => it.kind === 'comment' && !it.deleted).length,
+            reactions: taskReactionsStore.get(tk.id) ?? tk.reactions ?? null,
+          })),
           roles: options.roles ?? payload.roles,
           users: [...payload.users, ...(options.extraUsers ?? [])]
             .map((u) => (u.email === signedIn.email ? signedIn : u))
@@ -1140,11 +1151,32 @@ export async function installBackendMocks(
         customDashboards?: { id?: string }[];
         warehouseItems?: unknown[];
         settings?: { integrationsConfig?: unknown };
-        tasks?: { id?: string; title?: string }[];
+        tasks?: { id?: string; title?: string; status?: string; priority?: string; deadline?: string }[];
         tickets?: { id?: string; title?: string; subject?: string }[];
       };
+      const actor = signedIn.name || 'Erik';
+      const nowStamp = () => new Date().toISOString().slice(0, 23).replace('T', ' ');
       for (const tk of body?.tasks ?? []) {
         if (tk?.id && typeof tk.title === 'string') pushedTaskTitles.set(tk.id, tk.title);
+        if (tk?.id) {
+          const prev = taskSnapshotStore.get(tk.id);
+          const list = taskActivitiesStore.get(tk.id) ?? [];
+          if (prev) {
+            if (tk.status && prev.status && tk.status !== prev.status) {
+              list.push({ id: nextActivityId++, taskId: tk.id, kind: 'state_change', eventType: 'status', authorName: actor, body: '', meta: { from: prev.status, to: tk.status }, reactions: {}, createdAt: nowStamp(), updatedAt: nowStamp() });
+            }
+            if (tk.priority && prev.priority && tk.priority !== prev.priority) {
+              list.push({ id: nextActivityId++, taskId: tk.id, kind: 'state_change', eventType: 'priority', authorName: actor, body: '', meta: { from: prev.priority, to: tk.priority }, reactions: {}, createdAt: nowStamp(), updatedAt: nowStamp() });
+            }
+            if (tk.deadline && prev.deadline && tk.deadline !== prev.deadline) {
+              list.push({ id: nextActivityId++, taskId: tk.id, kind: 'state_change', eventType: 'deadline', authorName: actor, body: '', meta: { from: prev.deadline, to: tk.deadline, postponed: tk.deadline > prev.deadline }, reactions: {}, createdAt: nowStamp(), updatedAt: nowStamp() });
+            }
+          } else {
+            list.push({ id: nextActivityId++, taskId: tk.id, kind: 'state_change', eventType: 'created', authorName: actor, body: '', meta: {}, reactions: {}, createdAt: nowStamp(), updatedAt: nowStamp() });
+          }
+          taskActivitiesStore.set(tk.id, list);
+          taskSnapshotStore.set(tk.id, { status: tk.status ?? prev?.status, priority: tk.priority ?? prev?.priority, deadline: tk.deadline ?? prev?.deadline });
+        }
       }
       for (const tk of body?.tickets ?? []) {
         const title = tk?.title || tk?.subject;
@@ -1691,6 +1723,151 @@ export async function installBackendMocks(
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
     }
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+  });
+
+  const tinyPngBytes = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  await page.route('**/uploads/tasks/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'image/png', body: tinyPngBytes }),
+  );
+
+  // Stateful in-memory mock for ClickUp-style Task Activity, Chat Images & Reactions.
+  await page.route('**/api/task_activity.php**', async (route) => {
+    const req = route.request();
+    const actor = signedIn.name || 'Erik';
+    const stamp = () => new Date().toISOString().slice(0, 23).replace('T', ' ');
+    const toggleRx = (rxMap: Record<string, string[]> | undefined, emoji: string) => {
+      const next: Record<string, string[]> = { ...(rxMap || {}) };
+      const cur = next[emoji] || [];
+      if (cur.includes(actor)) {
+        const filtered = cur.filter((u) => u !== actor);
+        if (filtered.length === 0) delete next[emoji];
+        else next[emoji] = filtered;
+      } else {
+        next[emoji] = [...cur, actor];
+      }
+      return next;
+    };
+
+    if (req.method() === 'GET') {
+      const url = new URL(req.url());
+      const taskId = url.searchParams.get('taskId') || '';
+      const afterId = url.searchParams.get('afterId');
+      const list = taskActivitiesStore.get(taskId) ?? [];
+      const active = list.filter((it) => !it.deleted);
+      const commentCount = active.filter((it) => it.kind === 'comment').length;
+      const taskReactions = taskReactionsStore.get(taskId) ?? {};
+      const items = afterId !== null ? list.filter((it) => it.id > Number(afterId)) : active;
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          items,
+          hasMore: false,
+          cursorUpdated: stamp(),
+          commentCount,
+          taskReactions,
+        }),
+      });
+    }
+
+    const contentType = req.headers()['content-type'] || '';
+    if (contentType.includes('multipart/form-data')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          image: {
+            url: `/uploads/tasks/2026-11/ta_${nextActivityId++}abcdef123456.png`,
+            name: 'board-screenshot.png',
+            w: 120,
+            h: 80,
+            size: tinyPngBytes.length,
+          },
+        }),
+      });
+    }
+
+    const body = JSON.parse(req.postData() || '{}');
+    const taskId = String(body.taskId || '');
+    const list = taskActivitiesStore.get(taskId) ?? [];
+
+    if (body.action === 'post_comment') {
+      const now = stamp();
+      const item = {
+        id: nextActivityId++,
+        taskId,
+        kind: 'comment',
+        eventType: null,
+        authorName: actor,
+        body: String(body.body || ''),
+        meta: Array.isArray(body.images) && body.images.length > 0 ? { images: body.images } : null,
+        reactions: {},
+        createdAt: now,
+        updatedAt: now,
+      };
+      list.push(item);
+      taskActivitiesStore.set(taskId, list);
+      const commentCount = list.filter((it) => it.kind === 'comment' && !it.deleted).length;
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, item, commentCount }),
+      });
+    }
+
+    if (body.action === 'toggle_task_reaction') {
+      const next = toggleRx(taskReactionsStore.get(taskId), String(body.emoji || ''));
+      taskReactionsStore.set(taskId, next);
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, taskReactions: next }),
+      });
+    }
+
+    if (body.action === 'toggle_message_reaction') {
+      const aid = Number(body.activityId);
+      const target = list.find((it) => it.id === aid);
+      const next = toggleRx(target?.reactions, String(body.emoji || ''));
+      if (target) {
+        target.reactions = next;
+        target.updatedAt = stamp();
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, id: aid, reactions: next }),
+      });
+    }
+
+    if (body.action === 'edit_comment') {
+      const aid = Number(body.activityId);
+      const target = list.find((it) => it.id === aid);
+      if (target) {
+        target.body = String(body.body || '');
+        target.meta = { ...(target.meta || {}), editedAt: new Date().toISOString() };
+        target.updatedAt = stamp();
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, item: target }) });
+    }
+
+    if (body.action === 'delete_comment') {
+      const aid = Number(body.activityId);
+      const target = list.find((it) => it.id === aid);
+      if (target) {
+        target.deleted = true;
+        target.updatedAt = stamp();
+      }
+      const commentCount = list.filter((it) => it.kind === 'comment' && !it.deleted).length;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, deletedId: aid, commentCount }) });
+    }
+
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
   });
 
   await page.route('**/upload.php', (route) =>

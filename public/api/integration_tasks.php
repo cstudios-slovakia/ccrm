@@ -16,6 +16,7 @@
 
 require_once __DIR__ . '/brand.php';
 require_once __DIR__ . '/task_done.php';
+require_once __DIR__ . '/task_activity_lib.php';
 
 if (!function_exists('ccrm_int_handle_task_push')) {
 
@@ -477,6 +478,8 @@ if (!function_exists('ccrm_int_handle_task_push')) {
         if (function_exists('ccrm_migrate_integration_tasks')) {
             ccrm_migrate_integration_tasks($pdo);
         }
+        ccrm_migrate_task_activities($pdo);
+        ccrm_migrate_task_activities($pdo);
 
         $pdo->beginTransaction();
         try {
@@ -510,8 +513,37 @@ if (!function_exists('ccrm_int_handle_task_push')) {
                     $row = ccrm_int_task_create($pdo, $client, $in, $composed, $meta, $ownerName, $assigneeNames, $states);
                     $applied = array_keys($composed);
                     $created = true;
+                    ccrm_record_task_created($pdo, (string)$row['id'], $ownerName);
                 } else {
+                    $oldAssStmt = $pdo->prepare("SELECT `user_name` FROM `task_assignees` WHERE `task_id` = ?");
+                    $oldAssStmt->execute([(string)$row['id']]);
+                    $oldAssigneesInt = $oldAssStmt->fetchAll(\PDO::FETCH_COLUMN) ?: [];
                     $applied = ccrm_int_task_merge($pdo, $client, $row, json_decode((string)$ref['applied_snapshot'], true) ?: [], $composed, $in, $meta, $ownerName, $assigneeNames, $states);
+                    if (!empty($applied)) {
+                        $afterStmt = $pdo->prepare("SELECT `status`, `priority`, `deadline`, `archived`, `conclusion` FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " LIMIT 1");
+                        $afterStmt->execute([(string)$row['id']]);
+                        $afterRow = $afterStmt->fetch(\PDO::FETCH_ASSOC);
+                        $newAssStmt = $pdo->prepare("SELECT `user_name` FROM `task_assignees` WHERE `task_id` = ?");
+                        $newAssStmt->execute([(string)$row['id']]);
+                        $newAssigneesInt = $newAssStmt->fetchAll(\PDO::FETCH_COLUMN) ?: [];
+                        if ($afterRow) {
+                            ccrm_record_task_changes($pdo, (string)$row['id'], [
+                                'status' => $row['status'] ?? null,
+                                'priority' => $row['priority'] ?? null,
+                                'deadline' => $row['deadline'] ?? null,
+                                'archived' => !empty($row['archived']),
+                                'conclusion' => $row['conclusion'] ?? null,
+                                'assignees' => $oldAssigneesInt,
+                            ], [
+                                'status' => $afterRow['status'] ?? null,
+                                'priority' => $afterRow['priority'] ?? null,
+                                'deadline' => $afterRow['deadline'] ?? null,
+                                'archived' => !empty($afterRow['archived']),
+                                'conclusion' => $afterRow['conclusion'] ?? null,
+                                'assignees' => $newAssigneesInt,
+                            ], $ownerName);
+                        }
+                    }
                 }
                 $pdo->prepare("UPDATE `integration_refs` SET `local_id` = ?, `revision` = ?, `applied_snapshot` = ? WHERE `id` = ?")
                     ->execute([$row['id'], $in['revision'], json_encode($composed, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $ref['id']]);
@@ -858,6 +890,7 @@ if (!function_exists('ccrm_int_handle_task_push')) {
         if (function_exists('ccrm_migrate_integration_tasks')) {
             ccrm_migrate_integration_tasks($pdo);
         }
+        ccrm_migrate_task_activities($pdo);
 
         $chkKind = $pdo->prepare("SELECT `task_kind` FROM `tasks` WHERE `id` = ? LIMIT 1"); /* recurring-template: template refusal */
         $chkKind->execute([$id]);
@@ -878,9 +911,17 @@ if (!function_exists('ccrm_int_handle_task_push')) {
             }
             if (!ccrm_int_task_is_done((string)$row['status'], $states)) {
                 ccrm_int_task_require_conclusion($pdo, $row, $conclusion);
+                $doneState = ccrm_int_task_done_state($states);
                 $pdo->prepare(
                     "UPDATE `tasks` SET `status` = ?, `completed_by` = ?, `completed_at` = ?, `conclusion` = COALESCE(?, `conclusion`), `updated_at` = NOW(3) WHERE `id` = ? AND " . ccrm_sql_real_tasks()
-                )->execute([ccrm_int_task_done_state($states), $byName, date('Y-m-d H:i'), $conclusion === '' ? null : $conclusion, $id]);
+                )->execute([$doneState, $byName, date('Y-m-d H:i'), $conclusion === '' ? null : $conclusion, $id]);
+                ccrm_record_task_changes($pdo, $id, [
+                    'status' => $row['status'] ?? null,
+                    'conclusion' => $row['conclusion'] ?? null,
+                ], [
+                    'status' => $doneState,
+                    'conclusion' => $conclusion !== '' ? $conclusion : ($row['conclusion'] ?? null),
+                ], $byName);
                 $completedNow = true;
             } else {
                 $completedNow = false;

@@ -1899,6 +1899,28 @@ ${log.payload || ''}
     });
   };
 
+  useEffect(() => {
+    const onTaskMetaPatch = (e: Event) => {
+      const detail = (e as CustomEvent<{ taskId?: string; commentCount?: number; reactions?: Record<string, string[]> | null }>).detail;
+      if (!detail?.taskId) return;
+      setTasks(prev => {
+        const next = prev.map(tk =>
+          tk.id === detail.taskId
+            ? {
+                ...tk,
+                ...(detail.commentCount !== undefined ? { commentCount: detail.commentCount } : {}),
+                ...(detail.reactions !== undefined ? { reactions: detail.reactions } : {}),
+              }
+            : tk
+        );
+        tasksRef.current = next;
+        return next;
+      });
+    };
+    window.addEventListener("ccrm-task-meta-patch", onTaskMetaPatch);
+    return () => window.removeEventListener("ccrm-task-meta-patch", onTaskMetaPatch);
+  }, []);
+
   const updateRecurringTasksAndSync = (newRec: RecurringTaskTemplate[] | ((prev: RecurringTaskTemplate[]) => RecurringTaskTemplate[])) => {
     setRecurringTasks(prev => {
       const next = typeof newRec === "function" ? newRec(prev) : newRec;
@@ -5140,7 +5162,7 @@ ${log.payload || ''}
             and, together with the beforeunload guard, that they should not leave or
             reload the page until it disappears. */}
         {isSyncIndicatorVisible && (
-          <div className="pointer-events-auto flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-900/90 text-white shadow-lg backdrop-blur-sm animate-in fade-in slide-in-from-bottom duration-200 select-none">
+          <div className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-900/90 text-white shadow-lg backdrop-blur-sm animate-in fade-in slide-in-from-bottom duration-200 select-none">
             <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" />
             <span className="type-overline">
               {userLanguage === "sk" ? "Ukladá sa…" : userLanguage === "hu" ? "Mentés…" : "Saving…"}

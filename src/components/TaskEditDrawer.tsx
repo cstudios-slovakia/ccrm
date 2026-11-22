@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
     Archive as ArchiveIcon,
@@ -8,6 +8,8 @@ import {
     FolderKanban,
     Hash,
     Lock,
+    MessageSquare,
+    PanelRightOpen,
     RotateCcw,
     Ticket as TicketIcon,
     Timer,
@@ -15,6 +17,8 @@ import {
     UserCheck,
     X,
 } from "lucide-react";
+import { useUserPref } from "../utils/userPrefs";
+import { TaskActivityPanel } from "./tasks/TaskActivityPanel";
 import type { Lead, Project, Task, Ticket, UserProfile, RecurringTaskTemplate, TaskRecurrence } from "../types";
 import { AgencyWorkerSelect } from "./agency/AgencyWorkerSelect";
 import { TaskRecurrenceFields, createDefaultRecurrence } from "./TaskRecurrenceFields";
@@ -198,6 +202,10 @@ interface TaskEditDrawerProps {
     onToggleArchive?: (task: Task) => void;
     /** Resolves true once the task is really gone; the drawer only closes then. */
     onDelete?: (task: Task) => Promise<boolean>;
+    /** Called when task comment count or reaction counts change in the activity panel. */
+    onTaskMetaPatch?: (taskId: string, patch: { commentCount?: number; reactions?: Record<string, string[]> | null }) => void;
+    /** Force the Activity & Chat pane open initially (e.g. clicking a board comment badge). */
+    initialChatOpen?: boolean;
     /** Called after the closing animation has played. */
     onClose: () => void;
 }
@@ -236,12 +244,28 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     onDeleteOccurrence,
     onToggleArchive,
     onDelete,
+    onTaskMetaPatch,
+    initialChatOpen,
     onClose,
 }) => {
     const t: Translate = (en, sk, hu) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
     const isTemplate = isTemplateProp || Boolean((task as any).recurrence);
     const [draft, setDraft] = useState<Task>(task as Task);
+    const [chatExpandedPref, setChatExpandedPref] = useUserPref("taskDrawerChatExpanded");
+    const showChatPane = !isTemplate && Boolean(draft.id);
+    const [chatOpen, setChatOpen] = useState<boolean>(() => !isTemplate && Boolean(initialChatOpen ?? chatExpandedPref));
+    const [mobileTab, setMobileTab] = useState<"details" | "activity">(() => (initialChatOpen ? "activity" : "details"));
+    const handleTaskMetaChange = useCallback(
+        (taskId: string, patch: { commentCount?: number; reactions?: Record<string, string[]> | null }) => {
+            setDraft((prev) => (prev.id === taskId ? { ...prev, ...patch } : prev));
+            if (typeof window !== "undefined") {
+                window.dispatchEvent(new CustomEvent("ccrm-task-meta-patch", { detail: { taskId, ...patch } }));
+            }
+            onTaskMetaPatch?.(taskId, patch);
+        },
+        [onTaskMetaPatch],
+    );
     const [descVersion, setDescVersion] = useState(0);
     const [templateRecurrence, setTemplateRecurrence] = useState<TaskRecurrence>(() =>
         (task as any).recurrence ? (task as any).recurrence : createDefaultRecurrence((task as Task).deadline)
@@ -291,6 +315,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
+            if (e.defaultPrevented) return;
             if (e.key === "Escape" && !occurrenceDeleteDialogOpen) {
                 e.stopPropagation();
                 requestClose();
@@ -465,10 +490,11 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                 role="dialog"
                 aria-modal="true"
                 aria-label={draft.title || t("Task", "Úloha", "Feladat")}
-                className={`relative w-full max-w-xl bg-white border-l border-gray-200 shadow-lg h-full flex flex-col overflow-hidden ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
+                className={`relative w-full ${showChatPane && chatOpen ? "max-w-xl lg:max-w-5xl" : "max-w-xl"} bg-white border-l border-gray-200 shadow-lg h-full flex flex-col lg:flex-row overflow-hidden transition-[max-width] duration-200 ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
             >
+                <div className="flex-1 min-w-0 flex flex-col min-h-0 h-full">
                 <div className="px-6 pt-6 pb-4 border-b border-gray-200 space-y-2 shrink-0">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                         <span className="type-overline text-entity-text bg-entity-subtle border border-entity-border px-2 py-0.5 rounded-md flex items-center gap-1.5">
                             {isTemplate ? (
                                 <>
@@ -486,19 +512,73 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 </>
                             )}
                         </span>
-                        <button
-                            type="button"
-                            onClick={requestClose}
-                            aria-label={t("Close", "Zavrieť", "Bezárás")}
-                            title={t("Close", "Zavrieť", "Bezárás")}
-                            className="p-1 hover:bg-gray-100 active:scale-95 rounded-md text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
-                        >
-                            <X className="h-5 w-5" />
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                            {showChatPane && (
+                                <button
+                                    type="button"
+                                    data-testid="task-drawer-chat-toggle"
+                                    onClick={() => {
+                                        const next = !chatOpen;
+                                        setChatOpen(next);
+                                        setChatExpandedPref(next);
+                                    }}
+                                    title={chatOpen ? t("Hide Activity & Chat", "Skryť aktivitu a chat", "Aktivitás és csevegés elrejtése") : t("Show Activity & Chat", "Zobraziť aktivitu a chat", "Aktivitás és csevegés megjelenítése")}
+                                    className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-micro font-bold transition-colors cursor-pointer ${
+                                        chatOpen
+                                            ? "bg-entity-subtle border-entity-border text-entity-text"
+                                            : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+                                    }`}
+                                >
+                                    {chatOpen ? <MessageSquare className="h-3.5 w-3.5" /> : <PanelRightOpen className="h-3.5 w-3.5" />}
+                                    <span>{t("Activity & Chat", "Aktivita a chat", "Aktivitás és csevegés")}</span>
+                                    {(draft.commentCount ?? 0) > 0 && (
+                                        <span className="px-1.5 py-0.5 rounded-full bg-entity-solid text-white tabular-nums">
+                                            {draft.commentCount}
+                                        </span>
+                                    )}
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={requestClose}
+                                aria-label={t("Close", "Zavrieť", "Bezárás")}
+                                title={t("Close", "Zavrieť", "Bezárás")}
+                                className="p-1 hover:bg-gray-100 active:scale-95 rounded-md text-gray-400 hover:text-gray-600 transition-all cursor-pointer"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
                     </div>
                     <h1 className="type-page-title text-gray-900 leading-snug break-words">
                         {draft.title || t("Untitled Task", "Úloha bez názvu", "Névtelen feladat")}
                     </h1>
+                    {showChatPane && (
+                        <div className="lg:hidden grid grid-cols-2 gap-1 bg-gray-100 p-0.5 rounded-lg border border-gray-200">
+                            <button
+                                type="button"
+                                onClick={() => setMobileTab("details")}
+                                className={`py-1.5 rounded-md text-micro font-bold transition-all cursor-pointer ${
+                                    mobileTab === "details" ? "bg-white text-gray-900 shadow-2xs" : "text-gray-500"
+                                }`}
+                            >
+                                {t("Details", "Detaily", "Részletek")}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setMobileTab("activity")}
+                                className={`py-1.5 rounded-md text-micro font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                    mobileTab === "activity" ? "bg-white text-entity-text shadow-2xs" : "text-gray-500"
+                                }`}
+                            >
+                                <span>{t("Activity & Chat", "Aktivita a chat", "Aktivitás")}</span>
+                                {(draft.commentCount ?? 0) > 0 && (
+                                    <span className="px-1.5 rounded-full bg-entity-subtle text-entity-text tabular-nums">
+                                        {draft.commentCount}
+                                    </span>
+                                )}
+                            </button>
+                        </div>
+                    )}
                 </div>
                 <form
                     onSubmit={(e) => {
@@ -552,7 +632,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         }));
                         requestClose();
                     }}
-                    className="flex-1 min-h-0 flex flex-col"
+                    className={`flex-1 min-h-0 flex-col ${showChatPane && mobileTab === "activity" ? "hidden lg:flex" : "flex"}`}
                 >
                     <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 text-ui font-bold">
                         {!isTemplate && Boolean((task as Task).recurringSourceId) && (
@@ -1202,6 +1282,31 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         )}
                     </div>
                 </form>
+                </div>
+                {showChatPane && (chatOpen || mobileTab === "activity") && (
+                    <div
+                        className={`w-full lg:w-96 xl:w-105 min-h-0 flex-1 lg:flex-none lg:h-full lg:border-l border-gray-200 flex-col ${
+                            mobileTab === "activity" ? "flex" : "hidden"
+                        } ${chatOpen ? "lg:flex" : "lg:hidden"}`}
+                    >
+                        <TaskActivityPanel
+                            task={draft}
+                            users={users}
+                            currentUserName={currentUserName}
+                            currentUserRole={effectiveUser.role}
+                            systemLanguage={systemLanguage}
+                            taskStates={taskStates}
+                            taskStateColors={taskStateColors}
+                            mentionEntities={mentionEntities}
+                            onTagClick={onTagClick}
+                            onTaskMetaChange={handleTaskMetaChange}
+                            onCollapse={() => {
+                                setChatOpen(false);
+                                setChatExpandedPref(false);
+                            }}
+                        />
+                    </div>
+                )}
             </div>
         </div>,
         document.body,

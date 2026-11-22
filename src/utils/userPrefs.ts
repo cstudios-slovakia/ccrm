@@ -264,6 +264,8 @@ export interface UserPrefs {
   taskCalendarActiveLens: string;
   /** Whether the #tasks calendar panel is expanded to full width. */
   taskCalendarExpanded: boolean;
+  /** Whether the TaskEditDrawer right-hand Activity & Chat panel is expanded on desktop. */
+  taskDrawerChatExpanded: boolean;
 }
 
 export const DEFAULT_USER_PREFS: UserPrefs = {
@@ -321,6 +323,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   taskCalendarFavorites: ["work", "payments"],
   taskCalendarActiveLens: "tasks",
   taskCalendarExpanded: false,
+  taskDrawerChatExpanded: true,
 };
 
 /** Anything with a metadata_json blob — UserProfile, or a raw sync.php row. */

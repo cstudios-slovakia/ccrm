@@ -1023,6 +1023,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'dueInferred' => ccrm_task_due_inferred($row),
                 'recurringSourceId' => $row['recurring_source_id'] ?? null,
                 'recurringOccurrenceDate' => $row['recurring_occurrence_date'] ?? null,
+                'commentCount' => (int)($row['comment_count'] ?? 0),
+                'reactions' => (!empty($row['reactions_json']) && is_array($rx = json_decode((string)$row['reactions_json'], true))) ? $rx : null,
                 'assignedUsers' => $assignedUsers,
                 'tags' => $tagsByTask[$taskId] ?? []
             ];
@@ -5026,16 +5028,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $isNewTask = !isset($dbTasks[$taskId]);
                 $oldTaskStatus = null;
                 $oldTaskOwner = null;
+                $oldTaskPriority = null;
+                $oldTaskDeadline = null;
+                $oldTaskArchived = false;
+                $oldTaskConclusion = null;
                 $oldRequiresConclusion = false;
                 $oldRelatedTicketId = null;
                 $oldRelatedAgencyWorkerId = null;
                 if (!$isNewTask) {
-                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner`, `requires_conclusion`, `related_ticket_id`, `related_agency_worker_id`, `completed_at` FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " LIMIT 1");
+                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner`, `priority`, `deadline`, `archived`, `conclusion`, `requires_conclusion`, `related_ticket_id`, `related_agency_worker_id`, `completed_at` FROM `tasks` WHERE `id` = ? AND " . ccrm_sql_real_tasks() . " LIMIT 1");
                     $oldStatusStmt->execute([$taskId]);
                     $oldRow = $oldStatusStmt->fetch(PDO::FETCH_ASSOC);
                     if ($oldRow) {
                         $oldTaskStatus = $oldRow['status'] ?? null;
                         $oldTaskOwner = $oldRow['owner'] ?? null;
+                        $oldTaskPriority = $oldRow['priority'] ?? null;
+                        $oldTaskDeadline = $oldRow['deadline'] ?? null;
+                        $oldTaskArchived = intval($oldRow['archived'] ?? 0) === 1;
+                        $oldTaskConclusion = $oldRow['conclusion'] ?? null;
                         $oldRequiresConclusion = intval($oldRow['requires_conclusion'] ?? 0) === 1;
                         $oldRelatedTicketId = (isset($oldRow['related_ticket_id']) && $oldRow['related_ticket_id'] !== '') ? $oldRow['related_ticket_id'] : null;
                         $oldRelatedAgencyWorkerId = (isset($oldRow['related_agency_worker_id']) && $oldRow['related_agency_worker_id'] !== '') ? (string)$oldRow['related_agency_worker_id'] : null;
@@ -5262,6 +5272,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ccrm_send_task_assigned_email_notification($pdo, $reassignedTask, $sessionUserName);
                         ccrm_send_task_assigned_push_notification($pdo, $reassignedTask, $sessionUserName);
                     }
+                }
+
+                // Record task creation or field diffs into the lightweight ClickUp-style activity timeline
+                require_once __DIR__ . '/api/task_activity_lib.php';
+                if ($isNewTask) {
+                    ccrm_record_task_created($pdo, $taskId, $sessionUserName);
+                } else {
+                    ccrm_record_task_changes($pdo, $taskId, [
+                        'status' => $oldTaskStatus,
+                        'priority' => $oldTaskPriority,
+                        'deadline' => $oldTaskDeadline,
+                        'archived' => $oldTaskArchived,
+                        'conclusion' => $oldTaskConclusion,
+                        'assignees' => $oldAssignees,
+                    ], [
+                        'status' => $t['status'] ?? 'todo',
+                        'priority' => $t['priority'] ?? 'medium',
+                        'deadline' => $t['deadline'],
+                        'archived' => !empty($t['archived']),
+                        'conclusion' => $incomingConclusion !== '' ? $incomingConclusion : null,
+                        'assignees' => isset($t['assignedUsers']) && is_array($t['assignedUsers']) ? $t['assignedUsers'] : [],
+                    ], $sessionUserName);
                 }
 
                 // Sync task tags (Delete & Insert list)

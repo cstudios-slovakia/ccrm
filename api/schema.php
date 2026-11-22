@@ -182,6 +182,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `deadline_moves` INT NOT NULL DEFAULT 0 COMMENT 'How many times the deadline was pushed to a later date',
               `first_started_at` DATETIME NULL COMMENT 'First time task left initial unstarted state or was completed',
               `reopened_count` INT NOT NULL DEFAULT 0 COMMENT 'How many times task was reopened from a done state',
+              `comment_count` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Denormalized active comment count in task_activities',
+              `reactions_json` VARCHAR(1000) NULL COMMENT 'Task emoji reactions map {emoji: [userName]}',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
@@ -1587,6 +1589,9 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX `idx_ccevt_cal_dates` (`calendar_id`, `deleted_at`, `start_date`, `end_date`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
+            // ClickUp-style task activity, chat messages, and state-change timeline
+            "CREATE TABLE IF NOT EXISTS `task_activities` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `task_id` VARCHAR(50) NOT NULL, `kind` ENUM('comment', 'state_change') NOT NULL DEFAULT 'comment', `event_type` VARCHAR(32) NULL, `author_name` VARCHAR(100) NOT NULL DEFAULT '', `body` TEXT NULL, `meta_json` TEXT NULL, `reactions_json` VARCHAR(1000) NULL, `deleted_at` DATETIME NULL, `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3), INDEX `idx_ta_task_id` (`task_id`, `id`), INDEX `idx_ta_task_updated` (`task_id`, `updated_at`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
             // Agency & Workforce Leasing module tables (opt-in module; separate from `leads`)
             "CREATE TABLE IF NOT EXISTS `agency_workers` (
               `id` VARCHAR(100) NOT NULL PRIMARY KEY,
@@ -2404,6 +2409,7 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_recurring_tasks($pdo);
         ccrm_migrate_weekly_plan($pdo);
         ccrm_migrate_custom_calendars($pdo);
+        ccrm_migrate_task_activities($pdo);
         ccrm_migrate_agency($pdo);
         require_once __DIR__ . '/project_breakdown_migrations.php';
         ccrm_heal_project_breakdown_columns($pdo);
@@ -3696,7 +3702,7 @@ if (!function_exists('ccrm_schema_statements')) {
      */
     function ccrm_schema_fingerprint(): string {
         $parts = [];
-        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/project_breakdown_migrations.php'] as $file) {
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/project_breakdown_migrations.php', __DIR__ . '/task_activity_lib.php'] as $file) {
             $parts[] = is_file($file) ? md5_file($file) : '-';
         }
         return md5(implode('|', $parts));

@@ -381,6 +381,10 @@ export interface Task {
   recurringSourceId?: string | null;
   /** The unshifted scheduled date (YYYY-MM-DD) this occurrence was created for. */
   recurringOccurrenceDate?: string | null;
+  /** Denormalized count of active comments in task_activities. */
+  commentCount?: number;
+  /** Task-level emoji reactions map (`emoji -> userNames[]`). */
+  reactions?: Record<string, string[]> | null;
 }
 
 /** Settings → Tasks. Stored as one blob, like {@link ProjectAutoCreateSettings}. */
@@ -1905,6 +1909,51 @@ export interface CustomCalendarEvent {
   createdAt?: string | null;
   updatedAt?: string | null;
 }
+
+export interface TaskChatImage {
+  url: string;
+  name: string;
+  w: number;
+  h: number;
+  size?: number;
+}
+
+export type TaskActivityEventType =
+  | "created"
+  | "status"
+  | "priority"
+  | "deadline"
+  | "assignees"
+  | "archived"
+  | "conclusion";
+
+export type TaskActivityFilter = "all" | "comments" | "history";
+
+export interface TaskActivityItem {
+  id: number;
+  taskId: string;
+  kind: "comment" | "state_change";
+  eventType?: TaskActivityEventType | null;
+  authorName: string;
+  body: string;
+  meta?: {
+    images?: TaskChatImage[];
+    editedAt?: string;
+    from?: string;
+    to?: string;
+    postponed?: boolean;
+    added?: string[];
+    removed?: string[];
+    archived?: boolean;
+    text?: string;
+    [key: string]: unknown;
+  } | null;
+  reactions?: Record<string, string[]> | null;
+  deleted?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 
 
 
