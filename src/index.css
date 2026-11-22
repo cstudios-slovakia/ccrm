@@ -1995,11 +1995,13 @@ dialog[open]::backdrop {
   isolation: auto !important;
   z-index: auto !important;
 }
-.ccrm-table-fullscreen-host {
+.ccrm-table-fullscreen-host,
+.ccrm-table-fullscreen-host:popover-open {
   position: fixed !important;
   inset: 0 !important;
   z-index: 9990 !important;
   display: block !important;
+  container: workspace / inline-size;
   width: 100vw !important;
   height: 100vh !important;
   max-width: none !important;
@@ -2011,6 +2013,20 @@ dialog[open]::backdrop {
   overflow: auto !important;
   background-color: #ffffff !important;
   box-shadow: none !important;
+  color: inherit;
+}
+.ccrm-table-fullscreen-host::backdrop {
+  background: rgba(15, 23, 42, 0.35);
+}
+.ccrm-table-fs-exit-btn,
+.ccrm-table-fs-exit-btn:popover-open {
+  position: fixed !important;
+  top: 0.75rem !important;
+  right: 1rem !important;
+  left: auto !important;
+  bottom: auto !important;
+  margin: 0 !important;
+  z-index: 9999 !important;
 }
 :is([data-theme="dark"], [data-appearance="dark"], .dark) .ccrm-table-fullscreen-host {
   background-color: #0f172a !important;

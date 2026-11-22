@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Minimize2 } from "lucide-react";
 import type { Language } from "../../utils/translations";
@@ -14,9 +14,7 @@ function isEligibleTable(table: HTMLTableElement): boolean {
   if (table.closest(".view-size-fixed")) return false;
   if (table.closest("[data-no-fullscreen]")) return false;
   if (table.closest("[data-email-body], [data-pdf-preview], .prose")) return false;
-  // Ignore tiny layout/empty tables without rows
-  const rows = table.querySelectorAll("tr");
-  if (rows.length < 1) return false;
+  if (table.querySelectorAll("tr").length < 1) return false;
   return true;
 }
 
@@ -47,6 +45,7 @@ function resolveTableHost(table: HTMLTableElement): HTMLElement | null {
 
 export const TableFullscreenEnhancer: React.FC<{ userLanguage: Language }> = ({ userLanguage }) => {
   const [activeHost, setActiveHost] = useState<HTMLElement | null>(null);
+  const exitBtnRef = useRef<HTMLButtonElement | null>(null);
 
   const labelEnter =
     userLanguage === "sk"
@@ -62,36 +61,50 @@ export const TableFullscreenEnhancer: React.FC<{ userLanguage: Language }> = ({ 
       ? "Teljes képernyő bezárása (Esc)"
       : "Exit fullscreen (Esc)";
 
-  // Exit fullscreen cleanly and restore ancestor classes
   const exitFullscreen = () => {
-    setActiveHost((prev) => {
-      if (prev) {
-        prev.classList.remove(HOST_CLASS);
-      }
-      document.querySelectorAll(`.${ANCESTOR_CLASS}`).forEach((el) => {
-        el.classList.remove(ANCESTOR_CLASS);
-      });
-      return null;
-    });
+    setActiveHost(null);
   };
 
-  // Apply/clear fullscreen classes when activeHost changes
+  // Promote activeHost into browser Top Layer via Popover API (with CSS fixed fallback)
   useEffect(() => {
     if (!activeHost) return;
     if (!document.body.contains(activeHost)) {
-      exitFullscreen();
+      setActiveHost(null);
       return;
     }
 
     const rect = activeHost.getBoundingClientRect();
+    const supportsPopover = typeof (activeHost as any).showPopover === "function";
+    const hadPopoverAttr = activeHost.hasAttribute("popover");
+    const prevPopoverVal = activeHost.getAttribute("popover");
+    const ancestors: HTMLElement[] = [];
 
     activeHost.classList.add(HOST_CLASS);
-    const ancestors: HTMLElement[] = [];
-    let cur = activeHost.parentElement;
-    while (cur && cur !== document.documentElement) {
-      cur.classList.add(ANCESTOR_CLASS);
-      ancestors.push(cur);
-      cur = cur.parentElement;
+    if (supportsPopover) {
+      try {
+        activeHost.setAttribute("popover", "manual");
+        (activeHost as any).showPopover();
+      } catch {
+        // Fallback to fixed positioning if already open or disallowed
+      }
+    } else {
+      let cur = activeHost.parentElement;
+      while (cur && cur !== document.documentElement) {
+        cur.classList.add(ANCESTOR_CLASS);
+        ancestors.push(cur);
+        cur = cur.parentElement;
+      }
+    }
+
+    // Promote exit button into Top Layer *after* activeHost so it paints above the table
+    const exitEl = exitBtnRef.current;
+    if (exitEl && typeof (exitEl as any).showPopover === "function") {
+      try {
+        exitEl.setAttribute("popover", "manual");
+        (exitEl as any).showPopover();
+      } catch {
+        /* ignore */
+      }
     }
 
     // Smooth FLIP expand animation into full viewport
@@ -101,14 +114,14 @@ export const TableFullscreenEnhancer: React.FC<{ userLanguage: Language }> = ({ 
     if (!prefersReduced && typeof activeHost.animate === "function" && rect.width > 0 && rect.height > 0) {
       const vw = window.innerWidth || rect.width;
       const vh = window.innerHeight || rect.height;
-      const sx = Math.max(0.2, Math.min(1, rect.width / vw));
-      const sy = Math.max(0.2, Math.min(1, rect.height / vh));
+      const sx = Math.max(0.25, Math.min(1, rect.width / vw));
+      const sy = Math.max(0.25, Math.min(1, rect.height / vh));
       activeHost.animate(
         [
           {
             transformOrigin: "top left",
             transform: `translate(${rect.left}px, ${rect.top}px) scale(${sx}, ${sy})`,
-            opacity: 0.92,
+            opacity: 0.94,
             borderRadius: "10px",
           },
           {
@@ -119,7 +132,7 @@ export const TableFullscreenEnhancer: React.FC<{ userLanguage: Language }> = ({ 
           },
         ],
         {
-          duration: 220,
+          duration: 240,
           easing: "cubic-bezier(0.22, 1, 0.36, 1)",
         },
       );
@@ -127,17 +140,36 @@ export const TableFullscreenEnhancer: React.FC<{ userLanguage: Language }> = ({ 
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      // Don't hijack Escape if a modal dialog is open on top
       if (document.querySelector('[role="dialog"], [aria-modal="true"]')) return;
       e.preventDefault();
       e.stopPropagation();
-      exitFullscreen();
+      setActiveHost(null);
     };
-    const onHashChange = () => exitFullscreen();
+    const onHashChange = () => setActiveHost(null);
 
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("hashchange", onHashChange);
+
     return () => {
+      if (exitEl && typeof (exitEl as any).hidePopover === "function") {
+        try {
+          (exitEl as any).hidePopover();
+        } catch {
+          /* ignore */
+        }
+      }
+      if (supportsPopover) {
+        try {
+          (activeHost as any).hidePopover();
+        } catch {
+          /* ignore */
+        }
+        if (hadPopoverAttr && prevPopoverVal !== null) {
+          activeHost.setAttribute("popover", prevPopoverVal);
+        } else {
+          activeHost.removeAttribute("popover");
+        }
+      }
       activeHost.classList.remove(HOST_CLASS);
       for (const a of ancestors) a.classList.remove(ANCESTOR_CLASS);
       window.removeEventListener("keydown", onKeyDown, true);
@@ -145,7 +177,7 @@ export const TableFullscreenEnhancer: React.FC<{ userLanguage: Language }> = ({ 
     };
   }, [activeHost]);
 
-  // Observe DOM for tables inside .workspace (and modals/drawers) and attach fullscreen icon buttons
+  // Observe DOM for tables inside .workspace and attach fullscreen icon buttons
   useEffect(() => {
     let rafId = 0;
 
@@ -183,7 +215,6 @@ export const TableFullscreenEnhancer: React.FC<{ userLanguage: Language }> = ({ 
         btn.setAttribute("aria-label", labelEnter);
       });
 
-      // Clean up orphaned buttons if a host no longer contains a table
       root.querySelectorAll(`button[${BTN_ATTR}]`).forEach((b) => {
         const parent = b.parentElement;
         if (!parent || !validHosts.has(parent)) {
@@ -213,13 +244,13 @@ export const TableFullscreenEnhancer: React.FC<{ userLanguage: Language }> = ({ 
 
   return createPortal(
     <button
+      ref={exitBtnRef}
       type="button"
       onClick={exitFullscreen}
       title={labelExit}
       aria-label={labelExit}
       data-testid="table-fullscreen-exit"
-      style={{ zIndex: 9999 }}
-      className="fixed top-3 right-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white/95 hover:bg-white text-gray-800 border border-gray-300 shadow-md text-caption font-semibold backdrop-blur-xs transition cursor-pointer"
+      className="ccrm-table-fs-exit-btn inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white/95 hover:bg-white text-gray-800 border border-gray-300 shadow-md text-caption font-semibold backdrop-blur-xs transition cursor-pointer"
     >
       <Minimize2 className="h-3.5 w-3.5" />
       <span>{labelExit}</span>
