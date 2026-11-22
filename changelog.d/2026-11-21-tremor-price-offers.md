@@ -1,1 +1,0 @@
-- Remake Price Offers list, inline offer editor, external offer form, product/client pickers, offer settings, status settings, and document preview modal in the Tremor Blocks design system with emerald (`#059669`) entity accents and cross-entity `<EntityBadge>` pills.

@@ -1,1 +1,0 @@
-- **Task delegation email & push notifications** (`public/sync.php`, `public/api/task_reminders.php`, `public/api/webpush.php`): delegating a task to another user with medium or high priority now sends both an email notification and a push notification (low priority stays silent, and delegating an existing task now sends the email as well as push).

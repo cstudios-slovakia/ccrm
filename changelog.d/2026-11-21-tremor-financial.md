@@ -1,1 +1,0 @@
-- Remake Financial Management (`Overview`, `Table`, `Movements`, `Recurring` tabs, trend controls, calibration dialog, edit drawer, create modal, status prompt, bulk bar, settings, and categories manager) in the Tremor Blocks design system with emerald (`#047857`) entity accents and `<EntityBadge>` pills for linked Projects and Clients.

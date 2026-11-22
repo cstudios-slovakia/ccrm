@@ -1,1 +1,0 @@
-- **Sync `react-is` peer dependency in `package-lock.json`** (`package-lock.json`): resolved the missing `react-is` entry required by `recharts` so `npm ci` inside Docker and CI builds succeeds cleanly.

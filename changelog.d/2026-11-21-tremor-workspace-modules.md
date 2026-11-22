@@ -1,1 +1,0 @@
-- **Workspace Modules (`MeetingRoomView.tsx`, `meeting/`, `RagAiView.tsx`, `sai/`, `AutomationView.tsx`, `SocialMediaView.tsx`, `UnifiedEntryView.tsx`, `UpdateNotes*`)**: Remade Meetings (with `tasks` portal drawer), RAG AI, SAI, Automation, Social Media (`social_media` portal drawer), Custom Registries, and Updates views in Tremor Blocks.

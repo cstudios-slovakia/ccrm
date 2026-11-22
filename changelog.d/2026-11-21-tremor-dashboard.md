@@ -1,1 +1,0 @@
-- **Dashboards & BI (`dashboard/`, `Dashboard.tsx`, `DynamicDashboardView.tsx`)**: Remade Overview Dashboard KPI cards, Analytics panels, Lead slideout (`leads` accent), Dynamic Dashboard cards (`data-widget-card`), Widget Settings & Add Widget drawers, and Marketing ROI tabs in Tremor Blocks.

@@ -1,1 +1,0 @@
-- **Fullscreen toggle on every table** (`src/components/ui/TableFullscreenEnhancer.tsx`, `src/index.css`, `src/App.tsx`): added a top-right fullscreen icon button to every data table across the app that expands the table in-place to full viewport size (with sticky headers, dark mode support, and `Esc` or button exit).

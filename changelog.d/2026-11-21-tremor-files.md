@@ -1,1 +1,0 @@
-- Remake Documents Registry (`FilesView`) and `FilePreviewPane` in the Tremor Blocks design system with entity-amber (`#b45309`) primary controls, crisp `rounded-lg`/`rounded-md` filter and table cards, and `<EntityBadge>` links for Clients and Projects.

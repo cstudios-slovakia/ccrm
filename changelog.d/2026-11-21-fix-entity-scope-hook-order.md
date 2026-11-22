@@ -1,1 +1,0 @@
-- **Fix `App` hook order for entity accent scoping** (`src/App.tsx`): moved `activeEntityHex` `useMemo` above early return paths (`!isInstalled`, `!isInitialSyncResolved`, `!currentUser`) so initial boot never triggers a React hooks count mismatch.

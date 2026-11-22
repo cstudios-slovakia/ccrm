@@ -1,1 +1,0 @@
-- **Time Tracking UI (`timeTracking/`)**: Remade Time Tracking views, HeaderTimerPill, TimerBar, EntryDrawer, ProjectTimeTab, TaskTimeControls, TimeTeamView, TimeReportsView (Tremor `BarList` Share by Project), and TimeSalaryReport in Tremor Blocks with entity accent scoping across portals and foreign-entity time controls.

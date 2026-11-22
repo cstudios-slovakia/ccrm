@@ -1,0 +1,1 @@
+function e(e,t,n,r,i){let a=e.findIndex(e=>t(e)===n),o=e.findIndex(e=>t(e)===r);if(a===-1||o===-1||n===r)return e.slice();let s=e.slice(),[c]=s.splice(a,1),l=o>a?o-1:o;return s.splice(i===`after`?l+1:l,0,c),s}export{e as t};

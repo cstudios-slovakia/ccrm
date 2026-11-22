@@ -1,1 +1,0 @@
-- Remake Clients register table, category filters, client detail tabs, contacts, WhatsApp chats, newsletter status, and financial report views in the Tremor Blocks design system using deep-teal (`#115e59`) entity accents and cross-entity `<EntityBadge>` pills.

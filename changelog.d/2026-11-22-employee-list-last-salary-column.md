@@ -1,1 +1,0 @@
-- **Last Salary column in employees list** (`src/components/employees/EmployeeListView.tsx`): added a **Last Salary** (`Posledná mzda` / `Utolsó bér`) column next to **Salary & Terms** showing each employee's most recent recorded salary amount and period (`periodKey`), or `—` when none exists.

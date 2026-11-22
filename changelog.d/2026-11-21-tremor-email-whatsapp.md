@@ -1,1 +1,0 @@
-- **Email & WhatsApp UI (`EmailView.tsx`, `email/`, `whatsapp/`)**: Remade Mail/Agent/Messaging layouts, Composer drawer, Client & Timeline slideouts (`clients` & `leads` accents), and WhatsApp module screens in Tremor Blocks.

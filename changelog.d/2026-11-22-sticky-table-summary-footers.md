@@ -1,1 +1,0 @@
-- **Sticky summary footers on all tables** (`src/index.css`): table `<tfoot>` summary/totals rows now stick cleanly to the bottom edge in both normal workspace tables and fullscreen table mode (with opaque light/dark backgrounds and print-safe fallback).

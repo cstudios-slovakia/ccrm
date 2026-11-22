@@ -1,0 +1,1 @@
+import{r as e,t}from"./bundle-mjs-Lxcv1IAw.js";var n=t({extend:{classGroups:{"font-size":[{text:[`micro`,`caption`,`ui`,`body`,`title-sm`,`title`,`heading`,`display`,`metric`]}]}}});function r(...t){return n(e(t))}export{r as t};
