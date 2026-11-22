@@ -1,0 +1,1 @@
+- **Taller default task description editor** (`src/components/TaskEditDrawer.tsx`, `src/components/QuickTaskModal.tsx`, `src/components/MeetingRoomView.tsx`): increased the default minimum and maximum heights of the task description block editor across task editing, quick-add, and meeting-room task editing.

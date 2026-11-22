@@ -607,7 +607,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 </span>
                             </label>
                             <div
-                                className={`flex flex-col min-h-36 max-h-80 overflow-y-auto rounded-md border border-gray-200 px-3 py-2.5 transition-colors font-normal ${
+                                className={`flex flex-col min-h-56 max-h-[28rem] overflow-y-auto rounded-md border border-gray-200 px-3 py-2.5 transition-colors font-normal ${
                                     !canEdit
                                         ? "bg-gray-50 cursor-default"
                                         : "bg-white focus-within:border-entity-solid focus-within:ring-2 focus-within:ring-entity-ring cursor-text"
