@@ -262,6 +262,22 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
     return merged;
   }, [rosterAiProblems, rosterProblems]);
 
+  // Most recent salary record per employee (year DESC, periodNumber DESC — matches EmployeeDetailView)
+  const lastSalaryByEmployee = useMemo(() => {
+    const map = new Map<string, EmployeeSalary>();
+    for (const s of salaries) {
+      const prev = map.get(s.employeeId);
+      if (
+        !prev ||
+        s.year > prev.year ||
+        (s.year === prev.year && (s.periodNumber || 0) > (prev.periodNumber || 0))
+      ) {
+        map.set(s.employeeId, s);
+      }
+    }
+    return map;
+  }, [salaries]);
+
   const kindLabels: Record<EmployeeKind, string> = {
     employee: t("Employees", "Zamestnanci", "Alkalmazottak"),
     contractor: t("Suppliers", "Dodávatelia", "Beszállítók"),
@@ -645,6 +661,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                   <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Employee", "Zamestnanec", "Alkalmazott")}</th>
                   <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Contact", "Kontakt", "Elérhetőség")}</th>
                   {rights.salaries && <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Salary & Terms", "Mzda a podmienky", "Bér és feltételek")}</th>}
+                  {rights.salaries && <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Last Salary", "Posledná mzda", "Utolsó bér")}</th>}
                   <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Time Tracking", "Meranie času", "Időkövetés")}</th>
                   {rights.files && <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Contracts", "Zmluvy", "Szerződések")}</th>}
                   <th className="sticky z-10 bg-gray-50 py-3.5 px-4 text-center">{t("Status", "Stav", "Állapot")}</th>
@@ -752,6 +769,27 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                         </span>
                       </td>
                       )}
+
+                      {/* Last Salary */}
+                      {rights.salaries && (() => {
+                        const lastSal = lastSalaryByEmployee.get(emp.id);
+                        return (
+                          <td className="py-3.5 px-4">
+                            {lastSal ? (
+                              <>
+                                <span className="font-mono font-bold text-gray-900 block text-ui">
+                                  {formatNumber(lastSal.totalSalary, systemLanguage)} {systemCurrency}
+                                </span>
+                                <span className="text-micro text-gray-400 block mt-0.5">
+                                  {lastSal.periodKey}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-gray-400 text-ui">—</span>
+                            )}
+                          </td>
+                        );
+                      })()}
 
                       {/* Time tracking mapping */}
                       <td className="py-3.5 px-4">
