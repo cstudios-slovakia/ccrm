@@ -4658,6 +4658,23 @@ ${log.payload || ''}
     }
   };
 
+  // Time-tracking picker lists. Hooks: they must stay above the early returns below.
+  // Without the projects module the list arrives empty, but anyone who tracks time may pick any
+  // active project and create one: the server sends a slim list in readScope.timePicker.
+  const canSeeProjects = access.can("projects");
+  const pickerDefaultStatus = defaultProjectStatus(projectStatuses);
+  const workableProjects = useMemo(
+    () => (canSeeProjects ? [] : workableProjectStubs(readScope, pickerDefaultStatus, timeCreatedProjects)),
+    [canSeeProjects, readScope, pickerDefaultStatus, timeCreatedProjects],
+  );
+  // Projects view without edit creates through the server too: show the new one until a sync lists it.
+  const pickerProjects = useMemo(
+    () => (canSeeProjects ? [...projects, ...timeCreatedProjects.filter((c) => !projects.some((p) => p.id === c.id))] : workableProjects),
+    [canSeeProjects, projects, timeCreatedProjects, workableProjects],
+  );
+  const pickerTypes = useMemo(() => (canSeeProjects ? projectTypes : pickerProjectTypes(readScope)), [canSeeProjects, projectTypes, readScope]);
+  const pickerLeads = useMemo(() => (canSeeProjects ? leads : withPickerClients(readScope, leads)), [canSeeProjects, leads, readScope]);
+
   if (activeTab.startsWith("public-tickets/")) {
     const publicHash = decodeURIComponent(activeTab.slice("public-tickets/".length));
     return (
@@ -4771,21 +4788,6 @@ ${log.payload || ''}
       }}
     />
   ) : null;
-  // Without the projects module the list arrives empty, but anyone who tracks time may pick any
-  // active project and create one: the server sends a slim list in readScope.timePicker.
-  const canSeeProjects = access.can("projects");
-  const pickerDefaultStatus = defaultProjectStatus(projectStatuses);
-  const workableProjects = useMemo(
-    () => (canSeeProjects ? [] : workableProjectStubs(readScope, pickerDefaultStatus, timeCreatedProjects)),
-    [canSeeProjects, readScope, pickerDefaultStatus, timeCreatedProjects],
-  );
-  // Projects view without edit creates through the server too: show the new one until a sync lists it.
-  const pickerProjects = useMemo(
-    () => (canSeeProjects ? [...projects, ...timeCreatedProjects.filter((c) => !projects.some((p) => p.id === c.id))] : workableProjects),
-    [canSeeProjects, projects, timeCreatedProjects, workableProjects],
-  );
-  const pickerTypes = useMemo(() => (canSeeProjects ? projectTypes : pickerProjectTypes(readScope)), [canSeeProjects, projectTypes, readScope]);
-  const pickerLeads = useMemo(() => (canSeeProjects ? leads : withPickerClients(readScope, leads)), [canSeeProjects, leads, readScope]);
   const timeDeps: TimeDeps | null = currentUser ? {
     language: userLanguage,
     currency: systemCurrency || "EUR",
