@@ -194,7 +194,7 @@ export const CustomCalendarEventModal: React.FC<{
   const [startTime, setStartTime] = useState(event?.startTime || "09:00");
   const [endTime, setEndTime] = useState(event?.endTime || "10:00");
   const [owner, setOwner] = useState(event?.owner || currentUserName || "");
-  const [relatedLeadId, setRelatedLeadId] = useState(event?.relatedLeadId || "");
+  const [relatedLeadId] = useState(event?.relatedLeadId || "");
   const [relatedProjectId, setRelatedProjectId] = useState(event?.relatedProjectId || "");
   const [useCustomColor, setUseCustomColor] = useState(Boolean(event?.color));
   const [color, setColor] = useState(event?.color || calendar.color);
@@ -396,7 +396,7 @@ export const CustomCalendarEventModal: React.FC<{
                   .filter((p) => !p.archived)
                   .map((p) => (
                     <option key={p.id} value={p.id}>
-                      {projectDisplayName(p, leads)}
+                      {projectDisplayName(p, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt"))}
                     </option>
                   ))}
               </select>

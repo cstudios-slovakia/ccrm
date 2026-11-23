@@ -8,7 +8,8 @@ import { listEntries, type ListParams } from "../utils/timeTrackingApi.ts";
  * the module's `version` changes — every save, stop, delete and rename bumps it.
  * A stale answer for an earlier range never overwrites a newer one.
  */
-export function useTimeEntries(params: ListParams): { entries: TimeEntry[]; loading: boolean; error: boolean } {
+/** `null` means "do not fetch" (the caller does not need entries right now): the list is empty. */
+export function useTimeEntries(params: ListParams | null): { entries: TimeEntry[]; loading: boolean; error: boolean } {
   const { version, enabled } = useTimeTracking();
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -19,6 +20,12 @@ export function useTimeEntries(params: ListParams): { entries: TimeEntry[]; load
   useEffect(() => {
     if (!enabled) return;
     const mine = ++seq.current;
+    if (params === null) {
+      setEntries([]);
+      setError(false);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     listEntries(params)
       .then((res) => {

@@ -13,7 +13,6 @@ import type {
   FinancialRecord,
   InvoiceOffer,
   Lead,
-  MeetingNote,
   Order,
   Project,
   ProjectType,
@@ -24,6 +23,7 @@ import type {
   UnifiedEntryRow,
   WarehouseBatch,
 } from "../types";
+import type { MeetingNote } from "../components/MeetingRoomView";
 import {
   DEFAULT_PROJECT_STATUS_DEFS,
   evaluateProjectDeadline,
@@ -223,7 +223,7 @@ export function buildWorkCalendarData(params: {
 
     visibleProjectIds.add(project.id);
     const pType = typesById.get(project.projectTypeId);
-    const title = projectDisplayName(project, leads);
+    const title = projectDisplayName(project, leads, "—");
     const color = pType?.color || "#6366f1";
     const start = projectStartDate(project);
     const dl = evaluateProjectDeadline(project, pType, todayIso, projectStatuses);
@@ -278,7 +278,7 @@ export function buildWorkCalendarData(params: {
     if (!dl) continue;
     const start = toIso(task.startDate) || dl;
     const proj = projects.find((p) => p.id === task.relatedProjectId);
-    const projName = proj ? projectDisplayName(proj, leads) : undefined;
+    const projName = proj ? projectDisplayName(proj, leads, "—") : undefined;
     expandSpanIntoRange(start, dl, rangeStart, rangeEnd, (day) => {
       push({
         id: `work:task:${task.id}:${day}`,
@@ -522,7 +522,7 @@ export function buildPaymentCalendarData(params: {
     push({
       id: `pay:projinv:${project.id}`,
       date,
-      title: projectDisplayName(project, leads),
+      title: projectDisplayName(project, leads, "—"),
       badge: "Plan",
       amount: unbilled,
       currency: defaultCurrency,

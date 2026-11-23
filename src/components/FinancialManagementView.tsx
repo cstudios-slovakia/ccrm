@@ -3620,7 +3620,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     }
 
     const isRenamingCat = renamingTableCatId === cat.id;
-    const dropPos = draggedTableCatId && tableCatDropTarget?.targetId === cat.id ? tableCatDropTarget.position : null;
+    const dropPos = draggedTableCatId && tableCatDropTarget && tableCatDropTarget.targetId === cat.id ? tableCatDropTarget.position : null;
     const rowBg = level === 1 ? "bg-gray-50/60 font-bold" : level === 2 ? "bg-white text-ui font-semibold" : "bg-white text-ui font-normal text-gray-600";
     const dropCls = dropPos === "before"
       ? "shadow-[inset_0_2px_0_0_var(--entity-accent-solid)]"

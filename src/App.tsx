@@ -43,7 +43,7 @@ import {
 } from "./utils/browserNotifications";
 import { isDoneTaskState } from "./utils/projectTasks";
 import { sanitizeTimerActions, type TaskStateTimerActions } from "./utils/taskStateTimerActions";
-import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listIds";
+import { normalizeListIds, type ListIds } from "./utils/listIds";
 import { computeSettingsSig, computePushSig } from "./utils/settingsSig";
 import { agencyRightsFrom } from "./utils/agencyRights";
 import { VERSION } from "./utils/version";
@@ -3683,7 +3683,6 @@ ${log.payload || ''}
             invoiceStatuses={invoiceStatuses}
             leadStageGroups={leadStageGroups}
             leadStateParents={leadStateParents}
-            hubData={taskHubData}
           />
         );
       }
@@ -4381,7 +4380,6 @@ ${log.payload || ''}
             invoiceStatuses={invoiceStatuses}
             leadStageGroups={leadStageGroups}
             leadStateParents={leadStateParents}
-            hubData={taskHubData}
           />
         );
       case "whatsapp":

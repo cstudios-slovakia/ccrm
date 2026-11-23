@@ -46,9 +46,9 @@ export const LeadCustomFieldsSettings: React.FC<LeadCustomFieldsSettingsProps> =
   const [newAttrRequiredOptions, setNewAttrRequiredOptions] = useState<string[]>([]);
   const [editingAttrId, setEditingAttrId] = useState<string | null>(null);
 
-  const attrDrag = useDragReorder<string>({
-    disabled: !canEdit,
-    onReorder: (dragId, targetId, pos) =>
+  const attrDrag = useDragReorder({
+    enabled: canEdit,
+    onMove: (dragId, targetId, pos) =>
       setLeadAttributes(prev => moveRelative(prev, a => a.id, dragId, targetId, pos)),
   });
 

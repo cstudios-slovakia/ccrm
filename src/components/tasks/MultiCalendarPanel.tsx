@@ -9,7 +9,6 @@ import type {
   FinancialRecord,
   InvoiceOffer,
   Lead,
-  MeetingNote,
   Order,
   Project,
   ProjectType,
@@ -21,6 +20,7 @@ import type {
   WarehouseBatch,
 } from "../../types";
 import type { Language } from "../../utils/translations";
+import type { MeetingNote } from "../MeetingRoomView";
 import type { ProjectStatusDef } from "../../utils/projects";
 import type { OfferStatusDef } from "../../utils/offerStatuses";
 import { formatMoney } from "../../utils/currency";
@@ -210,7 +210,7 @@ export const MultiCalendarPanel: React.FC<MultiCalendarPanelProps> = ({
     [lensId, customCalendars]
   );
 
-  const { byDate, weeklyRollups } = useMemo(() => {
+  const { byDate, weeklyRollups } = useMemo<{ byDate: Map<string, HubCalendarItem[]>; weeklyRollups: Map<string, WeeklyPaymentRollup> }>(() => {
     if (lensId === "work") {
       const res = buildWorkCalendarData({
         projects,
