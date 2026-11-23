@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { BellRing, Pause, Play, Square } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { clockTime, formatCountdown } from "../../utils/timePresenceUi.ts";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
-const BTN = "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl px-4 text-ui font-semibold transition-all active:scale-95 cursor-pointer motion-reduce:transition-none disabled:opacity-60";
+const BTN = "inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-4 text-ui font-semibold transition-all active:scale-95 cursor-pointer motion-reduce:transition-none disabled:opacity-60";
 
 /**
  * TT2 D8.2: the "Still working?" alertdialog. Shown in every open tab while the presence cycle
@@ -80,7 +81,7 @@ export function PresenceDialog() {
 
   return (
     <div className="fixed inset-0 z-[1100] flex items-end justify-center p-3 sm:items-center" data-testid="presence-dialog-root">
-      <div className="absolute inset-0 bg-slate-900/40 animate-in fade-in duration-200 motion-reduce:animate-none" aria-hidden />
+      <div className="absolute inset-0 bg-gray-900/40 animate-in fade-in duration-200 motion-reduce:animate-none" aria-hidden />
       <div
         ref={box}
         role="alertdialog"
@@ -89,24 +90,25 @@ export function PresenceDialog() {
         aria-describedby="presence-desc"
         data-testid="presence-dialog"
         data-phase={question ? "question" : "paused"}
-        className="relative w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none"
+        style={entityAccentStyle("time-tracking") as React.CSSProperties}
+        className="relative w-full max-w-md rounded-lg bg-white p-5 shadow-lg animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none"
       >
         <div className="flex items-center gap-3">
-          <span className={`inline-flex size-10 items-center justify-center rounded-2xl ${question ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"}`}>
+          <span className={`inline-flex size-10 items-center justify-center rounded-md ${question ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600"}`}>
             {question ? <BellRing className="size-5" /> : <Pause className="size-5" />}
           </span>
           <div className="min-w-0">
-            <h2 id="presence-title" className="text-title font-bold text-slate-900">
+            <h2 id="presence-title" className="text-title font-bold text-gray-900">
               {heading}
             </h2>
-            <p id="presence-desc" className="text-ui tabular-nums text-slate-600" data-testid="presence-countdown">
+            <p id="presence-desc" className="text-ui tabular-nums text-gray-600" data-testid="presence-countdown">
               {sub}
             </p>
           </div>
         </div>
         <ul className="mt-3 max-h-40 space-y-1 overflow-y-auto">
           {items.map((e) => (
-            <li key={e.id} className="truncate rounded-xl bg-slate-50 px-3 py-1.5 text-body text-slate-700">
+            <li key={e.id} className="truncate rounded-md bg-gray-50 px-3 py-1.5 text-body text-gray-700">
               {e.title || t("No title", "Bez názvu", "Nincs cím")}
             </li>
           ))}
@@ -118,11 +120,11 @@ export function PresenceDialog() {
                 <Square className="size-4 fill-current" />
                 {t("Stop all", "Zastaviť všetko", "Mind leállítása")}
               </button>
-              <button type="button" disabled={busy} onClick={() => void act(pauseAll)} data-testid="presence-pause" className={`${BTN} border border-slate-200 bg-white text-slate-700 hover:bg-slate-100`}>
+              <button type="button" disabled={busy} onClick={() => void act(pauseAll)} data-testid="presence-pause" className={`${BTN} border border-gray-200 bg-white text-gray-700 hover:bg-gray-100`}>
                 <Pause className="size-4 fill-current" />
                 {t("Pause", "Pozastaviť", "Szünet")}
               </button>
-              <button type="button" data-autofocus disabled={busy} onClick={() => void act(confirm)} data-testid="presence-confirm" className={`${BTN} bg-teal-600 text-white hover:bg-teal-700`}>
+              <button type="button" data-autofocus disabled={busy} onClick={() => void act(confirm)} data-testid="presence-confirm" className={`${BTN} bg-entity-solid text-white hover:bg-entity-solid-hover`}>
                 {t("Still working", "Pracujem", "Dolgozom")}
               </button>
             </>
@@ -132,7 +134,7 @@ export function PresenceDialog() {
                 <Square className="size-4 fill-current" />
                 {t("Stop", "Zastaviť", "Leállítás")}
               </button>
-              <button type="button" data-autofocus disabled={busy} onClick={() => void act(resumeAll)} data-testid="presence-resume" className={`${BTN} bg-teal-600 text-white hover:bg-teal-700`}>
+              <button type="button" data-autofocus disabled={busy} onClick={() => void act(resumeAll)} data-testid="presence-resume" className={`${BTN} bg-entity-solid text-white hover:bg-entity-solid-hover`}>
                 <Play className="size-4 fill-current" />
                 {t("Resume", "Pokračovať", "Folytatás")}
               </button>

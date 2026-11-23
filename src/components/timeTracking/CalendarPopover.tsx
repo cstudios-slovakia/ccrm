@@ -33,7 +33,7 @@ interface Props {
   onCreate: (day: string, span: MinuteSpan, projectId: string | null, billable: boolean) => Promise<void>;
 }
 
-const ICON_BUTTON = "inline-flex size-9 shrink-0 items-center justify-center rounded-xl border cursor-pointer disabled:cursor-not-allowed disabled:opacity-40";
+const ICON_BUTTON = "inline-flex size-9 shrink-0 items-center justify-center rounded-md border cursor-pointer disabled:cursor-not-allowed disabled:opacity-40";
 
 /** The Calendar's entry popover: title, project, task / billable / tag chips, when and how long, and the actions. */
 export function CalendarPopover({ popover, entry, deps, recentProjectIds, secondsByProject, nowMs, readOnly, onClose, onOpen, onDelete, onPatch, onCreate }: Props) {
@@ -71,14 +71,14 @@ export function CalendarPopover({ popover, entry, deps, recentProjectIds, second
   };
 
   return (
-    <div data-cal-popover className="absolute z-30 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl" style={{ top: popover.top, left: popover.left }}>
+    <div data-cal-popover className="absolute z-30 w-72 rounded-lg border border-gray-200 bg-white p-3 shadow-xl" style={{ top: popover.top, left: popover.left }}>
       <div className="flex items-start gap-2">
         {entry ? (
-          <div className={`min-w-0 flex-1 truncate text-body font-semibold ${entry.titleDeleted ? "text-slate-400" : "text-slate-900"}`}>{entry.title || t("Untitled", "Bez názvu", "Névtelen")}</div>
+          <div className={`min-w-0 flex-1 truncate text-body font-semibold ${entry.titleDeleted ? "text-gray-400" : "text-gray-900"}`}>{entry.title || t("Untitled", "Bez názvu", "Névtelen")}</div>
         ) : (
-          <div className="min-w-0 flex-1 text-body font-semibold text-slate-900">{t("New entry", "Nový záznam", "Új bejegyzés")}</div>
+          <div className="min-w-0 flex-1 text-body font-semibold text-gray-900">{t("New entry", "Nový záznam", "Új bejegyzés")}</div>
         )}
-        <button type="button" onClick={onClose} aria-label={closeLabel} title={closeLabel} className="-mr-1 -mt-1 inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer">
+        <button type="button" onClick={onClose} aria-label={closeLabel} title={closeLabel} className="-mr-1 -mt-1 inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 cursor-pointer">
           <X className="size-4" />
         </button>
       </div>
@@ -106,7 +106,7 @@ export function CalendarPopover({ popover, entry, deps, recentProjectIds, second
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {taskName && (
-          <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-micro font-semibold text-slate-700">
+          <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-micro font-semibold text-gray-700">
             <CheckSquare className="size-3 shrink-0" />
             <span className="truncate">{taskName}</span>
           </span>
@@ -120,25 +120,25 @@ export function CalendarPopover({ popover, entry, deps, recentProjectIds, second
             setBillable(next);
             if (entry) void onPatch(entry, { billable: next });
           }}
-          className={`inline-flex items-center rounded-full px-2 py-0.5 text-micro font-semibold cursor-pointer disabled:cursor-default ${billable ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500 line-through"}`}
+          className={`inline-flex items-center rounded-full px-2 py-0.5 text-micro font-semibold cursor-pointer disabled:cursor-default ${billable ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-500 line-through"}`}
         >
           {t("Billable", "Fakturovateľné", "Számlázható")}
         </button>
         {entry?.tags.map((tag) => (
-          <span key={tag} className="rounded-full bg-slate-100 px-2 py-0.5 text-micro font-semibold text-slate-600">{tag}</span>
+          <span key={tag} className="rounded-full bg-gray-100 px-2 py-0.5 text-micro font-semibold text-gray-600">{tag}</span>
         ))}
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 px-3 py-2">
+      <div className="mt-3 grid grid-cols-2 gap-2 rounded-md bg-gray-50 px-3 py-2">
         <div className="min-w-0">
-          <div className="type-overline text-slate-500">{dayLabel}</div>
-          <div className="text-ui font-semibold tabular-nums text-slate-900" data-testid="calendar-popover-when">{when}</div>
+          <div className="type-overline text-gray-500">{dayLabel}</div>
+          <div className="text-ui font-semibold tabular-nums text-gray-900" data-testid="calendar-popover-when">{when}</div>
         </div>
         <div className="min-w-0">
-          <div className="type-overline text-slate-500">{cost !== null ? t("Duration · cost", "Trvanie · náklady", "Időtartam · költség") : t("Duration", "Trvanie", "Időtartam")}</div>
-          <div className="truncate text-ui font-semibold tabular-nums text-slate-900" data-testid="calendar-popover-duration">
+          <div className="type-overline text-gray-500">{cost !== null ? t("Duration · cost", "Trvanie · náklady", "Időtartam · költség") : t("Duration", "Trvanie", "Időtartam")}</div>
+          <div className="truncate text-ui font-semibold tabular-nums text-gray-900" data-testid="calendar-popover-duration">
             {formatDuration(seconds)}
-            {cost !== null && <span className="text-slate-600"> · {money(cost)}</span>}
+            {cost !== null && <span className="text-gray-600"> · {money(cost)}</span>}
           </div>
         </div>
       </div>
@@ -154,13 +154,13 @@ export function CalendarPopover({ popover, entry, deps, recentProjectIds, second
                   onClose();
                 }}
                 data-testid="calendar-popover-continue"
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-primary px-3 text-ui font-semibold text-primary-foreground hover:opacity-90 cursor-pointer"
+                className="inline-flex h-9 items-center gap-1.5 rounded-md bg-entity-solid px-3 text-ui font-semibold text-white hover:opacity-90 cursor-pointer"
               >
                 <Play className="size-3.5 fill-current" />
                 {t("Continue", "Pokračovať", "Folytatás")}
               </button>
             )}
-            <button type="button" onClick={() => onOpen(entry)} className="inline-flex h-9 flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">
+            <button type="button" onClick={() => onOpen(entry)} className="inline-flex h-9 flex-1 items-center justify-center rounded-md border border-gray-200 bg-white px-3 text-ui font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer">
               {t("Edit", "Upraviť", "Szerkesztés")}
             </button>
             {!entry.running && (
@@ -170,7 +170,7 @@ export function CalendarPopover({ popover, entry, deps, recentProjectIds, second
               onClick={() => void duplicate(entry)}
               title={t("Duplicate", "Duplikovať", "Másolás")}
               aria-label={t("Duplicate", "Duplikovať", "Másolás")}
-              className={`${ICON_BUTTON} border-slate-200 bg-white text-slate-600 hover:bg-slate-50`}
+              className={`${ICON_BUTTON} border-gray-200 bg-white text-gray-600 hover:bg-gray-50`}
             >
               <Copy className="size-4" />
             </button>
@@ -188,7 +188,7 @@ export function CalendarPopover({ popover, entry, deps, recentProjectIds, second
           </>
         ) : (
           popover.kind === "draft" && (
-            <button type="button" disabled={readOnly} onClick={() => void onCreate(popover.day, popover.span, projectId, billable)} className="inline-flex h-9 items-center rounded-xl bg-primary px-3 text-ui font-semibold text-primary-foreground hover:opacity-90 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40">
+            <button type="button" disabled={readOnly} onClick={() => void onCreate(popover.day, popover.span, projectId, billable)} className="inline-flex h-9 items-center rounded-md bg-entity-solid px-3 text-ui font-semibold text-white hover:opacity-90 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40">
               {t("Save", "Uložiť", "Mentés")}
             </button>
           )

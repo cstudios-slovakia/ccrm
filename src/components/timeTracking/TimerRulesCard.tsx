@@ -4,14 +4,14 @@ import type { TFn, TimeTrackingSettings } from "../../utils/timeTracking.ts";
 import { SettingsCard } from "./SettingsCard";
 
 type BoolKey = "requireProjectToStop" | "requireTask" | "billableByDefault" | "weeklyApproval";
-const box = "h-9 w-24 rounded-xl border border-slate-200 bg-white px-3 text-center text-ui tabular-nums text-slate-900 outline-none focus:border-primary disabled:bg-slate-50 disabled:text-slate-400";
+const box = "h-9 w-24 rounded-md border border-gray-200 bg-white px-3 text-center text-ui tabular-nums text-gray-900 outline-none focus:border-entity disabled:bg-gray-50 disabled:text-gray-400";
 
 function Row({ title, note, children }: { title: string; note: string; children: ReactNode }) {
   return (
     <div className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
       <div className="grid min-w-0 flex-1 gap-0.5">
-        <span className="text-ui font-semibold text-slate-900">{title}</span>
-        <span className="type-meta text-slate-500">{note}</span>
+        <span className="text-ui font-semibold text-gray-900">{title}</span>
+        <span className="type-meta text-gray-500">{note}</span>
       </div>
       <div className="flex shrink-0 items-center gap-3">{children}</div>
     </div>
@@ -54,7 +54,7 @@ export function TimerRulesCard({
   };
   return (
     <SettingsCard title={t("Timer and entry rules", "Pravidlá časovača a záznamov", "Időzítő- és bejegyzésszabályok")} testId="tt-rules">
-      <div className="divide-y divide-slate-100">
+      <div className="divide-y divide-gray-100">
         <Row title={titles.project} note={t("For people who can pick a project, a timer cannot be stopped until one is chosen.", "Pre ľudí, ktorí môžu vybrať projekt, sa časovač nedá zastaviť, kým sa nevyberie projekt.", "Azoknál, akik projektet választhatnak, az időzítő nem állítható le, amíg nincs projekt kiválasztva.")}>
           {sw("requireProjectToStop", titles.project)}
         </Row>

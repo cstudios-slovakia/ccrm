@@ -33,7 +33,7 @@ export function ProjectTimeFinanceLines({
       )}
       {billableValue != null && (
         <div
-          className="mt-1 type-meta text-slate-600"
+          className="mt-1 type-meta text-gray-600"
           data-testid="project-billable-work-line"
           title={pick(language, "Tracked hours × billable rate. Information only: does not change Invoicable or income.", "Sledované hodiny × fakturačná sadzba. Len informatívne: nemení Fakturovateľné ani príjem.", "Követett órák × számlázási díj. Csak tájékoztató: nem módosítja a Számlázhatót és a bevételt.")}
         >

@@ -32,7 +32,7 @@ export function RateExplanation({ employeeId, month, monthLabel, country, t, mon
 
   const text = card ? explainRateCard({ ...card, country: card.country ?? country }, { t, money, monthLabel, country, provisional: card.frozen === false }) : null;
   return (
-    <div className="mt-1 type-meta text-slate-500" data-testid="entry-rate-basis">
+    <div className="mt-1 type-meta text-gray-500" data-testid="entry-rate-basis">
       {text ?? fallback}
     </div>
   );

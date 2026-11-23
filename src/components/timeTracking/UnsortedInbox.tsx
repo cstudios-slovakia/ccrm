@@ -218,7 +218,7 @@ export function UnsortedInbox({ deps }: { deps: TimeDeps }) {
                           });
                         }}
                         aria-label={title}
-                        className="mt-1 size-4 accent-primary"
+                        className="mt-1 size-4 accent-[var(--entity-accent-solid)]"
                       />
                       <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-ui font-bold text-gray-600">
                         {(item.domain[0] || "?").toUpperCase()}

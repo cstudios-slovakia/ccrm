@@ -19,7 +19,7 @@ const partialNote = (t: T) =>
 
 /** Margin: emerald when positive, rose when negative, "—" where there is no comparable billable value, "≈" when lines were left out. */
 export function MarginText({ margin, language, t }: { margin: Margin | null; language: Language; t: T }) {
-  if (!margin) return <span className="tabular-nums text-slate-300">—</span>;
+  if (!margin) return <span className="tabular-nums text-gray-300">—</span>;
   return (
     <span className="tabular-nums font-semibold" title={margin.partial ? partialNote(t) : undefined}>
       {margin.partial ? "≈ " : ""}
@@ -33,7 +33,7 @@ export function MarginText({ margin, language, t }: { margin: Margin | null; lan
   );
 }
 
-const th = "px-4 py-3 type-overline text-slate-500";
+const th = "px-4 py-3 type-overline text-gray-500";
 const thr = `${th} text-right`;
 const td = "px-4 py-2.5 text-right tabular-nums";
 
@@ -116,9 +116,9 @@ export function ReportSummaryTable({
   const cell = (node: ReactNode) => <td className={td}>{node}</td>;
   const figures = (g: BuiltReport["groups"][number]) => (
     <>
-      {cell(<span className="font-semibold text-slate-900">{formatDuration(g.seconds)}</span>)}
+      {cell(<span className="font-semibold text-gray-900">{formatDuration(g.seconds)}</span>)}
       {both && cell(formatDuration(g.workedSeconds))}
-      {cell(<span className="text-slate-600">{formatDuration(g.billableSeconds)}</span>)}
+      {cell(<span className="text-gray-600">{formatDuration(g.billableSeconds)}</span>)}
       {showValue && cell(<MoneyText bag={g.billableValue} language={language} />)}
       {showCost && cell(<MoneyText bag={g.cost} language={language} />)}
       {showValue && cell(<MarginText margin={g.margin} language={language} t={t} />)}
@@ -133,12 +133,12 @@ export function ReportSummaryTable({
   return (
     <Surface padding="none" className="overflow-x-auto" >
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 pt-4">
-        <h3 className="type-card-title text-slate-900">{groupTitle(groupBy, t)}</h3>
-        {drill && <span className="type-meta text-slate-500">{drillHint(thenBy, t)}</span>}
+        <h3 className="type-card-title text-gray-900">{groupTitle(groupBy, t)}</h3>
+        {drill && <span className="type-meta text-gray-500">{drillHint(thenBy, t)}</span>}
       </div>
       <table className="mt-2 w-full border-collapse text-ui">
         <thead>
-          <tr className="border-b border-slate-100 text-left">
+          <tr className="border-b border-gray-100 text-left">
             <th className={th}>{columnHead(groupBy, t)}</th>
             <th className={thr}>{both ? t("Delivered", "Dodané", "Leszállított") : t("Hours", "Hodiny", "Órák")}</th>
             {both && <th className={thr}>{t("Worked", "Odpracované", "Ledolgozott")}</th>}
@@ -150,7 +150,7 @@ export function ReportSummaryTable({
         </thead>
         <tbody>
           {report.groups.length === 0 && (
-            <tr><td colSpan={7} className="px-4 py-6 text-body text-slate-500">{t("Nothing in this period.", "V tomto období nič.", "Ebben az időszakban semmi.")}</td></tr>
+            <tr><td colSpan={7} className="px-4 py-6 text-body text-gray-500">{t("Nothing in this period.", "V tomto období nič.", "Ebben az időszakban semmi.")}</td></tr>
           )}
           {report.groups.map((g) => {
             const isOpen = drill && !!openKeys?.has(g.key);
@@ -159,20 +159,20 @@ export function ReportSummaryTable({
               <Fragment key={g.key || "empty"}>
                 <tr
                   data-testid="report-group-row"
-                  className={`border-b border-slate-100 ${drill ? "cursor-pointer hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-primary" : ""}`}
+                  className={`border-b border-gray-100 ${drill ? "cursor-pointer hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-entity" : ""}`}
                   {...(drill ? { tabIndex: 0, "aria-expanded": isOpen, onClick: () => onToggle?.(g.key), onKeyDown: onKey(g.key) } : {})}
                 >
-                  <td className="px-4 py-2.5 font-semibold text-slate-900">
+                  <td className="px-4 py-2.5 font-semibold text-gray-900">
                     <span className="flex min-w-0 items-center gap-2">
                       {drill && (
-                        <span data-testid="report-group-toggle" aria-hidden="true" className="inline-flex size-4 shrink-0 items-center justify-center text-slate-400">
+                        <span data-testid="report-group-toggle" aria-hidden="true" className="inline-flex size-4 shrink-0 items-center justify-center text-gray-400">
                           <ChevronRight className={`size-4 transition-transform ${isOpen ? "rotate-90" : ""}`} />
                         </span>
                       )}
                       {groupBy === "project" && g.key ? (
                         <span className="flex min-w-0 items-baseline gap-2">
                           <ProjectLabel projectId={g.key} name={groupLabel(g.key)} compact />
-                          {clientOfProject(g.key) && <span className="truncate type-meta font-normal text-slate-500">{clientOfProject(g.key)}</span>}
+                          {clientOfProject(g.key) && <span className="truncate type-meta font-normal text-gray-500">{clientOfProject(g.key)}</span>}
                         </span>
                       ) : (
                         groupLabel(g.key)
@@ -182,7 +182,7 @@ export function ReportSummaryTable({
                   {figures(g)}
                 </tr>
                 {kids.map((k) => (
-                  <tr key={`${g.key}/${k.key}`} data-testid="report-child-row" className="border-b border-slate-100 bg-slate-50/60 text-slate-700">
+                  <tr key={`${g.key}/${k.key}`} data-testid="report-child-row" className="border-b border-gray-100 bg-gray-50/60 text-gray-700">
                     <td className="py-2 pl-12 pr-4">{childLabel?.(k.key)}</td>
                     {figures(k)}
                   </tr>
@@ -192,9 +192,9 @@ export function ReportSummaryTable({
           })}
         </tbody>
         <tfoot>
-          <tr className="bg-slate-50 font-semibold">
-            <td className="px-4 py-3 type-overline text-slate-500">{t("Totals", "Spolu", "Összesen")}</td>
-            <td className={`${td} py-3 text-slate-900`}>{formatDuration(report.totals.seconds)}</td>
+          <tr className="bg-gray-50 font-semibold">
+            <td className="px-4 py-3 type-overline text-gray-500">{t("Totals", "Spolu", "Összesen")}</td>
+            <td className={`${td} py-3 text-gray-900`}>{formatDuration(report.totals.seconds)}</td>
             {both && <td className={`${td} py-3`}>{formatDuration(report.totals.workedSeconds)}</td>}
             <td className={`${td} py-3`}>{formatDuration(report.totals.billableSeconds)}</td>
             {showValue && <td className={`${td} py-3`}><MoneyText bag={report.totals.billableValue} language={language} /></td>}
@@ -203,7 +203,7 @@ export function ReportSummaryTable({
           </tr>
         </tfoot>
       </table>
-      {showValue && (report.totals.margin?.partial || report.groups.some((g) => g.margin?.partial)) && <p className="px-4 pb-3 type-meta text-slate-500">≈ {partialNote(t)}</p>}
+      {showValue && (report.totals.margin?.partial || report.groups.some((g) => g.margin?.partial)) && <p className="px-4 pb-3 type-meta text-gray-500">≈ {partialNote(t)}</p>}
     </Surface>
   );
 }

@@ -25,7 +25,7 @@ export function useTimeListFilter(): Ctx {
 }
 
 const chip = (on: boolean) =>
-  `inline-flex min-h-9 items-center rounded-full border px-3 text-ui font-semibold cursor-pointer ${on ? "border-primary bg-primary text-primary-foreground" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`;
+  `inline-flex min-h-9 items-center rounded-full border px-3 text-ui font-semibold cursor-pointer ${on ? "border-entity bg-entity-solid text-white" : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"}`;
 
 /** The funnel button and its popover. `entries` are the shown week's loaded entries (the options come from them). */
 export function TimeListFilterButton({ entries, projectLabel }: { entries: readonly TimeEntry[]; projectLabel: (id: string) => string | null }) {
@@ -80,11 +80,11 @@ export function TimeListFilterButton({ entries, projectLabel }: { entries: reado
         aria-label={label}
         title={label}
         data-testid="time-filter-button"
-        className={`relative inline-flex size-9 items-center justify-center rounded-xl border cursor-pointer ${count > 0 ? "border-primary bg-primary/10 text-primary" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-900"}`}
+        className={`relative inline-flex size-9 items-center justify-center rounded-md border cursor-pointer ${count > 0 ? "border-entity bg-entity-subtle text-entity-text" : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-900"}`}
       >
         <Filter className="size-4" />
         {count > 0 && (
-          <span className="absolute -right-1.5 -top-1.5 inline-flex size-4 items-center justify-center rounded-full bg-primary text-micro font-bold text-primary-foreground" data-testid="time-filter-count">{count}</span>
+          <span className="absolute -right-1.5 -top-1.5 inline-flex size-4 items-center justify-center rounded-full bg-entity-solid text-micro font-bold text-white" data-testid="time-filter-count">{count}</span>
         )}
       </button>
       {open && (
@@ -94,10 +94,10 @@ export function TimeListFilterButton({ entries, projectLabel }: { entries: reado
           role="dialog"
           aria-label={label}
           data-testid="time-filter-popover"
-          className="fixed inset-x-4 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-[100000] grid max-h-[60vh] gap-4 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl outline-none ws-sm:absolute ws-sm:inset-x-auto ws-sm:bottom-auto ws-sm:right-0 ws-sm:top-full ws-sm:mt-2 ws-sm:w-80 ws-sm:max-h-96"
+          className="fixed inset-x-4 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-[100000] grid max-h-[60vh] gap-4 overflow-y-auto rounded-lg border border-gray-200 bg-white p-4 shadow-xl outline-none ws-sm:absolute ws-sm:inset-x-auto ws-sm:bottom-auto ws-sm:right-0 ws-sm:top-full ws-sm:mt-2 ws-sm:w-80 ws-sm:max-h-96"
         >
           <fieldset className="grid gap-2">
-            <legend className="mb-1 type-meta font-semibold text-slate-500">{t("Project", "Projekt", "Projekt")}</legend>
+            <legend className="mb-1 type-meta font-semibold text-gray-500">{t("Project", "Projekt", "Projekt")}</legend>
             <div className="flex flex-wrap gap-2">
               {options.projects.map((p) => (
                 <button key={p.id} type="button" aria-pressed={filter.projects.includes(p.id)} onClick={() => setFilter({ ...filter, projects: toggleIn(filter.projects, p.id) })} className={chip(filter.projects.includes(p.id))} data-testid="time-filter-project">
@@ -117,7 +117,7 @@ export function TimeListFilterButton({ entries, projectLabel }: { entries: reado
             </div>
           </fieldset>
           <fieldset className="grid gap-2">
-            <legend className="mb-1 type-meta font-semibold text-slate-500">{t("Billable", "Fakturovateľnosť", "Számlázhatóság")}</legend>
+            <legend className="mb-1 type-meta font-semibold text-gray-500">{t("Billable", "Fakturovateľnosť", "Számlázhatóság")}</legend>
             <div role="group" className="inline-flex flex-wrap gap-2">
               {billableItems.map((b) => (
                 <button key={b.key} type="button" aria-pressed={filter.billable === b.key} onClick={() => setFilter({ ...filter, billable: b.key })} className={chip(filter.billable === b.key)} data-testid={`time-filter-billable-${b.key}`}>
@@ -128,7 +128,7 @@ export function TimeListFilterButton({ entries, projectLabel }: { entries: reado
           </fieldset>
           {(options.tags.length > 0 || stale.tags.length > 0) && (
             <fieldset className="grid gap-2">
-              <legend className="mb-1 type-meta font-semibold text-slate-500">{t("Tags", "Štítky", "Címkék")}</legend>
+              <legend className="mb-1 type-meta font-semibold text-gray-500">{t("Tags", "Štítky", "Címkék")}</legend>
               <div className="flex flex-wrap gap-2">
                 {[...options.tags, ...stale.tags].map((tag) => (
                   <button key={tag} type="button" aria-pressed={filter.tags.includes(tag)} onClick={() => setFilter({ ...filter, tags: toggleIn(filter.tags, tag) })} className={chip(filter.tags.includes(tag))} data-testid="time-filter-tag">
@@ -138,7 +138,7 @@ export function TimeListFilterButton({ entries, projectLabel }: { entries: reado
               </div>
             </fieldset>
           )}
-          <button type="button" onClick={() => setFilter(EMPTY_LIST_FILTER)} disabled={count === 0} data-testid="time-filter-clear" className="justify-self-start text-ui font-semibold text-primary hover:underline disabled:opacity-40 disabled:no-underline cursor-pointer disabled:cursor-default">
+          <button type="button" onClick={() => setFilter(EMPTY_LIST_FILTER)} disabled={count === 0} data-testid="time-filter-clear" className="justify-self-start text-ui font-semibold text-entity-text hover:underline disabled:opacity-40 disabled:no-underline cursor-pointer disabled:cursor-default">
             {t("Clear filters", "Zrušiť filtre", "Szűrők törlése")}
           </button>
         </div>

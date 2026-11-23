@@ -18,8 +18,8 @@ export function PresenceBlock({ t, canEdit, isAdmin, presence, onChange }: { t: 
     getCronStatus().then(setCron).catch(() => setCron(null));
   }, [isAdmin]);
 
-  const field = "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-ui outline-none focus:border-primary disabled:bg-slate-50";
-  const label = "type-label text-slate-600";
+  const field = "h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-ui outline-none focus:border-entity disabled:bg-gray-50";
+  const label = "type-label text-gray-600";
   const num = (key: "promptAfterMinutes" | "confirmWindowMinutes" | "resumeWindowMinutes", text: string, min: number, max: number) => (
     <label className="grid gap-1">
       <span className={label}>{text}</span>
@@ -37,8 +37,8 @@ export function PresenceBlock({ t, canEdit, isAdmin, presence, onChange }: { t: 
         "Futó időzítő mellett a rendszer megkérdezi, hogy a munkatárs még dolgozik-e. Ha a válaszidőn belül nem érkezik válasz, az időzítő szünetel; a folytatási időn belüli késői válasz újraindítja. A válasz csak az alkalmazásban adható meg, push értesítésből soha.",
       )}
     >
-      <label className="flex cursor-pointer items-center gap-3 text-ui text-slate-800">
-        <input type="checkbox" disabled={!canEdit} checked={presence.enabled} onChange={(e) => onChange({ ...presence, enabled: e.target.checked })} className="size-4 accent-teal-600" data-testid="tt-presence-enabled" />
+      <label className="flex cursor-pointer items-center gap-3 text-ui text-gray-800">
+        <input type="checkbox" disabled={!canEdit} checked={presence.enabled} onChange={(e) => onChange({ ...presence, enabled: e.target.checked })} className="size-4 accent-[var(--entity-accent-solid)]" data-testid="tt-presence-enabled" />
         {t("Ask whether the person is still working", "Pýtať sa, či človek ešte pracuje", "Rákérdezés, hogy a munkatárs még dolgozik-e")}
       </label>
       <div className="grid gap-4 ws-sm:grid-cols-3">
@@ -59,7 +59,7 @@ export function PresenceBlock({ t, canEdit, isAdmin, presence, onChange }: { t: 
         />
       </label>
       {isAdmin && cron?.stale && (
-        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-ui text-amber-800" role="alert" data-testid="tt-presence-cron-warning">
+        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-ui text-amber-800" role="alert" data-testid="tt-presence-cron-warning">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <span>{t(
             "The server's scheduled task has not run for 5 minutes: timers still pause correctly, but no push notification is sent. Set up cron (see README).",

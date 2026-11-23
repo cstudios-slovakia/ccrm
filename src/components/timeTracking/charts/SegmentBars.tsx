@@ -41,7 +41,7 @@ export function SegmentBars({
   const gap = 0.3;
   return (
     <div className={className}>
-      <ul className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 type-meta text-slate-500">
+      <ul className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 type-meta text-gray-500">
         {series.map((x) => (
           <li key={x.key} className="inline-flex items-center gap-1.5">
             <span className="size-2.5 rounded-sm" style={{ backgroundColor: x.color }} />
@@ -50,11 +50,11 @@ export function SegmentBars({
         ))}
       </ul>
       {n === 0 || max === 0 ? (
-        <p className="py-8 text-center text-ui text-slate-400">{emptyLabel}</p>
+        <p className="py-8 text-center text-ui text-gray-400">{emptyLabel}</p>
       ) : (
         <>
           <svg role="img" aria-label={ariaLabel} viewBox={`0 0 ${n} ${H}`} preserveAspectRatio="none" className="h-40 w-full">
-            <line x1="0" x2={n} y1={H} y2={H} className="stroke-slate-200" strokeWidth="0.5" vectorEffect="non-scaling-stroke" />
+            <line x1="0" x2={n} y1={H} y2={H} className="stroke-gray-200" strokeWidth="0.5" vectorEffect="non-scaling-stroke" />
             {bars.map((bar, i) => {
               let y = H;
               return (
@@ -72,7 +72,7 @@ export function SegmentBars({
           </svg>
           <div className="mt-1 grid" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }} aria-hidden="true">
             {bars.map((bar) => (
-              <span key={bar.key} className="truncate text-center type-meta tabular-nums text-slate-500">{bar.label}</span>
+              <span key={bar.key} className="truncate text-center type-meta tabular-nums text-gray-500">{bar.label}</span>
             ))}
           </div>
           <table className="sr-only">

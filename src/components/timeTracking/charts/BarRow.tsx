@@ -18,12 +18,12 @@ export function BarRow({
   return (
     <div className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 ${className}`}>
       <div className="min-w-0">
-        <div className="truncate text-ui text-slate-800">{label}</div>
-        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
-          <div className={`h-full rounded-full transition-[width] duration-500 ${color ? "" : "bg-primary"}`} style={{ width: `${pct}%`, backgroundColor: color }} />
+        <div className="truncate text-ui text-gray-800">{label}</div>
+        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-100" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
+          <div className={`h-full rounded-full transition-[width] duration-500 ${color ? "" : "bg-entity-solid"}`} style={{ width: `${pct}%`, backgroundColor: color }} />
         </div>
       </div>
-      <div className="tabular-nums text-ui font-semibold text-slate-900">{value}</div>
+      <div className="tabular-nums text-ui font-semibold text-gray-900">{value}</div>
     </div>
   );
 }

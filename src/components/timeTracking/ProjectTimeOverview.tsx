@@ -15,7 +15,7 @@ import { MarginText } from "./ReportSummaryTable";
 
 type T = (en: string, sk: string, hu: string) => string;
 
-export const projectBlockClass = "p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3";
+export const projectBlockClass = "p-4 rounded-lg bg-gray-50 border border-gray-200 space-y-3";
 // Person colours for the weekly bars: five people, then everyone else in slate.
 const PEOPLE_COLORS = ["#6366f1", "#0ea5e9", "#10b981", "#8b5cf6", "#ec4899"];
 const OTHERS_COLOR = "#94a3b8";
@@ -24,7 +24,7 @@ export function ProjectBlockHeader({ icon, title, extra }: { icon: ReactNode; ti
   return (
     <div className="flex items-center gap-2">
       {icon}
-      <span className="text-ui font-bold text-slate-900">{title}</span>
+      <span className="text-ui font-bold text-gray-900">{title}</span>
       {extra}
     </div>
   );
@@ -112,7 +112,7 @@ export function ProjectTimeOverview({
             )}
           />
         ) : (
-          <StatTile label={t("Hours budget", "Rozpočet hodín", "Órakeret")} value={<span className="text-slate-400">{t("No budget", "Bez rozpočtu", "Nincs keret")}</span>} />
+          <StatTile label={t("Hours budget", "Rozpočet hodín", "Órakeret")} value={<span className="text-gray-400">{t("No budget", "Bez rozpočtu", "Nincs keret")}</span>} />
         )}
         {canCosts && (
           <StatTile
@@ -123,8 +123,8 @@ export function ProjectTimeOverview({
       </StatGrid>
 
       <div className={projectBlockClass} data-testid="project-time-weekly">
-        <ProjectBlockHeader icon={<BarChart3 className="h-4 w-4 text-indigo-600 shrink-0" />} title={t("Hours per week", "Hodiny podľa týždňa", "Órák hetente")}
-          extra={<span className="type-meta text-slate-500">{bars.length === 1 ? t("1 week", "1 týždeň", "1 hét") : t(`Last ${bars.length} weeks`, `Posledných ${bars.length} týždňov`, `Utolsó ${bars.length} hét`)}</span>}
+        <ProjectBlockHeader icon={<BarChart3 className="h-4 w-4 text-entity-text shrink-0" />} title={t("Hours per week", "Hodiny podľa týždňa", "Órák hetente")}
+          extra={<span className="type-meta text-gray-500">{bars.length === 1 ? t("1 week", "1 týždeň", "1 hét") : t(`Last ${bars.length} weeks`, `Posledných ${bars.length} týždňov`, `Utolsó ${bars.length} hét`)}</span>}
         />
         <SegmentBars
           bars={bars}
@@ -136,9 +136,9 @@ export function ProjectTimeOverview({
       </div>
 
       <div className={projectBlockClass} data-testid="project-time-by-task">
-        <ProjectBlockHeader icon={<ListChecks className="h-4 w-4 text-teal-600 shrink-0" />} title={t("By task", "Podľa úlohy", "Feladatonként")} />
+        <ProjectBlockHeader icon={<ListChecks className="h-4 w-4 text-entity-text shrink-0" />} title={t("By task", "Podľa úlohy", "Feladatonként")} />
         {taskRows.length === 0 ? (
-          <p className="py-4 text-center text-ui text-slate-400">{t("No time in this period.", "V tomto období nie je žiadny čas.", "Ebben az időszakban nincs rögzített idő.")}</p>
+          <p className="py-4 text-center text-ui text-gray-400">{t("No time in this period.", "V tomto období nie je žiadny čas.", "Ebben az időszakban nincs rögzített idő.")}</p>
         ) : (
           <div className="grid gap-3">
             {taskRows.map((r) => {
@@ -164,12 +164,12 @@ export function ProjectTimeOverview({
       <div className={projectBlockClass} data-testid="project-time-by-employee">
         <ProjectBlockHeader icon={<Users className="h-4 w-4 text-purple-600 shrink-0" />} title={t("By employee", "Podľa zamestnanca", "Munkatársanként")} />
         {report.groups.length === 0 ? (
-          <p className="py-4 text-center text-ui text-slate-400">{t("No time in this period.", "V tomto období nie je žiadny čas.", "Ebben az időszakban nincs rögzített idő.")}</p>
+          <p className="py-4 text-center text-ui text-gray-400">{t("No time in this period.", "V tomto období nie je žiadny čas.", "Ebben az időszakban nincs rögzített idő.")}</p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
             <table className="w-full text-ui">
               <thead>
-                <tr className="text-left type-overline text-slate-500">
+                <tr className="text-left type-overline text-gray-500">
                   <th className="px-3 py-2 font-semibold">{t("Person", "Osoba", "Személy")}</th>
                   <th className="px-3 py-2 text-right font-semibold">{t("Hours", "Hodiny", "Órák")}</th>
                   <th className="px-3 py-2 text-right font-semibold">{t("Billable", "Fakturovateľné", "Számlázható")}</th>
@@ -177,14 +177,14 @@ export function ProjectTimeOverview({
                   {canCosts && <th className="px-3 py-2 text-right font-semibold">{t("Billable value", "Fakturovateľná hodnota", "Számlázható érték")}</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-gray-100">
                 {report.groups.map((g) => (
                   <tr key={g.key} data-testid="project-time-employee-row">
-                    <td className="px-3 py-2 font-semibold text-slate-800">{nameOf(g.key)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{formatDuration(g.seconds)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{formatDuration(g.billableSeconds)}</td>
-                    {canCosts && <td className="px-3 py-2 text-right tabular-nums text-slate-700">{Object.keys(g.cost).length ? money(g.cost) : "—"}</td>}
-                    {canCosts && <td className="px-3 py-2 text-right tabular-nums text-slate-700">{Object.keys(g.billableValue).length ? money(g.billableValue) : "—"}</td>}
+                    <td className="px-3 py-2 font-semibold text-gray-800">{nameOf(g.key)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-700">{formatDuration(g.seconds)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-gray-700">{formatDuration(g.billableSeconds)}</td>
+                    {canCosts && <td className="px-3 py-2 text-right tabular-nums text-gray-700">{Object.keys(g.cost).length ? money(g.cost) : "—"}</td>}
+                    {canCosts && <td className="px-3 py-2 text-right tabular-nums text-gray-700">{Object.keys(g.billableValue).length ? money(g.billableValue) : "—"}</td>}
                   </tr>
                 ))}
               </tbody>

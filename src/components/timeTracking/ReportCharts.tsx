@@ -25,13 +25,13 @@ export function HoursPerDayCard({ report, days, totalDays, locale, t }: { report
   return (
     <Surface className="min-w-0" >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="type-card-title text-slate-900">{t("Hours per working day", "Hodiny na pracovný deň", "Óra munkanaponként")}</h3>
+        <h3 className="type-card-title text-gray-900">{t("Hours per working day", "Hodiny na pracovný deň", "Óra munkanaponként")}</h3>
         {report.perWorkingDaySeconds != null && (
-          <span className="type-meta tabular-nums text-slate-500">{t(`avg ${formatDuration(report.perWorkingDaySeconds)} over ${totalDays} working days`, `priemer ${formatDuration(report.perWorkingDaySeconds)} za ${totalDays} pracovných dní`, `átlag ${formatDuration(report.perWorkingDaySeconds)}, ${totalDays} munkanap alatt`)}</span>
+          <span className="type-meta tabular-nums text-gray-500">{t(`avg ${formatDuration(report.perWorkingDaySeconds)} over ${totalDays} working days`, `priemer ${formatDuration(report.perWorkingDaySeconds)} za ${totalDays} pracovných dní`, `átlag ${formatDuration(report.perWorkingDaySeconds)}, ${totalDays} munkanap alatt`)}</span>
         )}
       </div>
       {totalDays > days.length && (
-        <p className="type-meta text-slate-500">{t(`The chart shows the first ${days.length} working days of the range.`, `Graf ukazuje prvých ${days.length} pracovných dní obdobia.`, `A diagram az időszak első ${days.length} munkanapját mutatja.`)}</p>
+        <p className="type-meta text-gray-500">{t(`The chart shows the first ${days.length} working days of the range.`, `Graf ukazuje prvých ${days.length} pracovných dní obdobia.`, `A diagram az időszak első ${days.length} munkanapját mutatja.`)}</p>
       )}
       <StackedBars
         className="mt-3"
@@ -50,7 +50,7 @@ export function HoursPerDayCard({ report, days, totalDays, locale, t }: { report
 export function ShareByProjectCard({ report, projectName, locale, t }: { report: BuiltReport; projectName: (id: string | null) => string; locale: string; t: T }) {
   return (
     <Surface className="min-w-0">
-      <h3 className="type-card-title text-slate-900">{t("Share by project", "Podiel podľa projektu", "Megoszlás projekt szerint")}</h3>
+      <h3 className="type-card-title text-gray-900">{t("Share by project", "Podiel podľa projektu", "Megoszlás projekt szerint")}</h3>
       <Donut
         className="mt-3"
         slices={report.shareByProject.map((s) => ({ key: s.projectId ?? "none", label: projectName(s.projectId), value: s.seconds, color: projectColor(s.projectId) }))}

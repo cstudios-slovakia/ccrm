@@ -26,7 +26,7 @@ export function TimeHeaderActions({ onNavigate }: { onNavigate: (route: string) 
     };
   }, [open]);
 
-  const control = "inline-flex h-10 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-ui font-semibold text-slate-700 transition-colors hover:bg-slate-50 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+  const control = "inline-flex h-10 items-center justify-center gap-2 rounded-md border border-gray-200 bg-white text-ui font-semibold text-gray-700 transition-colors hover:bg-gray-50 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-entity";
   return (
     <>
       <button type="button" onClick={() => requestNewTimeEntry({})} data-testid="time-add-entry" className={`${control} px-4`}>
@@ -47,7 +47,7 @@ export function TimeHeaderActions({ onNavigate }: { onNavigate: (route: string) 
           <EllipsisVertical className="size-4" />
         </button>
         {open && (
-          <div role="menu" className="absolute right-0 top-full z-[960] mt-2 min-w-52 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl">
+          <div role="menu" className="absolute right-0 top-full z-[960] mt-2 min-w-52 rounded-lg border border-gray-200 bg-white p-1.5 shadow-xl">
             <button
               type="button"
               role="menuitem"
@@ -56,9 +56,9 @@ export function TimeHeaderActions({ onNavigate }: { onNavigate: (route: string) 
                 onNavigate("settings/projects/time");
               }}
               data-testid="time-settings-link"
-              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-ui font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-ui font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer"
             >
-              <SettingsIcon className="size-4 text-slate-500" />
+              <SettingsIcon className="size-4 text-gray-500" />
               {t("Settings", "Nastavenia", "Beállítások")}
             </button>
           </div>

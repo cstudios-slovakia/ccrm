@@ -27,12 +27,12 @@ export function ClusterGroup({ cluster, children }: { cluster: TimeCluster; chil
   const { t } = useTimeTracking();
   const both = workedAndDeliveredLabel(t, cluster.deliveredSec, cluster.workedSec);
   return (
-    <div className="mx-2 my-1 overflow-hidden rounded-xl border border-violet-200 bg-violet-50/30 transition-colors hover:border-violet-300 motion-reduce:transition-none" data-testid="cluster-group" data-count={cluster.count}>
+    <div className="mx-2 my-1 overflow-hidden rounded-lg border border-violet-200 bg-violet-50/30 transition-colors hover:border-violet-300 motion-reduce:transition-none" data-testid="cluster-group" data-count={cluster.count}>
       <div className="flex flex-wrap items-center gap-2 border-b border-violet-100 px-3 py-1.5">
         <ClusterChip cluster={cluster} />
-        {both && <span className="type-meta tabular-nums text-slate-600" data-testid="cluster-worked-delivered">{both}</span>}
+        {both && <span className="type-meta tabular-nums text-gray-600" data-testid="cluster-worked-delivered">{both}</span>}
       </div>
-      <div role="rowgroup" className="divide-y divide-slate-100">{children}</div>
+      <div role="rowgroup" className="divide-y divide-gray-100">{children}</div>
     </div>
   );
 }

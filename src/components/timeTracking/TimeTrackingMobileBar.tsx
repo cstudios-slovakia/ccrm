@@ -9,6 +9,7 @@ import { ClockDigits } from "./ClockDigits";
 import { TimerContainer } from "./TimerContainer";
 import { TimerBar } from "./TimerBar";
 import type { TimeDeps } from "./shared";
+import { entityAccentStyle } from "../../utils/entityAccent";
 
 interface Props {
   onNavigate: (route: string) => void;
@@ -110,7 +111,7 @@ export function TimeTrackingMobileBar({ onNavigate, deps, recentProjectIds, seco
               type="button"
               onClick={() => void (tt.paused.length > 1 ? tt.resumeAll() : tt.resume(firstPaused.id))}
               data-testid="mobile-paused-resume"
-              className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 text-ui font-semibold text-white transition-all hover:bg-amber-600 active:scale-95 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none motion-reduce:active:scale-100"
+              className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 text-ui font-semibold text-white transition-all hover:bg-amber-600 active:scale-95 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-entity motion-reduce:transition-none motion-reduce:active:scale-100"
             >
               <Play className="size-4 fill-current" />
               {t("Resume", "Pokračovať", "Folytatás")}
@@ -121,7 +122,7 @@ export function TimeTrackingMobileBar({ onNavigate, deps, recentProjectIds, seco
       {sheet && typeof document !== "undefined" && createPortal(
         // Portalled to <body> in the modal layer: inside the bar's own stacking context the app's bottom
         // nav (z-[20000]) covered the last row (Pause all / Stop all). The Switch / Parallel popover (z-[100001]) stays above.
-        <div className="fixed inset-0 z-[100000]" data-testid="mobile-timer-sheet-root">
+        <div className="fixed inset-0 z-[100000]" style={entityAccentStyle("time-tracking") as React.CSSProperties} data-testid="mobile-timer-sheet-root">
           <div className="absolute inset-0 bg-gray-900/40 animate-in fade-in duration-200 motion-reduce:animate-none" onClick={() => setSheet(false)} aria-hidden />
           <div
             role="dialog"
@@ -129,7 +130,7 @@ export function TimeTrackingMobileBar({ onNavigate, deps, recentProjectIds, seco
             aria-label={t("Running timer", "Bežiaci časovač", "Futó időzítő")}
             data-testid="mobile-timer-sheet"
             style={dragY ? { transform: `translateY(${dragY}px)` } : undefined}
-            className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-lg bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-2xl animate-in slide-in-from-bottom duration-200 motion-reduce:animate-none"
+            className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-lg bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-lg animate-in slide-in-from-bottom duration-200 motion-reduce:animate-none"
           >
             <div className="relative mb-1 flex min-h-11 items-center justify-center">
               <div
@@ -147,7 +148,7 @@ export function TimeTrackingMobileBar({ onNavigate, deps, recentProjectIds, seco
                 onClick={() => setSheet(false)}
                 aria-label={t("Close", "Zavrieť", "Bezárás")}
                 data-testid="mobile-timer-sheet-close"
-                className="absolute right-0 inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 active:bg-gray-200 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none"
+                className="absolute right-0 inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 active:bg-gray-200 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-entity motion-reduce:transition-none"
               >
                 <X className="size-5" />
               </button>

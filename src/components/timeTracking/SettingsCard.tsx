@@ -25,10 +25,10 @@ export function SettingsCard({
     <section data-testid={testId} className="min-w-0">
       <Surface className={`h-full space-y-4 ${className}`}>
         <div className="flex flex-wrap items-start gap-3">
-          {icon && <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{icon}</span>}
+          {icon && <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-entity-subtle text-entity-text">{icon}</span>}
           <div className="min-w-0 flex-1">
-            <h3 data-testid={titleTestId} className="type-card-title text-slate-900">{title}</h3>
-            {description && <p className="mt-0.5 text-body text-slate-500">{description}</p>}
+            <h3 data-testid={titleTestId} className="type-card-title text-gray-900">{title}</h3>
+            {description && <p className="mt-0.5 text-body text-gray-500">{description}</p>}
           </div>
           {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
         </div>

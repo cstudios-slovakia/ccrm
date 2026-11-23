@@ -40,12 +40,12 @@ export function PresenceSoundBlock() {
         "Egy lapon szól, amíg a kérdés nyitva van. Az értesítés és a párbeszédablak mindig megjelenik; csak a hangot kapcsolhatja ki.",
       )}
     >
-      <label className="flex cursor-pointer items-center gap-3 text-ui text-slate-800">
+      <label className="flex cursor-pointer items-center gap-3 text-ui text-gray-800">
         <Switch checked={presenceSound.muted} onChange={(muted) => void tt.savePresenceSound({ ...presenceSound, muted })} label={t("Mute", "Stlmiť", "Némítás")} testId="tt-presence-sound-mute" />
         {t("Mute", "Stlmiť", "Némítás")}
       </label>
       <label className="grid gap-1 ws-sm:max-w-72">
-        <span className="type-label text-slate-600">{t("Volume", "Hlasitosť", "Hangerő")} · {Math.round(volume * 100)} %</span>
+        <span className="type-label text-gray-600">{t("Volume", "Hlasitosť", "Hangerő")} · {Math.round(volume * 100)} %</span>
         <input
           type="range"
           min={0}
@@ -58,21 +58,21 @@ export function PresenceSoundBlock() {
           onPointerUp={commitVolume}
           onKeyUp={commitVolume}
           onBlur={commitVolume}
-          className="h-2 w-full cursor-pointer accent-teal-600 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-2 w-full cursor-pointer accent-[var(--entity-accent-solid)] transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-entity-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           data-testid="tt-presence-sound-volume"
         />
       </label>
       <fieldset className="grid gap-2" disabled={presenceSound.muted}>
         {PRESENCE_SOUND_IDS.map((id) => (
           <div key={id} className="flex items-center justify-between gap-3">
-            <label className="flex cursor-pointer items-center gap-3 text-ui text-slate-800">
-              <input type="radio" name="tt-presence-sound-pick" checked={presenceSound.sound === id} onChange={() => void tt.savePresenceSound({ ...presenceSound, sound: id })} className="size-4 accent-teal-600" data-testid={`tt-presence-sound-${id}`} />
+            <label className="flex cursor-pointer items-center gap-3 text-ui text-gray-800">
+              <input type="radio" name="tt-presence-sound-pick" checked={presenceSound.sound === id} onChange={() => void tt.savePresenceSound({ ...presenceSound, sound: id })} className="size-4 accent-[var(--entity-accent-solid)]" data-testid={`tt-presence-sound-${id}`} />
               {names[id]}
             </label>
             <button
               type="button"
               onClick={() => preview(id)}
-              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-ui text-slate-700 transition-all duration-150 hover:bg-slate-50 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40 focus-visible:ring-offset-2 disabled:opacity-50"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 text-ui text-gray-700 transition-all duration-150 hover:bg-gray-50 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-entity-ring focus-visible:ring-offset-2 disabled:opacity-50"
               data-testid={`tt-presence-sound-preview-${id}`}
             >
               <Play className="size-3.5" aria-hidden />

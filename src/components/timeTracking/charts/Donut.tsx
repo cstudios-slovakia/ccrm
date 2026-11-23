@@ -39,7 +39,7 @@ export function Donut({
   const rest = sorted.slice(shown.length);
   const parts: DonutSlice[] = rest.length ? [...shown, { key: "__other", label: otherLabel, value: rest.reduce((s, r) => s + r.value, 0), color: "#94a3b8" }] : shown;
   const total = parts.reduce((s, p) => s + p.value, 0);
-  if (total <= 0) return <p className={`py-8 text-center text-ui text-slate-400 ${className}`}>{emptyLabel}</p>;
+  if (total <= 0) return <p className={`py-8 text-center text-ui text-gray-400 ${className}`}>{emptyLabel}</p>;
 
   // Largest-remainder rounding so the shown percentages add up to 100.
   const raw = parts.map((p) => (p.value / total) * 100);
@@ -53,7 +53,7 @@ export function Donut({
     <div className={`flex flex-wrap items-center gap-x-6 gap-y-4 ${className}`}>
       <div className="relative size-40 shrink-0">
         <svg role="img" aria-label={ariaLabel} viewBox="0 0 100 100" className="size-full -rotate-90">
-          <circle cx="50" cy="50" r={R} fill="none" strokeWidth="14" className="stroke-slate-100" />
+          <circle cx="50" cy="50" r={R} fill="none" strokeWidth="14" className="stroke-gray-100" />
           {parts.map((p, i) => {
             const len = (p.value / total) * C;
             const el = (
@@ -66,16 +66,16 @@ export function Donut({
           })}
         </svg>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-          <span className="type-card-title tabular-nums text-slate-900">{centerValue}</span>
-          {centerLabel && <span className="type-meta text-slate-500">{centerLabel}</span>}
+          <span className="type-card-title tabular-nums text-gray-900">{centerValue}</span>
+          {centerLabel && <span className="type-meta text-gray-500">{centerLabel}</span>}
         </div>
       </div>
       <ul className="grid min-w-40 flex-1 gap-1.5">
         {parts.map((p, i) => (
           <li key={p.key} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-ui">
             <span className="size-2.5 rounded-full" style={{ backgroundColor: p.color }} />
-            <span className="truncate text-slate-700" title={p.label}>{p.label}</span>
-            <span className="tabular-nums font-semibold text-slate-900">{p.valueLabel ?? `${pcts[i]} %`}</span>
+            <span className="truncate text-gray-700" title={p.label}>{p.label}</span>
+            <span className="tabular-nums font-semibold text-gray-900">{p.valueLabel ?? `${pcts[i]} %`}</span>
           </li>
         ))}
       </ul>

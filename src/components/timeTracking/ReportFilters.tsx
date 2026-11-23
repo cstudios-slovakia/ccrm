@@ -11,9 +11,9 @@ export type ReportMode = "summary" | "detailed" | "salary";
 /** A pill with a muted key ("Projects") and the chosen value; clicking it opens the usual dropdown. */
 export function FilterChip({ label, value, onChange, options, active = false }: { label: string; value: string; onChange: (v: string) => void; options: Option[]; active?: boolean }) {
   return (
-    <div className={`inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-ui ${active ? "border-primary/40 bg-primary/10" : "border-slate-200 bg-white"}`}>
-      <span className="text-slate-500">{label}</span>
-      <CustomSelect unstyled fitLabel size="sm" value={value} onChange={onChange} options={options} className="gap-1 font-semibold text-slate-900" />
+    <div className={`inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-ui ${active ? "border-entity-border bg-entity-subtle" : "border-gray-200 bg-white"}`}>
+      <span className="text-gray-500">{label}</span>
+      <CustomSelect unstyled fitLabel size="sm" value={value} onChange={onChange} options={options} className="gap-1 font-semibold text-gray-900" />
     </div>
   );
 }
@@ -24,7 +24,7 @@ export function ToggleChip({ pressed, onClick, children }: { pressed: boolean; o
       type="button"
       aria-pressed={pressed}
       onClick={onClick}
-      className={`inline-flex h-9 items-center rounded-xl border px-3 text-ui font-semibold transition-all active:scale-95 focus-visible:outline-2 focus-visible:outline-primary cursor-pointer ${pressed ? "border-primary/40 bg-primary/10 text-primary" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
+      className={`inline-flex h-9 items-center rounded-md border px-3 text-ui font-semibold transition-all active:scale-95 focus-visible:outline-2 focus-visible:outline-entity cursor-pointer ${pressed ? "border-entity-border bg-entity-subtle text-entity-text" : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"}`}
     >
       {children}
     </button>
@@ -33,7 +33,7 @@ export function ToggleChip({ pressed, onClick, children }: { pressed: boolean; o
 
 /** Period preset chip. "Custom range…" reveals the two date inputs next to it. */
 export function PeriodChip({ t, period, setPeriod, from, to, setFrom, setTo }: { t: T; period: ReportPeriod; setPeriod: (p: ReportPeriod) => void; from: string; to: string; setFrom: (v: string) => void; setTo: (v: string) => void }) {
-  const input = "h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui text-slate-800";
+  const input = "h-9 rounded-md border border-gray-200 bg-white px-2 text-ui text-gray-800";
   return (
     <>
       <FilterChip
@@ -68,13 +68,13 @@ export function ModeSwitch({ mode, setMode, salary, t }: { mode: ReportMode; set
       type="button"
       onClick={() => setMode(id)}
       aria-pressed={mode === id}
-      className={`h-8 rounded-lg px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${mode === id ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+      className={`h-8 rounded-lg px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${mode === id ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}
     >
       {label}
     </button>
   );
   return (
-    <div className="inline-flex w-fit flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
+    <div className="inline-flex w-fit flex-wrap gap-1 rounded-md bg-gray-100 p-1">
       {item("summary", t("Summary", "Súhrn", "Összegzés"))}
       {item("detailed", t("Detailed", "Podrobné", "Részletes"))}
       {salary && item("salary", t("Salary allocation", "Rozdelenie mzdy", "Bérfelosztás"))}
@@ -101,12 +101,12 @@ export function GroupByChip({
   thenOptions: Option[];
 }) {
   return (
-    <div className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-ui">
-      <span className="text-slate-500">{label}</span>
-      <CustomSelect unstyled fitLabel size="sm" value={first} onChange={onFirst} options={firstOptions} className="gap-1 font-semibold text-slate-900" />
-      <span aria-hidden="true" className="text-slate-400">→</span>
+    <div className="inline-flex h-9 items-center gap-1.5 rounded-md border border-gray-200 bg-white px-3 text-ui">
+      <span className="text-gray-500">{label}</span>
+      <CustomSelect unstyled fitLabel size="sm" value={first} onChange={onFirst} options={firstOptions} className="gap-1 font-semibold text-gray-900" />
+      <span aria-hidden="true" className="text-gray-400">→</span>
       <span data-testid="report-then-by" className="inline-flex">
-        <CustomSelect unstyled fitLabel size="sm" value={then} onChange={onThen} options={thenOptions} className="gap-1 font-semibold text-slate-900" />
+        <CustomSelect unstyled fitLabel size="sm" value={then} onChange={onThen} options={thenOptions} className="gap-1 font-semibold text-gray-900" />
       </span>
     </div>
   );
@@ -115,7 +115,7 @@ export function GroupByChip({
 /** Shown when the server's per-request entry limit was reached: the report is then missing the oldest entries. */
 export function TruncatedNotice({ t }: { t: T }) {
   return (
-    <p data-testid="report-truncated" role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-ui text-amber-800">
+    <p data-testid="report-truncated" role="status" className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-ui text-amber-800">
       {t(
         "This period has 5,000 or more entries, so the oldest ones are missing from the report. Narrow the period.",
         "Toto obdobie má 5 000 alebo viac záznamov, preto v reporte chýbajú tie najstaršie. Zúž obdobie.",

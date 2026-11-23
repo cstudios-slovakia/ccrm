@@ -5,8 +5,8 @@ import type { StartWhileRunning, TFn, TimeTrackingSettings } from "../../utils/t
 type Parallel = TimeTrackingSettings["parallel"];
 
 const radio = (name: string, value: string, current: string, text: string, onChange: (v: string) => void, disabled: boolean) => (
-  <label key={value} className="flex cursor-pointer items-center gap-3 text-ui text-slate-800">
-    <input type="radio" name={name} value={value} checked={current === value} disabled={disabled} onChange={() => onChange(value)} className="size-4 accent-teal-600" data-testid={`${name}-${value}`} />
+  <label key={value} className="flex cursor-pointer items-center gap-3 text-ui text-gray-800">
+    <input type="radio" name={name} value={value} checked={current === value} disabled={disabled} onChange={() => onChange(value)} className="size-4 accent-[var(--entity-accent-solid)]" data-testid={`${name}-${value}`} />
     {text}
   </label>
 );
@@ -26,12 +26,12 @@ export function ParallelTrackingBlock({ t, canEdit, parallel, onChange }: { t: T
         "Minden projekt a teljes időt megkapja; a személy költsége megoszlik. Hogy kinek szabad, azt a „Idő követése párhuzamosan” szerepkör-jogosultság dönti el.",
       )}
     >
-      <label className="flex cursor-pointer items-center gap-3 text-ui text-slate-800">
-        <input type="checkbox" disabled={!canEdit} checked={parallel.enabled} onChange={(e) => set({ enabled: e.target.checked })} className="size-4 accent-teal-600" data-testid="tt-parallel-enabled" />
+      <label className="flex cursor-pointer items-center gap-3 text-ui text-gray-800">
+        <input type="checkbox" disabled={!canEdit} checked={parallel.enabled} onChange={(e) => set({ enabled: e.target.checked })} className="size-4 accent-[var(--entity-accent-solid)]" data-testid="tt-parallel-enabled" />
         {t("Allow several timers to run at once", "Povoliť beh viacerých časovačov naraz", "Több időzítő futhat egyszerre")}
       </label>
       <label className="grid gap-1 ws-sm:max-w-48">
-        <span className="type-label text-slate-600">{t("Maximum at once", "Maximum naraz", "Legfeljebb egyszerre")}</span>
+        <span className="type-label text-gray-600">{t("Maximum at once", "Maximum naraz", "Legfeljebb egyszerre")}</span>
         <input
           type="number"
           min={2}
@@ -39,12 +39,12 @@ export function ParallelTrackingBlock({ t, canEdit, parallel, onChange }: { t: T
           disabled={off}
           value={parallel.maxParallel}
           onChange={(e) => set({ maxParallel: Math.min(10, Math.max(2, Math.round(Number(e.target.value)) || 2)) })}
-          className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-ui outline-none focus:border-primary disabled:bg-slate-50"
+          className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-ui outline-none focus:border-entity disabled:bg-gray-50"
           data-testid="tt-parallel-max"
         />
       </label>
       <fieldset className="grid gap-2" disabled={off}>
-        <legend className="type-label mb-1 text-slate-600">{t("Two timers on the same project", "Dva časovače na tom istom projekte", "Két időzítő ugyanazon a projekten")}</legend>
+        <legend className="type-label mb-1 text-gray-600">{t("Two timers on the same project", "Dva časovače na tom istom projekte", "Két időzítő ugyanazon a projekten")}</legend>
         {radio("tt-parallel-same", "differentTasks", parallel.sameProject, t("Allowed on different tasks only", "Povolené len pri rôznych úlohách", "Csak különböző feladatokon"), pick, off)}
         {radio("tt-parallel-same", "never", parallel.sameProject, t("Never", "Nikdy", "Soha"), pick, off)}
         {radio("tt-parallel-same", "always", parallel.sameProject, t("Always", "Vždy", "Mindig"), pick, off)}
@@ -67,14 +67,14 @@ export function StartWhileRunningBlock() {
       {tt.settings.parallel.enabled ? (
         <div className="grid gap-2">
           {options.map((o) => (
-            <label key={o.v} className="flex cursor-pointer items-center gap-3 text-ui text-slate-800">
-              <input type="radio" name="tt-start-while-running" checked={tt.startWhileRunning === o.v} onChange={() => void tt.saveStartWhileRunning(o.v)} className="size-4 accent-teal-600" data-testid={`tt-swr-${o.v}`} />
+            <label key={o.v} className="flex cursor-pointer items-center gap-3 text-ui text-gray-800">
+              <input type="radio" name="tt-start-while-running" checked={tt.startWhileRunning === o.v} onChange={() => void tt.saveStartWhileRunning(o.v)} className="size-4 accent-[var(--entity-accent-solid)]" data-testid={`tt-swr-${o.v}`} />
               {o.text}
             </label>
           ))}
         </div>
       ) : (
-        <p className="text-body text-slate-500">{t("Your company has not enabled parallel tracking, so a new timer always replaces the running one.", "Vaša firma nepovolila súbežné sledovanie, nový časovač vždy nahradí bežiaci.", "A cége nem engedélyezte a párhuzamos követést, ezért az új időzítő mindig leváltja a futót.")}</p>
+        <p className="text-body text-gray-500">{t("Your company has not enabled parallel tracking, so a new timer always replaces the running one.", "Vaša firma nepovolila súbežné sledovanie, nový časovač vždy nahradí bežiaci.", "A cége nem engedélyezte a párhuzamos követést, ezért az új időzítő mindig leváltja a futót.")}</p>
       )}
     </SettingsCard>
   );

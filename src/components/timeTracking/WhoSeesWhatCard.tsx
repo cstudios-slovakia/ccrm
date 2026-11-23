@@ -30,7 +30,7 @@ export function WhoSeesWhatCard({ t, roles, canManageRoles }: { t: TFn; roles: R
       title={t("Who sees what", "Kto čo vidí", "Ki mit lát")}
       description={t("Read from each role's permissions.", "Načítané z oprávnení jednotlivých rolí.", "Az egyes szerepkörök jogosultságaiból olvasva.")}
       action={
-        canManageRoles && <a href="#settings/access/roles" className="text-ui font-semibold text-primary hover:underline" data-testid="tt-who-sees-link">
+        canManageRoles && <a href="#settings/access/roles" className="text-ui font-semibold text-entity-text hover:underline" data-testid="tt-who-sees-link">
           {t("Managed in Users & roles", "Spravuje sa v Používateľoch a rolách", "A Felhasználók és szerepkörök résznél kezelhető")}
         </a>
       }
@@ -39,12 +39,12 @@ export function WhoSeesWhatCard({ t, roles, canManageRoles }: { t: TFn; roles: R
       <div className="grid gap-4">
         {rows.map((row) => (
           <div key={row.id} className="grid gap-1.5" data-testid={`tt-who-${row.id}`}>
-            <span className="text-ui font-semibold text-slate-900">{titles[row.id]}</span>
+            <span className="text-ui font-semibold text-gray-900">{titles[row.id]}</span>
             <div className="flex flex-wrap gap-1.5">
               {row.roles.map((r) => (
                 <span
                   key={r.name}
-                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-micro font-semibold ${r.yes ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-micro font-semibold ${r.yes ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-gray-200 bg-gray-50 text-gray-500"}`}
                   data-yes={r.yes ? "1" : "0"}
                 >
                   <span aria-hidden>{r.yes ? "✓" : "—"}</span>

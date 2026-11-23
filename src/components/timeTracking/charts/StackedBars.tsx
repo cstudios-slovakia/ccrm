@@ -39,31 +39,31 @@ export function StackedBars({
   const gap = 0.3;
   return (
     <div className={className}>
-      <div className="mb-2 flex flex-wrap items-center justify-end gap-3 type-meta text-slate-500">
-        <span className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-primary" />{aLabel}</span>
-        <span className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-primary/25" />{bLabel}</span>
+      <div className="mb-2 flex flex-wrap items-center justify-end gap-3 type-meta text-gray-500">
+        <span className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-entity-solid" />{aLabel}</span>
+        <span className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-entity-solid/25" />{bLabel}</span>
       </div>
       {n === 0 || max === 0 ? (
-        <p className="py-8 text-center text-ui text-slate-400">{emptyLabel}</p>
+        <p className="py-8 text-center text-ui text-gray-400">{emptyLabel}</p>
       ) : (
         <>
           <svg role="img" aria-label={ariaLabel} viewBox={`0 0 ${n} ${H}`} preserveAspectRatio="none" className="h-40 w-full">
-            <line x1="0" x2={n} y1={H} y2={H} className="stroke-slate-200" strokeWidth="0.5" vectorEffect="non-scaling-stroke" />
+            <line x1="0" x2={n} y1={H} y2={H} className="stroke-gray-200" strokeWidth="0.5" vectorEffect="non-scaling-stroke" />
             {bars.map((bar, i) => {
               const ha = (bar.a / max) * (H - 4);
               const hb = (bar.b / max) * (H - 4);
               return (
                 <g key={bar.key}>
                   <title>{`${bar.title}: ${aLabel} ${formatValue(bar.a)}, ${bLabel} ${formatValue(bar.b)}`}</title>
-                  <rect x={i + gap / 2} y={H - ha} width={1 - gap} height={ha} className="fill-primary" />
-                  <rect x={i + gap / 2} y={H - ha - hb} width={1 - gap} height={hb} className="fill-primary/25" />
+                  <rect x={i + gap / 2} y={H - ha} width={1 - gap} height={ha} className="fill-entity-solid" />
+                  <rect x={i + gap / 2} y={H - ha - hb} width={1 - gap} height={hb} className="fill-entity-solid/25" />
                 </g>
               );
             })}
           </svg>
           <div className="mt-1 grid" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }} aria-hidden="true">
             {bars.map((bar, i) => (
-              <span key={bar.key} className="text-center type-meta tabular-nums text-slate-500">
+              <span key={bar.key} className="text-center type-meta tabular-nums text-gray-500">
                 {i % labelEvery === 0 ? bar.label : ""}
               </span>
             ))}

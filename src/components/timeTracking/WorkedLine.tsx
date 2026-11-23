@@ -14,14 +14,14 @@ import { ClockDigits } from "./ClockDigits";
 export function WorkedTotal({ projectSec, workedSec, className = "", compact, plain }: { projectSec: number; workedSec: number; className?: string; compact?: boolean; plain?: boolean }) {
   const { t } = useTimeTracking();
   if (compact) {
-    const cls = `block tabular-nums text-teal-700${plain ? "" : " font-bold"}`;
+    const cls = `block tabular-nums text-entity-text${plain ? "" : " font-bold"}`;
     if (!showsWorkedAndDelivered(projectSec, workedSec)) return <span className={cls}>{formatDuration(workedSec)}</span>;
     const wl = t("Worked", "Odpracované", "Ledolgozott");
     const dl = t("Delivered", "Dodané", "Leszállított");
     return (
       <span className={cls} title={`${wl} · ${dl}`} data-testid="worked-delivered">
         {formatDuration(workedSec)}
-        <span className="type-meta font-normal text-slate-500"> · {formatDuration(projectSec)}</span>
+        <span className="type-meta font-normal text-gray-500"> · {formatDuration(projectSec)}</span>
       </span>
     );
   }
@@ -39,7 +39,7 @@ export function OfYourTime({ entries }: { entries: readonly TimeEntry[] }) {
   const project = entries.reduce((s, e) => s + entrySeconds(e, nowMs), 0);
   const worked = entries.reduce((s, e) => s + entryWorkedSeconds(e, nowMs), 0);
   const label = ofYourTimeLabel(t, project, worked);
-  return label ? <span className="block whitespace-nowrap text-right type-meta text-slate-500" data-testid="time-entry-worked">{label}</span> : null;
+  return label ? <span className="block whitespace-nowrap text-right type-meta text-gray-500" data-testid="time-entry-worked">{label}</span> : null;
 }
 
 /** Drawer line above the cost: "Your time: 0:40 of 2:00 · in parallel with B, C 09:00–11:00". */
@@ -52,7 +52,7 @@ export function DrawerWorkedLine({ entry }: { entry: TimeEntry }) {
   const others = parallelWith(entry, entries, nowMs);
   const range = `${clockTime(entry.startAt)}–${entry.endAt ? clockTime(entry.endAt) : "…"}`;
   return (
-    <div className="text-ui text-slate-600" data-testid="entry-worked-line">
+    <div className="text-ui text-gray-600" data-testid="entry-worked-line">
       {t("Your time", "Váš čas", "A te időd")}: {formatDuration(worked)} {t("of", "z", "ennyiből:")} {formatDuration(project)}
       {others.length > 0 && ` · ${t("in parallel with", "súbežne s", "párhuzamosan ezzel:")} ${others.map((o) => o.title || "—").join(", ")} ${range}`}
     </div>

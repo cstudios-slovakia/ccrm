@@ -213,7 +213,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
             {" · "}
             {t("the totals above are for the whole week", "súčty vyššie platia za celý týždeň", "a fenti összesítések az egész hétre vonatkoznak")}
             {" · "}
-            <button type="button" onClick={() => setFilter(EMPTY_LIST_FILTER)} className="font-semibold text-primary hover:underline cursor-pointer" data-testid="time-filter-summary-clear">{t("Clear", "Zrušiť", "Törlés")}</button>
+            <button type="button" onClick={() => setFilter(EMPTY_LIST_FILTER)} className="font-semibold text-entity-text hover:underline cursor-pointer" data-testid="time-filter-summary-clear">{t("Clear", "Zrušiť", "Törlés")}</button>
           </p>
         )}
         {selected.size > 0 && (
@@ -245,7 +245,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
         <Surface className="ws-sm:hidden">
           <p className="text-body text-gray-500" data-testid="time-filter-today-empty">
             {t("No matching entries today.", "Dnes nie sú žiadne zodpovedajúce záznamy.", "Ma nincs egyező bejegyzés.")}{" "}
-            <button type="button" onClick={() => setFilter(EMPTY_LIST_FILTER)} className="font-semibold text-primary hover:underline cursor-pointer">{t("Clear", "Zrušiť", "Törlés")}</button>
+            <button type="button" onClick={() => setFilter(EMPTY_LIST_FILTER)} className="font-semibold text-entity-text hover:underline cursor-pointer">{t("Clear", "Zrušiť", "Törlés")}</button>
           </p>
         </Surface>
       )}
@@ -358,7 +358,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
           onClick={() => { setSelected(new Set()); setWholeWeek((v) => !v); }}
           aria-expanded={wholeWeek}
           data-testid="time-whole-week"
-          className="inline-flex min-h-11 items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-ui font-semibold text-primary hover:bg-gray-50 cursor-pointer ws-sm:hidden"
+          className="inline-flex min-h-11 items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-ui font-semibold text-entity-text hover:bg-gray-50 cursor-pointer ws-sm:hidden"
         >
           {wholeWeek ? t("Today only", "Iba dnes", "Csak a mai nap") : t("Whole week", "Celý týždeň", "Egész hét")}
         </button>

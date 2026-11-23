@@ -31,7 +31,7 @@ export function DayEntryActions({ entry, deps, onOpen }: { entry: TimeEntry; dep
         title={t("Edit", "Upraviť", "Szerkesztés")}
         aria-label={t("Edit", "Upraviť", "Szerkesztés")}
         data-testid="day-row-edit"
-        className="inline-flex size-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
+        className="inline-flex size-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 cursor-pointer"
       >
         <Pencil className="size-4" />
       </button>
@@ -43,7 +43,7 @@ export function DayEntryActions({ entry, deps, onOpen }: { entry: TimeEntry; dep
           disabled={locked}
           title={lockTitle ?? t("Hold to delete", "Podržte pre odstránenie", "Tartsa a törléshez")}
           data-testid="day-row-delete"
-          className="inline-flex size-8 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40 cursor-pointer"
+          className="inline-flex size-8 items-center justify-center rounded-lg text-gray-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40 cursor-pointer"
         >
           <Trash2 className="size-4" />
         </HoldToConfirmButton>
