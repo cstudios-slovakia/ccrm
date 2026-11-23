@@ -1,2 +1,0 @@
-- **Timesheet shows a Cost column** (`TimeTimesheetView.tsx`, `src/utils/timesheetCost.ts`): the labour cost of each row and of the week, after Total. Your own cost always shows, other people's only with the cost permission; when part of a row is hidden from you it shows "—" instead of a partial sum, and the column is hidden when you can see no cost at all. Currencies are never added together.
-- **Tests**: `timesheetCost.test.ts` (own cost, hidden cost, no cost, two currencies, hidden total).
