@@ -1,4 +1,5 @@
 import type { RolePermission, UserProfile } from "../types";
+import { LEGACY_WIDGET_DASHBOARD } from "./dashboardSection.ts";
 
 /**
  * Role-based access control — the single registry of every permission the app
@@ -509,6 +510,8 @@ export const permissionKeyForRoute = (routeId: string): string | null => {
   if (base === "sai") return "leads";
   if (base.startsWith("user-")) return "pm_managers";
   if (base.startsWith("dash_")) return "dashboard.custom";
+  // The Dashboard section shows the Performance Dashboard, so it keeps that screen's permission.
+  if (base === "dashboard" && !LEGACY_WIDGET_DASHBOARD) return "overview";
   if (base.startsWith("ue_")) return "unified_entries";
   if (base.startsWith("lead-")) return "leads";
   if (base.startsWith("client-")) return "clients";

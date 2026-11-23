@@ -142,6 +142,7 @@ import { updatePwaManifest } from "./utils/pwaManifest";
 import { PRODUCT_NAME, normalizeSystemTitleOverride, resolveSystemTitle, resolveTitleWithProduct, setSystemTitle } from "./utils/brand";
 import { HoldToConfirmButton } from "./components/ui/HoldToConfirm";
 import { clearErrorLogsWithUndo } from "./utils/errorLogs";
+import { DASHBOARD_SECTION_ALIASES, LEGACY_WIDGET_DASHBOARD } from "./utils/dashboardSection";
 
 /**
  * Routes whose whole purpose depends on OpenAI. Visiting one without a
@@ -366,6 +367,7 @@ function App() {
 
     // Map common synonyms & aliases directly to canonical app tabs
     const aliasMap: Record<string, string> = {
+      ...DASHBOARD_SECTION_ALIASES,
       finances: "financial",
       financials: "financial",
       cashflow: "financial",
@@ -3955,7 +3957,9 @@ ${log.payload || ''}
     }
 
     const rawBaseTab = activeRoute.split("/")[0];
-    const baseTab = rawBaseTab.startsWith("project-") ? "projects" : rawBaseTab.startsWith("ticket-") ? "tickets" : (rawBaseTab === "social_media" && !SOCIAL_MEDIA_ENABLED ? "dashboard" : rawBaseTab);
+    const sectionTab = rawBaseTab.startsWith("project-") ? "projects" : rawBaseTab.startsWith("ticket-") ? "tickets" : (rawBaseTab === "social_media" && !SOCIAL_MEDIA_ENABLED ? "dashboard" : rawBaseTab);
+    // The Performance Dashboard (case "overview") took the widget board's place; see utils/dashboardSection.ts.
+    const baseTab = sectionTab === "dashboard" && !LEGACY_WIDGET_DASHBOARD ? "overview" : sectionTab;
     switch (baseTab) {
       case "tickets": {
         const subTicketId = (activeRoute.startsWith("tickets/") && activeRoute.length > "tickets/".length)

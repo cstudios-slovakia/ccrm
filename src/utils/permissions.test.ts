@@ -22,6 +22,7 @@ import {
   withPermission,
   withSectionGranted,
 } from "./permissions.ts";
+import { LEGACY_WIDGET_DASHBOARD } from "./dashboardSection.ts";
 
 const user = (role: string): UserProfile => ({ name: "U", email: "u@example.com", role, color: "#000" });
 
@@ -408,4 +409,13 @@ test("agency: a role saved before the module existed gets nothing, not edit", ()
   for (const key of ["agency", "agency.delete", "agency.personal", "agency.payments"]) {
     assert.equal(resolvePermissionValue(before, key), "nothing", key);
   }
+});
+
+test("the Dashboard section is guarded by the permission of the screen it shows", () => {
+  // The Performance Dashboard (formerly Analytics, `overview`) holds the section unless the widget board is restored.
+  assert.equal(permissionKeyForRoute("dashboard"), LEGACY_WIDGET_DASHBOARD ? "dashboard" : "overview");
+  assert.equal(permissionKeyForRoute("overview"), "overview");
+  const perms = { ...newRolePermissions(), dashboard: "view" as const, overview: "nothing" as const };
+  const access = buildAccess(user("R"), [{ name: "R", permissions: perms }]);
+  assert.equal(access.canOpenRoute("dashboard"), LEGACY_WIDGET_DASHBOARD);
 });

@@ -22,6 +22,7 @@ import { PRODUCT_NAME } from "../utils/brand";
 import { isInsideMenuEditLayer } from "./menuEdit/primitives";
 import { menuEditStrings } from "./menuEdit/menuEditStrings";
 import { StartMenuEditDialog } from "./menuEdit/StartMenuEditDialog";
+import { LEGACY_WIDGET_DASHBOARD, isRetiredSectionId } from "../utils/dashboardSection";
 
 interface StartMenuProps {
   isOpen: boolean;
@@ -409,13 +410,15 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       {
         id: "dashboard",
         label: getTranslation(systemLanguage, "sidebar.dashboard"),
-        description: t("Widget board of live metrics, charts & tables", "Nástenka so živými metrikami, grafmi a tabuľkami", "Élő mutatók, diagramok és táblázatok"),
+        description: LEGACY_WIDGET_DASHBOARD
+          ? t("Widget board of live metrics, charts & tables", "Nástenka so živými metrikami, grafmi a tabuľkami", "Élő mutatók, diagramok és táblázatok")
+          : t("Executive BI overview & marketing funnel metrics", "Manažérske BI reporty a marketingové metriky", "Vezetői BI és marketing mutatók"),
         icon: LayoutDashboard,
         color: "var(--color-indigo-600)",
         bgColor: "rgba(79, 70, 229, 0.12)",
         defaultSection: "analytics"
       },
-      {
+      ...(isRetiredSectionId("overview") ? [] : [{
         id: "overview",
         label: getTranslation(systemLanguage, "sidebar.analytics"),
         description: t("Executive BI overview & marketing funnel metrics", "Manažérske BI reporty a marketingové metriky", "Vezetői BI és marketing mutatók"),
@@ -423,7 +426,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         color: "var(--color-cyan-600)",
         bgColor: "rgba(8, 145, 178, 0.12)",
         defaultSection: "analytics"
-      },
+      }]),
 
       // Dynamic Custom Dashboards
       ...customDashboards

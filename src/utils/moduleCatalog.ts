@@ -30,6 +30,7 @@ import { EmployeeTieIcon } from "../components/icons/EmployeeTieIcon";
 import { FlockIcon } from "../components/icons/FlockIcon";
 import { applySectionVisual } from "./sectionVisuals";
 import { PRODUCT_NAME } from "./brand.ts";
+import { LEGACY_WIDGET_DASHBOARD, isRetiredSectionId } from "./dashboardSection.ts";
 
 /**
  * The one list of modules an admin can show or hide.
@@ -386,17 +387,20 @@ export function buildModuleCatalog(
       id: "dashboard",
       category: "analytics",
       title: getTranslation(language, "sidebar.dashboard"),
-      description: t("Widget board of live metrics, charts & tables", "Nástenka so živými metrikami, grafmi a tabuľkami", "Élő mutatók, diagramok és táblázatok"),
-      longDescription: long("dashboard"),
-      screenshot: shot("dashboard"),
+      // While the Performance Dashboard holds this section it borrows the Analytics copy and screenshot.
+      description: LEGACY_WIDGET_DASHBOARD
+        ? t("Widget board of live metrics, charts & tables", "Nástenka so živými metrikami, grafmi a tabuľkami", "Élő mutatók, diagramok és táblázatok")
+        : t("Executive BI overview & marketing funnel metrics", "Manažérske BI reporty a marketingové metriky", "Vezetői BI és marketing mutatók"),
+      longDescription: long(LEGACY_WIDGET_DASHBOARD ? "dashboard" : "overview"),
+      screenshot: shot(LEGACY_WIDGET_DASHBOARD ? "dashboard" : "overview"),
       icon: LayoutDashboard,
       color: "#4f46e5",
       bgColor: "rgba(79, 70, 229, 0.12)",
       badge: t("Start Screen", "Úvodná obrazovka", "Kezdőképernyő"),
     },
-    {
+    ...(isRetiredSectionId("overview") ? [] : [{
       id: "overview",
-      category: "analytics",
+      category: "analytics" as const,
       title: getTranslation(language, "sidebar.analytics"),
       description: t("Executive BI overview & marketing funnel metrics", "Manažérske BI reporty a marketingové metriky", "Vezetői BI és marketing mutatók"),
       longDescription: long("overview"),
@@ -404,7 +408,7 @@ export function buildModuleCatalog(
       icon: BarChart3,
       color: "#0891b2",
       bgColor: "rgba(8, 145, 178, 0.12)",
-    },
+    }]),
 
     // Dynamic custom dashboards
     ...customDashboards

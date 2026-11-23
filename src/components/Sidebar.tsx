@@ -46,6 +46,7 @@ import { DragGhostLayer } from "./menuEdit/dragGhost";
 import { isInsideMenuEditLayer } from "./menuEdit/primitives";
 import { menuEditStrings } from "./menuEdit/menuEditStrings";
 import { SidebarEditPanel } from "./menuEdit/SidebarEditPanel";
+import { isRetiredSectionId } from "../utils/dashboardSection";
 
 /**
  * `dashboard` used to BE the task panel — the tasks section was split out of it
@@ -503,10 +504,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       { id: "automation", label: systemLanguage === "sk" ? "Automatizácia" : systemLanguage === "hu" ? "Automatizálás" : "Automation", icon: Icons.Workflow || Icons.Network || Icons.GitFork || FolderOpen, color: "var(--color-purple-800)" },
       { id: "social_media", label: systemLanguage === "sk" ? "Sociálne siete" : systemLanguage === "hu" ? "Közösségi média" : "Social Media", icon: Icons.Share2 || Icons.Globe, color: "var(--color-rose-500)" },
       { id: "updates", label: systemLanguage === "sk" ? "Novinky" : systemLanguage === "hu" ? "Újdonságok" : "Updates", icon: Sparkles, color: "var(--color-amber-600)" }
-    ].map(applySectionVisual);
+    ].filter((item) => !isRetiredSectionId(item.id)).map(applySectionVisual);
   }, [systemLanguage, dynamicUeItems, dynamicDashItems]);
 
   const isItemVisibleInSystem = (id: string) => {
+    if (isRetiredSectionId(id)) return false;
     if (disabledModules.includes(id)) return false;
     if (!canOpenRoute(id)) return false;
     // RAG AI and Mail used to vanish until their setup was done, which left no
