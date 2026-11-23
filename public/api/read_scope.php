@@ -614,9 +614,9 @@ function ccrm_is_client_row(array $row): bool {
  * project's client and status, for grouping and the "show finished" toggle). It grants no
  * right to open a project or a client. Empty for a caller without time tracking.
  *
- * @return array{projects: list<array{id:string,name:string,clientId:?string,status:string}>, clients: list<array{id:string,name:string}>, projectTypes: list<array{id:string,name:string}>}
+ * @return array{projects: list<array{id:string,name:string,clientId:?string,status:string}>, clients: list<array{id:string,name:string}>, projectTypes: list<array{id:string,name:string}>}|null  null when the lookup failed
  */
-function ccrm_time_picker_options(\PDO $pdo, array $scope): array {
+function ccrm_time_picker_options(\PDO $pdo, array $scope): ?array {
     $out = ['projects' => [], 'clients' => [], 'projectTypes' => []];
     if (!ccrm_can($scope, 'time_tracking')) {
         return $out;
@@ -664,7 +664,9 @@ function ccrm_time_picker_options(\PDO $pdo, array $scope): array {
             $out['projectTypes'][] = ['id' => (string)$row['id'], 'name' => (string)($row['name'] ?? '')];
         }
     } catch (\Throwable $e) {
+        // Null, not empty lists: the client then falls back to referenceNames.projects.
         error_log('[ccrm] time picker options failed: ' . $e->getMessage());
+        return null;
     }
     return $out;
 }

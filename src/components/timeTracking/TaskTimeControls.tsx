@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { useProjectStatuses } from "../../hooks/useProjectStatuses";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
@@ -40,6 +40,7 @@ export function TaskTimeControls({
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState("");
+  const createBusy = useRef(false);
   const [note, setNote] = useState("");
   // "Running" means this task is in the running set (D5.4).
   const runningHereList = tt.running.filter((e) => e.taskId === task.id);
@@ -102,9 +103,14 @@ export function TaskTimeControls({
   const createForClient = async () => {
     const create = readTimeCreate().onCreateProject;
     const name = newName.trim();
-    if (!create || !party?.id || !name || !newType) return;
-    const made = await create({ name, clientId: party.id, projectTypeId: newType });
-    if (made) void begin(made.id, saveOnTask);
+    if (!create || !party?.id || !name || !newType || createBusy.current) return;
+    createBusy.current = true; // one server create per submit: a double click must not make two projects
+    try {
+      const made = await create({ name, clientId: party.id, projectTypeId: newType });
+      if (made) void begin(made.id, saveOnTask);
+    } finally {
+      createBusy.current = false;
+    }
   };
 
   const banner = runningHereList.map((e, i) => (

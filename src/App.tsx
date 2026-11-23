@@ -4779,6 +4779,11 @@ ${log.payload || ''}
     () => (canSeeProjects ? [] : workableProjectStubs(readScope, pickerDefaultStatus, timeCreatedProjects)),
     [canSeeProjects, readScope, pickerDefaultStatus, timeCreatedProjects],
   );
+  // Projects view without edit creates through the server too: show the new one until a sync lists it.
+  const pickerProjects = useMemo(
+    () => (canSeeProjects ? [...projects, ...timeCreatedProjects.filter((c) => !projects.some((p) => p.id === c.id))] : workableProjects),
+    [canSeeProjects, projects, timeCreatedProjects, workableProjects],
+  );
   const pickerTypes = useMemo(() => (canSeeProjects ? projectTypes : pickerProjectTypes(readScope)), [canSeeProjects, projectTypes, readScope]);
   const pickerLeads = useMemo(() => (canSeeProjects ? leads : withPickerClients(readScope, leads)), [canSeeProjects, leads, readScope]);
   const timeDeps: TimeDeps | null = currentUser ? {
@@ -4787,7 +4792,7 @@ ${log.payload || ''}
     currentUser,
     users,
     employees,
-    projects: canSeeProjects ? projects : workableProjects,
+    projects: pickerProjects,
     projectTypes: pickerTypes,
     leads: pickerLeads,
     tasks,
