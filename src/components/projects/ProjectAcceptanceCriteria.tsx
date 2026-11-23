@@ -55,7 +55,7 @@ const CriterionTitle = ({
           e.currentTarget.blur();
         }
       }}
-      className="h-9 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 text-ui font-semibold text-gray-800 hover:border-gray-200 focus:border-entity-border focus:bg-white focus:outline-none"
+      className="h-9 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 text-ui font-semibold text-gray-800 hover:border-gray-200 focus:border-entity-border focus:bg-white focus:outline-none"
     />
   );
 };
@@ -163,14 +163,14 @@ export const ProjectAcceptanceCriteria = ({
                       setConfirmingWithdraw(false);
                       void runScopeAction("withdraw");
                     }}
-                    className="h-8 cursor-pointer rounded-lg border border-gray-200 bg-white px-3 text-ui font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-default disabled:opacity-50"
+                    className="h-8 cursor-pointer rounded-md border border-gray-200 bg-white px-3 text-ui font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-default disabled:opacity-50"
                   >
                     {t("Withdraw approval", "Zrušiť schválenie", "Jóváhagyás visszavonása")}
                   </button>
                   <button
                     type="button"
                     onClick={() => setConfirmingWithdraw(false)}
-                    className="h-8 cursor-pointer rounded-lg px-3 text-ui font-semibold text-gray-600 hover:bg-gray-100"
+                    className="h-8 cursor-pointer rounded-md px-3 text-ui font-semibold text-gray-600 hover:bg-gray-100"
                   >
                     {t("Keep", "Ponechať", "Megtartom")}
                   </button>
@@ -180,7 +180,7 @@ export const ProjectAcceptanceCriteria = ({
                   type="button"
                   disabled={pending}
                   onClick={() => setConfirmingWithdraw(true)}
-                  className="h-8 cursor-pointer rounded-lg px-3 text-ui font-semibold text-gray-600 hover:bg-gray-100 disabled:cursor-default disabled:opacity-50"
+                  className="h-8 cursor-pointer rounded-md px-3 text-ui font-semibold text-gray-600 hover:bg-gray-100 disabled:cursor-default disabled:opacity-50"
                 >
                   {t("Withdraw approval", "Zrušiť schválenie", "Jóváhagyás visszavonása")}
                 </button>
@@ -200,7 +200,7 @@ export const ProjectAcceptanceCriteria = ({
                 type="button"
                 disabled={pending}
                 onClick={() => void runScopeAction("approve")}
-                className="h-9 shrink-0 cursor-pointer rounded-lg bg-entity-solid px-4 text-ui font-semibold text-white hover:opacity-90 disabled:cursor-default disabled:opacity-50"
+                className="h-9 shrink-0 cursor-pointer rounded-md bg-entity-solid px-4 text-ui font-semibold text-white hover:opacity-90 disabled:cursor-default disabled:opacity-50"
               >
                 {t("Approve scope", "Schváliť rozsah", "Terjedelem jóváhagyása")}
               </button>
@@ -291,12 +291,12 @@ export const ProjectAcceptanceCriteria = ({
             onChange={(e) => setDraft(e.target.value)}
             aria-label={t("New criterion", "Nové kritérium", "Új kritérium")}
             placeholder={t("New criterion", "Nové kritérium", "Új kritérium")}
-            className="h-9 min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 text-ui"
+            className="h-9 min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-3 text-ui"
           />
           <button
             type="submit"
             disabled={!draft.trim()}
-            className="flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 text-ui font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-default disabled:opacity-50"
+            className="flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-gray-200 bg-white px-4 text-ui font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-default disabled:opacity-50"
           >
             <Plus className="h-4 w-4" aria-hidden="true" />
             {t("Add", "Pridať", "Hozzáadás")}

@@ -3,7 +3,7 @@ import type { Language } from "../../utils/translations";
 import { normalizeGithubBranch, normalizeGithubRepo } from "../../utils/githubRepo";
 
 const inputCls =
-  "w-full px-3 py-2 rounded-lg border-2 border-gray-200 bg-gray-50 text-body font-bold text-gray-800 placeholder:font-normal placeholder:text-gray-400 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all read-only:bg-transparent read-only:border-transparent read-only:pl-0 aria-[invalid=true]:border-rose-400";
+  "w-full px-3 py-2 rounded-md border border-gray-200 bg-gray-50 text-body font-bold text-gray-800 placeholder:font-normal placeholder:text-gray-400 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all read-only:bg-transparent read-only:border-transparent read-only:pl-0 aria-[invalid=true]:border-rose-400";
 
 /**
  * "GitHub" group in the project detail's left card: the repository ("owner/name") the project is paired

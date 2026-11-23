@@ -101,7 +101,7 @@ export const InvoicingSection = ({
         <button
           type="button"
           onClick={onClearSelection}
-          className="text-ui h-8 rounded-lg px-2.5 font-semibold text-gray-600 transition-colors hover:bg-gray-100"
+          className="text-ui h-8 rounded-md px-2.5 font-semibold text-gray-600 transition-colors hover:bg-gray-100"
         >
           {t("Clear status selection", "Zrušiť výber stavov", "Státuszválasztás törlése")}
         </button>

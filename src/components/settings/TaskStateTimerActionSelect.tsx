@@ -17,7 +17,7 @@ export const TaskStateTimerActionSelect: React.FC<{
       value={value ?? ""}
       disabled={!canEdit}
       onChange={(e) => onChange((e.target.value || undefined) as TimerAction | undefined)}
-      className="min-h-9 rounded-lg border border-gray-200 bg-white px-2 text-ui font-semibold text-gray-700 disabled:opacity-60"
+      className="min-h-9 rounded-md border border-gray-200 bg-white px-2 text-ui font-semibold text-gray-700 disabled:opacity-60"
     >
       <option value="">—</option>
       <option value="start">{L(lang, "Start", "Spustiť", "Indítás")}</option>
@@ -52,7 +52,7 @@ export const TaskStateTimerActionsHint: React.FC<{
           <button
             type="button"
             onClick={() => onApply(suggestion)}
-            className="rounded-lg bg-entity-solid px-3 py-1.5 text-ui font-bold text-white transition-colors hover:opacity-90"
+            className="rounded-md bg-entity-solid px-3 py-1.5 text-ui font-bold text-white transition-colors hover:opacity-90"
           >
             {L(lang, "Apply", "Použiť", "Alkalmaz")}
           </button>

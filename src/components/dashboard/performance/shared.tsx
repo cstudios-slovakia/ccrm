@@ -256,7 +256,7 @@ export const SegmentedSwitch = ({
         type="button"
         aria-pressed={item.id === activeId}
         onClick={() => onSelect(item.id)}
-        className={`text-ui rounded-lg font-semibold transition-colors ${fill ? "h-8 flex-1" : "h-9 px-3"} ${
+        className={`text-ui rounded-md font-semibold transition-colors ${fill ? "h-8 flex-1" : "h-9 px-3"} ${
           item.id === activeId ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
         }`}
       >
