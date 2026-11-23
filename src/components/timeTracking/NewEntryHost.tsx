@@ -26,6 +26,9 @@ export function NewEntryHost({ deps }: { deps: TimeDeps }) {
       }
       if (startAt && endAt) durationSec = Math.max(0, Math.round((new Date(endAt).getTime() - new Date(startAt).getTime()) / 1000));
       if (!startAt) { endAt = null; }
+      // An admin may have switched "Require a task" on in another session: the server's 422 is the truth, so re-read the rule
+      // and the drawer labels the Task field as required.
+      if (req.taskRequired) void tt.reloadSettings();
       const task = req.taskId ? deps.tasks.find((x) => x.id === req.taskId) ?? null : null;
       setDraft({
         id: "",
@@ -58,7 +61,7 @@ export function NewEntryHost({ deps }: { deps: TimeDeps }) {
     };
     window.addEventListener(NEW_TIME_ENTRY_EVENT, onNew);
     return () => window.removeEventListener(NEW_TIME_ENTRY_EVENT, onNew);
-  }, [deps.tasks, tt.userId, tt.settings.billableByDefault]);
+  }, [deps.tasks, tt.userId, tt.settings.billableByDefault, tt.reloadSettings]);
   if (!draft) return null;
   return <OpenDraft draft={draft} deps={deps} onClose={() => setDraft(null)} />;
 }

@@ -330,7 +330,14 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
           <div className="grid gap-1">
             <span className="type-label text-gray-600">
               {t("Task", "Úloha", "Feladat")}
-              <span className="type-meta ml-1 font-normal text-gray-400">{!tt.settings.requireTask && t("· optional", "· voliteľné", "· nem kötelező")}</span>
+              {tt.settings.requireTask ? (
+                <>
+                  {" *"}
+                  {deps.canLinkTicket && <span className="type-meta ml-1 font-normal text-gray-500" data-testid="entry-task-or-ticket">{t("· or a ticket", "· alebo tiket", "· vagy jegy")}</span>}
+                </>
+              ) : (
+                <span className="type-meta ml-1 font-normal text-gray-400">{t("· optional", "· voliteľné", "· nem kötelező")}</span>
+              )}
             </span>
             {taskId ? (
               <div className="flex items-center gap-2 rounded-md border border-entity-border bg-entity-subtle px-3 py-2 text-ui font-semibold text-entity-text" style={entityAccentStyle("tasks") as React.CSSProperties} data-testid="entry-linked-task">
@@ -401,23 +408,23 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
           )}
 
           {/* When */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <label className="grid gap-1">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(0,1fr))]" data-testid="entry-when-row">
+            <label className="grid min-w-0 gap-1">
               <span className="type-label text-gray-600">{t("Date", "Dátum", "Dátum")}</span>
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} readOnly={readOnly} className="h-10 rounded-md border border-gray-200 px-3 text-ui outline-none focus:border-entity" data-testid="entry-date" />
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} readOnly={readOnly} className="h-10 w-full min-w-0 rounded-md border border-gray-200 px-2 text-ui outline-none focus:border-entity" data-testid="entry-date" />
             </label>
-            <label className="grid gap-1">
+            <label className="grid min-w-0 gap-1">
               <span className="type-label text-gray-600">{t("Start", "Začiatok", "Kezdet")}</span>
-              <input type="time" value={start} onChange={(e) => setStart(e.target.value)} readOnly={readOnly} className="h-10 rounded-md border border-gray-200 px-3 text-ui tabular-nums outline-none focus:border-entity" data-testid="entry-start" />
+              <input type="time" value={start} onChange={(e) => setStart(e.target.value)} readOnly={readOnly} className="h-10 w-full min-w-0 rounded-md border border-gray-200 px-2 text-ui tabular-nums outline-none focus:border-entity" data-testid="entry-start" />
             </label>
-            <label className="grid gap-1">
+            <label className="grid min-w-0 gap-1">
               <span className="type-label text-gray-600">{t("End", "Koniec", "Vég")}</span>
-              <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} readOnly={readOnly || entry.running} className="h-10 rounded-md border border-gray-200 px-3 text-ui tabular-nums outline-none focus:border-entity" data-testid="entry-end" />
+              <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} readOnly={readOnly || entry.running} className="h-10 w-full min-w-0 rounded-md border border-gray-200 px-2 text-ui tabular-nums outline-none focus:border-entity" data-testid="entry-end" />
             </label>
             {!entry.running && (
-              <label className="grid gap-1">
+              <label className="grid min-w-0 gap-1">
                 <span className="type-label text-gray-600">{t("Duration", "Trvanie", "Időtartam")}</span>
-                <input value={dur} onChange={(e) => setDur(e.target.value)} readOnly={readOnly || (!!start && !!end)} placeholder="1:30" className="h-10 rounded-md border border-gray-200 px-3 text-ui tabular-nums outline-none focus:border-entity read-only:bg-gray-50" data-testid="entry-duration" />
+                <input value={dur} onChange={(e) => setDur(e.target.value)} readOnly={readOnly || (!!start && !!end)} placeholder="1:30" className="h-10 w-full min-w-0 rounded-md border border-gray-200 px-2 text-ui tabular-nums outline-none focus:border-entity read-only:bg-gray-50" data-testid="entry-duration" />
               </label>
             )}
             {!entry.running && <span className="type-meta col-span-2 text-gray-500 sm:col-span-4">{t("Start and end are optional: leave them empty to keep the entry hours-only.", "Začiatok a koniec sú voliteľné: nechajte ich prázdne pre záznam iba v hodinách.", "A kezdet és a vég nem kötelező: hagyja üresen, ha csak óraszámot rögzít.")}</span>}

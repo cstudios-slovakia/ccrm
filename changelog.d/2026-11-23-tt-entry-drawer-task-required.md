@@ -1,0 +1,2 @@
+- **Time tracking: the Task field reads as required when the server refuses an entry for lack of a task** (`EntryDrawer.tsx`, `NewEntryHost.tsx`, `timeCreateBridge.ts`): when "Require a task" is on, the field is marked `*` like Project and says "or a ticket"; a `task_required` refusal makes the page re-read the rule, so the drawer is right even when an admin switched it on in another session.
+- **Tests**: `timeTracking.spec.ts` (the label after a refusal, and after the rule is switched on and off in Settings).
