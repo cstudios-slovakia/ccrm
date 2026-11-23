@@ -16,6 +16,7 @@ require_once __DIR__ . '/employee_name.php';
 require_once __DIR__ . '/contact_name.php';
 require_once __DIR__ . '/payroll_lib.php';
 require_once __DIR__ . '/task_activity_lib.php';
+require_once __DIR__ . '/clickup_lib.php';
 
 if (!function_exists('ccrm_schema_statements')) {
 
@@ -186,6 +187,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `reactions_json` VARCHAR(1000) NULL COMMENT 'Task emoji reactions map {emoji: [userName]}',
               `category` VARCHAR(32) NULL COMMENT 'Task category; NULL = none, bug = Bug (a string so more categories need no migration)',
               `reopens_json` TEXT NULL COMMENT 'Every reopening of a finished task, JSON [{at: UTC ISO, by: name|null}] oldest first; NULL = never reopened; written only by the server',
+              `parent_task_id` VARCHAR(50) NULL COMMENT 'Parent task id for external subtasks (e.g. ClickUp)',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
@@ -193,6 +195,7 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX idx_task_status (`status`),
               INDEX idx_task_deadline (`deadline`),
               INDEX idx_task_project (`related_project_id`),
+              INDEX idx_task_parent (`parent_task_id`),
               INDEX idx_task_agency_worker (`related_agency_worker_id`),
               INDEX idx_task_kind (`task_kind`),
               INDEX idx_task_recurring_source (`recurring_source_id`),
@@ -456,6 +459,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `scope_approved_by` VARCHAR(100) NULL COMMENT 'Name of the user who approved the scope',
               `github_repo` VARCHAR(200) NULL COMMENT 'Paired GitHub repository, owner/name; pushes to it are stored in project_pushes',
               `github_branch` VARCHAR(200) NULL COMMENT 'Server branch whose pushes count; NULL = the repository default branch',
+              `clickup_lists_json` TEXT NULL COMMENT 'JSON array of linked ClickUp lists [{id,name,folderName,spaceName}]',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE RESTRICT
@@ -2461,6 +2465,7 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_custom_calendars($pdo);
         ccrm_migrate_task_activities($pdo);
         ccrm_migrate_agency($pdo);
+        ccrm_migrate_clickup($pdo);
         require_once __DIR__ . '/project_breakdown_migrations.php';
         ccrm_heal_project_breakdown_columns($pdo);
         ccrm_backfill_project_breakdown_metrics($pdo);
@@ -3764,7 +3769,7 @@ if (!function_exists('ccrm_schema_statements')) {
      */
     function ccrm_schema_fingerprint(): string {
         $parts = [];
-        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/project_breakdown_migrations.php', __DIR__ . '/task_activity_lib.php', __DIR__ . '/time_worked_ms_migration.php', __DIR__ . '/time_parallel_migration.php', __DIR__ . '/time_rate_months_migration.php', __DIR__ . '/time_pause_migration.php'] as $file) {
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/project_breakdown_migrations.php', __DIR__ . '/task_activity_lib.php', __DIR__ . '/clickup_lib.php', __DIR__ . '/time_worked_ms_migration.php', __DIR__ . '/time_parallel_migration.php', __DIR__ . '/time_rate_months_migration.php', __DIR__ . '/time_pause_migration.php'] as $file) {
             $parts[] = is_file($file) ? md5_file($file) : '-';
         }
         return md5(implode('|', $parts));

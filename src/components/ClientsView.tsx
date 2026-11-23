@@ -50,7 +50,7 @@ import { EntityTasksPanel } from "./EntityTasksPanel";
 import type { AgencyRights } from "../utils/agencyRights";
 import { ClientCompanyAgencyTab } from "./agency/ClientCompanyAgencyTab";
 import { useTimeTracking } from "../hooks/useTimeTracking";
-import { entrySeconds, formatDuration } from "../utils/timeTracking.ts";
+import { entrySeconds } from "../utils/timeTracking.ts";
 import { ClientTimeTab } from "./timeTracking/ClientTimeTab";
 import {
   hasOpenAiKey,

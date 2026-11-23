@@ -900,6 +900,7 @@ function App() {
   // Settings → Tasks. Today only whether the "Requires conclusion" checkbox is
   // offered when a task is created.
   const [taskSettings, setTaskSettings] = useState<TaskSettings>(DEFAULT_TASK_SETTINGS);
+  const [clickupConnected, setClickupConnected] = useState(false);
 
   const [integrationsConfig, setIntegrationsConfig] = useState<any>({
     emailProvider: "smtp",
@@ -2887,6 +2888,7 @@ ${log.payload || ''}
           const currentStates = Array.isArray(data.settings?.taskStates) ? data.settings.taskStates : taskStates;
 
           incomingTasks.forEach((task) => {
+            if (task.externalSource === "clickup") return;
             const old = prevMap.get(task.id);
 
             // 1. Newly created or reassigned task assigned to current user (and not created by me)
@@ -3117,6 +3119,7 @@ ${log.payload || ''}
           const next = normalizeTaskSettings(s.taskSettings);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
         });
+        setClickupConnected(Boolean(s.clickupConnected));
         setProjectStatuses((prev) => {
           const next = normalizeProjectStatusDefs(s.projectStatuses);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
@@ -3653,6 +3656,7 @@ ${log.payload || ''}
           licenseState={licenseState}
           onLicenseStateChange={setLicenseState}
           customDashboards={customDashboards}
+          onClickUpConnectionChange={setClickupConnected}
         />
       );
     }
@@ -3952,6 +3956,7 @@ ${log.payload || ''}
           licenseState={licenseState}
           onLicenseStateChange={setLicenseState}
           customDashboards={customDashboards}
+          onClickUpConnectionChange={setClickupConnected}
         />
       );
     }
@@ -4087,6 +4092,7 @@ ${log.payload || ''}
             employees={employeeRights.view ? employees : undefined}
             employeeSalaries={employeeRights.salaries ? employeeSalaries : undefined}
             employeeRights={employeeRights}
+            clickupConnected={clickupConnected}
           />
         );
       }
@@ -4832,9 +4838,11 @@ ${log.payload || ''}
       : canCreateProjectFromTime(access)
         ? (input) => createPickerProject(input, (p) => setTimeCreatedProjects((prev) => [...prev, p]), userLanguage)
         : undefined,
-    canEditTask: (task) => userMayEditTask(task, currentUser, taskAccess),
+    canEditTask: (task) => task.externalSource !== "clickup" && userMayEditTask(task, currentUser, taskAccess),
     onRenameTask: (taskId, title) =>
-      updateTasksAndSync((prev) => prev.map((tk) => (tk.id === taskId ? { ...tk, title } : tk))),
+      updateTasksAndSync((prev) =>
+        prev.map((tk) => (tk.id === taskId && tk.externalSource !== "clickup" ? { ...tk, title } : tk)),
+      ),
     vacations: employeeVacations,
     salaries: employeeSalaries,
     canSalaryReport: access.can("time_tracking_salary_report"),

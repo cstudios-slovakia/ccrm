@@ -43,6 +43,7 @@ import {
 import type { Task, UserProfile, Lead, Project, Ticket, Employee, RecurringTaskTemplate } from "../types";
 import { describeRecurrence, getPlannedOccurrencesInRange } from "../utils/recurringTasks";
 import { TaskRecurringMark } from "./TaskRecurringMark";
+import { excludeClickUpTasks } from "../utils/clickupTasks";
 import { CalendarLensSwitcher } from "./tasks/CalendarLensSwitcher";
 import { CustomCalendarEventModal, CustomCalendarFormModal } from "./tasks/CustomCalendarModals";
 import { MultiCalendarPanel, type TaskHubData } from "./tasks/MultiCalendarPanel";
@@ -677,7 +678,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         }
         return true;
     };
-    const myTasks = tasks
+    const listTasks = useMemo(() => excludeClickUpTasks(tasks), [tasks]);
+    const myTasks = listTasks
         .filter(isMyTask)
         .filter((task) => !task.archived)
         .filter(matchesTaskFilters);
@@ -1004,7 +1006,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // project manager.
     const allUsersList = useMemo(() => {
         const list = users.map((u) => u.name);
-        tasks.forEach((t) => {
+        listTasks.forEach((t) => {
             if (t.owner && !list.includes(t.owner)) {
                 list.push(t.owner);
             }
@@ -1020,7 +1022,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             if (defaultUserName) list.push(defaultUserName);
         }
         return Array.from(new Set(list));
-    }, [users, tasks]);
+    }, [users, listTasks]);
 
     // A selected manager can disappear from the list (user deleted, or their
     // last task reassigned). Fall back to the team-wide board instead of
@@ -1034,7 +1036,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // All distinct tags collected from stored task.tags plus hashtags in titles/descriptions
     const allExistingTags = useMemo(() => {
         const tagSet = new Set<string>();
-        tasks.forEach((tk) => {
+        listTasks.forEach((tk) => {
             if (tk.tags && Array.isArray(tk.tags)) {
                 tk.tags.forEach((t) => tagSet.add(t));
             }
@@ -1042,7 +1044,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             extractTagsFromText(blockNotesToPlainText(tk.description || "")).forEach((t) => tagSet.add(t));
         });
         return Array.from(tagSet).sort();
-    }, [tasks]);
+    }, [listTasks]);
 
     // Mentionable entities (users, projects, clients, leads) for @ mentions
     const mentionEntities: MentionEntity[] = useMemo(() => {
@@ -1318,7 +1320,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     const completedUsersList = useMemo(() => {
         const list = users.map((u) => u.name);
-        tasks.forEach((t) => {
+        listTasks.forEach((t) => {
             if (
                 isDoneState(t.status) &&
                 t.completedBy &&
@@ -1328,10 +1330,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             }
         });
         return Array.from(new Set(list));
-    }, [users, tasks]);
+    }, [users, listTasks]);
 
     const filteredArchivedTasks = useMemo(() => {
-        return tasks.filter((task) => {
+        return listTasks.filter((task) => {
             if (!isDoneState(task.status)) return false;
             if (task.archived) return false;
             // Client, project, assignee and tag — the filters every section shares.
@@ -1426,7 +1428,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     // Manually archived tasks filtered by current archive query, priority, date & tag
     const filteredManuallyArchivedTasks = useMemo(() => {
-        return tasks.filter((task) => {
+        return listTasks.filter((task) => {
             if (!task.archived) return false;
             if (!matchesTaskFilters(task)) return false;
 
@@ -1592,11 +1594,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     );
 
     const filteredGlobalTasks = useMemo(() => {
-        const activeTasks = (canSeeAllTasks ? tasks : myTasks).filter((task) =>
+        const activeTasks = (canSeeAllTasks ? listTasks : myTasks).filter((task) =>
             isActiveTask(task, isDoneState) || (showClosedTasks && isClosedRecentTask(task))
         );
         return activeTasks.filter(matchesGlobalFilters);
-    }, [canSeeAllTasks, tasks, myTasks, matchesGlobalFilters, showClosedTasks, closedTasksDays]);
+    }, [canSeeAllTasks, listTasks, myTasks, matchesGlobalFilters, showClosedTasks, closedTasksDays]);
 
     const visibleTasksInCurrentView = useMemo(() => {
         if (viewMode === "calendar") {
@@ -4391,7 +4393,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     const renderClientFilter = (className = "", stacked = false) => {
         const withTasks = new Set(
-            tasks.map((task) => String(task.relatedLeadId ?? "")).filter(Boolean),
+            listTasks.map((task) => String(task.relatedLeadId ?? "")).filter(Boolean),
         );
         if (clientFilter) withTasks.add(clientFilter);
         const idsWithoutTasks = leads
@@ -4423,7 +4425,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // Same idea as the client filter: only projects that have a task are offered.
     const renderProjectFilter = (className = "", stacked = false) => {
         const withTasks = new Set(
-            tasks.map((task) => String(task.relatedProjectId ?? "")).filter(Boolean),
+            listTasks.map((task) => String(task.relatedProjectId ?? "")).filter(Boolean),
         );
         if (projectFilter) withTasks.add(projectFilter);
         const options = projects
@@ -4476,7 +4478,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     const renderAssignerFilter = (className = "", stacked = false) => {
         const creatorsInTasks = Array.from(
-            new Set(tasks.map((t) => t.createdBy).filter(Boolean) as string[])
+            new Set(listTasks.map((t) => t.createdBy).filter(Boolean) as string[])
         );
         const combinedAssigners = Array.from(
             new Set([...creatorsInTasks, ...allUsersList])
@@ -4806,7 +4808,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const now = Date.now();
 
         // Only include tasks which I assigned or I was assigned to
-        const relevantTasks = tasks.filter((task) => {
+        const relevantTasks = listTasks.filter((task) => {
             const createdByMe = isTaskCreatedBy(task, myName);
             const assignedToMe = isTaskAssignedTo(task, myName);
             return createdByMe || assignedToMe;

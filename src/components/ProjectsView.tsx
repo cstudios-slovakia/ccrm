@@ -179,6 +179,7 @@ interface ProjectsViewProps {
   employees?: Employee[];
   employeeSalaries?: EmployeeSalary[];
   employeeRights?: EmployeeRights;
+  clickupConnected?: boolean;
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
@@ -221,6 +222,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   employees,
   employeeSalaries,
   employeeRights,
+  clickupConnected = false,
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const projectStatuses = useProjectStatuses();
@@ -1715,6 +1717,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         ticketSettings={ticketSettings}
         supportContracts={supportContracts}
         setSupportContracts={setSupportContracts}
+        clickupConnected={clickupConnected}
         onClose={() => {
           setEditingProject(null);
           setEditingProjectType(null);
@@ -3038,6 +3041,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           mailConfigured={mailConfigured}
           divisions={divisions}
           divisionColors={divisionColors}
+          clickupConnected={clickupConnected}
           onClose={() => setQuickEditProjectId(null)}
           onOpenFullView={() => {
             const p = quickEditProject;

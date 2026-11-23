@@ -6,6 +6,8 @@ import {
   ChevronDown,
   Clock,
   CornerDownLeft,
+  CornerDownRight,
+  Eye,
   Filter,
   ListTodo,
   Lock,
@@ -23,6 +25,8 @@ import { needsConclusionToFinish } from "../utils/taskConclusion";
 import { TaskPillText } from "./TaskPillText";
 import { TaskWhatsAppMarks } from "./WhatsAppChip";
 import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
+import { ClickUpTaskBadge } from "./projects/ClickUpTaskBadge";
+import { groupTasksWithSubtasks, isClickUpTask, type GroupedTaskRow } from "../utils/clickupTasks";
 import {
   buildProjectTasks,
   computeTaskDateRange,
@@ -129,6 +133,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
   const [assignee, setAssignee] = useState(() => resolveAssigneeName(myName, myName, userNames));
   const [showFinished, setShowFinished] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
+  const [collapsedParents, setCollapsedParents] = useState<Set<string>>(() => new Set());
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   // Completing a task that requires a conclusion asks for it first.
   const { ask: askConclusion, dialog: conclusionDialog } = useTaskConclusionPrompt(userLanguage);
@@ -188,6 +193,14 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
   // section instead of being listed as completed.
   const completed = useMemo(() => finished.filter((task) => !task.archived), [finished]);
   const archived = useMemo(() => finished.filter((task) => task.archived), [finished]);
+
+  const openGroups = useMemo(() => groupTasksWithSubtasks(open, entityTasks), [open, entityTasks]);
+  const completedGroups = useMemo(() => groupTasksWithSubtasks(completed, entityTasks), [completed, entityTasks]);
+  const archivedGroups = useMemo(() => groupTasksWithSubtasks(archived, entityTasks), [archived, entityTasks]);
+  const multipleClickUpLists = useMemo(
+    () => new Set(entityTasks.filter(isClickUpTask).map((tk) => tk.clickupMeta?.listId).filter(Boolean)).size > 1,
+    [entityTasks],
+  );
 
   const activeRange = useMemo(() => {
     if (dateFilter === "all") return null;
@@ -271,7 +284,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
   };
 
   const toggleDone = async (task: Task) => {
-    if (!canEditTask(task, currentUser, taskAccess)) return;
+    if (isClickUpTask(task) || !canEditTask(task, currentUser, taskAccess)) return;
     let conclusion: string | undefined;
     if (needsConclusionToFinish(task, doneTaskState(taskStates), taskStates)) {
       const written = await askConclusion(task);
@@ -290,7 +303,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
   // Hold-to-confirm already asked; the Undo toast is the safety net. The server
   // delete is deferred until the undo window closes (see deleteTasksWithUndo).
   const deleteTask = (task: Task): Promise<boolean> => {
-    if (!canDeleteTask(task, currentUser, taskAccess)) return Promise.resolve(false);
+    if (isClickUpTask(task) || !canDeleteTask(task, currentUser, taskAccess)) return Promise.resolve(false);
     deleteTasksWithUndo({ allTasks: tasks, targets: [task], setTasks, lang: userLanguage });
     return Promise.resolve(true);
   };
@@ -329,23 +342,30 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
     );
   }
 
-  const renderRow = (task: Task) => {
-    const mayEdit = canEditTask(task, currentUser, taskAccess);
-    const mayDelete = canDeleteTask(task, currentUser, taskAccess);
+  const renderRow = (
+    task: Task,
+    opts?: { orphanParentTitle?: string; subtaskCount?: number; isSubtask?: boolean },
+  ) => {
+    const isClickUp = isClickUpTask(task);
+    const mayEdit = !isClickUp && canEditTask(task, currentUser, taskAccess);
+    const mayDelete = !isClickUp && canDeleteTask(task, currentUser, taskAccess);
     const done = isDoneTaskState(task.status, taskStates);
     const closed = done || Boolean(task.archived);
     const overdue = !closed && `${task.deadline} ${task.deadlineTime || "23:59"}` < nowStamp;
     const stateColor = taskStateColors[task.status];
     const hasHexColor = typeof stateColor === "string" && /^#[0-9a-f]{6}$/i.test(stateColor);
+    const subtaskCount = opts?.subtaskCount ?? 0;
+    const isCollapsed = collapsedParents.has(task.id);
 
     return (
       <li
         key={task.id}
+        data-task-id={task.id}
         className={`group flex items-start gap-3 px-3.5 py-2.5 rounded-lg border transition-all ${
           closed
             ? "bg-gray-50 border-gray-200 opacity-80 hover:opacity-100"
             : "bg-white border-gray-200 hover:border-gray-300 shadow-2xs"
-        } ${recentIds.has(task.id) ? "border-entity-border animate-in fade-in slide-in-from-top-1 duration-300" : ""}`}
+        } ${opts?.isSubtask ? "bg-slate-50/70" : ""} ${recentIds.has(task.id) ? "border-entity-border animate-in fade-in slide-in-from-top-1 duration-300" : ""}`}
       >
         <button
           type="button"
@@ -354,11 +374,13 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
           disabled={!mayEdit || Boolean(task.archived)}
           onClick={() => toggleDone(task)}
           title={
-            !mayEdit
-              ? t("Read-only access — you cannot change this task.", "Iba na čítanie — túto úlohu nemôžete meniť.", "Csak olvasható — ez a feladat nem módosítható.")
-              : done
-                ? t("Reopen task", "Znovu otvoriť úlohu", "Feladat újranyitása")
-                : t("Mark as done", "Označiť ako hotové", "Megjelölés készként")
+            isClickUp
+              ? t("Managed in ClickUp (read-only)", "Spravované v ClickUpe (iba na čítanie)", "ClickUpban kezelve (csak olvasható)")
+              : !mayEdit
+                ? t("Read-only access — you cannot change this task.", "Iba na čítanie — túto úlohu nemôžete meniť.", "Csak olvasható — ez a feladat nem módosítható.")
+                : done
+                  ? t("Reopen task", "Znovu otvoriť úlohu", "Feladat újranyitása")
+                  : t("Mark as done", "Označiť ako hotové", "Megjelölés készként")
           }
           className={`mt-0.5 h-5 w-5 shrink-0 rounded-md border flex items-center justify-center transition-all active:scale-90 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
             done
@@ -374,6 +396,12 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
           onClick={() => setEditingTask(task)}
           className="flex-1 min-w-0 text-left cursor-pointer rounded-md focus-visible:outline-2 focus-visible:outline-offset-2"
         >
+          {opts?.orphanParentTitle && (
+            <span className="mb-0.5 flex items-center gap-1 text-micro font-semibold text-violet-600 truncate">
+              <CornerDownRight className="h-3 w-3 shrink-0" />
+              <span className="truncate">{opts.orphanParentTitle}</span>
+            </span>
+          )}
           <span
             className={`block text-ui font-semibold truncate transition-colors ${
               done ? "text-gray-400 line-through" : closed ? "text-gray-500" : "text-gray-900 group-hover:text-entity-text"
@@ -382,6 +410,42 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
             <TaskPillText text={task.title} />
           </span>
           <span className="mt-1 flex flex-wrap items-center gap-1.5 text-micro font-semibold">
+            <ClickUpTaskBadge task={task} showListName={multipleClickUpLists} userLanguage={userLanguage} />
+            {subtaskCount > 0 && (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCollapsedParents((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(task.id)) next.delete(task.id);
+                    else next.add(task.id);
+                    return next;
+                  });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setCollapsedParents((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(task.id)) next.delete(task.id);
+                      else next.add(task.id);
+                      return next;
+                    });
+                  }
+                }}
+                className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50/70 px-1.5 py-0.5 text-micro font-bold text-violet-700 hover:bg-violet-100"
+                title={t("Toggle subtasks", "Zobraziť / skryť podúlohy", "Alfeladatok megjelenítése / elrejtése")}
+              >
+                <ChevronDown className={`h-2.5 w-2.5 transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
+                {subtaskCount}{" "}
+                {subtaskCount === 1
+                  ? t("subtask", "podúloha", "alfeladat")
+                  : t("subtasks", "podúloh", "alfeladat")}
+              </span>
+            )}
             <span
               className={`inline-flex items-center gap-1 ${
                 task.priority === "high" ? "text-rose-600" : task.priority === "low" ? "text-gray-400" : "text-amber-600"
@@ -394,12 +458,14 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
               />
               {taskPriorityLabel(task.priority, t)}
             </span>
-            <span
-              className="px-1.5 py-0.5 rounded-md border bg-gray-50 text-gray-600 border-gray-200"
-              style={hasHexColor ? { backgroundColor: `${stateColor}1A`, color: stateColor, borderColor: `${stateColor}40` } : undefined}
-            >
-              {taskStateLabel(task.status, t)}
-            </span>
+            {!isClickUp && (
+              <span
+                className="px-1.5 py-0.5 rounded-md border bg-gray-50 text-gray-600 border-gray-200"
+                style={hasHexColor ? { backgroundColor: `${stateColor}1A`, color: stateColor, borderColor: `${stateColor}40` } : undefined}
+              >
+                {taskStateLabel(task.status, t)}
+              </span>
+            )}
             {dateBasis === "created" ? (
               <>
                 <span
@@ -482,7 +548,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
             title={mayEdit ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése") : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")}
             className="p-1.5 rounded-md text-gray-400 hover:text-entity-text hover:bg-entity-subtle active:scale-95 transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            <Pencil className="h-3.5 w-3.5" />
+            {mayEdit ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
           </button>
           {mayDelete && (
             <HoldToConfirmButton
@@ -500,6 +566,22 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
       </li>
     );
   };
+
+  const renderGroupRow = (row: GroupedTaskRow) => (
+    <React.Fragment key={row.task.id}>
+      {renderRow(row.task, {
+        orphanParentTitle: row.orphanParentTitle,
+        subtaskCount: row.subtasks.length,
+      })}
+      {row.subtasks.length > 0 && !collapsedParents.has(row.task.id) && (
+        <li key={`${row.task.id}-subtasks`} className="list-none pl-5 ml-2.5 border-l-2 border-violet-200/80">
+          <ul className="flex flex-col gap-1.5">
+            {row.subtasks.map((sub) => renderRow(sub, { isSubtask: true }))}
+          </ul>
+        </li>
+      )}
+    </React.Fragment>
+  );
 
   const filterButtons: { id: TaskDateFilter; label: string }[] = [
     { id: "all", label: t("All", "Všetky", "Mind") },
@@ -756,7 +838,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
           <span className="px-1.5 rounded-md bg-gray-100 text-gray-700 font-bold">{open.length}</span>
         </span>
         {open.length > 0 ? (
-          <ul className="flex flex-col gap-2">{open.map(renderRow)}</ul>
+          <ul className="flex flex-col gap-2">{openGroups.map(renderGroupRow)}</ul>
         ) : (
           <div className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-ui font-medium text-gray-400">
             {allFiltered.length === 0 && dateFilter !== "all"
@@ -797,7 +879,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
           </button>
           {showFinished && (
             <ul className="flex flex-col gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
-              {completed.map(renderRow)}
+              {completedGroups.map(renderGroupRow)}
             </ul>
           )}
         </div>
@@ -818,7 +900,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
           </button>
           {showArchived && (
             <ul className="flex flex-col gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
-              {archived.map(renderRow)}
+              {archivedGroups.map(renderGroupRow)}
             </ul>
           )}
         </div>

@@ -13,7 +13,8 @@ import {
 import type {
   Project, ProjectType, Lead, UserProfile,
   ProjectTimelineEvent, ProjectGanttRow, ProjectCustomFileField, ProjectUploadedFile,
-  FinancialRecord, FinancialCategory, FinancialStatus, FinancialType, CompanyBillingSettings
+  FinancialRecord, FinancialCategory, FinancialStatus, FinancialType, CompanyBillingSettings,
+  ClickUpProjectList
 } from "../types";
 import { getDefaultVatRate } from "../utils/vat";
 import { getTranslation, type Language } from "../utils/translations";
@@ -62,6 +63,7 @@ import { runUndoable } from "../utils/undoable";
 import { reinsertAt, removeByIds } from "../utils/undoableList";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { WhatsAppChip } from "./WhatsAppChip";
+import { ProjectClickUpListsBar } from "./projects/ProjectClickUpListsBar";
 
 /** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
 type RightTab = "timeline" | "criteria" | "tasks" | "time" | "gantt" | "finances" | "files" | "tickets";
@@ -143,6 +145,7 @@ interface ProjectDetailsViewProps {
   ticketSettings?: TicketSettings;
   supportContracts?: SupportContract[];
   setSupportContracts?: React.Dispatch<React.SetStateAction<SupportContract[]>>;
+  clickupConnected?: boolean;
 }
 const DEFAULT_TASK_STATES = ["New", "In progress", "Blocked", "Done"];
 const FULL_TASK_ACCESS: TaskAccess = { view: true, create: true, edit: true, delete: true, viewAll: true };
@@ -184,6 +187,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   ticketSettings = DEFAULT_TICKET_SETTINGS,
   supportContracts = [],
   setSupportContracts,
+  clickupConnected = false,
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const projectStatuses = useProjectStatuses();
@@ -352,6 +356,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   /* GitHub pairing: repository ("owner/name") and server branch; pushes to it are stored by the webhook. */
   const [githubRepo, setGithubRepo] = useState("");
   const [githubBranch, setGithubBranch] = useState("");
+  const [clickupLists, setClickupLists] = useState<ClickUpProjectList[]>([]);
   /* Star priority, 1-5, 0 while nobody has rated it. Like the status below it,
      a click saves on the spot. */
   const [rating, setRating] = useState(0);
@@ -549,6 +554,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     contactPhone: p.contactPhone || "",
     githubRepo: p.githubRepo || "",
     githubBranch: p.githubBranch || "",
+    clickupLists: Array.isArray(p.clickupLists) ? p.clickupLists : [],
     rating: ratingValue(p.rating),
     leadId: p.leadId || "",
     clientId: p.clientId || "",
@@ -582,6 +588,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       contactPhone: contactPhone.trim() || null,
       githubRepo: githubRepo || null,
       githubBranch: githubBranch || null,
+      clickupLists,
       rating,
       leadId: associatedLeadId || null,
       clientId: associatedClientId || null,
@@ -670,6 +677,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     setContactPhone(s.contactPhone);
     setGithubRepo(s.githubRepo);
     setGithubBranch(s.githubBranch);
+    setClickupLists(s.clickupLists);
     setRating(s.rating);
     setAssociatedLeadId(s.leadId);
     setAssociatedClientId(s.clientId);
@@ -697,6 +705,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     contactPhone,
     githubRepo,
     githubBranch,
+    clickupLists,
     rating,
     leadId: associatedLeadId,
     clientId: associatedClientId,
@@ -2281,6 +2290,21 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
             <ProjectGithubFields userLanguage={userLanguage} repo={githubRepo} branch={githubBranch} canEdit={canEdit} onRepoChange={setGithubRepo} onBranchChange={setGithubBranch} />
 
+            {clickupConnected && (
+              <ProjectClickUpListsBar
+                compact
+                projectId={project.id}
+                isNew={isNew}
+                value={clickupLists}
+                canEdit={canEdit}
+                userLanguage={userLanguage}
+                onChange={(next) => {
+                  setClickupLists(next);
+                  if (!isNew) patchProject({ clickupLists: next });
+                }}
+              />
+            )}
+
             {/* Invoice date and deadline. Each has its own switch on the project
                 type (Projects -> Settings -> project type): the invoice date is
                 a plain date; the deadline is what counts down and flags a delay,
@@ -3272,6 +3296,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               taskAccess={taskAccess}
               currentUser={currentUser}
               mailConfigured={mailConfigured}
+              clickupConnected={clickupConnected}
+              clickupLists={clickupLists}
+              canEditProject={canEdit}
+              onClickUpListsChange={(next) => {
+                setClickupLists(next);
+                if (!isNew) patchProject({ clickupLists: next });
+              }}
             />
           )}
 

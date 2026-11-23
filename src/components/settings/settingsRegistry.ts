@@ -220,6 +220,7 @@ export const SETTINGS_CATEGORIES: SettingsCategoryDef[] = [
       S("social", Share2, "general_config", { flag: "social" }),
       S("waai", MessageCircle, "general_config", { adminOnly: true }),
       S("github", GitBranch, "general_config", { adminOnly: true }),
+      S("clickup", ListChecks, "general_config"),
     ],
     related: [rel("leads/intake", "web_form_fields"), rel("system/errors", "error_logs")],
   },

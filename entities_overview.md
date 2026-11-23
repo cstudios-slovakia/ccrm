@@ -168,9 +168,10 @@ General system and operational tasks.
 * `related_agency_worker_id` VARCHAR(64) [NULLable] (References `agency_workers.id`)
 * `is_locking` TINYINT(1)
 * `archived` TINYINT(1)
-* `external_source` VARCHAR(20) [NULLable] (integration client code that pushed the task, e.g. waai; server-only, never written by a client save)
-* `external_url` VARCHAR(255) [NULLable] (path of the source chat in that system, e.g. /c/<id>)
-* `external_meta_json` TEXT [NULLable] (chat title, WhatsApp assignee label, `due_inferred` + `inferred_deadline` when the chat gave no date)
+* `external_source` VARCHAR(20) [NULLable] (integration client code that pushed or synced the task, e.g. `waai` or `clickup`; server-only, never written by a client save)
+* `external_url` VARCHAR(255) [NULLable] (path/URL of the task in the external system, e.g. `/c/<id>` or ClickUp task URL)
+* `external_meta_json` TEXT [NULLable] (external metadata: WAAI chat title / `due_inferred`, or ClickUp `clickupId`, `listId`, `listName`, `statusName`, `statusColor`, `due_inferred`)
+* `parent_task_id` VARCHAR(50) [NULLable] (parent `tasks.id` for synced external subtasks, e.g. ClickUp parent task -> subtask hierarchy; indexed as `idx_task_parent`)
 * `task_kind` VARCHAR(20) [NULLable] (`NULL` = normal task, `'recurring'` = series template; indexed as `idx_task_kind`)
 * `recurrence_json` TEXT [NULLable] (Template only: `{mode, frequency, interval, config, weekendRule, leadDays, startsOn, endsOn, paused, lastOccurrence, lastOccurrenceId}`)
 * `recurring_source_id` VARCHAR(50) [NULLable] (Occurrence only: template id; indexed as `idx_task_recurring_source`)
@@ -341,6 +342,7 @@ Individual instances of active project lifecycles.
 * `scope_approved_by` VARCHAR(100) [NULLable] (name of the user who approved the scope, taken from the session by the approval action; written together with `scope_approved_at`, returned as `scopeApprovedBy`)
 * `github_repo` VARCHAR(200) [NULLable] (the paired GitHub repository as `owner/name`, case kept as typed; the server strips a pasted `https://github.com/` prefix, a trailing slash and `.git` and stores NULL for anything that is not `owner/name`; written by the app's save only when the payload carries `githubRepo`, `""` clears it; pushes to it arrive at `api/github_webhook.php`)
 * `github_branch` VARCHAR(200) [NULLable] (the server branch whose pushes count; NULL = the repository's default branch; at most 200 characters, no whitespace or control characters; written only when the payload carries `githubBranch`)
+* `clickup_lists_json` TEXT [NULLable] (JSON array of linked ClickUp lists `[{"id","name","folderName","spaceName"}]`; read-only mirror of tasks/subtasks from those lists runs via `api/clickup.php`, `api/clickup_webhook.php`, and cron fallback; written only when the payload carries `clickupLists`, clearing deletes synced `external_source = 'clickup'` tasks on that project)
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP [INDEX `idx_project_updated`, for the machine API's directory paging] (also moves when the project's managers (`project_managers`) or Gantt rows (`proj_gantt_*`) really change, and when the MCP creates a milestone for it: `sync.php` snapshots the set before its delete + insert and bumps only when the stored set differs, `api/sync_child_bumps.php`. An unchanged re-save leaves it alone. Timeline entries do not move it)
 
