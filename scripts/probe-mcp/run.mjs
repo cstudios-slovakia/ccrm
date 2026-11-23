@@ -1839,6 +1839,9 @@ async function wpExpansionChecks() {
 
   // Agency tools (enable temporarily in settings for probe)
   const prevAg = rows(`SELECT \`value\` FROM system_settings WHERE \`key\` = 'AGENCY_SETTINGS'`)[0]?.[0];
+  // The module switch is INTEGRATIONS_CONFIG.disabledModules (ccrm_agency_is_module_enabled): no row means disabled.
+  const prevInt = rows(`SELECT \`value\` FROM system_settings WHERE \`key\` = 'INTEGRATIONS_CONFIG'`)[0]?.[0];
+  sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('INTEGRATIONS_CONFIG', '{"disabledModules":[]}')`);
   sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('AGENCY_SETTINGS', '{"enabled":true,"stages":[{"id":"sourced","label":"Sourced"}],"checklistItems":[{"key":"id_doc","label":"ID"}]}')`);
   const agW = await call(A, 'create_agency_worker', { fullName: 'WP Agency Worker', workerStatus: 'candidate' });
   const agChk = agW?.id ? await call(A, 'update_agency_checklist', { workerId: agW.id, items: [{ itemKey: 'id_doc', label: 'ID Doc', status: 'submitted' }] }) : null;
@@ -1846,6 +1849,8 @@ async function wpExpansionChecks() {
   const agPayPaid = agW?.id ? await call(A, 'record_agency_payment', { workerId: agW.id, periodYm: '2026-11', basePay: 1000, status: 'paid' }) : null;
   check('WP4 agency worker + checklist + payment draft allowed & paid blocked (D2)', !!agW?.id && agChk?.checklist?.[0]?.status === 'submitted' && agPayDraft?.payment?.status === 'draft' && isErr(agPayPaid, /status|draft|approved/i), JSON.stringify([agChk, agPayDraft, agPayPaid]).slice(0, 300));
   if (prevAg !== undefined) sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('AGENCY_SETTINGS', ${sq(prevAg)})`);
+  if (prevInt !== undefined) sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('INTEGRATIONS_CONFIG', ${sq(prevInt)})`);
+  else sql(`DELETE FROM system_settings WHERE \`key\` = 'INTEGRATIONS_CONFIG'`);
 
   // ---- WP5: Newsletter Option A, Comms, Admin-Only Diagnostics
   const nl = await call(A, 'create_newsletter_campaign', { name: 'WP Probe Campaign', subject: 'Hello WP' });
