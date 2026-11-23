@@ -55,7 +55,7 @@ const CriterionTitle = ({
           e.currentTarget.blur();
         }
       }}
-      className="h-9 min-w-0 flex-1 rounded-xl border border-transparent bg-transparent px-2 text-ui font-semibold text-slate-800 hover:border-slate-200 focus:border-indigo-400 focus:bg-white focus:outline-none"
+      className="h-9 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 text-ui font-semibold text-gray-800 hover:border-gray-200 focus:border-entity-border focus:bg-white focus:outline-none"
     />
   );
 };
@@ -122,15 +122,15 @@ export const ProjectAcceptanceCriteria = ({
     <div className="flex-1 ws-lg:overflow-y-auto scrollbar-thin ws-lg:pr-1">
     <div className="flex flex-col gap-4 text-left">
       <div className="min-w-0">
-        <h3 className="type-card-title text-slate-900">{t("Acceptance criteria", "Akceptačné kritériá", "Elfogadási kritériumok")}</h3>
-        <p className="type-meta text-slate-500">
+        <h3 className="type-card-title text-gray-900">{t("Acceptance criteria", "Akceptačné kritériá", "Elfogadási kritériumok")}</h3>
+        <p className="type-meta text-gray-500">
           {countNoun("criterion", live.length, language)}
           {approved && added > 0 && ` · ${addedAfterApprovalCount(added, language)}`}
         </p>
       </div>
 
       {isNew && (
-        <p className="type-meta text-slate-500">
+        <p className="type-meta text-gray-500">
           {t(
             "You can add criteria after the project is saved.",
             "Kritériá môžete pridať po uložení projektu.",
@@ -142,14 +142,14 @@ export const ProjectAcceptanceCriteria = ({
       <Surface tone="inset" padding="none" className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         {approved ? (
           <>
-            <p className="type-meta text-slate-600">
+            <p className="type-meta text-gray-600">
               {t("Scope approved", "Rozsah schválený", "Terjedelem jóváhagyva")} {localDay(approvedAt, language)}
               {approvedBy ? ` · ${approvedBy}` : ""}
             </p>
             {canEdit &&
               (confirmingWithdraw ? (
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="type-meta min-w-0 text-slate-600">
+                  <span className="type-meta min-w-0 text-gray-600">
                     {t(
                       "Withdraw the approval? When the scope is approved again, the criteria added so far become part of the original scope.",
                       "Zrušiť schválenie? Pri novom schválení sa doteraz pridané kritériá stanú súčasťou pôvodného rozsahu.",
@@ -163,14 +163,14 @@ export const ProjectAcceptanceCriteria = ({
                       setConfirmingWithdraw(false);
                       void runScopeAction("withdraw");
                     }}
-                    className="h-8 cursor-pointer rounded-xl border border-slate-200 bg-white px-3 text-ui font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-default disabled:opacity-50"
+                    className="h-8 cursor-pointer rounded-lg border border-gray-200 bg-white px-3 text-ui font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-default disabled:opacity-50"
                   >
                     {t("Withdraw approval", "Zrušiť schválenie", "Jóváhagyás visszavonása")}
                   </button>
                   <button
                     type="button"
                     onClick={() => setConfirmingWithdraw(false)}
-                    className="h-8 cursor-pointer rounded-xl px-3 text-ui font-semibold text-slate-600 hover:bg-slate-100"
+                    className="h-8 cursor-pointer rounded-lg px-3 text-ui font-semibold text-gray-600 hover:bg-gray-100"
                   >
                     {t("Keep", "Ponechať", "Megtartom")}
                   </button>
@@ -180,7 +180,7 @@ export const ProjectAcceptanceCriteria = ({
                   type="button"
                   disabled={pending}
                   onClick={() => setConfirmingWithdraw(true)}
-                  className="h-8 cursor-pointer rounded-xl px-3 text-ui font-semibold text-slate-600 hover:bg-slate-100 disabled:cursor-default disabled:opacity-50"
+                  className="h-8 cursor-pointer rounded-lg px-3 text-ui font-semibold text-gray-600 hover:bg-gray-100 disabled:cursor-default disabled:opacity-50"
                 >
                   {t("Withdraw approval", "Zrušiť schválenie", "Jóváhagyás visszavonása")}
                 </button>
@@ -188,7 +188,7 @@ export const ProjectAcceptanceCriteria = ({
           </>
         ) : (
           <>
-            <p className="type-meta min-w-0 flex-1 text-slate-600">
+            <p className="type-meta min-w-0 flex-1 text-gray-600">
               {t(
                 "After approval every new criterion counts as a scope extension.",
                 "Po schválení sa každé nové kritérium počíta ako rozšírenie rozsahu.",
@@ -200,7 +200,7 @@ export const ProjectAcceptanceCriteria = ({
                 type="button"
                 disabled={pending}
                 onClick={() => void runScopeAction("approve")}
-                className="h-9 shrink-0 cursor-pointer rounded-xl bg-indigo-600 px-4 text-ui font-semibold text-white hover:bg-indigo-500 disabled:cursor-default disabled:opacity-50"
+                className="h-9 shrink-0 cursor-pointer rounded-lg bg-entity-solid px-4 text-ui font-semibold text-white hover:opacity-90 disabled:cursor-default disabled:opacity-50"
               >
                 {t("Approve scope", "Schváliť rozsah", "Terjedelem jóváhagyása")}
               </button>
@@ -229,7 +229,7 @@ export const ProjectAcceptanceCriteria = ({
           )}
         />
       ) : (
-        <ul className="flex flex-col divide-y divide-slate-100">
+        <ul className="flex flex-col divide-y divide-gray-100">
           {live.map((criterion) => {
             const late = isAddedAfterApproval(criterion, approvedAt);
             return (
@@ -240,7 +240,7 @@ export const ProjectAcceptanceCriteria = ({
                   disabled={!canEdit}
                   onChange={() => save(toggleCriterionDone(list, criterion.id))}
                   aria-label={`${t("Done", "Hotové", "Kész")}: ${criterion.title}`}
-                  className="size-4 shrink-0 cursor-pointer accent-indigo-600 disabled:cursor-default"
+                  className="size-4 shrink-0 cursor-pointer accent-entity-solid disabled:cursor-default"
                 />
                 {canEdit ? (
                   <CriterionTitle
@@ -249,14 +249,14 @@ export const ProjectAcceptanceCriteria = ({
                     onRename={(title) => save(renameCriterion(list, criterion.id, title))}
                   />
                 ) : (
-                  <span className={`min-w-0 flex-1 text-ui font-semibold ${criterion.done ? "text-slate-500" : "text-slate-800"}`}>{criterion.title}</span>
+                  <span className={`min-w-0 flex-1 text-ui font-semibold ${criterion.done ? "text-gray-500" : "text-gray-800"}`}>{criterion.title}</span>
                 )}
                 {late && (
                   <span className="type-meta shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-amber-700">
                     {t("Added after approval", "Pridané po schválení", "Jóváhagyás után hozzáadva")}
                   </span>
                 )}
-                <span className="type-meta shrink-0 text-slate-500">
+                <span className="type-meta shrink-0 text-gray-500">
                   {t("Added", "Pridané", "Hozzáadva")}: {criterion.createdBy ? `${criterion.createdBy} · ` : ""}
                   {localDay(criterion.createdAt, language)}
                 </span>
@@ -266,7 +266,7 @@ export const ProjectAcceptanceCriteria = ({
                     lang={language}
                     aria-label={`${t("Remove", "Odstrániť", "Eltávolítás")}: ${criterion.title}`}
                     onConfirm={() => save(removeCriterion(list, criterion.id, userName, new Date()))}
-                    className="flex size-8 shrink-0 items-center justify-center rounded-xl text-rose-600 hover:bg-rose-50"
+                    className="flex size-8 shrink-0 items-center justify-center rounded-lg text-rose-600 hover:bg-rose-50"
                   >
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
                   </HoldToConfirmButton>
@@ -291,12 +291,12 @@ export const ProjectAcceptanceCriteria = ({
             onChange={(e) => setDraft(e.target.value)}
             aria-label={t("New criterion", "Nové kritérium", "Új kritérium")}
             placeholder={t("New criterion", "Nové kritérium", "Új kritérium")}
-            className="h-9 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-ui"
+            className="h-9 min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 text-ui"
           />
           <button
             type="submit"
             disabled={!draft.trim()}
-            className="flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 text-ui font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-default disabled:opacity-50"
+            className="flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 text-ui font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-default disabled:opacity-50"
           >
             <Plus className="h-4 w-4" aria-hidden="true" />
             {t("Add", "Pridať", "Hozzáadás")}

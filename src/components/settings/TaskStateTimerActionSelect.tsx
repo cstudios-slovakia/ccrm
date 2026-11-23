@@ -11,13 +11,13 @@ export const TaskStateTimerActionSelect: React.FC<{
   canEdit: boolean;
   lang: string;
 }> = ({ value, onChange, canEdit, lang }) => (
-  <label className="inline-flex items-center gap-2 text-ui text-slate-500">
+  <label className="inline-flex items-center gap-2 text-ui text-gray-500">
     <span>{L(lang, "Timer", "Časovač", "Időzítő")}</span>
     <select
       value={value ?? ""}
       disabled={!canEdit}
       onChange={(e) => onChange((e.target.value || undefined) as TimerAction | undefined)}
-      className="min-h-9 rounded-xl border border-slate-200 bg-white px-2 text-ui font-semibold text-slate-700 disabled:opacity-60"
+      className="min-h-9 rounded-lg border border-gray-200 bg-white px-2 text-ui font-semibold text-gray-700 disabled:opacity-60"
     >
       <option value="">—</option>
       <option value="start">{L(lang, "Start", "Spustiť", "Indítás")}</option>
@@ -43,7 +43,7 @@ export const TaskStateTimerActionsHint: React.FC<{
   return (
     <div className="mb-4 space-y-2">
       {canEdit && nothingMapped && names.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-ui text-slate-700">
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-ui text-gray-700">
           <span>
             {L(lang, "Suggested: ", "Návrh: ", "Javaslat: ")}
             {startName && <>“{startName}” {L(lang, "starts the timer", "spustí časovač", "elindítja az időzítőt")}{stopName ? ", " : ""}</>}
@@ -52,13 +52,13 @@ export const TaskStateTimerActionsHint: React.FC<{
           <button
             type="button"
             onClick={() => onApply(suggestion)}
-            className="rounded-xl bg-indigo-600 px-3 py-1.5 text-ui font-bold text-white transition-colors hover:bg-indigo-500"
+            className="rounded-lg bg-entity-solid px-3 py-1.5 text-ui font-bold text-white transition-colors hover:opacity-90"
           >
             {L(lang, "Apply", "Použiť", "Alkalmaz")}
           </button>
         </div>
       )}
-      <p className="text-ui text-slate-500">
+      <p className="text-ui text-gray-500">
         {L(
           lang,
           "Applies only to your own timer, when you change the status yourself.",

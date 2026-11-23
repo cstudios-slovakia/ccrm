@@ -1,0 +1,1 @@
+- **GitHub project fields, acceptance criteria and GitHub settings restyled to the Tremor look** (`ProjectAcceptanceCriteria`, `ProjectPushTimelineItem`, `ProjectGithubFields`, `GithubIntegrationSettings`, `TaskStateTimerActionSelect`): gray palette, crisp radii, entity-accent tokens instead of `indigo-*`; class strings only.

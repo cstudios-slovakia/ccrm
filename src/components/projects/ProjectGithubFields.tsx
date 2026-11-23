@@ -3,7 +3,7 @@ import type { Language } from "../../utils/translations";
 import { normalizeGithubBranch, normalizeGithubRepo } from "../../utils/githubRepo";
 
 const inputCls =
-  "w-full px-3 py-2 rounded-xl border-2 border-slate-200 bg-slate-50 text-body font-bold text-slate-800 placeholder:font-normal placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all read-only:bg-transparent read-only:border-transparent read-only:pl-0 aria-[invalid=true]:border-rose-400";
+  "w-full px-3 py-2 rounded-lg border-2 border-gray-200 bg-gray-50 text-body font-bold text-gray-800 placeholder:font-normal placeholder:text-gray-400 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all read-only:bg-transparent read-only:border-transparent read-only:pl-0 aria-[invalid=true]:border-rose-400";
 
 /**
  * "GitHub" group in the project detail's left card: the repository ("owner/name") the project is paired
@@ -72,10 +72,10 @@ export const ProjectGithubFields: React.FC<{
 
   return (
     <fieldset className="m-0 min-w-0 border-0 p-0">
-      <legend className="block type-overline text-slate-400 mb-1 p-0">GitHub</legend>
+      <legend className="block type-overline text-gray-400 mb-1 p-0">GitHub</legend>
       <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
         <div className="min-w-0">
-          <label htmlFor={`${id}-repo`} className="block type-label text-slate-600 mb-1">
+          <label htmlFor={`${id}-repo`} className="block type-label text-gray-600 mb-1">
             {t("Repository", "Repozitár", "Repozitórium")}
           </label>
           <input
@@ -100,7 +100,7 @@ export const ProjectGithubFields: React.FC<{
           )}
         </div>
         <div className="min-w-0">
-          <label htmlFor={`${id}-branch`} className="block type-label text-slate-600 mb-1">
+          <label htmlFor={`${id}-branch`} className="block type-label text-gray-600 mb-1">
             {t("Branch", "Vetva", "Ág")}
           </label>
           <input
@@ -126,7 +126,7 @@ export const ProjectGithubFields: React.FC<{
         </div>
       </div>
       {canEdit && (
-        <p className="mt-1 text-caption text-slate-400">
+        <p className="mt-1 text-caption text-gray-400">
           {t(
             "Pushes to this branch count as deployments to the server.",
             "Pushe do tejto vetvy sa počítajú ako nasadenia na server.",

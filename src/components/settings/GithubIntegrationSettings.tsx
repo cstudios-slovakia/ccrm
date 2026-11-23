@@ -19,11 +19,11 @@ const showToast = (message: string, variant?: "error" | "warning") =>
   (window as unknown as { showToast?: (m: string, v?: string) => void }).showToast?.(message, variant);
 
 const primaryBtn =
-  "inline-flex min-h-11 items-center gap-2 rounded-2xl bg-indigo-600 px-5 text-ui font-bold text-white shadow-md shadow-indigo-600/20 transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
+  "inline-flex min-h-11 items-center gap-2 rounded-lg bg-entity-solid px-5 text-ui font-bold text-white shadow-md transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
 const secondaryBtn =
-  "inline-flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-ui font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
+  "inline-flex min-h-11 items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-ui font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer";
 const readonlyCls =
-  "min-h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 font-mono text-ui text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100";
+  "min-h-11 min-w-0 flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 font-mono text-ui text-gray-800 focus:border-entity-border focus:outline-none focus:ring-2 focus:ring-entity-ring";
 
 const CopyButton: React.FC<{ text: string; t: T }> = ({ text, t }) => {
   const [copied, setCopied] = useState(false);
@@ -124,7 +124,7 @@ export const GithubIntegrationSettings: React.FC<{ userLanguage: Language }> = (
       </SectionCard>
     );
   }
-  if (!status) return <div className="h-40 rounded-3xl bg-slate-50 animate-pulse" />;
+  if (!status) return <div className="h-40 rounded-lg bg-gray-50 animate-pulse" />;
 
   const steps = [
     t(
@@ -178,7 +178,7 @@ export const GithubIntegrationSettings: React.FC<{ userLanguage: Language }> = (
         <SettingsGroup title={t("Secret key", "Tajný kľúč", "Titkos kulcs")}>
           <div className="flex flex-wrap items-center gap-3">
             {status.unreadable ? (
-              <p role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 type-body text-amber-800" data-testid="github-secret-state">
+              <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 type-body text-amber-800" data-testid="github-secret-state">
                 {t(
                   "A secret key is stored but cannot be read. Generate a new one.",
                   "Tajný kľúč je uložený, ale nedá sa prečítať. Vygenerujte nový.",
@@ -186,7 +186,7 @@ export const GithubIntegrationSettings: React.FC<{ userLanguage: Language }> = (
                 )}
               </p>
             ) : (
-              <p className="type-body text-slate-700" data-testid="github-secret-state">
+              <p className="type-body text-gray-700" data-testid="github-secret-state">
                 {status.hasSecret ? t("The secret key is set.", "Tajný kľúč je nastavený.", "A titkos kulcs be van állítva.") : t("The secret key is not set.", "Tajný kľúč nie je nastavený.", "A titkos kulcs nincs beállítva.")}
               </p>
             )}
@@ -196,7 +196,7 @@ export const GithubIntegrationSettings: React.FC<{ userLanguage: Language }> = (
             </button>
           </div>
           {newSecret && (
-            <div role="status" className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <div role="status" className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
               <p className="type-label text-amber-900">
                 {t(
                   "Copy it now. It cannot be shown again.",
@@ -226,7 +226,7 @@ export const GithubIntegrationSettings: React.FC<{ userLanguage: Language }> = (
         </SettingsGroup>
 
         <SettingsGroup title={t("How to connect GitHub", "Ako pripojiť GitHub", "A GitHub csatlakoztatása")}>
-          <ol className="flex list-decimal flex-col gap-1.5 pl-5 type-body text-slate-700">
+          <ol className="flex list-decimal flex-col gap-1.5 pl-5 type-body text-gray-700">
             {steps.map((step) => (
               <li key={step}>{step}</li>
             ))}
