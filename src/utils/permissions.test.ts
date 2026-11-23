@@ -8,6 +8,7 @@ import {
   PERMISSION_DEFS,
   PERMISSION_SECTIONS,
   PROTECTED_ROLE_NAMES,
+  ROLE_MATRIX_SECTIONS,
   buildAccess,
   employeeRolePermissions,
   findRole,
@@ -420,4 +421,20 @@ test("the Dashboard section is guarded by the permission of the screen it shows"
   const perms = { ...newRolePermissions(), dashboard: "view" as const, overview: "nothing" as const };
   const access = buildAccess(user("R"), [{ name: "R", permissions: perms }]);
   assert.equal(access.canOpenRoute("dashboard"), LEGACY_WIDGET_DASHBOARD);
+});
+
+test("the role matrix offers only permissions that guard something visible", () => {
+  const keys = ROLE_MATRIX_SECTIONS.flatMap((s) => s.permissions.map((p) => p.key));
+  const dashboardSection = ROLE_MATRIX_SECTIONS.find((s) => s.id === "dashboard");
+  if (LEGACY_WIDGET_DASHBOARD) {
+    assert.deepEqual(ROLE_MATRIX_SECTIONS, PERMISSION_SECTIONS);
+    return;
+  }
+  // The widget board's key is hidden (its stored values stay); `overview` now guards the Dashboard.
+  assert.ok(!keys.includes("dashboard"));
+  assert.ok(!ROLE_MATRIX_SECTIONS.some((s) => s.id === "overview"));
+  assert.deepEqual(dashboardSection?.permissions.map((p) => p.key), ["overview", "dashboard.custom"]);
+  // Every other key is still offered exactly once.
+  const all = PERMISSION_SECTIONS.flatMap((s) => s.permissions.map((p) => p.key)).filter((k) => k !== "dashboard");
+  assert.deepEqual([...keys].sort(), [...all].sort());
 });

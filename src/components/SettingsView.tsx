@@ -61,7 +61,8 @@ import { linkedEmployeeOf } from "../utils/employeeLink";
 import { isAtSeatLimit } from "../utils/license";
 import type { LicenseState } from "../utils/license";
 import {
-  PERMISSION_SECTIONS,
+  ROLE_MATRIX_SECTIONS,
+  roleMatrixTextKey,
   findRole,
   isAdminRoleName,
   isProtectedRoleName,
@@ -2387,7 +2388,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           level: req.level === "edit"
             ? getTranslation(userLanguage, "settings.rbac.state.edit")
             : getTranslation(userLanguage, "settings.rbac.state.view"),
-          label: getTranslation(userLanguage, `settings.rbac.perm.${req.key}.label`),
+          label: getTranslation(userLanguage, `settings.rbac.perm.${roleMatrixTextKey(req.key)}.label`),
         })
       : "";
     return (
@@ -3725,7 +3726,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100 text-ui font-semibold text-gray-700">
-                            {PERMISSION_SECTIONS.flatMap((section) => {
+                            {ROLE_MATRIX_SECTIONS.flatMap((section) => {
                               const rows: React.ReactNode[] = [];
                               rows.push(
                                 <tr key={`sec-${section.id}`} className="bg-gray-50 border-y border-gray-200 select-none">
@@ -3748,14 +3749,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       <div className="flex flex-col space-y-1 text-left">
                                         <div className="flex items-center gap-1.5 flex-wrap">
                                           <span className="font-heading font-bold text-gray-800 text-ui tracking-wide">
-                                            {getTranslation(userLanguage, `settings.rbac.perm.${perm.key}.label`)}
+                                            {getTranslation(userLanguage, `settings.rbac.perm.${roleMatrixTextKey(perm.key)}.label`)}
                                           </span>
                                           <code className="text-micro font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-semibold select-all">
                                             {perm.key}
                                           </code>
                                         </div>
                                         <p className="text-micro font-semibold text-gray-400 leading-normal">
-                                          {getTranslation(userLanguage, `settings.rbac.perm.${perm.key}.desc`)}
+                                          {getTranslation(userLanguage, `settings.rbac.perm.${roleMatrixTextKey(perm.key)}.desc`)}
                                         </p>
                                       </div>
                                     </td>
