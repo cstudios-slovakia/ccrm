@@ -1,0 +1,1 @@
+var e=e=>e===`overview`,t={overview:`dashboard`};export{e as n,t};
