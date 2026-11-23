@@ -1,5 +1,0 @@
-- **ClickUp Project Integration** (`public/api/clickup_lib.php`, `public/api/clickup.php`, `public/api/clickup_webhook.php`, `ClickUpIntegrationSettings.tsx`, `ProjectClickUpListsBar.tsx`, `EntityTasksPanel.tsx`, `TaskDashboardView.tsx`):
-  - Added encrypted ClickUp API Token and Workspace configuration under **Settings -> Integrations -> ClickUp** (`#settings/integrations/clickup`) with webhook + 5-minute cron synchronization.
-  - Added multi-list ClickUp selection on projects to mirror tasks and nested subtasks (read-only from ClickUp with direct external links and active time tracking).
-  - Mirrored ClickUp tasks and subtasks count in projects, Project Breakdown, Time Tracking, dashboards, calendars, and AI/MCP while staying hidden from `#tasks` lists and Koperniq notifications/badges.
-- **Tests**: `clickupTasks.test.ts` (`excludeClickUpTasks`, `countBadgeTasks` exclusion, `groupTasksWithSubtasks` nesting and cross-bucket parent breadcrumbs, `buildProjectBreakdown` counting).
