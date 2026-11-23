@@ -1,0 +1,1 @@
+- **Docs: two handoff prompts for what design-parity pass 2 left** (`docs/prompts/time-tracking-parity-2-verify.md`, `time-tracking-parity-2-defects.md`): one to finish the browser tests and the server probe on the merged branch and correct the parity document, one to fix the known defects (entry drawer label and width, the two `projectStatuses` tests).
