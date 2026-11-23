@@ -10,7 +10,7 @@ description: Commit after every significant change with a changelog fragment; th
 
 ## 2. Changelog fragments, no version bump per commit
 - A feature or fix commit **never** edits [`src/utils/version.ts`](../../src/utils/version.ts) or
-  [`1.13-nectarine-changelog.md`](../../1.13-nectarine-changelog.md), and its message has **no version suffix**
+  [`1.14-orange-changelog.md`](../../1.14-orange-changelog.md), and its message has **no version suffix**
   (`feat(module): description of feature`).
 - Instead it adds one fragment, `changelog.d/<YYYY-MM-DD>-<slug>.md`, holding the bullet(s) exactly as they
   will appear in the changelog (`- **Title** (\`files\`): text`, optional `- **Tests**: ...`). Format, naming
@@ -24,6 +24,6 @@ description: Commit after every significant change with a changelog fragment; th
 - The build runs `node scripts/release/collect-changelog.mjs`: it bumps the patch number in `version.ts` once
   (codename kept), writes one `### v<new> (<date>)` section into the active changelog, deletes the consumed
   fragments and prints the new version. The build commit message is suffixed with that tag, e.g.
-  `build: bundle for speaker-name carry-over (v1.13.86-Nectarine)`.
+  `build: bundle for speaker-name carry-over (v1.14.1-Orange)`.
 - Only the build commit changes `version.ts` and the changelog. Never run `increment-version.js` (removed) or edit
   the version by hand.

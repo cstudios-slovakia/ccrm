@@ -1,5 +1,5 @@
-export const VERSION = "1.13.105-Nectarine";
-// Release codename ("Nectarine"), used to name the RAG assistant. Kept as its own
+export const VERSION = "1.14.0-Orange";
+// Release codename ("Orange"), used to name the RAG assistant. Kept as its own
 // export because RagAiView reads it at module scope — dropping it silently named
 // the assistant `undefined`.
-export const VERSION_CODENAME = VERSION.split("-")[1] || "Nectarine";
+export const VERSION_CODENAME = VERSION.split("-")[1] || "Orange";

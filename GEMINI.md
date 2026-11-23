@@ -34,10 +34,10 @@ The order when finishing a change: **test -> collect changelog (bumps the versio
 ### 1. Commit & Version Bumping Protocol
 
 - **Commit After Every Significant Change**: Make atomic, clean git commits after completing each feature, fix, or significant modification.
-- **One Build = One Version Bump**: Only a build bumps the version, never an individual commit. Do not edit `src/utils/version.ts` or `1.13-nectarine-changelog.md` by hand.
+- **One Build = One Version Bump**: Only a build bumps the version, never an individual commit. Do not edit `src/utils/version.ts` or `1.14-orange-changelog.md` by hand.
 - **Changelog fragment**: Each feature or fix commit adds `changelog.d/<YYYY-MM-DD>-<slug>.md` with its changelog bullet(s) (format in `changelog.d/README.md`).
 - **Build**: "Make a build" runs `node scripts/release/collect-changelog.mjs`, which bumps the version, writes the changelog section and deletes the fragments.
-- **Commit Message Suffix**: Only the build commit carries the version tag (e.g. `build: ... (v1.13.X-Nectarine)`); feature and fix commits have none.
+- **Commit Message Suffix**: Only the build commit carries the version tag (e.g. `build: ... (v1.14.X-Orange)`); feature and fix commits have none.
 
 ### 2. Verification & Build Cleanliness
 

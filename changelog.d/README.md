@@ -1,7 +1,7 @@
 # Changelog fragments
 
 A feature or fix commit does **not** bump `src/utils/version.ts` and does **not** edit
-`1.13-nectarine-changelog.md`. It adds one file here instead. "Make a build" runs
+`1.14-orange-changelog.md`. It adds one file here instead. "Make a build" runs
 `node scripts/release/collect-changelog.mjs`, which reads every fragment, bumps the patch
 number once, writes ONE `### v<new> (<date>)` section into the active changelog, and deletes
 the fragments it consumed. Two sessions can never collide on a version number.
