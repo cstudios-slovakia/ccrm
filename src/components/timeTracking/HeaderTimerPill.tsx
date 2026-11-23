@@ -4,7 +4,7 @@ import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { useRecentProjects } from "../../hooks/useRecentProjects";
 import { CycleRing } from "./CycleRing";
 import { ClockDigits } from "./ClockDigits";
-import { RoundTimerButton, roundButtonClass } from "./RoundTimerButton";
+import { RoundTimerButton, roundButtonClass, roundButtonRadius } from "./RoundTimerButton";
 import { TimerBar } from "./TimerBar";
 import type { TimeDeps } from "./shared";
 import { entityAccentStyle } from "../../utils/entityAccent";
@@ -54,7 +54,7 @@ export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
     <div
       data-testid="header-timer-running"
       onClick={toggle}
-      className={`inline-flex h-10 max-w-72 cursor-pointer items-center gap-2 rounded-full border pl-3 pr-1 shadow-2xs transition-colors xs:h-11 ${open ? "border-rose-300 bg-rose-100" : "border-rose-200 bg-rose-50 hover:border-rose-300"}`}
+      className={`inline-flex h-8.5 max-w-72 cursor-pointer items-center gap-2 rounded-md border pl-2.5 pr-0.5 shadow-2xs transition-colors xs:h-9 sm:h-10 ${open ? "border-rose-300 bg-rose-100" : "border-rose-200 bg-rose-50 hover:border-rose-300"}`}
     >
       <button
         type="button"
@@ -91,7 +91,7 @@ export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
         />
       </button>
       {!several && (
-        <CycleRing swap radius={20} buttonClass={roundButtonClass("pill")} className="shrink-0">
+        <CycleRing swap radius={roundButtonRadius("pill")} buttonClass={roundButtonClass("pill")} className="shrink-0">
           <RoundTimerButton size="pill"
             kind="stop"
             label={t("Stop timer", "Zastaviť časovač", "Időzítő leállítása")}
@@ -110,13 +110,13 @@ export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
   return (
     <>
       {!running && paused.length > 0 ? (
-        <CycleRing radius={12}>
+        <CycleRing radius={8}>
           <button
             type="button"
             onClick={() => void (paused.length > 1 ? resumeAll() : resume(paused[0].id))}
             data-testid="header-timer-resume"
             title={t("Resume", "Pokračovať", "Folytatás")}
-            className="inline-flex h-10 min-w-10 shrink-0 items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 text-ui font-semibold text-amber-800 shadow-2xs transition-colors hover:border-amber-300 hover:bg-amber-100 cursor-pointer md:h-9"
+            className="inline-flex h-8.5 min-w-8.5 shrink-0 items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 text-ui font-semibold text-amber-800 shadow-2xs transition-colors hover:border-amber-300 hover:bg-amber-100 cursor-pointer xs:h-9 xs:min-w-9 sm:h-10 sm:min-w-10"
           >
             <Play className="size-3.5 fill-current text-amber-600" />
             <span className="hidden md:inline">{t("Paused", "Pozastavené", "Szüneteltetve")} · {t("Resume", "Pokračovať", "Folytatás")}</span>
@@ -129,9 +129,9 @@ export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
           style={entityAccentStyle("time-tracking") as React.CSSProperties}
           data-testid="header-timer-start"
           title={t("Start timer", "Spustiť časovač", "Időzítő indítása")}
-          className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-gray-200 bg-white py-1 pl-1 pr-3 text-ui font-semibold text-gray-700 shadow-2xs transition-colors hover:border-entity-border hover:bg-entity-subtle hover:text-entity-text cursor-pointer xs:h-11"
+          className="inline-flex h-8.5 min-w-8.5 shrink-0 items-center justify-center gap-2 rounded-md border border-gray-200 bg-white pl-0.5 pr-0.5 text-ui font-semibold text-gray-700 shadow-2xs transition-colors hover:border-entity-border hover:bg-entity-subtle hover:text-entity-text cursor-pointer xs:h-9 xs:min-w-9 sm:h-10 sm:min-w-10 md:pr-3"
         >
-          <span className="inline-flex size-7 items-center justify-center rounded-full bg-entity-solid text-white">
+          <span className="inline-flex size-6.5 items-center justify-center rounded-full bg-entity-solid text-white xs:size-7 sm:size-8">
             <Play className="ml-0.5 size-3 fill-current" />
           </span>
           <span className="hidden md:inline">{t("Start timer", "Spustiť časovač", "Időzítő indítása")}</span>
@@ -139,7 +139,7 @@ export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
       ) : (
         // Not `relative`: the panel anchors to the (sticky) header, right-aligned, so it never runs under the sidebar.
         <div ref={wrap} className="shrink-0" style={entityAccentStyle("time-tracking") as React.CSSProperties}>
-          {several ? <CycleRing radius={22} className="max-w-72">{pill}</CycleRing> : pill}
+          {several ? <CycleRing radius={8} className="max-w-72">{pill}</CycleRing> : pill}
           {open && deps && <HeaderTimerPanel deps={deps} onClose={() => setOpen(false)} />}
         </div>
       )}
