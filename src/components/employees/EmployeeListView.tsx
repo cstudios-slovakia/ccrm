@@ -262,20 +262,21 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
     return merged;
   }, [rosterAiProblems, rosterProblems]);
 
-  // Most recent salary record per employee (year DESC, periodNumber DESC — matches EmployeeDetailView)
-  const lastSalaryByEmployee = useMemo(() => {
+  // Salary record for last calendar month per employee (never future/later months)
+  const { lastMonthKey, lastMonthSalaryByEmployee } = useMemo(() => {
+    const now = new Date();
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const targetYear = prev.getFullYear();
+    const targetMonth = prev.getMonth() + 1;
+    const key = `${targetYear}-${String(targetMonth).padStart(2, "0")}`;
     const map = new Map<string, EmployeeSalary>();
     for (const s of salaries) {
-      const prev = map.get(s.employeeId);
-      if (
-        !prev ||
-        s.year > prev.year ||
-        (s.year === prev.year && (s.periodNumber || 0) > (prev.periodNumber || 0))
-      ) {
+      if (s.periodType === "weekly") continue;
+      if (s.periodKey === key || (s.year === targetYear && s.periodNumber === targetMonth)) {
         map.set(s.employeeId, s);
       }
     }
-    return map;
+    return { lastMonthKey: key, lastMonthSalaryByEmployee: map };
   }, [salaries]);
 
   const kindLabels: Record<EmployeeKind, string> = {
@@ -661,7 +662,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                   <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Employee", "Zamestnanec", "Alkalmazott")}</th>
                   <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Contact", "Kontakt", "Elérhetőség")}</th>
                   {rights.salaries && <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Salary & Terms", "Mzda a podmienky", "Bér és feltételek")}</th>}
-                  {rights.salaries && <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Last Salary", "Posledná mzda", "Utolsó bér")}</th>}
+                  {rights.salaries && <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Last Month", "Minulý mesiac", "Előző hónap")}</th>}
                   <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Time Tracking", "Meranie času", "Időkövetés")}</th>
                   {rights.files && <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Contracts", "Zmluvy", "Szerződések")}</th>}
                   <th className="sticky z-10 bg-gray-50 py-3.5 px-4 text-center">{t("Status", "Stav", "Állapot")}</th>
@@ -770,18 +771,25 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                       </td>
                       )}
 
-                      {/* Last Salary */}
+                      {/* Last Month Payment */}
                       {rights.salaries && (() => {
-                        const lastSal = lastSalaryByEmployee.get(emp.id);
+                        const lastSal = lastMonthSalaryByEmployee.get(emp.id);
+                        const paid = lastSal ? Number(lastSal.totalPaid || 0) : 0;
+                        const total = lastSal ? Number(lastSal.totalSalary || 0) : 0;
                         return (
                           <td className="py-3.5 px-4">
                             {lastSal ? (
                               <>
-                                <span className="font-mono font-bold text-gray-900 block text-ui">
-                                  {formatNumber(lastSal.totalSalary, systemLanguage)} {systemCurrency}
+                                <span className={`font-mono font-bold block text-ui ${paid > 0 ? "text-gray-900" : "text-gray-400"}`}>
+                                  {formatNumber(paid, systemLanguage)} {systemCurrency}
                                 </span>
                                 <span className="text-micro text-gray-400 block mt-0.5">
-                                  {lastSal.periodKey}
+                                  {lastSal.periodKey || lastMonthKey}
+                                  {paid <= 0 && total > 0
+                                    ? ` · ${t("planned", "plán", "terv")}: ${formatNumber(total, systemLanguage)} ${systemCurrency}`
+                                    : paid > 0 && total > 0 && Math.abs(paid - total) > 0.01
+                                    ? ` / ${formatNumber(total, systemLanguage)} ${systemCurrency}`
+                                    : ""}
                                 </span>
                               </>
                             ) : (

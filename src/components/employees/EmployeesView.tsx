@@ -331,6 +331,22 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
     });
   };
 
+  // Handle Delete Salary
+  const handleDeleteSalary = (salaryId: string) => {
+    const target = salaries.find((s) => s.id === salaryId);
+    if (!target) return;
+    const empName = employees.find((e) => e.id === target.employeeId)?.name;
+    deleteRecordsWithUndo({
+      collection: "employeeSalaries",
+      allRecords: salaries,
+      targets: [target],
+      setRecords: setSalaries,
+      lang: asLang(systemLanguage),
+      entity: "record",
+      titleOf: () => (empName ? `${empName} (${target.periodKey})` : target.periodKey),
+    });
+  };
+
   // Handle Save Vacation
   const handleSaveVacation = (vac: EmployeeVacation) => {
     setVacations((prev) => {
@@ -464,6 +480,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             onEditEmployee={(emp) => navigateToEditEmployee(emp.id)}
             initialEditMode={isEditMode}
             onSaveSalary={handleSaveSalary}
+            onDeleteSalary={handleDeleteSalary}
             onSaveVacation={handleSaveVacation}
             onDeleteVacation={handleDeleteVacation}
             systemLanguage={systemLanguage}

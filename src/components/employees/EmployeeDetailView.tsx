@@ -63,6 +63,7 @@ interface EmployeeDetailViewProps {
   onEditEmployee?: (employee: Employee) => void;
   initialEditMode?: boolean;
   onSaveSalary: (salary: EmployeeSalary) => void;
+  onDeleteSalary?: (salaryId: string) => void;
   onSaveVacation: (vacation: EmployeeVacation) => void;
   onDeleteVacation: (vacationId: string) => void;
   systemLanguage?: string;
@@ -89,6 +90,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
   onEditEmployee: _onEditEmployee,
   initialEditMode = false,
   onSaveSalary,
+  onDeleteSalary,
   onSaveVacation,
   onDeleteVacation,
   systemLanguage = "sk",
@@ -1960,18 +1962,31 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                               </td>
                               <td className="py-2.5 px-3 text-right">
                                 {rights.editSalaries && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSalaryToEdit(sal);
-                                    setIsSalaryModalOpen(true);
-                                  }}
-                                  title={t("Edit Salary", "Upraviť mzdu", "Bér szerkesztése")}
-                                  className="p-1.5 text-gray-400 group-hover:text-[#c29b62] hover:bg-entity-subtle rounded-lg transition cursor-pointer inline-flex items-center justify-center"
-                                >
-                                  <Edit3 className="w-3.5 h-3.5" />
-                                </button>
+                                <div className="inline-flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSalaryToEdit(sal);
+                                      setIsSalaryModalOpen(true);
+                                    }}
+                                    title={t("Edit Salary", "Upraviť mzdu", "Bér szerkesztése")}
+                                    className="p-1.5 text-gray-400 group-hover:text-[#c29b62] hover:bg-entity-subtle rounded-lg transition cursor-pointer inline-flex items-center justify-center"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+                                  {onDeleteSalary && (!sal.closedAt || canReopenPayroll) && (
+                                    <HoldToConfirmButton
+                                      tone="danger"
+                                      lang={asLang(systemLanguage)}
+                                      what={sal.periodKey}
+                                      onConfirm={() => onDeleteSalary(sal.id)}
+                                      title={t("Delete Salary", "Zmazať mzdu", "Bér törlése")}
+                                      className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition inline-flex items-center justify-center"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </HoldToConfirmButton>
+                                  )}
+                                </div>
                                 )}
                               </td>
                             </tr>
