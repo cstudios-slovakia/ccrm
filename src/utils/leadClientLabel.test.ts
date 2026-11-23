@@ -36,6 +36,35 @@ test("same-name leads of the same client stay unlabelled", () => {
   assert.equal(leadClientLabels(all).size, 0);
 });
 
+test("same-name leads of one client from different people show who sent each", () => {
+  const all = [
+    client("client-1", "Ján Novák"),
+    { id: "lead-1", name: "Ján Novák", clientId: "client-1", contactPerson: "Eva Nováková", email: "eva@novak.example" },
+    { id: "lead-2", name: "Ján Novák", clientId: "client-1", email: "jan@novak.example" },
+  ];
+  const labels = leadClientLabels(all);
+  assert.equal(labels.get("lead-1"), "Eva Nováková");
+  assert.equal(labels.get("lead-2"), "jan@novak.example");
+});
+
+test("the sender follows the client name when that is shown too", () => {
+  const all = [
+    client("client-1", "Novák s.r.o."),
+    { id: "lead-1", name: "Ján Novák", clientId: "client-1", email: "a@novak.example" },
+    { id: "lead-2", name: "Ján Novák", clientId: "client-1", email: "b@novak.example" },
+  ];
+  assert.equal(leadClientLabels(all).get("lead-1"), "Novák s.r.o. · a@novak.example");
+});
+
+test("same-name leads of one client from the same person get nothing extra", () => {
+  const all = [
+    client("client-1", "Ján Novák"),
+    { id: "lead-1", name: "Ján Novák", clientId: "client-1", email: "jan@novak.example" },
+    { id: "lead-2", name: "Ján Novák", clientId: "client-1", email: "JAN@novak.example" },
+  ];
+  assert.equal(leadClientLabels(all).size, 0);
+});
+
 test("client records and unlinked leads without an e-mail get no label", () => {
   const all = [client("client-1", "Novák s.r.o."), { id: "lead-1", name: "Peter Malý" }];
   assert.equal(leadClientLabels(all).size, 0);

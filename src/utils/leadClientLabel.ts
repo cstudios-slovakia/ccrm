@@ -9,6 +9,9 @@
  * - another lead with the same name belongs to a different client.
  * A lead named exactly like its only client gets no label, so the list is not doubled.
  * A lead with no client yet shows its own e-mail instead (when it has one).
+ * Several leads with the same name and the same client look identical even so; when they
+ * came from different people, each also shows its sender (contact person, else e-mail),
+ * after the client name if that is shown ("Novák s.r.o. · Ján Novák").
  * Client records themselves never get one.
  *
  * Which client a lead belongs to follows `resolveLinkedClient` (utils/leadClient.ts):
@@ -49,13 +52,32 @@ export const leadClientLabels = <T extends LeadLike>(all: T[]): Map<string, stri
     clientsByName.get(key)!.add(client.id);
   }
 
+  // Same name + same client -> the distinct senders among those leads.
+  const pairKey = (lead: T, client: T): string => `${nameKey(lead.name)}\u0000${client.id}`;
+  const sendersByPair = new Map<string, Set<string>>();
+  for (const { lead, client } of resolved) {
+    const k = pairKey(lead, client);
+    if (!sendersByPair.has(k)) sendersByPair.set(k, new Set());
+    sendersByPair.get(k)!.add(nameKey(senderOf(lead)));
+  }
+
   for (const { lead, client } of resolved) {
     const clientName = (client.name || "").trim();
-    if (!clientName) continue;
     const key = nameKey(lead.name);
-    const differs = nameKey(clientName) !== key;
-    const ambiguous = (clientsByName.get(key)?.size || 0) > 1;
-    if (differs || ambiguous) labels.set(lead.id!, clientName);
+    const differs = !!clientName && nameKey(clientName) !== key;
+    const ambiguous = !!clientName && (clientsByName.get(key)?.size || 0) > 1;
+    // Several leads of one name and one client, sent by different people: say who.
+    const sender = (sendersByPair.get(pairKey(lead, client))?.size || 0) > 1 ? senderOf(lead) : "";
+    const parts = [differs || ambiguous ? clientName : "", sender].filter(Boolean);
+    if (parts.length) labels.set(lead.id!, parts.join(" · "));
   }
   return labels;
+};
+
+/** Who a lead came from: its contact person, else its e-mail. */
+const senderOf = (lead: LeadLike): string => {
+  const person =
+    (lead.contactPerson || "").trim() ||
+    [lead.contactFirstName, lead.contactLastName].map((s) => (s || "").trim()).filter(Boolean).join(" ");
+  return person || (lead.email || "").trim();
 };
