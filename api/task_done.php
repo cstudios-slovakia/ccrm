@@ -99,20 +99,32 @@ if (!function_exists('ccrm_task_reopens_decode')) {
 
 if (!function_exists('ccrm_task_record_reopen')) {
     /**
-     * Appends one reopening to `tasks.reopens_json`. The only writer of that column; callers decide with
-     * ccrm_task_is_reopened() first. Reads the row with FOR UPDATE, so inside the caller's transaction
-     * two appends cannot overwrite each other. A series template is refused. Needs the column to exist
-     * (no DDL here): a caller outside sync.php wraps it in try/catch. Returns whether a record was added.
+     * Records one reopening of a task: appends it to `tasks.reopens_json` and bumps `tasks.reopened_count`.
+     * The ONLY writer of both columns on `tasks` (tickets keep their own counter): sync, MCP and the
+     * project-breakdown hook all call it, after deciding with ccrm_task_is_reopened(). Reads the row
+     * with FOR UPDATE, so inside the caller's transaction two reopenings cannot overwrite each other.
+     * The counter becomes `GREATEST(reopened_count, length of the log) + 1`: it equals the log length for
+     * rows only ever written here, and a row from before the log existed (a count, no timestamps) keeps
+     * its old total and still goes up by one. A series template is refused. Needs both columns to exist
+     * (no DDL here): a caller outside sync.php wraps it in try/catch. Returns whether a reopening was recorded.
      */
     function ccrm_task_record_reopen(\PDO $pdo, string $taskId, ?string $by, ?string $atUtc = null): bool {
-        $stmt = $pdo->prepare("SELECT `task_kind`, `reopens_json` FROM `tasks` WHERE `id` = ? LIMIT 1 FOR UPDATE"); /* recurring-template: by-id read, a template is refused below */
+        $stmt = $pdo->prepare("SELECT `task_kind`, `reopens_json`, `reopened_count` FROM `tasks` WHERE `id` = ? LIMIT 1 FOR UPDATE"); /* recurring-template: by-id read, a template is refused below */
         $stmt->execute([$taskId]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         if (!$row || ($row['task_kind'] ?? null) === 'recurring') return false;
         $list = ccrm_task_reopens_decode($row['reopens_json'] ?? null);
+        $count = max((int)($row['reopened_count'] ?? 0), count($list)) + 1;
         $list[] = ['at' => $atUtc ?? gmdate('Y-m-d\TH:i:s\Z'), 'by' => ($by !== null && trim($by) !== '') ? mb_substr(trim($by), 0, 100) : null];
         $list = array_slice($list, -300);
-        $pdo->prepare("UPDATE `tasks` SET `reopens_json` = ? WHERE `id` = ?")->execute([json_encode($list, JSON_UNESCAPED_UNICODE), $taskId]); /* recurring-template: by-id write, a template is refused above */
+        $pdo->prepare("UPDATE `tasks` SET `reopens_json` = ?, `reopened_count` = ? WHERE `id` = ?")->execute([json_encode($list, JSON_UNESCAPED_UNICODE), $count, $taskId]); /* recurring-template: by-id write, a template is refused above */
         return true;
+    }
+}
+
+if (!function_exists('ccrm_task_reopened_total')) {
+    /** What a client is told as `reopenedCount`: the larger of the counter column and the length of the log (old rows know a count but no timestamps). */
+    function ccrm_task_reopened_total($column, $reopensJson): int {
+        return max((int)$column, count(ccrm_task_reopens_decode($reopensJson)));
     }
 }

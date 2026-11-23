@@ -377,14 +377,13 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
         }
         if (!$isDone && $wasDone) {
             $add('completed_by', null); $add('completed_at', null);
-            $sets[] = "`reopened_count` = `reopened_count` + 1";
         }
         require_once __DIR__ . '/project_breakdown_migrations.php';
         $taskStates = (array)mcp_config_json($pdo, 'TASK_STATES', []);
         if ($isDone || !ccrm_task_is_initial_state($status, $taskStates)) {
             $sets[] = "`first_started_at` = COALESCE(`first_started_at`, NOW())";
         }
-        // A finished task moved to an open state is a reopening (the block above already cleared who finished it and counted it); log it in reopens_json.
+        // A finished task moved to an open state is a reopening (the block above already cleared who finished it); ccrm_task_record_reopen() below logs it and counts it.
         $reopened = ccrm_task_is_reopened($row, $status, $taskStates);
     }
     if (array_key_exists('requires_conclusion', $args)) $add('requires_conclusion', !empty($args['requires_conclusion']) ? 1 : 0);

@@ -1020,7 +1020,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'originalDeadline' => $row['original_deadline'] ?? null,
                 'deadlineMoves' => (int)($row['deadline_moves'] ?? 0),
                 'firstStartedAt' => $row['first_started_at'] ?? null,
-                'reopenedCount' => (int)($row['reopened_count'] ?? 0),
+                'reopenedCount' => ccrm_task_reopened_total($row['reopened_count'] ?? 0, $row['reopens_json'] ?? null), // the larger of the counter and the log (api/task_done.php)
                 // Pushed in over the machine API (server-only columns, never written back by a client save).
                 'externalSource' => $row['external_source'] ?? null,
                 'externalUrl' => $row['external_url'] ?? null,
@@ -5160,10 +5160,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     array_key_exists('estimateMinutes', $t) ? 1 : 0,
                     $catFlag,
                 ]);
-                // A finished task saved as unfinished: log who reopened it and when (server-owned column).
-                if (!$isNewTask && $oldRow && ccrm_task_is_reopened(['status' => $oldTaskStatus], $t['status'] ?? 'todo', $conclusionTaskStates)) {
-                    ccrm_task_record_reopen($pdo, (string)$taskId, $sessionUserName !== '' ? $sessionUserName : null);
-                }
                 if ($relTicketIdVal !== null && $ticketLinkAllowed) {
                     try {
                         $pdo->prepare("INSERT IGNORE INTO `ticket_task_links` (`ticket_id`, `task_id`, `sync_mode`, `created_at`) VALUES (?, ?, 'auto_resolve', NOW())")->execute([$relTicketIdVal, $taskId]);
@@ -5174,7 +5170,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $isClosedNow = $conclusionIsDone($t['status'] ?? '') || !empty($t['completedAt']);
                 $wasClosedBefore = $oldTaskStatus !== null && ($conclusionIsDone($oldTaskStatus) || !empty($oldRow['completed_at']));
                 require_once __DIR__ . '/api/project_breakdown_migrations.php';
-                ccrm_stamp_task_breakdown_transition($pdo, (string)$taskId, (string)($t['status'] ?? ''), $oldTaskStatus, $isClosedNow, $wasClosedBefore, $conclusionTaskStates);
+                // Also logs a reopening (finished task saved as unfinished: who and when) through ccrm_task_record_reopen(), the one writer.
+                ccrm_stamp_task_breakdown_transition($pdo, (string)$taskId, (string)($t['status'] ?? ''), $isNewTask ? null : $oldTaskStatus, $isClosedNow, $wasClosedBefore, $conclusionTaskStates, $sessionUserName !== '' ? $sessionUserName : null);
                 if ($isClosedNow && !$wasClosedBefore) {
                     $srcStmt = $pdo->prepare("SELECT `recurring_source_id` FROM `tasks` WHERE `id` = ?"); /* recurring-template: check occurrence source */
                     $srcStmt->execute([$taskId]);

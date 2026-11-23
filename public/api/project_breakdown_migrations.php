@@ -200,12 +200,19 @@ if (!function_exists('ccrm_heal_project_breakdown_columns')) {
         ?string $oldStatus,
         bool $isClosedNow,
         bool $wasClosedBefore,
-        array $taskStates = []
+        array $taskStates = [],
+        ?string $reopenedBy = null
     ): void {
-        try {
-            if ($wasClosedBefore && !$isClosedNow) {
-                $pdo->prepare("/* recurring-template: stamp reopen on real task */ UPDATE `tasks` SET `reopened_count` = `reopened_count` + 1 WHERE `id` = ?")->execute([$taskId]);
+        // A finished task saved as unfinished is a reopening: ccrm_task_record_reopen() (api/task_done.php) is the one
+        // writer of tasks.reopened_count and tasks.reopens_json. Outside the try below: a failure there (a deadlock)
+        // must roll the caller's transaction back instead of leaving the counter and the log disagreeing.
+        // The caller (sync.php) has loaded api/task_done.php already.
+        if ($oldStatus !== null) {
+            if (ccrm_task_is_reopened(['status' => $oldStatus], $newStatus, $taskStates)) {
+                ccrm_task_record_reopen($pdo, $taskId, $reopenedBy);
             }
+        }
+        try {
             if ($isClosedNow || !ccrm_task_is_initial_state($newStatus, $taskStates)) {
                 $pdo->prepare("/* recurring-template: stamp first_started_at on real task */ UPDATE `tasks` SET `first_started_at` = COALESCE(`first_started_at`, NOW()) WHERE `id` = ? AND `first_started_at` IS NULL")->execute([$taskId]);
             }
