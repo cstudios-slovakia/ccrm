@@ -155,9 +155,9 @@ const billableValueOf = (lines: readonly ReportLine[]): MoneyByCurrency => {
 };
 
 const costSplitOf = (lines: readonly ReportLine[]): CostSplit => ({
-  client: sumMoney(lines.filter((l) => l.projectId != null && !l.internal).map((l) => l.cost)),
+  client: sumMoney(lines.filter((l) => !l.internal && (l.projectId != null || l.clientId != null)).map((l) => l.cost)),
   internal: sumMoney(lines.filter((l) => l.internal).map((l) => l.cost)),
-  unallocated: sumMoney(lines.filter((l) => l.projectId == null).map((l) => l.cost)),
+  unallocated: sumMoney(lines.filter((l) => l.projectId == null && l.clientId == null).map((l) => l.cost)),
 });
 
 /**
@@ -472,6 +472,7 @@ export interface SalaryEntry {
   workedMs?: number | null;
   userId: string;
   projectId: string | null;
+  clientId?: string | null;
   entryDate: string;
   durationSec: number;
   cost?: number | null;
@@ -532,11 +533,17 @@ const salaryWorked = (e: SalaryEntry) => ({
   workedMs: e.workedMs,
 });
 
-export const allocationOf = (projectId: string | null, projects: readonly SalaryProject[]): SalaryBucket => {
-  if (!projectId) return "unallocated";
-  const project = projects.find((p) => p.id === projectId);
-  if (!project) return "unallocated";
-  return project.isInternal ? "internal" : "client";
+export const allocationOf = (
+  projectId: string | null,
+  projects: readonly SalaryProject[],
+  clientId: string | null = null,
+): SalaryBucket => {
+  if (projectId) {
+    const project = projects.find((p) => p.id === projectId);
+    if (project) return project.isInternal ? "internal" : "client";
+  }
+  if (clientId) return "client";
+  return "unallocated";
 };
 
 /** The month before `today`, which has already closed. */
@@ -628,7 +635,7 @@ export const buildSalaryReport = (input: {
       const sec = Math.max(0, entryWorkedSeconds(salaryWorked(e), nowMs, live));
       acc.seconds += sec;
       acc.delivered += Math.max(0, Math.round(e.durationSec || 0));
-      const where = allocationOf(e.projectId, input.projects);
+      const where = allocationOf(e.projectId, input.projects, e.clientId ?? null);
       const visible = visibleEntryCost(e, input.viewerUserId, input.canCosts);
       const code = e.currency || input.currency;
       if (where === "client") {

@@ -1,0 +1,6 @@
+- **Task-first time tracking & live entity attribution** (`public/api/time_entries_lib.php`, `public/api/time_entries.php`, `src/components/timeTracking/TimerBar.tsx`, `src/components/timeTracking/EntryDrawer.tsx`, `src/components/timeTracking/EntryRow.tsx`, `src/components/timeTracking/ClientTimeTab.tsx`, `src/components/ClientsView.tsx`):
+  - Tasks are now the primary tracked entity: starting or stopping a task timer never blocks for a project (`requireProjectToStop` now defaults to `false`, and task-linked entries are always exempt).
+  - Unattached tasks keep time as **Unsorted** (`projectId: null`); assigning a project and/or client to a task retroactively attributes all existing and running entries on that task to both the project and client while preserving legacy manual entry project assignments.
+  - Users can start a timer freely and search/attach an open task while the timer is running (`TimerBar`) or later (`EntryDrawer`).
+  - Client-only task time (without a project) is counted in backend `totals.byClient` & `clientId` list filters, `TimeReportsView` / `TimeSalaryReport` (`client` bucket), and the new `Time` tab + tracked-time badge in Client detail (`ClientTimeTab.tsx`, `ClientsView.tsx`).
+- **Tests**: `src/utils/timeLinks.test.ts`, `src/utils/timeReports.test.ts`, `tests/e2e/timeTracking.spec.ts`, `scripts/probe-time-tracking/run.mjs`.

@@ -53,7 +53,12 @@ if (!function_exists('ccrm_tt_end_entries')) {
             $pauseUntil = isset($pause['until']) && $pause['until'] !== '' ? (string)$pause['until'] : null;
         }
         $settings = ccrm_tt_load_settings($pdo);
-        $sel = $pdo->prepare("SELECT * FROM `time_entries` WHERE `id` IN (" . implode(',', array_fill(0, count($ids), '?')) . ") AND `user_id` = ? AND `deleted_at` IS NULL AND `start_at` IS NOT NULL AND `end_at` IS NULL ORDER BY `start_at` ASC, `id` ASC");
+        $effProjExpr = ccrm_tt_eff_project_expr();
+        $sel = $pdo->prepare(
+            "SELECT te.*, {$effProjExpr} AS `eff_project_id` FROM `time_entries` te"
+            . ccrm_tt_entity_joins()
+            . " WHERE te.`id` IN (" . implode(',', array_fill(0, count($ids), '?')) . ") AND te.`user_id` = ? AND te.`deleted_at` IS NULL AND te.`start_at` IS NOT NULL AND te.`end_at` IS NULL ORDER BY te.`start_at` ASC, te.`id` ASC"
+        );
         $sel->execute(array_merge($ids, [$userId]));
         $rows = $sel->fetchAll(\PDO::FETCH_ASSOC);
         $upd = $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `project_id` = ?, `employee_id` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `end_reason` = ?, `paused_at` = ?, `pause_reason` = COALESCE(?, `pause_reason`), `resume_until` = ? WHERE `id` = ? AND `end_at` IS NULL");
@@ -61,11 +66,12 @@ if (!function_exists('ccrm_tt_end_entries')) {
         foreach ($rows as $row) {
             $end = max($endUtc, (string)$row['start_at']);
             $dur = ccrm_tt_seconds_between($row['start_at'], $end);
-            $project = $projectId ?? $row['project_id'];
+            $storedProject = $row['task_id'] !== null ? $row['project_id'] : ($projectId ?? $row['project_id']);
+            $rateProject = $row['eff_project_id'] ?: $storedProject;
             $price = ccrm_tt_price($pdo, (string)$row['user_id'], $row['entry_date'], $dur, $settings, false);
-            $rate = $row['billable_rate'] !== null ? $row['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $project, $row['ticket_id'], (string)$row['entry_date']);
+            $rate = $row['billable_rate'] !== null ? $row['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $rateProject, $row['ticket_id'], (string)$row['entry_date']);
             $upd->execute([
-                $end, $dur, $project, $price['employee_id'], $rate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'],
+                $end, $dur, $storedProject, $price['employee_id'], $rate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'],
                 $reason, $pause !== null ? $end : null, $pauseReason, $pause !== null ? $pauseUntil : $row['resume_until'], $row['id'],
             ]);
             if ($upd->rowCount() === 1) {

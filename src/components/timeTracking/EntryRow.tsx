@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { CheckSquare, ChevronRight, Euro, Link2, MoreHorizontal, Play } from "lucide-react";
+import { Building2, CheckSquare, ChevronRight, Euro, Link2, MoreHorizontal, Play } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import {
   clockTime,
@@ -61,6 +61,7 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
   const task = entry.taskId ? lookups.taskById.get(entry.taskId) : undefined;
   const showTask = !!task && task.title.trim() !== "" && task.title !== entry.title;
   const clientName = projectClientName(entry.projectId, deps.projects, deps.leads);
+  const directClientName = entry.clientName || (entry.clientId ? deps.leads.find((l) => l.id === entry.clientId)?.name || null : null);
   const [stopping, setStopping] = useState(false);
   const rate = "costRate" in entry;
   const costs = group.map((m) => m.cost);
@@ -119,7 +120,25 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
         )}
       </button>
       {entry.projectId ? (
-        <ProjectLabel projectId={entry.projectId} name={projectName} client={clientName} className="max-w-56" />
+        <ProjectLabel projectId={entry.projectId} name={projectName} client={entry.clientName || clientName} className="max-w-56" />
+      ) : directClientName ? (
+        <span
+          className="inline-flex max-w-56 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-micro font-medium text-gray-700"
+          data-testid="entry-client-chip"
+          title={directClientName}
+        >
+          <Building2 className="size-3 shrink-0 text-gray-500" />
+          <span className="truncate">{directClientName}</span>
+        </span>
+      ) : entry.taskId ? (
+        <button
+          type="button"
+          onClick={() => onOpen(entry)}
+          className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-micro font-medium text-gray-500 hover:bg-gray-100 cursor-pointer"
+          data-testid="entry-unsorted-chip"
+        >
+          {t("Unsorted", "Nezaradené", "Rendezetlen")}
+        </button>
       ) : (
         <AssignProjectChip onClick={() => onOpen(entry)} />
       )}

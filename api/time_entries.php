@@ -333,35 +333,65 @@ if ($method === 'GET') {
     // own always, anyone else's only with time_tracking_costs — so a partial sum
     // is never presented as the project's labour.
     if ($action === 'totals') {
-        $stmt = $pdo->query("SELECT `task_id`, `ticket_id`, `project_id`, `user_id`, COALESCE(SUM(`duration_sec`), 0) AS `sec`, COALESCE(SUM(`worked_ms`), 0) AS `worked`, SUM(`cost`) AS `cost`, SUM(`cost` IS NULL) AS `missing`
-            FROM `time_entries` WHERE `deleted_at` IS NULL AND `duration_sec` IS NOT NULL
-            GROUP BY `task_id`, `ticket_id`, `project_id`, `user_id`");
+        $effProj = ccrm_tt_eff_project_expr();
+        $effClient = ccrm_tt_eff_client_expr();
+        $stmt = $pdo->query(
+            "SELECT te.`task_id`, te.`ticket_id`, {$effProj} AS `eff_project_id`, {$effClient} AS `eff_client_id`, te.`user_id`,
+                    COALESCE(SUM(te.`duration_sec`), 0) AS `sec`, COALESCE(SUM(te.`worked_ms`), 0) AS `worked`,
+                    SUM(te.`cost`) AS `cost`, SUM(te.`cost` IS NULL) AS `missing`
+             FROM `time_entries` te"
+            . ccrm_tt_entity_joins()
+            . " WHERE te.`deleted_at` IS NULL AND te.`duration_sec` IS NOT NULL
+               GROUP BY te.`task_id`, te.`ticket_id`, `eff_project_id`, `eff_client_id`, te.`user_id`"
+        );
         $byTask = [];
         $byTicket = [];
         $byProject = [];
+        $byClient = [];
         foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
             $own = (string)$r['user_id'] === $callerId;
             $sec = (int)$r['sec'];
+            $worked = (int)$r['worked'];
+            $missing = (int)$r['missing'];
+            $cost = (float)$r['cost'];
             if ($r['task_id']) {
                 $byTask[$r['task_id']] = ($byTask[$r['task_id']] ?? 0) + $sec;
             }
             if ($r['ticket_id']) {
                 $byTicket[$r['ticket_id']] = ($byTicket[$r['ticket_id']] ?? 0) + $sec;
             }
-            if ($r['project_id']) {
-                if (!isset($byProject[$r['project_id']])) {
-                    $byProject[$r['project_id']] = ['seconds' => 0, 'workedMs' => 0, 'cost' => 0.0, 'complete' => true];
+            $effP = ($r['eff_project_id'] ?? '') !== '' ? (string)$r['eff_project_id'] : null;
+            if ($effP !== null) {
+                if (!isset($byProject[$effP])) {
+                    $byProject[$effP] = ['seconds' => 0, 'workedMs' => 0, 'cost' => 0.0, 'complete' => true];
                 }
-                $byProject[$r['project_id']]['seconds'] += $sec;
-                $byProject[$r['project_id']]['workedMs'] += (int)$r['worked'];
+                $byProject[$effP]['seconds'] += $sec;
+                $byProject[$effP]['workedMs'] += $worked;
                 if ($own || $canCosts) {
-                    if ((int)$r['missing'] > 0) {
-                        $byProject[$r['project_id']]['complete'] = false;
+                    if ($missing > 0) {
+                        $byProject[$effP]['complete'] = false;
                     } else {
-                        $byProject[$r['project_id']]['cost'] += (float)$r['cost'];
+                        $byProject[$effP]['cost'] += $cost;
                     }
                 } else {
-                    $byProject[$r['project_id']]['complete'] = false;
+                    $byProject[$effP]['complete'] = false;
+                }
+            }
+            $effC = ($r['eff_client_id'] ?? '') !== '' ? (string)$r['eff_client_id'] : null;
+            if ($effC !== null) {
+                if (!isset($byClient[$effC])) {
+                    $byClient[$effC] = ['seconds' => 0, 'workedMs' => 0, 'cost' => 0.0, 'complete' => true];
+                }
+                $byClient[$effC]['seconds'] += $sec;
+                $byClient[$effC]['workedMs'] += $worked;
+                if ($own || $canCosts) {
+                    if ($missing > 0) {
+                        $byClient[$effC]['complete'] = false;
+                    } else {
+                        $byClient[$effC]['cost'] += $cost;
+                    }
+                } else {
+                    $byClient[$effC]['complete'] = false;
                 }
             }
         }
@@ -370,16 +400,28 @@ if ($method === 'GET') {
             unset($proj['complete']);
         }
         unset($proj);
-        // Billable work (C13, D3.2): duration x frozen billable rate over billable rows; parallel work does not
-        // reduce it. Information only (D3.4). Billable rates are revenue figures gated like `billableRate` on an
-        // entry: time_tracking_costs, otherwise null.
-        $bvStmt = $pdo->query("SELECT `project_id`, SUM(`duration_sec` / 3600 * `billable_rate`) AS `v`, SUM(`billable_rate` IS NULL) AS `missing`
-            FROM `time_entries` WHERE `deleted_at` IS NULL AND `duration_sec` IS NOT NULL AND `billable` = 1 AND `project_id` IS NOT NULL
-            GROUP BY `project_id`");
+        foreach ($byClient as &$cli) {
+            $cli['cost'] = $cli['complete'] ? round($cli['cost'], 2) : null;
+            unset($cli['complete']);
+        }
+        unset($cli);
+        // Billable work (C13, D3.2): duration x frozen billable rate (falling back to project billable_rate if the
+        // entry was tracked while its task was unsorted) over billable rows; parallel work does not reduce it.
+        $bvStmt = $pdo->query(
+            "SELECT {$effProj} AS `eff_project_id`,
+                    SUM(te.`duration_sec` / 3600 * COALESCE(te.`billable_rate`, NULLIF(p.`billable_rate`, 0))) AS `v`,
+                    SUM(COALESCE(te.`billable_rate`, NULLIF(p.`billable_rate`, 0)) IS NULL) AS `missing`
+             FROM `time_entries` te"
+            . ccrm_tt_entity_joins()
+            . " WHERE te.`deleted_at` IS NULL AND te.`duration_sec` IS NOT NULL AND te.`billable` = 1
+               GROUP BY `eff_project_id`
+               HAVING `eff_project_id` IS NOT NULL"
+        );
         foreach ($bvStmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
-            if (!isset($byProject[$r['project_id']])) continue;
-            $byProject[$r['project_id']]['billableValue'] = $canCosts ? round((float)$r['v'], 2) : null;
-            $byProject[$r['project_id']]['billableComplete'] = $canCosts ? ((int)$r['missing'] === 0) : false;
+            $pid = (string)$r['eff_project_id'];
+            if (!isset($byProject[$pid])) continue;
+            $byProject[$pid]['billableValue'] = $canCosts ? round((float)$r['v'], 2) : null;
+            $byProject[$pid]['billableComplete'] = $canCosts ? ((int)$r['missing'] === 0) : false;
         }
         foreach ($byProject as &$proj) {
             if (!array_key_exists('billableValue', $proj)) { $proj['billableValue'] = $canCosts ? 0.0 : null; $proj['billableComplete'] = $canCosts; }
@@ -392,7 +434,13 @@ if ($method === 'GET') {
         foreach ($wstmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
             $workedByUserDay[(string)$r['user_id']][(string)$r['entry_date']] = (int)$r['w'];
         }
-        ccrm_te_respond(['byTask' => $byTask ?: new stdClass(), 'byTicket' => $byTicket ?: new stdClass(), 'byProject' => $byProject ?: new stdClass(), 'workedByUserDay' => $workedByUserDay ?: new stdClass()]);
+        ccrm_te_respond([
+            'byTask' => $byTask ?: new stdClass(),
+            'byTicket' => $byTicket ?: new stdClass(),
+            'byProject' => $byProject ?: new stdClass(),
+            'byClient' => $byClient ?: new stdClass(),
+            'workedByUserDay' => $workedByUserDay ?: new stdClass(),
+        ]);
     }
 
     // Overlap count per month for the Settings panel (read-only, admin / general_config like settings).
@@ -466,16 +514,17 @@ if ($method === 'GET') {
         if ($projectId === '') {
             ccrm_te_fail('bad_request', 400);
         }
-        $stmt = $pdo->prepare("SELECT te.`id`, te.`project_id`, te.`ticket_id`, te.`task_id`, te.`billable`, te.`entry_date`, te.`duration_sec`
-            FROM `time_entries` te
+        $effProj = ccrm_tt_eff_project_expr();
+        $stmt = $pdo->prepare("SELECT te.`id`, {$effProj} AS `eff_project_id`, te.`ticket_id`, te.`task_id`, te.`billable`, te.`entry_date`, te.`duration_sec`
+            FROM `time_entries` te" . ccrm_tt_entity_joins() . "
             WHERE te.`deleted_at` IS NULL AND te.`duration_sec` IS NOT NULL
-              AND (te.`project_id` = ? OR te.`ticket_id` IN (SELECT `id` FROM `tickets` WHERE `project_id` = ?))");
-        $stmt->execute([$projectId, $projectId]);
+              AND ({$effProj}) = ?");
+        $stmt->execute([$projectId]);
         $rows = [];
         foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
             $rows[] = [
                 'id' => $r['id'],
-                'projectId' => $r['project_id'],
+                'projectId' => ($r['eff_project_id'] ?? null) ?: null,
                 'ticketId' => $r['ticket_id'],
                 'taskId' => $r['task_id'],
                 'billable' => (bool)$r['billable'],
@@ -506,7 +555,21 @@ if ($method === 'GET') {
         $where[] = "te.`user_id` = ?";
         $params[] = $who;
     }
-    foreach (['projectId' => 'project_id', 'taskId' => 'task_id', 'ticketId' => 'ticket_id'] as $param => $col) {
+    $projFilter = trim((string)($_GET['projectId'] ?? ''));
+    if ($projFilter !== '') {
+        $where[] = '(' . ccrm_tt_eff_project_expr() . ') = ?';
+        $params[] = $projFilter;
+    }
+    $clientFilter = trim((string)($_GET['clientId'] ?? ''));
+    if ($clientFilter !== '') {
+        $clientIds = array_values(array_slice(array_filter(array_map('trim', explode(',', $clientFilter)), fn($x) => $x !== ''), 0, 50));
+        if ($clientIds) {
+            $ph = implode(',', array_fill(0, count($clientIds), '?'));
+            $where[] = '(' . ccrm_tt_eff_client_expr() . ") IN ({$ph})";
+            array_push($params, ...$clientIds);
+        }
+    }
+    foreach (['taskId' => 'task_id', 'ticketId' => 'ticket_id'] as $param => $col) {
         $v = trim((string)($_GET[$param] ?? ''));
         if ($v !== '') {
             $where[] = "te.`{$col}` = ?";
@@ -1299,7 +1362,8 @@ if ($action === 'stop') {
         $needProject = [];
         $needTask = [];
         foreach ($rows as $r) {
-            if ($settings['requireProjectToStop'] && ($projectId ?? $r['project_id']) === null) {
+            // Tasks own their attribution: a task timer stays unsorted until the task gets a project/client.
+            if ($settings['requireProjectToStop'] && $r['task_id'] === null && ($projectId ?? $r['project_id']) === null) {
                 $canPickProject ??= ccrm_can($scope, 'projects') || (bool)ccrm_workable_projects($pdo, $scope);
                 if ($canPickProject) {
                     $needProject[] = (string)$r['id'];
@@ -1895,7 +1959,7 @@ if ($action === 'create') {
             $entryDate, $startUtc, $endUtc, $duration, $billable,
             ($canCosts && isset($body['billableRate']) && is_numeric($body['billableRate']))
                 ? round((float)$body['billableRate'], 2)
-                : ccrm_tt_lookup_billable_rate($pdo, $links['project_id'], $links['ticket_id'], $entryDate),
+                : ccrm_tt_lookup_billable_rate($pdo, $links['derivedProject'] ?? $links['project_id'], $links['ticket_id'], $entryDate),
             $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'],
             json_encode(ccrm_tt_clean_tags($body['tags'] ?? []), JSON_UNESCAPED_UNICODE),
             ccrm_te_source($body['source'] ?? null, 'manual'), ccrm_te_origin($body['originType'] ?? null), ccrm_tt_nullable_id($body['originId'] ?? null),
@@ -1948,7 +2012,11 @@ if ($action === 'update') {
     if (!$links['ok']) {
         ccrm_te_fail($links['code'], 422);
     }
-    $linksChanged = ($links['task_id'] !== $row['task_id']) || ($links['ticket_id'] !== $row['ticket_id']) || ($links['project_id'] !== $row['project_id']);
+    // Preserve legacy manually-assigned project on an existing task entry when neither task nor project was modified.
+    $storedProjectId = (!$has('projectId') && $links['task_id'] === $row['task_id'] && $row['task_id'] !== null)
+        ? $row['project_id']
+        : $links['project_id'];
+    $linksChanged = ($links['task_id'] !== $row['task_id']) || ($links['ticket_id'] !== $row['ticket_id']) || ($storedProjectId !== $row['project_id']);
     if ($linksChanged) {
         $explicit = $has('projectId') ? ccrm_tt_nullable_id($body['projectId']) : null;
         if ($denied = ccrm_te_check_link_access($pdo, $scope, $links, $explicit)) {
@@ -2022,7 +2090,7 @@ if ($action === 'update') {
     if ($canCosts && $has('billableRate')) {
         $billableRate = is_numeric($body['billableRate']) ? round((float)$body['billableRate'], 2) : null;
     } elseif ($billableRate === null && ($endUtc !== null || $startUtc === null)) {
-        $billableRate = ccrm_tt_lookup_billable_rate($pdo, $links['project_id'], $links['ticket_id'], $entryDate);
+        $billableRate = ccrm_tt_lookup_billable_rate($pdo, $links['derivedProject'] ?? $storedProjectId, $links['ticket_id'], $entryDate);
     }
     $tags = $has('tags') ? json_encode(ccrm_tt_clean_tags($body['tags']), JSON_UNESCAPED_UNICODE) : $row['tags'];
     $note = $has('note') ? ccrm_tt_clean_note($body['note']) : ($row['note'] ?? null);
@@ -2069,7 +2137,7 @@ if ($action === 'update') {
              WHERE `id` = ? AND `deleted_at` IS NULL" . ($startUtc !== null && $endUtc === null ? ' AND `end_at` IS NULL' : '')
         );
         $upd->execute([
-            $owner, $price['employee_id'], $links['project_id'], $links['task_id'], $links['ticket_id'], $links['description'], $links['title_snapshot'], $note, $entryDate,
+            $owner, $price['employee_id'], $storedProjectId, $links['task_id'], $links['ticket_id'], $links['description'], $links['title_snapshot'], $note, $entryDate,
             $startUtc, $endUtc, $duration, $billable, $billableRate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $tags, $id,
         ]);
         // The old and the new interval (an owner change settles both people).

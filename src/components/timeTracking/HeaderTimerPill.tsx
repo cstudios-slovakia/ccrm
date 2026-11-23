@@ -49,7 +49,7 @@ export function HeaderTimerPill({ deps }: { deps?: TimeDeps | null }) {
     else window.location.hash = "time-tracking";
   };
 
-  const projectLine = running?.projectName || "";
+  const projectLine = running?.projectName || running?.clientName || "";
   const pill = running ? (
     <div
       data-testid="header-timer-running"

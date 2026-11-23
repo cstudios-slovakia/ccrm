@@ -49,6 +49,9 @@ import { AiKeyBanner } from "./ui/AiKeyBanner";
 import { EntityTasksPanel } from "./EntityTasksPanel";
 import type { AgencyRights } from "../utils/agencyRights";
 import { ClientCompanyAgencyTab } from "./agency/ClientCompanyAgencyTab";
+import { useTimeTracking } from "../hooks/useTimeTracking";
+import { entrySeconds, formatDuration } from "../utils/timeTracking.ts";
+import { ClientTimeTab } from "./timeTracking/ClientTimeTab";
 import {
   hasOpenAiKey,
   hasTranscriptionKey,
@@ -225,6 +228,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   agencyRights,
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const timeTracking = useTimeTracking();
   // Role gates. `view` is what let the user in; read-only users still search,
   // filter, open a profile and download what they can see. Deleting is never
   // open to a role that cannot edit, whatever the delete toggle says.
@@ -1429,7 +1433,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   });
 
   // --- DETAIL TABS & DOCUMENT UPLOADER STATE WITH URL SYNC ---
-  type DetailTabKey = "timeline" | "tasks" | "orders" | "invoices" | "leads" | "contacts" | "agency_workers" | "financial_status" | "files" | "tickets";
+  type DetailTabKey = "timeline" | "tasks" | "time" | "orders" | "invoices" | "leads" | "contacts" | "agency_workers" | "financial_status" | "files" | "tickets";
 
   const getInitialDetailTab = (): DetailTabKey => {
     const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
@@ -1444,6 +1448,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       tabParam === "financial_status" ||
       tabParam === "timeline" ||
       tabParam === "tasks" ||
+      tabParam === "time" ||
       tabParam === "tickets"
     ) {
       return tabParam as DetailTabKey;
@@ -3267,6 +3272,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       );
     }
 
+    const activeClientIds = activeClient.associatedLeads.map((l) => l.id).filter(Boolean);
+    const activeClientIdSet = new Set(activeClientIds);
+    const clientTrackedSeconds =
+      activeClientIds.reduce((sum, id) => sum + (timeTracking.totals.byClient?.[id]?.seconds ?? 0), 0) +
+      timeTracking.running.reduce((sum, e) => (e.clientId && activeClientIdSet.has(e.clientId) ? sum + entrySeconds(e, timeTracking.nowMs) : sum), 0);
+
     return (
       <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
         {/* Entity header: back · avatar · title, badges and meta beneath, actions at the right */}
@@ -3311,6 +3322,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <span className="text-gray-500 font-medium">
                     • {activeClient.owner}
                   </span>
+                )}
+                {timeTracking.enabled && clientTrackedSeconds > 0 && (
+                  <button
+                    type="button"
+                    data-testid="client-tracked-time-badge"
+                    onClick={() => handleDetailTabChange("time")}
+                    className="inline-flex items-center gap-1 rounded-full border border-teal-500/20 bg-teal-500/10 px-2.5 py-0.5 text-micro font-semibold tabular-nums text-teal-700 hover:bg-teal-500/15 cursor-pointer"
+                  >
+                    <Clock className="h-3 w-3 shrink-0" />
+                    {formatDuration(clientTrackedSeconds)}
+                  </button>
                 )}
           </>}
           primaryAction={
@@ -4162,6 +4184,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 items={[
                   { key: "timeline", icon: <Clock className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.history_timeline") },
                   { key: "tasks", entity: "tasks", icon: <CheckSquare className="h-4.5 w-4.5" />, label: t("Tasks", "Úlohy", "Feladatok"), count: clientOpenTasksCount },
+                  { key: "time", entity: "time-tracking", hidden: !timeTracking.enabled, icon: <Clock className="h-4.5 w-4.5" />, label: t("Time", "Čas", "Idő"), badge: clientTrackedSeconds > 0 ? <span className="px-1.5 rounded-full text-micro font-semibold tabular-nums bg-teal-500/15 text-teal-700">{formatDuration(clientTrackedSeconds)}</span> : undefined },
                   { key: "orders", entity: "orders", icon: <SectionIcon id="orders" className="h-4.5 w-4.5" />, label: t("Orders", "Objednávky", "Rendelések"), count: clientOrders.length },
                   { key: "invoices", entity: "invoices", icon: <Coins className="h-4.5 w-4.5" />, label: t("Invoices & Billing", "Faktúry a platby", "Számlák és fizetések"), count: clientInvoices.length },
                   {
@@ -4857,6 +4880,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     accentColor="orange"
                   />
                 </div>
+              )}
+
+              {activeDetailTab === "time" && timeTracking.enabled && (
+                <ClientTimeTab
+                  clientIds={activeClientIds}
+                  language={systemLanguage}
+                  currency={currencyCode || "EUR"}
+                  users={users}
+                  projects={projects}
+                  leads={leads}
+                />
               )}
 
               {activeDetailTab === "files" && (

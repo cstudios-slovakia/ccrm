@@ -1,15 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
-import { useProjectStatuses } from "../../hooks/useProjectStatuses";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
-import { isClosedProjectStatus, projectStatusColor, projectStatusLabel } from "../../utils/projects";
-import { clientForTask, resolveTaskProject } from "../../utils/timeLinks.ts";
 import { clockTime, elapsedSeconds, formatDuration } from "../../utils/timeTracking.ts";
 import { ClockDigits } from "./ClockDigits";
 import { TimeApiError, timeErrorMessage, updateEntry } from "../../utils/timeTrackingApi.ts";
 import type { Lead, Project, Task } from "../../types";
-import { readTimeCreate, requestNewTimeEntry } from "./timeCreateBridge";
-import { CustomSelect } from "../ui/CustomSelect";
+import { requestNewTimeEntry } from "./timeCreateBridge";
 import { entityAccentStyle } from "../../utils/entityAccent";
 import { StatTile } from "../layout/StatGrid";
 import { RoundTimerButton } from "./RoundTimerButton";
@@ -18,29 +14,17 @@ import { RoundTimerButton } from "./RoundTimerButton";
  * The round Start (or, while the viewer tracks this task, a rose banner with Stop), an optional Description
  * and the Tracked / Estimate tiles, in the task drawer's Time tracking section.
  * (Task cards in the lists carry no timer: tracking starts and stops from the task's edit view.)
- * A task with several projects asks which one before the timer starts. The Description is typed
- * before ▶ and travels with the new entry; while the timer runs here the field edits that entry.
+ * Tasks are primary: a task with no project/client starts immediately and stays unsorted until attached.
  */
 export function TaskTimeControls({
   task,
-  projects,
-  leads,
-  onSaveProject,
 }: {
   task: Task;
-  projects: Project[];
-  leads: Lead[];
-  /** Writes the chosen project onto the task ("Save the project on the task"). */
+  projects?: Project[];
+  leads?: Lead[];
   onSaveProject?: (taskId: string, projectId: string) => void;
 }) {
   const tt = useTimeTracking();
-  const statuses = useProjectStatuses();
-  const [ask, setAsk] = useState<Project[] | null>(null);
-  const [saveOnTask, setSaveOnTask] = useState(true);
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newType, setNewType] = useState("");
-  const createBusy = useRef(false);
   const [note, setNote] = useState("");
   // "Running" means this task is in the running set (D5.4).
   const runningHereList = tt.running.filter((e) => e.taskId === task.id);
@@ -57,20 +41,6 @@ export function TaskTimeControls({
   const estimateSec = task.estimateMinutes && task.estimateMinutes > 0 ? task.estimateMinutes * 60 : null;
   const t = tt.t;
 
-  const begin = async (projectId: string | null, remember: boolean, anchor?: Element | null) => {
-    setAsk(null);
-    if (remember && projectId) onSaveProject?.(task.id, projectId);
-    const started = await tt.start({
-      taskId: task.id,
-      projectId,
-      description: null,
-      note: note.trim() || null,
-      originType: "task",
-      originId: task.id,
-    }, { anchor });
-    if (started) setNote("");
-  };
-
   const commitNote = async () => {
     if (!runningEntry || note.trim() === (runningEntry.note ?? "").trim()) return;
     try {
@@ -81,36 +51,22 @@ export function TaskTimeControls({
     }
   };
 
-  const onPlay = (anchor: Element) => {
+  const onPlay = async (anchor: Element) => {
     if (runningEntry) {
-      void tt.stop(runningEntry.id);
+      await tt.stop(runningEntry.id);
       return;
     }
-    const resolved = resolveTaskProject(task, projects, leads, (p) => isClosedProjectStatus(p.status, statuses));
-    if (!resolved.projectId && resolved.candidates.length > 1) {
-      setAsk(resolved.candidates);
-      setSaveOnTask(true);
-      setCreating(false);
-      setNewName("");
-      setNewType(readTimeCreate().projectTypes[0]?.id ?? "");
-      return;
-    }
-    void begin(resolved.projectId, false, anchor);
-  };
-
-  const party = clientForTask(task, leads);
-  const canCreate = !!readTimeCreate().onCreateProject && !!party?.id;
-  const createForClient = async () => {
-    const create = readTimeCreate().onCreateProject;
-    const name = newName.trim();
-    if (!create || !party?.id || !name || !newType || createBusy.current) return;
-    createBusy.current = true; // one server create per submit: a double click must not make two projects
-    try {
-      const made = await create({ name, clientId: party.id, projectTypeId: newType });
-      if (made) void begin(made.id, saveOnTask);
-    } finally {
-      createBusy.current = false;
-    }
+    const started = await tt.start(
+      {
+        taskId: task.id,
+        description: null,
+        note: note.trim() || null,
+        originType: "task",
+        originId: task.id,
+      },
+      { anchor },
+    );
+    if (started) setNote("");
   };
 
   const banner = runningHereList.map((e, i) => (
@@ -182,7 +138,7 @@ export function TaskTimeControls({
             if (e.key !== "Enter") return;
             e.preventDefault();
             if (runningHere) (e.currentTarget as HTMLInputElement).blur();
-            else onPlay(e.currentTarget);
+            else void onPlay(e.currentTarget);
           }}
           maxLength={1000}
           placeholder={t("Description (optional)", "Popis (voliteľné)", "Leírás (nem kötelező)")}
@@ -190,106 +146,6 @@ export function TaskTimeControls({
           data-testid="task-time-note"
           className="h-9 min-w-40 flex-1 rounded-md border border-gray-200 bg-white px-3 text-ui outline-none placeholder:text-gray-400 focus:border-entity"
         />
-      {ask && (
-        <span
-          role="dialog"
-          data-testid="task-project-popover"
-          className="absolute left-0 top-full z-20 mt-1 w-72 rounded-lg border border-gray-200 bg-white p-3 shadow-xl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <span className="type-label block text-gray-800">{t("Which project is this for?", "Pre ktorý projekt to je?", "Melyik projekthez tartozik?")}</span>
-          {party && (
-            <span className="type-meta mt-1 block text-gray-500">
-              {t(
-                `The task has no project, and ${party.name} has ${ask.length}. Pick one${onSaveProject ? " — it can also be saved on the task" : ""}.`,
-                `Úloha nemá projekt a ${party.name} ich má ${ask.length}. Vyberte jeden${onSaveProject ? " — možno ho uložiť aj na úlohu" : ""}.`,
-                `A feladatnak nincs projektje, ${party.name} ügyfélnek ${ask.length} van. Válasszon egyet${onSaveProject ? " — a feladatra is elmenthető" : ""}.`,
-              )}
-            </span>
-          )}
-          <span className="mt-2 flex max-h-40 flex-col gap-1 overflow-y-auto">
-            {ask.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                data-testid="task-project-option"
-                onClick={() => void begin(p.id, saveOnTask)}
-                className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-ui font-semibold text-gray-700 transition hover:bg-entity-subtle cursor-pointer"
-              >
-                <span className="min-w-0 truncate">{p.name || p.id}</span>
-                <span className="shrink-0 rounded-full px-2 py-0.5 text-micro font-semibold" style={{ color: projectStatusColor(p.status, statuses), backgroundColor: `${projectStatusColor(p.status, statuses)}1a` }}>
-                  {projectStatusLabel(p.status, t, statuses)}
-                </span>
-              </button>
-            ))}
-          </span>
-          <label className="mt-2 flex items-center gap-2 type-meta text-gray-600">
-            <input type="checkbox" checked={saveOnTask} onChange={(e) => setSaveOnTask(e.target.checked)} />
-            {t("Save the project on the task", "Uložiť projekt na úlohu", "Projekt mentése a feladatra")}
-          </label>
-          {canCreate && party && !creating && (
-            <button
-              type="button"
-              style={entityAccentStyle("projects") as React.CSSProperties}
-              data-testid="task-create-project"
-              onClick={() => {
-                setCreating(true);
-                setNewType((id) => id || readTimeCreate().projectTypes[0]?.id || "");
-              }}
-              className="mt-2 inline-flex items-center gap-1.5 text-left text-ui font-semibold text-entity-text hover:underline cursor-pointer"
-            >
-              <Plus className="size-4 shrink-0" />
-              {t(`Create project for ${party.name}`, `Vytvoriť projekt pre ${party.name}`, `Projekt létrehozása: ${party.name}`)}
-            </button>
-          )}
-          {canCreate && party && creating && (
-            <form
-              style={entityAccentStyle("projects") as React.CSSProperties}
-              className="mt-2 grid gap-2 rounded-lg bg-gray-50 p-2.5"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void createForClient();
-              }}
-            >
-              <span className="type-meta text-gray-600">{party.name}</span>
-              <label className="grid gap-1">
-                <span className="type-overline text-gray-500">{t("Project name", "Názov projektu", "Projekt neve")}</span>
-                <input
-                  autoFocus
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  data-testid="task-create-project-name"
-                  className="h-9 rounded-md border border-gray-200 bg-white px-2 text-ui outline-none focus:border-entity"
-                />
-              </label>
-              <label className="grid gap-1">
-                <span className="type-overline text-gray-500">{t("Project type", "Typ projektu", "Projekt típusa")}</span>
-                <CustomSelect
-                  searchable
-                  size="sm"
-                  value={newType}
-                  onChange={setNewType}
-                  searchPlaceholder={t("Search project type…", "Hľadať typ projektu…", "Projekttípus keresése…")}
-                  options={readTimeCreate().projectTypes.map((pt) => ({ value: pt.id, label: pt.name }))}
-                />
-              </label>
-              <span className="flex justify-end gap-2">
-                <button type="button" onClick={() => setCreating(false)} className="h-9 rounded-md px-3 text-ui font-semibold text-gray-500 hover:bg-gray-100 cursor-pointer">
-                  {t("Cancel", "Zrušiť", "Mégse")}
-                </button>
-                <button
-                  type="submit"
-                  disabled={!newName.trim() || !newType}
-                  data-testid="task-create-project-submit"
-                  className="h-9 rounded-md bg-entity-solid hover:bg-entity-solid-hover px-3 text-ui font-semibold text-white disabled:opacity-50 cursor-pointer"
-                >
-                  {t("Create", "Vytvoriť", "Létrehozás")}
-                </button>
-              </span>
-            </form>
-          )}
-        </span>
-      )}
       </span>
       {tiles}
     </span>
@@ -297,9 +153,8 @@ export function TaskTimeControls({
 }
 
 /** "+ Add time manually" in the task drawer's Time tracking header: a new entry for this task, today. Same gate as the start button. */
-export function TaskAddTimeLink({ task, projects, leads }: { task: Task; projects: Project[]; leads: Lead[] }) {
+export function TaskAddTimeLink({ task }: { task: Task; projects?: Project[]; leads?: Lead[] }) {
   const tt = useTimeTracking();
-  const statuses = useProjectStatuses();
   if (!tt.enabled || !tt.viewer.canEdit) return null;
   return (
     <button
@@ -307,8 +162,7 @@ export function TaskAddTimeLink({ task, projects, leads }: { task: Task; project
       style={entityAccentStyle("time-tracking") as React.CSSProperties}
       data-testid="task-add-time"
       onClick={() => {
-        const resolved = resolveTaskProject(task, projects, leads, (p) => isClosedProjectStatus(p.status, statuses));
-        requestNewTimeEntry({ taskId: task.id, projectId: resolved.projectId });
+        requestNewTimeEntry({ taskId: task.id, projectId: task.relatedProjectId || null });
       }}
       className="ml-auto inline-flex items-center gap-1 type-meta font-semibold text-entity-text hover:underline cursor-pointer"
     >

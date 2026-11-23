@@ -882,7 +882,7 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
 
             $billable = array_key_exists('billable', $args) ? ($args['billable'] ? 1 : 0) : (!empty($settings['defaultBillable']) ? 1 : 0);
             $pricing = ccrm_tt_price($pdo, $targetUid, $timing['entry_date'], $timing['duration_sec'], $settings, true);
-            $billRate = $billable ? ccrm_tt_lookup_billable_rate($pdo, $links['project_id'], $links['ticket_id'], $timing['entry_date']) : null;
+            $billRate = $billable ? ccrm_tt_lookup_billable_rate($pdo, $links['derivedProject'] ?? $links['project_id'], $links['ticket_id'], $timing['entry_date']) : null;
             $note = isset($args['note']) ? ccrm_tt_clean_note($args['note']) : null;
             $tagsJson = json_encode(ccrm_tt_clean_tags($args['tags'] ?? []), JSON_UNESCAPED_UNICODE);
             $id = ccrm_tt_new_id();
@@ -961,6 +961,9 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             if (!$links['ok']) {
                 throw new \InvalidArgumentException("Invalid time entry link: {$links['code']}");
             }
+            if (!array_key_exists('project_id', $args) && $links['task_id'] === $cur['task_id'] && $cur['task_id'] !== null) {
+                $links['project_id'] = $cur['project_id'];
+            }
             if ((string)$cur['user_id'] === $uid) {
                 mcp_mod_check_te_link_access($pdo, $user, $links);
             }
@@ -1012,7 +1015,7 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
                 : ($cur['deleted_at'] ?? null);
 
             $pricing = ccrm_tt_price($pdo, (string)$cur['user_id'], $entryDate, $isRunning ? null : $dur, $settings, true);
-            $billRate = $billable ? ccrm_tt_lookup_billable_rate($pdo, $links['project_id'], $links['ticket_id'], $entryDate) : null;
+            $billRate = $billable ? ccrm_tt_lookup_billable_rate($pdo, $links['derivedProject'] ?? $links['project_id'], $links['ticket_id'], $entryDate) : null;
 
             mcp_tx($pdo, function () use ($pdo, $links, $note, $entryDate, $startAt, $endAt, $dur, $billable, $pricing, $billRate, $tagsJson, $deletedAt, $id, $cur) {
                 $pdo->prepare(

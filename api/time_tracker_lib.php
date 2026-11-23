@@ -457,11 +457,12 @@ function ccrm_ttx_origin(array $links): ?string {
 function ccrm_ttx_close_row(\PDO $pdo, array $row, string $endUtc, array $settings, ?string $projectId = null, ?string $deviceId = null, string $reason = 'user'): void {
     $endUtc = max($endUtc, (string)$row['start_at']);
     $dur = ccrm_tt_seconds_between($row['start_at'], $endUtc);
-    $project = $projectId ?? $row['project_id'];
+    $storedProject = !empty($row['task_id']) ? $row['project_id'] : ($projectId ?? $row['project_id']);
+    $rateProject = ($row['eff_project_id'] ?? null) ?: $storedProject;
     $price = ccrm_tt_price($pdo, (string)$row['user_id'], $row['entry_date'], $dur, $settings, false);
-    $rate = $row['billable_rate'] !== null ? $row['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $project, $row['ticket_id'], (string)$row['entry_date']);
+    $rate = $row['billable_rate'] !== null ? $row['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $rateProject, $row['ticket_id'], (string)$row['entry_date']);
     $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `project_id` = ?, `employee_id` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `device_id` = COALESCE(`device_id`, ?), `end_reason` = ? WHERE `id` = ? AND `end_at` IS NULL")
-        ->execute([$endUtc, $dur, $project, $price['employee_id'], $rate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $deviceId, $reason, $row['id']]);
+        ->execute([$endUtc, $dur, $storedProject, $price['employee_id'], $rate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $deviceId, $reason, $row['id']]);
 }
 
 /**
@@ -614,7 +615,7 @@ function ccrm_ttx_stop(\PDO $pdo, array $user, array $device, array $body, array
         }
         $projectId = $links['project_id'];
     }
-    if ($settings['requireProjectToStop'] && $projectId === null && (ccrm_can($scope, 'projects') || ccrm_workable_projects($pdo, $scope))) {
+    if ($settings['requireProjectToStop'] && $row['task_id'] === null && $projectId === null && (ccrm_can($scope, 'projects') || ccrm_workable_projects($pdo, $scope))) {
         return ['ok' => false, 'code' => 'project_required', 'status' => 422];
     }
     if ($settings['requireTask'] && $row['task_id'] === null && $row['ticket_id'] === null) {

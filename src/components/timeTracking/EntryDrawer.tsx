@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { CheckCircle2, Clock, Copy, Trash2, Unlink, X } from "lucide-react";
+import { Building2, CheckCircle2, Clock, Copy, Trash2, Unlink, X } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
 import { CustomSelect } from "../ui/CustomSelect";
 import { Switch } from "../ui/Switch";
 import { resolveWorkCountry, type HolidayCountry } from "../../utils/holidays.ts";
-import { matchOpenTasks, matchOpenTickets } from "../../utils/timeLinks.ts";
+import { clientForTask, matchOpenTasks, matchOpenTickets } from "../../utils/timeLinks.ts";
 import { isClosedTicketStatus } from "../../utils/tickets";
 import { isEntryLocked, lockReason, type LockReasonCode } from "../../utils/timeLock.ts";
 import { isAdminRoleName } from "../../utils/permissions.ts";
@@ -24,10 +24,12 @@ import { duplicateInput } from "./entryDuplicate";
 import { TimeApiError, createEntry, timeErrorMessage, updateEntry, type EntryInput } from "../../utils/timeTrackingApi.ts";
 import type { Task } from "../../types";
 import { ProjectPicker } from "./ProjectPicker";
+import { projectClientName } from "./projectClient";
 import { DrawerWorkedLine } from "./WorkedLine";
 import { RateExplanation } from "./RateExplanation";
 import { canRenameTitle, renameHint, useMoney, useTimeLookups, type TimeDeps } from "./shared";
 import { entityAccentStyle } from "../../utils/entityAccent";
+import { projectColor } from "../../utils/timeTracking.ts";
 
 interface Props {
   entry: TimeEntry;
@@ -98,8 +100,10 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
   const unlink = () => {
     // The entry's own title starts as the task's title at this moment (the server does the same).
     const current = linkedTask?.title ?? linkedTicket?.title ?? linkedTicket?.subject ?? entry.title;
+    const prevProject = linkedTask?.relatedProjectId || entry.projectId;
     setTaskId(null);
     setTicketId(null);
+    setProjectId(prevProject ?? null);
     setUnlinkedTitle(current);
     setTitle(current);
   };
@@ -109,8 +113,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
     setTitle(task.title);
     setTaskQuery("");
     setPendingLink(null);
-    const resolved = lookups.resolveTaskProject(task);
-    if (!projectId && resolved.projectId) setProjectId(resolved.projectId);
+    setProjectId(task.relatedProjectId || null);
   };
 
   const requestLink = (task: Task) => {
@@ -145,7 +148,8 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
     setSaving(true);
     try {
       // Renaming a linked entry renames the TASK, through the app's own task save path.
-      if (entry.titleSource === "task" && taskId === entry.taskId && title.trim() && title.trim() !== entry.title.trim() && rename.can && entry.taskId) {
+      const linkedTask = entry.taskId ? deps.tasks.find((tk) => tk.id === entry.taskId) : undefined;
+      if (entry.titleSource === "task" && taskId === entry.taskId && title.trim() && title.trim() !== entry.title.trim() && rename.can && entry.taskId && linkedTask?.externalSource !== "clickup") {
         deps.onRenameTask(entry.taskId, title.trim());
       }
       if (entry.titleSource === "ticket" && ticketId === entry.ticketId && title.trim() && title.trim() !== entry.title.trim() && rename.can && entry.ticketId) {
@@ -153,7 +157,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
       }
       const patch: EntryInput = {
         ...times,
-        projectId,
+        ...(taskId ? {} : { projectId }),
         taskId,
         ticketId: taskId ? null : ticketId,
         billable,
@@ -309,24 +313,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
             />
           </label>
 
-          {/* Project */}
-          <div className="grid gap-1">
-            <span className="type-label text-gray-600">{t("Project", "Projekt", "Projekt")} *</span>
-            <ProjectPicker
-              projects={deps.projects}
-              leads={deps.leads}
-              projectTypes={deps.projectTypes}
-              value={projectId}
-              onChange={setProjectId}
-              t={t}
-              recentIds={recentProjectIds}
-              secondsByProject={secondsByProject}
-              onCreateProject={deps.onCreateProject}
-              disabled={readOnly || !deps.canPickProject}
-            />
-          </div>
-
-          {/* Task link */}
+          {/* Task link (primary entity) */}
           <div className="grid gap-1">
             <span className="type-label text-gray-600">
               {t("Task", "Úloha", "Feladat")}
@@ -366,6 +353,51 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
                   <button type="button" onClick={() => setPendingLink(null)} className="h-8 rounded-md px-3 text-ui font-semibold text-amber-800 hover:bg-amber-100 cursor-pointer">{t("Cancel", "Zrušiť", "Mégse")}</button>
                 </div>
               </div>
+            )}
+          </div>
+
+          {/* Project & Client (derived from task when linked; editable on standalone entries) */}
+          <div className="grid gap-1">
+            <span className="type-label text-gray-600">{taskId ? t("Project & Client", "Projekt a klient", "Projekt és ügyfél") : t("Project", "Projekt", "Projekt")}</span>
+            {taskId ? (() => {
+              const effProj = linkedTask?.relatedProjectId || (taskId === entry.taskId ? entry.projectId : null) || null;
+              const effClient =
+                (effProj ? projectClientName(effProj, deps.projects, deps.leads) : null) ||
+                (linkedTask ? clientForTask(linkedTask, deps.leads)?.name ?? null : null) ||
+                (taskId === entry.taskId ? entry.clientName ?? (entry.clientId ? deps.leads.find((l) => l.id === entry.clientId)?.name ?? null : null) : null);
+              return (
+                <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-ui" data-testid="entry-derived-attribution">
+                  {effProj ? (
+                    <div className="flex flex-wrap items-center gap-2 font-medium text-gray-800">
+                      <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: projectColor(effProj) }} />
+                      <span className="truncate">{lookups.projectName(effProj, entry.projectName)}</span>
+                      {effClient && <span className="truncate text-gray-500">· {effClient}</span>}
+                    </div>
+                  ) : effClient ? (
+                    <div className="flex items-center gap-1.5 font-medium text-gray-800">
+                      <Building2 className="size-3.5 shrink-0 text-gray-500" />
+                      <span className="truncate">{effClient}</span>
+                    </div>
+                  ) : (
+                    <div className="text-gray-500">
+                      {t("Unsorted — attach a project or client on the task", "Nezaradené — priraďte projekt alebo klienta k úlohe", "Rendezetlen — rendeljen projektet vagy ügyfelet a feladathoz")}
+                    </div>
+                  )}
+                </div>
+              );
+            })() : (
+              <ProjectPicker
+                projects={deps.projects}
+                leads={deps.leads}
+                projectTypes={deps.projectTypes}
+                value={projectId}
+                onChange={setProjectId}
+                t={t}
+                recentIds={recentProjectIds}
+                secondsByProject={secondsByProject}
+                onCreateProject={deps.onCreateProject}
+                disabled={readOnly || !deps.canPickProject}
+              />
             )}
           </div>
 

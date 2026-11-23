@@ -55,7 +55,7 @@ export function TimerRulesCard({
   return (
     <SettingsCard title={t("Timer and entry rules", "Pravidlá časovača a záznamov", "Időzítő- és bejegyzésszabályok")} testId="tt-rules">
       <div className="divide-y divide-gray-100">
-        <Row title={titles.project} note={t("For people who can pick a project, a timer cannot be stopped until one is chosen.", "Pre ľudí, ktorí môžu vybrať projekt, sa časovač nedá zastaviť, kým sa nevyberie projekt.", "Azoknál, akik projektet választhatnak, az időzítő nem állítható le, amíg nincs projekt kiválasztva.")}>
+        <Row title={titles.project} note={t("For standalone timers without a task (and people who can pick a project), a timer cannot be stopped until a project is chosen.", "Pre samostatné časovače bez úlohy (a ľudí, ktorí môžu vybrať projekt) sa časovač nedá zastaviť, kým sa nevyberie projekt.", "Feladat nélküli önálló időzítőknél (ha a felhasználó választhat projektet) az időzítő nem állítható le, amíg nincs projekt kiválasztva.")}>
           {sw("requireProjectToStop", titles.project)}
         </Row>
         <Row title={titles.task} note={t("A timer cannot be stopped, and a manual entry cannot be saved, without a task or ticket.", "Časovač sa nedá zastaviť a ručný záznam sa nedá uložiť bez úlohy alebo tiketu.", "Feladat vagy jegy nélkül az időzítő nem állítható le, és kézi bejegyzés sem menthető.")}>

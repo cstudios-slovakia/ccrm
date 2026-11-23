@@ -284,11 +284,16 @@ async function main() {
     const stop = await te(S.erik, { action: 'stop' });
     check('T5: an Employee who cannot pick a project is not blocked by "require a project"', stop.status === 200 && stop.data?.entry?.running === false && stop.data.entry.projectId === null, stop.raw);
     check('T5: stopping twice is idempotent', (await te(S.erik, { action: 'stop', id: a.data.entry.id })).status === 200);
+    await te(S.admin, { action: 'settings', settings: { requireProjectToStop: true } });
     const m1 = await te(S.pm, { action: 'start', description: 'Manager timer' });
     const m1Stop = await te(S.pm, { action: 'stop' });
     check('T5: someone who can pick a project must (project_required on stop)', m1.status === 201 && m1Stop.status === 422 && m1Stop.data?.code === 'project_required', m1Stop.raw);
     const m1Stop2 = await te(S.pm, { action: 'stop', projectId: 'proj-tt-1' });
     check('T5: stopping with a project saves it and prices the entry', m1Stop2.status === 200 && m1Stop2.data?.entry?.projectId === 'proj-tt-1' && m1Stop2.data.entry.running === false, m1Stop2.raw);
+    const tTaskStop = await te(S.pm, { action: 'start', taskId: 'task-tt-3', description: 'Task without project timer' });
+    const tTaskStopRes = await te(S.pm, { action: 'stop' });
+    check('T5: task-linked timer is exempt from requireProjectToStop', tTaskStop.status === 201 && tTaskStopRes.status === 200 && tTaskStopRes.data?.entry?.taskId === 'task-tt-3', tTaskStopRes.raw);
+    await te(S.admin, { action: 'settings', settings: { requireProjectToStop: false } });
 
     section('T6: the title of a linked entry is the task\'s');
     const linked = await te(S.erik, { action: 'create', taskId: 'task-tt-1', description: 'must be dropped', entryDate: '2026-10-14', durationSec: 3600, source: 'day' });
@@ -311,7 +316,12 @@ async function main() {
     const noSuchProject = await te(S.erik, { action: 'create', description: 'p', projectId: 'proj-tt-2', entryDate: '2026-10-14', durationSec: 60 });
     check('T6: an Employee without the projects module cannot pick a project directly', noSuchProject.status === 403, noSuchProject.raw);
     const mismatch = await te(S.admin, { action: 'create', taskId: 'task-tt-3', projectId: 'proj-tt-1', entryDate: '2026-10-14', durationSec: 60 });
-    check('T6: a task without a project accepts a project for this entry', mismatch.status === 201 && mismatch.data?.entry?.projectId === 'proj-tt-1', mismatch.raw);
+    check('T6: task-linked entry ignores direct projectId and stays unsorted until task gets a project', mismatch.status === 201 && mismatch.data?.entry?.projectId === null, mismatch.raw);
+    sql(`UPDATE tasks SET related_project_id = 'proj-tt-1' WHERE id = 'task-tt-3'`);
+    const afterAssign = await list(S.admin, '?action=list&from=2026-10-14&to=2026-10-14');
+    const assignedRow = (afterAssign.data?.entries || []).find((e) => e.id === mismatch.data?.entry?.id);
+    check('T6: attaching a project to the task attributes its existing time entry', assignedRow?.projectId === 'proj-tt-1', JSON.stringify(assignedRow));
+    sql(`UPDATE tasks SET related_project_id = NULL WHERE id = 'task-tt-3'`);
 
     section('T7: validation');
     check('T7: end before start is refused', (await te(S.erik, { action: 'create', description: 'x', startAt: '2026-10-14T10:00:00Z', endAt: '2026-10-14T09:00:00Z' })).data?.code === 'end_before_start');

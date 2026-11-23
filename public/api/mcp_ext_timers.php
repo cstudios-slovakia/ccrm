@@ -71,11 +71,14 @@ function mcp_timer_describe(array $rows): string {
 function mcp_timer_close_row(\PDO $pdo, string $uid, array $row, string $endUtc, array $settings, ?array $links = null, $note = null, bool $setNote = false, string $reason = 'user'): void {
     $endUtc = max($endUtc, (string)$row['start_at']);
     $dur = min(86400, ccrm_tt_seconds_between($row['start_at'], $endUtc));
-    $projectId = $links !== null ? $links['project_id'] : $row['project_id'];
+    $projectId = $links !== null
+        ? ($links['task_id'] === $row['task_id'] && $row['task_id'] !== null ? ($links['project_id'] ?? $row['project_id']) : $links['project_id'])
+        : $row['project_id'];
+    $rateProject = $links !== null ? ($links['derivedProject'] ?? $projectId) : ($row['eff_project_id'] ?? $projectId);
     $ticketId = $links !== null ? $links['ticket_id'] : $row['ticket_id'];
     $pricing = ccrm_tt_price($pdo, $uid, $row['entry_date'], $dur, $settings, false);
     $billRate = !empty($row['billable'])
-        ? ($row['billable_rate'] !== null ? (float)$row['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $projectId, $ticketId, $row['entry_date']))
+        ? ($row['billable_rate'] !== null ? (float)$row['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $rateProject, $ticketId, $row['entry_date']))
         : null;
     $pdo->prepare(
         "UPDATE time_entries
@@ -122,7 +125,7 @@ function mcp_timer_start(\PDO $pdo, array $user, string $uid, array $args, array
     $billable = array_key_exists('billable', $args) ? ($args['billable'] ? 1 : 0) : (!empty($settings['defaultBillable']) ? 1 : 0);
     $note = isset($args['note']) ? ccrm_tt_clean_note($args['note']) : null;
     $pricing = ccrm_tt_price($pdo, $uid, $today, null, $settings, true);
-    $billRate = $billable ? ccrm_tt_lookup_billable_rate($pdo, $links['project_id'], $links['ticket_id'], $today) : null;
+    $billRate = $billable ? ccrm_tt_lookup_billable_rate($pdo, $links['derivedProject'] ?? $links['project_id'], $links['ticket_id'], $today) : null;
     $id = ccrm_tt_new_id();
     $canParallel = mcp_can('time_tracking_parallel');
 
@@ -249,7 +252,7 @@ function mcp_timer_stop(\PDO $pdo, array $user, string $uid, array $args, array 
         if (!$links['ok']) {
             throw new \InvalidArgumentException("Invalid timer link: {$links['code']}");
         }
-        if (!empty($settings['requireProjectToStop']) && empty($links['project_id'])) {
+        if (!empty($settings['requireProjectToStop']) && empty($links['task_id']) && empty($links['project_id'])) {
             throw new \InvalidArgumentException('Workspace settings require a project_id before stopping a timer.');
         }
         if (!empty($settings['requireTask']) && empty($links['task_id'])) {
@@ -263,7 +266,7 @@ function mcp_timer_stop(\PDO $pdo, array $user, string $uid, array $args, array 
         $needProject = [];
         $needTask = [];
         foreach ($rows as $r) {
-            if (!empty($settings['requireProjectToStop']) && empty($r['project_id'])) {
+            if (!empty($settings['requireProjectToStop']) && empty($r['task_id']) && empty($r['project_id'])) {
                 $needProject[] = $r;
             }
             if (!empty($settings['requireTask']) && empty($r['task_id'])) {

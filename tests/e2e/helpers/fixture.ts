@@ -1286,6 +1286,7 @@ export async function installBackendMocks(
     tickets: options.tickets ?? [],
     ticketsRenamed: pushedTicketTitles,
     projects: PROJECTS,
+    leads: LEADS,
     employees: {
       [TEST_USER.id]: { id: 'emp-erik', kind: 'employee', salaryType: 'monthly', salaryAmount: 3200 },
       // A freelancer: hourly, no employer multiplier. The specs that need him add his login via extraUsers.
