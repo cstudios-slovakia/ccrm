@@ -7,6 +7,7 @@
  * - Authenticates via api/login.php to obtain real session cookies.
  * - Asserts data isolation in sync.php GET and POST, employee endpoints, file access.
  */
+import { DISABLE_OUTBOUND_MAIL_SQL } from '../lib/probe-no-mail.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
@@ -80,6 +81,7 @@ function setup() {
   sql(`DROP DATABASE IF EXISTS ${SCRATCH_DB}; CREATE DATABASE ${SCRATCH_DB} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON ${SCRATCH_DB}.* TO 'ccrm_user'@'%';`, 'mysql');
   const dump = run('docker', ['exec', DB, 'mysqldump', '-uroot', `-p${ROOT_PW}`, '--single-transaction', '--no-tablespaces', DEV_DB]);
   run('docker', ['exec', '-i', DB, 'mysql', '-uroot', `-p${ROOT_PW}`, SCRATCH_DB], dump);
+  sql(DISABLE_OUTBOUND_MAIL_SQL); // the clone's live SMTP profile must never mail the *@probe.test users
 
   docker('exec', WEB, 'sh', '-c', `rm -rf ${SCRATCH_DIR} ${BASE_DIR} && mkdir -p ${SCRATCH_DIR} ${BASE_DIR}`);
   docker('cp', publicDir + '.', `${WEB}:${SCRATCH_DIR}/`);

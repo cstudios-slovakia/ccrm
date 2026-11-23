@@ -13,6 +13,8 @@
  * builder, so the stored/printed message is the real message.
  */
 
+require_once __DIR__ . '/mail_guard.php';
+
 if (!function_exists('ccrm_newsletter_build_message')) {
 
     /** A header value without line breaks (a value can never end the header block early). */
@@ -279,6 +281,11 @@ if (!class_exists('ccrm_newsletter_smtp')) {
          * @throws ccrm_newsletter_smtp_error
          */
         public function send(string $envelopeFrom, string $to, string $message): void {
+            // A reserved domain can never receive mail: answer as the server would (550 on RCPT, a
+            // hard bounce, so the address is suppressed) without touching the session.
+            if (ccrm_mail_reserved_domain($to) !== null) {
+                throw new ccrm_newsletter_smtp_error('rcpt', 'RCPT TO <' . $to . '>: reserved domain, never delivered', 550);
+            }
             try {
                 $this->command('MAIL FROM:<' . $envelopeFrom . '>');
                 $this->expect($this->readReply(), ['250'], 'mail');

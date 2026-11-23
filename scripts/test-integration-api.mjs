@@ -17,6 +17,7 @@
  *   CCRM_PROBE_DEV_DB (database to clone, default ccrm), CCRM_PROBE_URL (default http://127.0.0.1:8085),
  *   CCRM_PROBE_KEEP=1 (leave the scratch copy in place).
  */
+import { DISABLE_OUTBOUND_MAIL_SQL } from './lib/probe-no-mail.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash, createHmac } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -108,6 +109,7 @@ function setup() {
   sql(`DROP DATABASE IF EXISTS ${SCRATCH_DB}; CREATE DATABASE ${SCRATCH_DB} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON ${SCRATCH_DB}.* TO 'ccrm_user'@'%';`, 'mysql');
   const dump = run('docker', ['exec', DB, 'mysqldump', '-uroot', `-p${ROOT_PW}`, '--single-transaction', '--no-tablespaces', DEV_DB]);
   run('docker', ['exec', '-i', DB, 'mysql', '-uroot', `-p${ROOT_PW}`, SCRATCH_DB], dump);
+  sql(DISABLE_OUTBOUND_MAIL_SQL); // the clone's live SMTP profile must never mail the *@probe.test users
 
   docker('exec', WEB, 'sh', '-c', `rm -rf ${SCRATCH_DIR} && mkdir -p ${SCRATCH_DIR}/api`);
   docker('cp', root + 'public/api/.', `${WEB}:${SCRATCH_DIR}/api`);
