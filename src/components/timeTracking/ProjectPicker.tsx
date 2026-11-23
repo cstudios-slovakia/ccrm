@@ -188,6 +188,7 @@ export function ProjectPicker({
             <X className="size-4" />
           </button>
         )}
+      </div>
       <div className="min-h-0 flex-1 overflow-y-auto py-1">
         {value && (
           <button type="button" onClick={() => choose(null)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-ui text-gray-500 hover:bg-gray-50 cursor-pointer">
@@ -247,7 +248,6 @@ export function ProjectPicker({
             </label>
           </div>
         )}
-        </div>
         {onCreateProject && creating && (
           <div className="grid grid-cols-[minmax(0,1fr)] gap-2.5 rounded-md border border-gray-200 bg-gray-50 p-3">
             <div className="text-ui font-semibold text-gray-800">{t("New project", "Nový projekt", "Új projekt")}</div>
