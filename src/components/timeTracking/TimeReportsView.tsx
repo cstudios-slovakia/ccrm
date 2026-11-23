@@ -20,6 +20,7 @@ import {
 import { entrySeconds, formatDuration, hoursOf, todayIso, type TimeEntry } from "../../utils/timeTracking.ts";
 import { entryWorkedSeconds, liveWorkedShares } from "../../utils/timeWorked.ts";
 import { MoneyText } from "./MoneyText";
+import { MONEY_MASK, useMoneyPresent, useMoneyRevealed } from "./MoneyShield";
 import { HoursPerDayCard, ShareByProjectCard } from "./ReportCharts";
 import { FilterChip, GroupByChip, ModeSwitch, PeriodChip, ReportFilterCard, ToggleChip, TruncatedNotice, type ReportMode } from "./ReportFilters";
 import { dimensionLabel, ReportSummaryTable } from "./ReportSummaryTable";
@@ -233,6 +234,8 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
   const truncated = entries.length >= TIME_ENTRIES_SERVER_LIMIT;
   const salaryAllowed = !!deps.canSalaryReport;
   const modeSwitch = <ModeSwitch mode={mode} setMode={setMode} salary={salaryAllowed} t={t} />;
+  const moneyRevealed = useMoneyRevealed();
+  useMoneyPresent(hasCost || showValue);
 
   if (mode === "salary") {
     return (
@@ -244,7 +247,7 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
   }
 
   const moneyText = (bag: Record<string, number>) =>
-    Object.keys(bag)
+    !moneyRevealed ? MONEY_MASK : Object.keys(bag)
       .sort()
       .map((code) => formatMoney(bag[code], code, deps.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
       .join(" · ");

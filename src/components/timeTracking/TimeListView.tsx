@@ -32,6 +32,7 @@ import { TimeToolbarEndSlot, TimeToolbarSlot } from "./TimeToolbarSlot";
 import { TimeListFilterButton, useTimeListFilter } from "./TimeListFilter";
 import { EMPTY_LIST_FILTER, applyListFilter, isFilterActive } from "../../utils/timeListFilter.ts";
 import { EntriesFocusBanner, clearEntriesFocus, useEntriesFocus, useViewingAsOptional, viewingFromScope } from "./ViewingAsContext";
+import { useMoneyPresent } from "./MoneyShield";
 import { useMoney, useTimeLookups, type TimeDeps } from "./shared";
 
 interface Props {
@@ -109,6 +110,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
   const target = viewScope === "me" ? targetSeconds(calendar, days, settings.hoursPerDay) : null;
   const finishedToday = todays.filter((e) => !e.running).length;
   const weekCost = totalCost(week.map((m) => withoutHiddenCost(m, tt.userId || "", tt.viewer.canCosts)));
+  useMoneyPresent(weekCost !== null);
   const weekWorked = totalWorkedSeconds(week, nowMs);
   const billableWorked = totalWorkedSeconds(week.filter((e) => e.billable), nowMs);
   const billable = weekWorked > 0 ? Math.round((billableWorked / weekWorked) * 100) : null;

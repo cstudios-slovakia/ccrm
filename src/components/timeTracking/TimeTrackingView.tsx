@@ -20,6 +20,7 @@ import { TimeHeaderActions } from "./TimeHeaderActions";
 import { TimeToolbarEndTarget, TimeToolbarProvider, TimeToolbarTarget } from "./TimeToolbarSlot";
 import { TimeListFilterProvider } from "./TimeListFilter";
 import { UnsortedListChip } from "./UnsortedInbox";
+import { MoneyRevealButton, MoneyShieldProvider, useMoneyShield } from "./MoneyShield";
 import { useEntryDeletion, type TimeDeps } from "./shared";
 
 interface Props {
@@ -42,7 +43,9 @@ export function TimeTrackingView(props: Props) {
     <ViewingAsProvider>
       <TimeListFilterProvider>
       <TimeToolbarProvider>
-        <TimeTrackingScreen {...props} />
+        <MoneyShieldProvider>
+          <TimeTrackingScreen {...props} />
+        </MoneyShieldProvider>
       </TimeToolbarProvider>
       </TimeListFilterProvider>
     </ViewingAsProvider>
@@ -55,6 +58,9 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
   const viewing = useViewingAs();
   const scope = viewing.mode === "team" ? "all" : viewing.mode === "user" && viewing.userId ? viewing.userId : "me";
   const [tab, setTab] = useState(() => tabFromRoute(route));
+  // Amounts are hidden by default: a new section, or another person's time, starts hidden again.
+  const { hide: hideMoney } = useMoneyShield();
+  useEffect(() => hideMoney(), [tab, scope, hideMoney]);
   const [open, setOpen] = useState<TimeEntry | null>(null);
   const remove = useEntryDeletion();
   const entriesFocus = useEntriesFocus();
@@ -134,6 +140,7 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
           <TimeToolbarTarget />
           {scope === "me" && !entriesFocus && <UnsortedListChip refreshKey={tab} />}
           <ViewingAsSelect users={people} />
+          <MoneyRevealButton />
           <TimeToolbarEndTarget />
         </div>
       </div>

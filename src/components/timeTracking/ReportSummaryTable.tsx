@@ -6,6 +6,7 @@ import { drillGroups, linesOfGroup, type BuiltReport, type Margin, type ReportGr
 import { formatDuration } from "../../utils/timeTracking.ts";
 import type { Language } from "../../utils/translations";
 import { MoneyText } from "./MoneyText";
+import { MONEY_MASK, useMoneyRevealed } from "./MoneyShield";
 import { ProjectLabel } from "./ProjectLabel";
 
 type T = (en: string, sk: string, hu: string) => string;
@@ -19,6 +20,7 @@ const partialNote = (t: T) =>
 
 /** Margin: emerald when positive, rose when negative, "—" where there is no comparable billable value, "≈" when lines were left out. */
 export function MarginText({ margin, language, t }: { margin: Margin | null; language: Language; t: T }) {
+  const revealed = useMoneyRevealed();
   if (!margin) return <span className="tabular-nums text-gray-300">—</span>;
   return (
     <span className="tabular-nums font-semibold" title={margin.partial ? partialNote(t) : undefined}>
@@ -26,7 +28,7 @@ export function MarginText({ margin, language, t }: { margin: Margin | null; lan
       {Object.keys(margin.amount).sort().map((code, i) => (
         <span key={code} className={margin.amount[code] < 0 ? "text-rose-600" : "text-emerald-700"}>
           {i > 0 ? " · " : ""}
-          {formatMoney(margin.amount[code], code, language, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          {revealed ? formatMoney(margin.amount[code], code, language, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : MONEY_MASK}
         </span>
       ))}
     </span>

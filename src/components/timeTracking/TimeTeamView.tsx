@@ -25,6 +25,7 @@ import { entrySeconds, formatDuration, todayIso, weekStart, type TFn } from "../
 import { viewSizeScale } from "../../utils/viewSize";
 import { isoWeekNumber } from "../../utils/isoWeek.ts";
 import { MoneyText } from "./MoneyText";
+import { useMaskedMoney, useMoneyPresent } from "./MoneyShield";
 import { WorkedTotal } from "./WorkedLine";
 import { RangeNav } from "./RangeNav";
 import { RoleBadge } from "./RoleBadge";
@@ -97,7 +98,8 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
     return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(locale, { month: "short", year: "numeric", timeZone: "UTC" });
   };
   const dayLabel = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" });
-  const moneyStr = (n: number, code = deps.currency) => formatMoney(n, code, deps.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const moneyStr = useMaskedMoney((n: number, code: string = deps.currency) => formatMoney(n, code, deps.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  useMoneyPresent(viewer.canCosts);
 
   const matrix: TeamMatrix = useMemo(() => {
     const people = new Map<string, ReturnType<typeof lookups.userById.get>>();

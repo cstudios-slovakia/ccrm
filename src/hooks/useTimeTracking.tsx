@@ -42,6 +42,7 @@ import {
   type TimeTotals,
   type TimeViewer,
 } from "../utils/timeTrackingApi.ts";
+import { withoutFixedPayMoneyList } from "../utils/timeMoney.ts";
 import { isRunningTarget as runningHas, resolveStartMode, sameRunningIds, type RunningTarget } from "../utils/timeTrackingRunning.ts";
 import { stripTimerTitle, workedClockSeconds } from "../utils/timeContainer.ts";
 import { presenceTabTitle } from "../utils/timePresenceUi.ts";
@@ -855,6 +856,9 @@ export function TimeTrackingProvider({
 
   const isRunningTarget = useCallback((target: RunningTarget) => runningHas(running, target), [running]);
 
+  const shownRunning = useMemo(() => withoutFixedPayMoneyList(running, userId || "", viewer.canCosts) as TimeEntry[], [running, userId, viewer.canCosts]);
+  const shownPaused = useMemo(() => withoutFixedPayMoneyList(paused, userId || "", viewer.canCosts) as TimeEntry[], [paused, userId, viewer.canCosts]);
+
   const value: TimeTrackingContextValue = {
     enabled,
     ready,
@@ -864,8 +868,8 @@ export function TimeTrackingProvider({
     userId,
     workCountry,
     defaultCountry,
-    running,
-    paused,
+    running: shownRunning,
+    paused: shownPaused,
     presence,
     presenceView,
     confirm,

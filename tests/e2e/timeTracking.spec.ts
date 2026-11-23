@@ -177,6 +177,8 @@ test.describe('Time tracking', () => {
       await page.getByRole('button', { name: /Skôr|Earlier|Korábbi/ }).click();
     }
     await page.locator('[data-testid="day-chip"][data-date="2026-05-12"]').click();
+    // Amounts start hidden; one click on the toolbar eye reveals every amount of the open section.
+    await page.getByTestId('money-reveal').click();
     await row(page, 'Návrh cenovej ponuky').getByTestId('time-entry-title').click();
     await expect(page.getByTestId('entry-rate-basis')).toContainText('20');
     await expect(page.getByTestId('entry-cost-panel')).toContainText('27,04');
