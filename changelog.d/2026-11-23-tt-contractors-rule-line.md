@@ -1,0 +1,1 @@
+- **Settings → Time tracking shows the contractor rule as its own box** (`TimeTrackingSettingsPanel.tsx`): the "Cost rate from salary" card has a third, read-only box "Contractors: Hourly rate, no multiplier" beside the hours per day and the multiplier, as on the design canvas. Nothing changes in how cost is counted; the box replaces the small note under the multiplier.

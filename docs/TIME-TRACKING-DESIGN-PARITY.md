@@ -702,7 +702,7 @@ Order: F → (P1, P2, P3) → (P4, P5, P6) → (P7, P8, P9) → (P10, P11).
 | Q21 Create form with a Name field | yes | P7 |
 | Q22 Tags as chips | no ("probably deprecated"); the comma field stays | — |
 | Q23 Task drawer tiles | yes, without the cost tile; the per-person list stays | P8 |
-| Q24 Contractors field | **open**: the owner asked which options it would have (answered: only "apply the multiplier to contractors too") | not built; the existing sentence stays |
+| Q24 Contractors field | read-only line (2026-11-23) | built: a third, read-only box "Contractors: Hourly rate, no multiplier" in the "Cost rate from salary" card |
 | Q25 "Who sees what" | yes, read-only | P9 |
 | Q26 Clockify | no mention of Clockify anywhere | P9 |
 | Q27 "Setup guide" | declined | — |
@@ -737,7 +737,7 @@ then merged into `css-main`. Not pushed, not ported.
 | P11 Extension popup | `7499a606`, `a09251ce` | X9–X13 | The address field stays: the zip is generic and pairing needs the address (the audit's "the build knows its server" was wrong). No Pause in the popup: it has no pause endpoint. `EXTENSION_VERSION` unchanged |
 | F17 List filter | `99e8e2ec` | F17 | Applies to the List tab only (also its phone Today view). The stat tiles stay unfiltered (a "Filtered: N of M" line says so). Not persisted across reloads. Filter is not applied to Day, Calendar, Timesheet or Reports |
 
-Still open after this pass: Q24, the C2 text about the sidebar
+Still open after this pass: the C2 text about the sidebar
 colour, and the two MISSING rows (E4, E11).
 
 ## Checks and QA (pass 2)

@@ -140,7 +140,7 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
           <span className={label}>{t("Hours basis for monthly salaries", "Základ hodín pre mesačné mzdy", "Havi fizetések óraalapja")}</span>
           <HoursBasisCards t={t} canEdit={canEdit} draft={draft} set={set} workingDaysOf={(m) => calendar.workingDaysInMonth(new Date().getFullYear(), m)} locale={locale} />
         </div>
-        <div className="grid gap-4 ws-sm:grid-cols-2">
+        <div className="grid gap-4 ws-sm:grid-cols-3">
           <label className="grid content-start gap-1">
             <span className={label}>{t("Hours per working day", "Hodiny za pracovný deň", "Napi órák munkanaponként")}</span>
             <input disabled={!canEdit} type="number" min={1} max={24} step={0.5} value={draft.hoursPerDay} onChange={(e) => set("hoursPerDay", num(e.target.value, 8))} className={field} data-testid="tt-hours-per-day" />
@@ -149,8 +149,14 @@ export function TimeTrackingSettingsPanel({ language, canEdit, isAdmin, currency
           <label className="grid content-start gap-1">
             <span className={label}>{t("Employer contributions multiplier", "Násobok odvodov zamestnávateľa", "Munkáltatói járulék szorzó")}</span>
             <input disabled={!canEdit} type="number" min={0.5} max={5} step={0.001} value={draft.employerMultiplier} onChange={(e) => set("employerMultiplier", num(e.target.value, 1.352))} className={field} data-testid="tt-multiplier" />
-            <span className="type-meta text-gray-500">{t("1.000 = gross salary only. Applies to employees, not to contractors.", "1,000 = len hrubá mzda. Platí pre zamestnancov, nie pre dodávateľov.", "1,000 = csak a bruttó fizetés. Munkavállalókra vonatkozik, vállalkozókra nem.")}</span>
+            <span className="type-meta text-gray-500">{t("1.000 = gross salary only.", "1,000 = len hrubá mzda.", "1,000 = csak a bruttó fizetés.")}</span>
           </label>
+          {/* Read-only: the rule is fixed in the cost calculation, there is no setting behind it. */}
+          <div className="grid content-start gap-1" data-testid="tt-contractors-rule">
+            <span className={label}>{t("Contractors", "Dodávatelia", "Vállalkozók")}</span>
+            <div className="flex min-h-10 items-center rounded-md border border-gray-200 bg-gray-50 px-3 text-ui text-gray-700">{t("Hourly rate, no multiplier", "Hodinová sadzba, bez násobku", "Óradíj, szorzó nélkül")}</div>
+            <span className="type-meta text-gray-500">{t("Fixed rule; it cannot be changed here.", "Pevné pravidlo; tu sa nedá zmeniť.", "Rögzített szabály; itt nem módosítható.")}</span>
+          </div>
         </div>
         <ul className="grid list-disc gap-1 pl-5 type-meta text-gray-500" data-testid="tt-leave-notes">
           <li>{t("Paid leave raises that month's hourly rate: the same salary is spread over fewer hours. Unpaid leave lowers salary and hours together, so the rate stays the same.", "Platená dovolenka zvyšuje hodinovú sadzbu daného mesiaca: rovnaká mzda sa delí menším počtom hodín. Neplatené voľno znižuje mzdu aj hodiny spolu, sadzba ostáva rovnaká.", "A fizetett szabadság emeli az adott hónap óradíját: ugyanaz a fizetés kevesebb órára oszlik. A fizetés nélküli szabadság a fizetést és az órákat együtt csökkenti, így a díj nem változik.")}</li>
