@@ -10,6 +10,9 @@ import { WhatsAppModule } from "./components/whatsapp/WhatsAppModule";
 import { buildDemoDirectory } from "./components/whatsapp/demo/demoDirectory";
 import { crmHashForRecord } from "./components/whatsapp/lib/routes";
 import { ProjectRequestDialog } from "./components/timeTracking/ProjectRequestDialog";
+import { PresenceDialog } from "./components/timeTracking/PresenceDialog";
+import { TaskStatusTimerBridge } from "./components/timeTracking/TaskStatusTimerBridge";
+import { reportLocalTaskEdit } from "./utils/taskStatusTimerHook";
 import type { TimeDeps } from "./components/timeTracking/shared";
 import { canEditTask as userMayEditTask } from "./utils/taskSelectors";
 import { QuickTaskModal, composerOriginFrom, type ComposerOrigin } from "./components/QuickTaskModal";
@@ -39,6 +42,7 @@ import {
   registerWebPushSubscription,
 } from "./utils/browserNotifications";
 import { isDoneTaskState } from "./utils/projectTasks";
+import { sanitizeTimerActions, type TaskStateTimerActions } from "./utils/taskStateTimerActions";
 import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listIds";
 import { computeSettingsSig, computePushSig } from "./utils/settingsSig";
 import { agencyRightsFrom } from "./utils/agencyRights";
@@ -89,7 +93,7 @@ import { RefreshCw, AlertOctagon, Trash2, Copy, Brain, Mail, Bell, X, Plus, Arro
 import { AppLoadingScreen } from "./components/AppLoadingScreen";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { startViewSizeWatcher } from "./utils/viewSize";
-import { baselineOf, diffRecords, FINANCIAL_BLOB_KEYS, skipHoldsBaseline, skipIsLostWork, withStockRowIds, type FinancialBlobKey, type RecordBaseline } from "./utils/syncDiff";
+import { baselineOf, diffRecords, FINANCIAL_BLOB_KEYS, omitUnchangedGithubPairing, skipHoldsBaseline, skipIsLostWork, withStockRowIds, type FinancialBlobKey, type RecordBaseline } from "./utils/syncDiff";
 import { workableProjectStubs } from "./utils/workableProjects";
 import { EMPTY_READ_SCOPE, parseReadScope, sameReadScope, type ReadScope } from "./utils/readScope";
 import { ReadScopeContext } from "./hooks/useReadScope";
@@ -794,6 +798,9 @@ function App() {
     "Done": "#10b981"
   });
 
+  // Status → timer action (TT2 D10.1). Nothing is mapped on an existing install.
+  const [taskStateTimerActions, setTaskStateTimerActions] = useState<TaskStateTimerActions>({});
+
   // The project statuses, configured in Settings → Project settings. Handed to
   // every view through ProjectStatusesProvider.
   const [projectStatuses, setProjectStatuses] = useState<ProjectStatusDef[]>(() => normalizeProjectStatusDefs(null));
@@ -1435,6 +1442,7 @@ ${log.payload || ''}
         projectAutoCreate,
         taskStates,
         taskStateColors,
+        taskStateTimerActions,
         taskSettings,
         projectStatuses,
         offerStatuses,
@@ -1484,7 +1492,7 @@ ${log.payload || ''}
       const deleted: Record<string, unknown> = {};
       const narrow = (key: string, records: any[]) => {
         const { changed, deletedIds, next } = diffRecords(records, syncedRecordsRef.current[key], pendingDeletionIds(key));
-        payload[key] = changed;
+        payload[key] = key === "projects" ? omitUnchangedGithubPairing(changed, syncedRecordsRef.current[key]) : changed;
         if (deletedIds.length) deleted[key] = deletedIds;
         pendingBaselines[key] = next;
       };
@@ -1894,6 +1902,7 @@ ${log.payload || ''}
     setTasks(prev => {
       const nextTasks = typeof newTasks === "function" ? newTasks(prev) : newTasks;
       tasksRef.current = nextTasks;
+      reportLocalTaskEdit(prev, nextTasks); // D10.2: status -> the current user's own timer
       pushStateToServer(undefined, nextTasks);
       return nextTasks;
     });
@@ -2692,7 +2701,7 @@ ${log.payload || ''}
       leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds,
       systemName: systemNameOverride, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
-      leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, leadAttributes, projectAutoCreate, taskStates, taskStateColors, taskSettings,
+      leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, leadAttributes, projectAutoCreate, taskStates, taskStateColors, taskStateTimerActions, taskSettings,
       projectStatuses,
       offerStatuses,
       invoiceStatuses,
@@ -2728,7 +2737,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemNameOverride, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, leadAttributes, projectAutoCreate, taskStates, taskStateColors, projectStatuses, offerStatuses, invoiceStatuses, priceLevels, orderStatuses, ticketStatuses, ticketSettings, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
+  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemNameOverride, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, leadAttributes, projectAutoCreate, taskStates, taskStateColors, taskStateTimerActions, projectStatuses, offerStatuses, invoiceStatuses, priceLevels, orderStatuses, ticketStatuses, ticketSettings, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -3098,6 +3107,7 @@ ${log.payload || ''}
         });
         setTaskStates((prev) => Array.isArray(s.taskStates) && s.taskStates.length > 0 && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
         setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
+        setTaskStateTimerActions((prev) => { const next = sanitizeTimerActions(s.taskStateTimerActions); return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev; });
         setTaskSettings((prev) => {
           const next = normalizeTaskSettings(s.taskSettings);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
@@ -3609,6 +3619,8 @@ ${log.payload || ''}
           setTaskStates={setTaskStates}
           taskStateColors={taskStateColors}
           setTaskStateColors={setTaskStateColors}
+          taskStateTimerActions={taskStateTimerActions}
+          setTaskStateTimerActions={setTaskStateTimerActions}
           taskSettings={taskSettings}
           setTaskSettings={setTaskSettings}
           isDemoMode={isDemoMode}
@@ -3892,6 +3904,8 @@ ${log.payload || ''}
           setTaskStates={setTaskStates}
           taskStateColors={taskStateColors}
           setTaskStateColors={setTaskStateColors}
+          taskStateTimerActions={taskStateTimerActions}
+          setTaskStateTimerActions={setTaskStateTimerActions}
           taskSettings={taskSettings}
           setTaskSettings={setTaskSettings}
           setLeads={updateLeadsAndSync}
@@ -4447,6 +4461,7 @@ ${log.payload || ''}
             financialCategories={financialCategories} financialMode={financialMode} financialSimplifiedTable={financialSimplifiedTable}
             invoicesOffers={invoicesOffers}
             invoiceStatuses={invoiceStatuses}
+            tasks={tasks} taskStates={taskStates} employees={employees} tickets={tickets} ticketStatuses={ticketStatuses} ticketSettings={ticketSettings} offerStatuses={offerStatuses} canSeeFinancials={access.module("financial").view}
           />
         );
       case "rag_ai":
@@ -4822,7 +4837,7 @@ ${log.payload || ''}
       leadSources={leadSources}
       canCreate={access.canEdit("leads") || access.canEdit("clients")}
     >
-    {timeDeps && timeEnabled && <ProjectRequestDialog deps={timeDeps} />}
+    {timeDeps && timeEnabled && <><ProjectRequestDialog deps={timeDeps} /><PresenceDialog /><TaskStatusTimerBridge deps={timeDeps} actions={taskStateTimerActions} /></>}
     <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50 transition-colors duration-[230ms]">
       {/* Dynamic Aurora Ambient Background Blobs (Themed per active view) */}
       <AuroraBackground

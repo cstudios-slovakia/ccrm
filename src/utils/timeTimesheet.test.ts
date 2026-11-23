@@ -159,3 +159,21 @@ test("an extra empty row is kept, and the whole team splits rows by person", () 
   const keys = team.rows.map(key);
   assert.equal(copyRowKeys(keys, [keys[0]], true).length, 1);
 });
+
+test("the Worked row: per-day worked totals, shown only when a day worked time differs from its project time", () => {
+  const now = Date.parse("2026-10-27T12:00:00.000Z");
+  const plain = buildTimesheet([entry({ id: "a", durationSec: 3600 })], "2026-10-27", now);
+  assert.equal(plain.showsWorked, false);
+  assert.equal(plain.workedGrandTotal, 3600);
+  const timed = (id: string, projectId: string, workedMs: number) =>
+    entry({ id, projectId, startAt: "2026-10-26T08:00:00.000Z", endAt: "2026-10-26T09:00:00.000Z", durationSec: 3600, workedMs });
+  const overlap = buildTimesheet(
+    [timed("a", "p1", 1_800_000), timed("b", "p2", 1_800_000), entry({ id: "c", entryDate: "2026-10-27", durationSec: 600 })],
+    "2026-10-27",
+    now,
+  );
+  assert.equal(overlap.showsWorked, true);
+  assert.deepEqual(overlap.columnTotals.slice(0, 2), [7200, 600]);
+  assert.deepEqual(overlap.workedColumnTotals.slice(0, 2), [3600, 600]);
+  assert.equal(overlap.workedGrandTotal, 4200);
+});

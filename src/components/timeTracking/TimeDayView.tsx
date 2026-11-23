@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Surface } from "../layout";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
@@ -14,10 +14,15 @@ import {
   totalSeconds,
   type TimeEntry,
 } from "../../utils/timeTracking.ts";
+import { totalWorkedSeconds } from "../../utils/timeWorked.ts";
+import { WorkedTotal } from "./WorkedLine";
 import { TimeApiError, createEntry, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
 import { teamRoleBadge, visibleEntryCost, withoutHiddenCost } from "../../utils/timeTeam.ts";
 import type { Task } from "../../types";
+import { clusterEntries, segmentByCluster } from "../../utils/timeClusters.ts";
+import { ClusterGroup } from "./ClusterChip";
 import { ClockDigits } from "./ClockDigits";
+import { DayEntryActions } from "./DayEntryActions";
 import { EntryRow } from "./EntryRow";
 import { ProjectPicker } from "./ProjectPicker";
 import { RoleBadge } from "./RoleBadge";
@@ -25,6 +30,7 @@ import { UnsortedInbox } from "./UnsortedInbox";
 import { scopeParam } from "./TimeListView";
 import { useEntriesFocus, useViewingAsOptional, viewingFromScope } from "./ViewingAsContext";
 import { initials, useMoney, useTimeLookups, type TimeDeps } from "./shared";
+import { recoverTaskRequired } from "./timeCreateBridge";
 
 interface Props {
   deps: TimeDeps;
@@ -74,8 +80,8 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
 
   const dayEntries = byDay.get(selected) ?? [];
   const holiday = calendar.holiday(selected);
-  const myTotal = totalSeconds(dayEntries.filter((e) => e.userId === tt.userId), nowMs);
-  const teamTotal = totalSeconds(dayEntries, nowMs);
+  const myTotal = totalWorkedSeconds(dayEntries.filter((e) => e.userId === tt.userId), nowMs);
+  const teamTotal = totalWorkedSeconds(dayEntries, nowMs);
 
   const groups = useMemo(() => {
     const m = new Map<string, TimeEntry[]>();
@@ -130,7 +136,11 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
       setRowHours("");
       return true;
     } catch (e) {
-      tt.notify(timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t), "error");
+      // "Require a task": the add row has no ticket picker; the drawer opens with the row's project, notes and hours.
+      const handled = recoverTaskRequired(e, {
+        projectId: rowProject, description: rowNotes.trim() || null, entryDate: selected, durationSec: sec, billable: rowBillable,
+      }, tt.notify, t);
+      if (!handled) tt.notify(timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t), "error");
       return false;
     } finally {
       setBusy(false);
@@ -153,7 +163,7 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
         </button>
         {strip.map((d) => {
           const list = byDay.get(d) ?? [];
-          const sec = totalSeconds(list, nowMs);
+          const sec = totalWorkedSeconds(list, nowMs);
           const off = calendar.isOffDay(d);
           const dot = dayDot(sec, perDayTarget(d));
           const h = calendar.holiday(d);
@@ -191,7 +201,11 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
 
       {/* Day header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-md bg-entity-subtle text-entity-text" aria-hidden data-testid="day-heading-tile">
+            <CalendarDays className="size-5" />
+          </span>
+          <div>
           <h3 className="type-panel-title capitalize text-gray-900" data-testid="day-heading">
             {new Date(`${selected}T12:00:00`).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
           </h3>
@@ -200,6 +214,7 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
             {t("you", "vy", "Ön")} <ClockDigits value={formatDuration(myTotal, true)} className="font-bold" data-testid="day-mine" /> {t("of", "z", "ennyiből:")} {formatDuration(perDayTarget(selected) / (wholeTeam ? people : 1))}
             {holiday && <span className="ml-2 rounded-full bg-gray-200 px-2 py-0.5 text-micro font-semibold text-gray-600" data-testid="holiday-chip">{t("State holiday", "Štátny sviatok", "Állami ünnep")} · {holidayName(holiday, tt.workCountry, deps.language)}</span>}
           </p>
+          </div>
         </div>
         <button type="button" onClick={() => setAdding(true)} data-testid="day-add-row" className="inline-flex h-10 items-center gap-1.5 rounded-md bg-entity-solid px-4 text-ui font-semibold text-white transition-all active:scale-95 cursor-pointer">
           <Plus className="size-4" />
@@ -234,7 +249,7 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
                     value={rowNotes}
                     onChange={(e) => { setRowNotes(e.target.value); setRowTaskQuery(e.target.value); }}
                     onKeyDown={(e) => { if (e.key === "Enter") void saveRow(); }}
-                    placeholder={t("Notes, or type to find a task", "Poznámky alebo hľadajte úlohu", "Jegyzet, vagy írjon a feladat kereséséhez")}
+                    placeholder={t("What did you do?", "Čo ste robili?", "Mit csinált?")}
                     data-testid="day-row-notes"
                     className="h-9 w-full rounded-md border border-gray-200 bg-white px-3 text-ui outline-none focus:border-entity"
                   />
@@ -264,7 +279,7 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
             <button type="button" onClick={() => setAdding(false)} className="h-9 rounded-md px-3 text-ui font-semibold text-gray-500 hover:bg-gray-100 cursor-pointer">{t("Close", "Zavrieť", "Bezárás")}</button>
           </div>
           <p className="type-meta text-gray-500" data-testid="day-add-hint">
-            {t("Hours only — no start or end time needed. Type 1:30 or 90m. Add a time range from the drawer if you want it on the calendar grid.", "Len hodiny — začiatok ani koniec netreba. Napíšte 1:30 alebo 90m. Časový rozsah doplníte v paneli, ak ho chcete v kalendári.", "Csak órák — kezdés és befejezés nem kell. Írja be: 1:30 vagy 90m. Időtartományt a panelben adhat hozzá, ha a naptárban is látni szeretné.")}
+            {t("Hours only — no start or end time needed. Type 1.5, 1:30 or 90m. Type in the notes to find an open task. Add a time range from the drawer if you want it on the calendar grid.", "Len hodiny — začiatok ani koniec netreba. Napíšte 1.5, 1:30 alebo 90m. Písaním do poznámok nájdete otvorenú úlohu. Časový rozsah doplníte v paneli, ak ho chcete v kalendári.", "Csak órák — kezdés és befejezés nem kell. Írja be: 1.5, 1:30 vagy 90m. A jegyzetmezőbe írva nyitott feladatot kereshet. Időtartományt a panelben adhat hozzá, ha a naptárban is látni szeretné.")}
           </p>
         </Surface>
       )}
@@ -290,20 +305,23 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
                 {/* END-PHASE4-VIEWING-AS */}
                 {seeCost && rateEntry && (
                   rateEntry.costRate ? (
-                    <span className="type-meta tabular-nums text-violet-700">{money(rateEntry.costRate)}/h</span>
+                    <span className="type-meta tabular-nums text-gray-500">{money(rateEntry.costRate)} / h</span>
                   ) : (
                     <span className="type-meta text-amber-700" data-testid="no-rate">{t("no rate — no employee linked", "bez sadzby — nie je pripojený zamestnanec", "nincs díj — nincs munkatárs hozzárendelve")}</span>
                   )
                 )}
                 <span className="ml-auto flex items-center gap-4">
-                  {cost !== null && <span className="tabular-nums text-violet-700">{money(cost)}</span>}
-                  <ClockDigits value={formatDuration(totalSeconds(list, nowMs), true)} className="font-semibold text-gray-900" />
+                  {cost !== null && <span className="tabular-nums text-gray-600">{money(cost)}</span>}
+                  <WorkedTotal projectSec={totalSeconds(list, nowMs)} workedSec={totalWorkedSeconds(list, nowMs)} className="font-semibold text-gray-900" />
                 </span>
               </div>
               <div role="table" className="divide-y divide-gray-100">
-                {list.map((e) => (
-                  <EntryRow key={e.id} entry={withoutHiddenCost(e, tt.userId || "", tt.viewer.canCosts)} deps={deps} onOpen={onOpen} />
-                ))}
+                {segmentByCluster(list, clusterEntries(list, nowMs), (e) => [e.id]).map((seg, si) => {
+                  const rows = seg.items.map((e) => (
+                    <EntryRow key={e.id} entry={withoutHiddenCost(e, tt.userId || "", tt.viewer.canCosts)} deps={deps} onOpen={onOpen} actions={<DayEntryActions entry={e} deps={deps} onOpen={onOpen} />} />
+                  ));
+                  return seg.cluster ? <ClusterGroup key={`c${si}`} cluster={seg.cluster}>{rows}</ClusterGroup> : <Fragment key={`s${si}`}>{rows}</Fragment>;
+                })}
               </div>
             </Surface>
           );

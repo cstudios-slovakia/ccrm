@@ -184,6 +184,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `reopened_count` INT NOT NULL DEFAULT 0 COMMENT 'How many times task was reopened from a done state',
               `comment_count` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Denormalized active comment count in task_activities',
               `reactions_json` VARCHAR(1000) NULL COMMENT 'Task emoji reactions map {emoji: [userName]}',
+              `category` VARCHAR(32) NULL COMMENT 'Task category; NULL = none, bug = Bug (a string so more categories need no migration)',
+              `reopens_json` TEXT NULL COMMENT 'Every reopening of a finished task, JSON [{at: UTC ISO, by: name|null}] oldest first; NULL = never reopened; written only by the server',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
@@ -449,6 +451,11 @@ if (!function_exists('ccrm_schema_statements')) {
               `billable_rate` DECIMAL(10,2) NULL COMMENT 'Default billable hourly rate for time entries',
               `is_internal` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Internal work: excluded from client billing',
               `contact_phone` VARCHAR(50) NULL COMMENT 'Phone of the project contact; WhatsApp chats are paired to the project by it',
+              `acceptance_criteria_json` TEXT NULL COMMENT 'Acceptance criteria, JSON [{id,title,done,createdAt,createdBy,removedAt,removedBy}]; a removed one stays (soft removal); NULL = none',
+              `scope_approved_at` DATETIME NULL COMMENT 'When the scope was approved (UTC); criteria created after it are scope creep; NULL = not approved',
+              `scope_approved_by` VARCHAR(100) NULL COMMENT 'Name of the user who approved the scope',
+              `github_repo` VARCHAR(200) NULL COMMENT 'Paired GitHub repository, owner/name; pushes to it are stored in project_pushes',
+              `github_branch` VARCHAR(200) NULL COMMENT 'Server branch whose pushes count; NULL = the repository default branch',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE RESTRICT
@@ -460,6 +467,26 @@ if (!function_exists('ccrm_schema_statements')) {
               `user_id` VARCHAR(50) NOT NULL,
               PRIMARY KEY (`project_id`, `user_id`),
               FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // GitHub pushes delivered to api/github_webhook.php, one row per (request body, paired project).
+            // No foreign key on purpose: a row outlives a hiccup in `projects`; readers join to it.
+            "CREATE TABLE IF NOT EXISTS `project_pushes` (
+              `body_hash` CHAR(64) NOT NULL COMMENT 'SHA-256 hex of the raw body; a redelivery or a replay of it is ignored',
+              `delivery_id` VARCHAR(64) NULL COMMENT 'X-GitHub-Delivery, for reference only (the signature does not cover it)',
+              `project_id` VARCHAR(50) NOT NULL,
+              `repo` VARCHAR(200) NOT NULL COMMENT 'Full name as GitHub sent it',
+              `branch` VARCHAR(200) NOT NULL,
+              `pushed_at` DATETIME NOT NULL COMMENT 'UTC; when this server received the push',
+              `pusher` VARCHAR(100) NULL,
+              `commit_count` INT NOT NULL DEFAULT 0,
+              `head_sha` VARCHAR(40) NULL,
+              `head_message` VARCHAR(300) NULL COMMENT 'First line of the head commit message',
+              `compare_url` VARCHAR(500) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`body_hash`, `project_id`),
+              INDEX `idx_pp_project_time` (`project_id`, `pushed_at`),
+              INDEX `idx_pp_time` (`pushed_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Audit trail for privileged / financial actions (see ccrm_audit_log).
@@ -1055,6 +1082,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `salary_type` ENUM('monthly', 'daily', 'hourly') NOT NULL DEFAULT 'monthly',
               `salary_amount` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
               `salary_due_day` INT NULL COMMENT 'Payout day of month (1-31) or week (1-7)',
+              `hours_per_day` DECIMAL(4,2) NULL COMMENT 'Contracted hours per day; NULL = company hoursPerDay (time tracking settings)',
               `vacation_allowances_json` TEXT NULL,
               `time_tracking_provider` VARCHAR(50) NOT NULL DEFAULT 'toggl',
               `time_tracking_user_id` VARCHAR(100) NULL,
@@ -1341,13 +1369,15 @@ if (!function_exists('ccrm_schema_statements')) {
               `entry_date` DATE NOT NULL COMMENT 'Company-timezone date the time counts for',
               `start_at` DATETIME NULL COMMENT 'UTC; NULL for hours-only entries',
               `end_at` DATETIME NULL COMMENT 'UTC; NULL while running or hours-only',
+              `paused_at` DATETIME NULL COMMENT 'UTC; set = paused and resumable (D6)', `pause_reason` VARCHAR(16) NULL COMMENT 'manual | status | presence', `resume_until` DATETIME NULL COMMENT 'UTC; the pause expires after this, NULL = the day''s autoStopAt', `continues_id` VARCHAR(64) NULL COMMENT 'The entry this one resumed', `end_reason` VARCHAR(16) NULL COMMENT 'user | switch | status | presence | auto_stop',
               `duration_sec` INT NULL,
+              `worked_ms` INT UNSIGNED NULL COMMENT 'Share of the person''s real clock time (ms); NULL while running. Written only by ccrm_tt_settle()',
               `billable` TINYINT(1) NOT NULL DEFAULT 1,
               `billable_rate` DECIMAL(10,2) NULL,
               `cost_rate` DECIMAL(10,4) NULL COMMENT 'Snapshot of the hourly cost rate',
               `cost_rate_source` VARCHAR(32) NOT NULL DEFAULT 'none' COMMENT 'monthly | daily | hourly | contractor_hourly | contractor_daily | contractor_monthly | none',
               `cost_rate_basis_days` TINYINT NULL COMMENT 'Working days of the month the rate was divided by',
-              `cost` DECIMAL(12,2) NULL,
+              `cost` DECIMAL(14,4) NULL,
               `tags` TEXT NULL COMMENT 'JSON array of strings',
               `source` VARCHAR(16) NOT NULL DEFAULT 'manual' COMMENT 'timer | manual | day | calendar | timesheet | extension | activity | toggl | clockify | ticket_legacy',
               `origin_type` VARCHAR(16) NULL COMMENT 'task | ticket | project | calendar | activity',
@@ -1355,11 +1385,11 @@ if (!function_exists('ccrm_schema_statements')) {
               `device_id` VARCHAR(64) NULL,
               `external_id` VARCHAR(100) NULL COMMENT 'Toggl/Clockify id, or tte:<id> for migrated ticket time',
               `approval_status` VARCHAR(16) NULL,
-              `running_guard` VARCHAR(50) GENERATED ALWAYS AS (IF(`start_at` IS NOT NULL AND `end_at` IS NULL AND `deleted_at` IS NULL, `user_id`, NULL)) STORED COMMENT 'UNIQUE: one running timer per user',
+              `running_guard` VARCHAR(50) GENERATED ALWAYS AS (IF(`start_at` IS NOT NULL AND `end_at` IS NULL AND `deleted_at` IS NULL, `user_id`, NULL)) STORED COMMENT 'user_id while running; indexed, several may run (per-user lock in time_presence)',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               `deleted_at` DATETIME NULL,
-              UNIQUE KEY `uq_te_running` (`running_guard`),
+              INDEX `idx_te_running` (`running_guard`),
               UNIQUE KEY `uq_te_external` (`source`, `external_id`),
               INDEX `idx_te_user_date` (`user_id`, `entry_date`),
               INDEX `idx_te_project_date` (`project_id`, `entry_date`),
@@ -1367,6 +1397,9 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX `idx_te_ticket` (`ticket_id`),
               INDEX `idx_te_employee_date` (`employee_id`, `entry_date`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+            // TT2 D5.1/D7.1: the per-user timer lock row (time_lock.php) and the presence state of phase 6.
+            "CREATE TABLE IF NOT EXISTS `time_presence` (`user_id` VARCHAR(50) NOT NULL PRIMARY KEY, `anchor_at` DATETIME NULL, `last_push_at` DATETIME NULL, `auto_paused_at` DATETIME NULL,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Newsletter module (docs/NEWSLETTER.md C2). Written only by api/newsletter*.php, never by
             // sync.php, so there is no column healing. No foreign keys, like the rest of the schema.
@@ -2398,6 +2431,23 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_tickets($pdo);
         ccrm_backfill_ticket_resolve_due($pdo);
         ccrm_migrate_time_tracking($pdo);
+        if (ccrm_table_exists($pdo, 'tasks') && !ccrm_column_exists($pdo, 'tasks', 'category')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `category` VARCHAR(32) NULL COMMENT 'Task category; NULL = none, bug = Bug (a string so more categories need no migration)'");
+        }
+        if (ccrm_table_exists($pdo, 'tasks') && !ccrm_column_exists($pdo, 'tasks', 'reopens_json')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `reopens_json` TEXT NULL COMMENT 'Every reopening of a finished task, JSON [{at: UTC ISO, by: name|null}] oldest first; NULL = never reopened; written only by the server'");
+        }
+        foreach ([
+            'acceptance_criteria_json' => "TEXT NULL COMMENT 'Acceptance criteria, JSON [{id,title,done,createdAt,createdBy,removedAt,removedBy}]; a removed one stays (soft removal); NULL = none'",
+            'scope_approved_at' => "DATETIME NULL COMMENT 'When the scope was approved (UTC); criteria created after it are scope creep; NULL = not approved'",
+            'scope_approved_by' => "VARCHAR(100) NULL COMMENT 'Name of the user who approved the scope'",
+            'github_repo' => "VARCHAR(200) NULL COMMENT 'Paired GitHub repository, owner/name; pushes to it are stored in project_pushes'",
+            'github_branch' => "VARCHAR(200) NULL COMMENT 'Server branch whose pushes count; NULL = the repository default branch'",
+        ] as $scopeCol => $scopeDef) {
+            if (ccrm_table_exists($pdo, 'projects') && !ccrm_column_exists($pdo, 'projects', $scopeCol)) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `{$scopeCol}` {$scopeDef}");
+            }
+        }
         ccrm_migrate_integration_tasks($pdo);
         ccrm_migrate_integration_directory($pdo);
         ccrm_migrate_integration_timeline($pdo);
@@ -2622,6 +2672,9 @@ if (!function_exists('ccrm_schema_statements')) {
         if (ccrm_table_exists($pdo, 'employees') && !ccrm_column_exists($pdo, 'employees', 'work_country')) {
             $pdo->exec("ALTER TABLE `employees` ADD COLUMN `work_country` CHAR(2) NULL COMMENT 'SK | HU; NULL = company default' AFTER `address_country`");
         }
+        if (ccrm_table_exists($pdo, 'employees') && !ccrm_column_exists($pdo, 'employees', 'hours_per_day')) {
+            $pdo->exec("ALTER TABLE `employees` ADD COLUMN `hours_per_day` DECIMAL(4,2) NULL COMMENT 'Contracted hours per day; NULL = company hoursPerDay (time tracking settings)' AFTER `salary_due_day`");
+        }
         if (ccrm_table_exists($pdo, 'tasks') && !ccrm_column_exists($pdo, 'tasks', 'estimate_minutes')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `estimate_minutes` INT NULL COMMENT 'Expected minutes; the task drawer compares it with tracked time'");
         }
@@ -2670,6 +2723,14 @@ if (!function_exists('ccrm_schema_statements')) {
         if (ccrm_table_exists($pdo, 'time_entries') && !ccrm_column_exists($pdo, 'time_entries', 'note')) {
             $pdo->exec("ALTER TABLE `time_entries` ADD COLUMN `note` VARCHAR(1000) NULL COMMENT 'The Description the person typed; allowed on linked entries too' AFTER `legacy_note`");
         }
+        require_once __DIR__ . '/time_worked_ms_migration.php'; // listed in ccrm_schema_fingerprint()
+        ccrm_migrate_time_worked_ms($pdo);
+        require_once __DIR__ . '/time_parallel_migration.php'; // listed in ccrm_schema_fingerprint()
+        ccrm_migrate_time_parallel($pdo);
+        require_once __DIR__ . '/time_rate_months_migration.php'; // listed in ccrm_schema_fingerprint(); before anything that prices
+        ccrm_migrate_time_rate_months($pdo);
+        require_once __DIR__ . '/time_pause_migration.php'; // listed in ccrm_schema_fingerprint()
+        ccrm_migrate_time_pause($pdo);
         require_once __DIR__ . '/ticket_time_migration.php';
         ccrm_migrate_ticket_time_entries($pdo);
     }
@@ -3324,6 +3385,7 @@ if (!function_exists('ccrm_schema_statements')) {
                   `salary_type` ENUM('monthly', 'daily', 'hourly') NOT NULL DEFAULT 'monthly',
                   `salary_amount` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
                   `salary_due_day` INT NULL COMMENT 'Payout day of month (1-31) or week (1-7)',
+                  `hours_per_day` DECIMAL(4,2) NULL COMMENT 'Contracted hours per day; NULL = company hoursPerDay (time tracking settings)',
                   `vacation_allowances_json` TEXT NULL,
                   `time_tracking_provider` VARCHAR(50) NOT NULL DEFAULT 'toggl',
                   `time_tracking_user_id` VARCHAR(100) NULL,
@@ -3702,7 +3764,7 @@ if (!function_exists('ccrm_schema_statements')) {
      */
     function ccrm_schema_fingerprint(): string {
         $parts = [];
-        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/project_breakdown_migrations.php', __DIR__ . '/task_activity_lib.php'] as $file) {
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/project_breakdown_migrations.php', __DIR__ . '/task_activity_lib.php', __DIR__ . '/time_worked_ms_migration.php', __DIR__ . '/time_parallel_migration.php', __DIR__ . '/time_rate_months_migration.php', __DIR__ . '/time_pause_migration.php'] as $file) {
             $parts[] = is_file($file) ? md5_file($file) : '-';
         }
         return md5(implode('|', $parts));

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Lock, Trash2 } from "lucide-react";
 import { Surface } from "../layout";
 import { StatGrid, StatTile } from "../layout/StatGrid";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
@@ -7,7 +7,6 @@ import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
 import { holidayName } from "../../utils/holidays.ts";
 import {
-  billablePercent,
   collapseIdentical,
   formatDuration,
   groupByDay,
@@ -18,16 +17,22 @@ import {
   weekDays,
   type TimeEntry,
 } from "../../utils/timeTracking.ts";
+import { totalWorkedSeconds } from "../../utils/timeWorked.ts";
+import { WorkedTotal } from "./WorkedLine";
 import { addDays } from "../../utils/holidays.ts";
 import { TimeApiError, deleteEntry, restoreEntry, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
 import { withoutHiddenCost } from "../../utils/timeTeam.ts";
+import { clusterEntries, segmentByCluster } from "../../utils/timeClusters.ts";
+import { ClusterGroup } from "./ClusterChip";
 import { ClockDigits } from "./ClockDigits";
 import { EntryRow } from "./EntryRow";
 import { RangeNav } from "./RangeNav";
 import { continueInput } from "./TimerBar";
-import { UnsortedListChip } from "./UnsortedInbox";
+import { TimeToolbarEndSlot, TimeToolbarSlot } from "./TimeToolbarSlot";
+import { TimeListFilterButton, useTimeListFilter } from "./TimeListFilter";
+import { EMPTY_LIST_FILTER, applyListFilter, isFilterActive } from "../../utils/timeListFilter.ts";
 import { EntriesFocusBanner, clearEntriesFocus, useEntriesFocus, useViewingAsOptional, viewingFromScope } from "./ViewingAsContext";
-import { useMoney, type TimeDeps } from "./shared";
+import { useMoney, useTimeLookups, type TimeDeps } from "./shared";
 
 interface Props {
   deps: TimeDeps;
@@ -43,8 +48,11 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
   const tt = useTimeTracking();
   const { t, nowMs, settings } = tt;
   const money = useMoney(deps);
+  const lookups = useTimeLookups(deps);
   const [anchor, setAnchor] = useState(todayIso());
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const { filter, setFilter } = useTimeListFilter();
+  const filterActive = isFilterActive(filter);
   /** Grouped rows the user opened, by the group's first entry id. */
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   /* PHASE4-VIEWING-AS */
@@ -84,21 +92,44 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
     tt.ensureHolidayYears(tt.workCountry, [...new Set(days.map((d) => Number(d.slice(0, 4))))]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchor, tt.workCountry, tt.enabled]);
-  useEffect(() => setSelected(new Set()), [anchor, viewScope, entriesFocus?.nonce]);
+  // The bulk bar only ever acts on rows that are shown: a changed filter drops the selection.
+  useEffect(() => setSelected(new Set()), [anchor, viewScope, entriesFocus?.nonce, filter]);
+  // A Team-cell "entries focus" opens exactly those entries: an old filter must never hide them.
+  useEffect(() => {
+    if (entriesFocus) setFilter(EMPTY_LIST_FILTER);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entriesFocus?.nonce]);
 
-  const byDay = useMemo(() => groupByDay(entries), [entries]);
-  const todays = byDay.get(today) ?? [];
+  // The stat tiles keep showing the whole week; only the day cards follow the filter.
+  const allByDay = useMemo(() => groupByDay(entries), [entries]);
+  const shown = useMemo(() => applyListFilter(entries, filter) as TimeEntry[], [entries, filter]);
+  const byDay = useMemo(() => (filterActive ? groupByDay(shown) : allByDay), [filterActive, shown, allByDay]);
+  const todays = allByDay.get(today) ?? [];
   const week = entries;
   const target = viewScope === "me" ? targetSeconds(calendar, days, settings.hoursPerDay) : null;
-  const weekCost = totalCost(week);
-  const billable = billablePercent(week, nowMs);
-  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-US";
+  const finishedToday = todays.filter((e) => !e.running).length;
+  const weekCost = totalCost(week.map((m) => withoutHiddenCost(m, tt.userId || "", tt.viewer.canCosts)));
+  const weekWorked = totalWorkedSeconds(week, nowMs);
+  const billableWorked = totalWorkedSeconds(week.filter((e) => e.billable), nowMs);
+  const billable = weekWorked > 0 ? Math.round((billableWorked / weekWorked) * 100) : null;
+  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-GB";
   const longDate = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const dayName = (iso: string) =>
+    iso === today
+      ? t("Today", "Dnes", "Ma")
+      : iso === addDays(today, -1)
+        ? t("Yesterday", "Včera", "Tegnap")
+        : new Date(`${iso}T12:00:00`).toLocaleDateString(locale, { weekday: "long" });
+  const shortDate = (iso: string) =>
+    new Date(`${iso}T12:00:00`).toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "short", ...(iso.slice(0, 4) === today.slice(0, 4) ? {} : { year: "numeric" as const }) });
   const weekLabel = `${new Date(`${days[0]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })} – ${new Date(`${days[days.length - 1]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}`;
   const isCurrentWeek = weekDays(anchor)[0] === weekDays(today)[0];
   const shortRange = `${new Date(`${days[0]}T12:00:00`).toLocaleDateString(locale, { day: "numeric" })} – ${new Date(`${days[days.length - 1]}T12:00:00`).toLocaleDateString(locale, { day: "numeric", month: "short" })}`;
 
-  const cards = [...days].reverse().filter((d) => byDay.has(d) || calendar.holiday(d));
+  // Phone: the current week shows today only, the rest of the week opens in place.
+  const [wholeWeek, setWholeWeek] = useState(false);
+  const phoneTodayOnly = isCurrentWeek && !entriesFocus && !wholeWeek;
+  const cards = [...days].reverse().filter((d) => byDay.has(d) || (!filterActive && calendar.holiday(d)));
   const holidayLabel = (iso: string) => {
     const h = calendar.holiday(iso);
     return h ? holidayName(h, tt.workCountry, deps.language) : null;
@@ -123,17 +154,42 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
   return (
     <div className="grid gap-4" data-testid="time-list">
       <StatGrid count={weekCost !== null ? 4 : 3}>
-        <StatTile label={t("Today", "Dnes", "Ma")} value={<ClockDigits value={formatDuration(totalSeconds(todays, nowMs), true)} data-testid="stat-today" />} />
+        <StatTile
+          label={t("Today", "Dnes", "Ma")}
+          value={<ClockDigits value={formatDuration(totalWorkedSeconds(todays, nowMs), true)} data-testid="stat-today" />}
+          delta={
+            <span data-testid="stat-today-note">
+              {t(`${finishedToday} ${finishedToday === 1 ? "entry" : "entries"}`, `Záznamy: ${finishedToday}`, `${finishedToday} bejegyzés`)}
+              {todays.some((e) => e.running) && t(" + running timer", " + beží časovač", " + futó időzítő")}
+            </span>
+          }
+        />
         <StatTile
           label={days.length > 7 ? t("This period", "Toto obdobie", "Ez az időszak") : t("This week", "Tento týždeň", "Ez a hét")}
-          value={<ClockDigits value={formatDuration(totalSeconds(week, nowMs), true)} data-testid="stat-week" />}
-          delta={target !== null ? <span data-testid="stat-target">{t("of", "z", "ennyiből:")} {formatDuration(target)} {t("target", "cieľ", "cél")}</span> : undefined}
+          value={<ClockDigits value={formatDuration(totalWorkedSeconds(week, nowMs), true)} data-testid="stat-week" />}
+          suffix={target !== null ? <span className="type-meta font-normal text-gray-400" data-testid="stat-target">/ {formatDuration(target)}</span> : undefined}
+          progress={target ? { value: (weekWorked / target) * 100, label: t("Week target", "Týždenný cieľ", "Heti cél") } : undefined}
         />
-        <StatTile label={t("Billable", "Fakturovateľné", "Számlázható")} value={<span className="tabular-nums">{billable === null ? "—" : `${billable} %`}</span>} />
-        {weekCost !== null && <StatTile label={t("Labour cost this week", "Náklady na prácu za týždeň", "Heti munkaköltség")} value={<span className="tabular-nums text-gray-900" data-testid="stat-cost">{money(weekCost)}</span>} />}
+        <StatTile
+          label={days.length > 7 ? t("Billable this period", "Fakturovateľné za obdobie", "Számlázható ebben az időszakban") : t("Billable this week", "Fakturovateľné tento týždeň", "Számlázható ezen a héten")}
+          value={<span className="tabular-nums" data-testid="stat-billable">{billable === null ? "—" : formatDuration(billableWorked, true)}</span>}
+          suffix={billable === null ? undefined : <span className="type-meta font-semibold text-emerald-600" data-testid="stat-billable-percent">{billable} %</span>}
+          progress={billable === null ? undefined : { value: billable, tone: "emerald", label: t("Billable share", "Podiel fakturovateľného", "Számlázható arány") }}
+        />
+        {weekCost !== null && (
+          <StatTile
+            label={t("Labour cost this week", "Náklady na prácu za týždeň", "Heti munkaköltség")}
+            value={<span className="tabular-nums text-gray-900" data-testid="stat-cost">{money(weekCost)}</span>}
+            icon={
+              <span title={t("Only you and people with the cost permission see this.", "Toto vidíte iba vy a ľudia s oprávnením na náklady.", "Ezt csak Ön és a költséghez jogosult személyek látják.")} data-testid="stat-cost-lock">
+                <Lock className="size-5" aria-label={t("Restricted", "Obmedzené", "Korlátozott")} />
+              </span>
+            }
+          />
+        )}
       </StatGrid>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <TimeToolbarSlot>
         <RangeNav
           label={isCurrentWeek ? `${t("This week", "Tento týždeň", "Ez a hét")} · ${shortRange}` : weekLabel}
           labelTestId="week-label"
@@ -144,9 +200,22 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
           resetLabel={t("This week", "Tento týždeň", "Ez a hét")}
           onReset={isCurrentWeek ? undefined : () => { clearEntriesFocus(); setAnchor(today); }}
         />
-        {/* PHASE5-UNSORTED */}
-        {viewScope === "me" && <UnsortedListChip />}
-        {/* END-PHASE5-UNSORTED */}
+      </TimeToolbarSlot>
+
+      <TimeToolbarEndSlot>
+        <TimeListFilterButton entries={entries} projectLabel={(id) => (lookups.projectById.has(id) ? lookups.projectName(id) : null)} />
+      </TimeToolbarEndSlot>
+
+      <div className="flex flex-wrap items-center gap-2 empty:hidden">
+        {filterActive && (
+          <p className="type-meta text-gray-500" data-testid="time-filter-summary" role="status">
+            {t(`Filtered: ${shown.length} of ${entries.length} entries`, `Filtrované: ${shown.length} z ${entries.length} záznamov`, `Szűrve: ${shown.length} / ${entries.length} bejegyzés`)}
+            {" · "}
+            {t("the totals above are for the whole week", "súčty vyššie platia za celý týždeň", "a fenti összesítések az egész hétre vonatkoznak")}
+            {" · "}
+            <button type="button" onClick={() => setFilter(EMPTY_LIST_FILTER)} className="font-semibold text-primary hover:underline cursor-pointer" data-testid="time-filter-summary-clear">{t("Clear", "Zrušiť", "Törlés")}</button>
+          </p>
+        )}
         {selected.size > 0 && (
           <div className="ml-auto flex items-center gap-2 rounded-md bg-gray-900 px-3 py-1.5 text-ui font-semibold text-white" data-testid="bulk-bar">
             {selected.size} {t("selected", "vybraných", "kijelölve")}
@@ -160,9 +229,30 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
         {/* END-PHASE4-VIEWING-AS */}
       </div>
 
-      {cards.length === 0 && !loading && (
+      {cards.length === 0 && !loading && filterActive && entries.length > 0 && (
+        <Surface>
+          <p className="text-body text-gray-500" data-testid="time-filter-empty">{t("No entries match the filter.", "Filtru nezodpovedá žiadny záznam.", "Egyetlen bejegyzés sem felel meg a szűrőnek.")}</p>
+        </Surface>
+      )}
+
+      {cards.length === 0 && !loading && !(filterActive && entries.length > 0) && (
         <Surface>
           <p className="text-body text-gray-500" data-testid="time-empty">{t("No time tracked this week. Start the timer above, or add time manually.", "Tento týždeň nie je zaznamenaný žiadny čas. Spustite časovač vyššie alebo pridajte čas ručne.", "Ezen a héten nincs rögzített idő. Indítsa el az időzítőt, vagy adjon hozzá kézzel.")}</p>
+        </Surface>
+      )}
+
+      {phoneTodayOnly && filterActive && !byDay.has(today) && !loading && entries.length > 0 && !shown.some((e) => e.running) && (
+        <Surface className="ws-sm:hidden">
+          <p className="text-body text-gray-500" data-testid="time-filter-today-empty">
+            {t("No matching entries today.", "Dnes nie sú žiadne zodpovedajúce záznamy.", "Ma nincs egyező bejegyzés.")}{" "}
+            <button type="button" onClick={() => setFilter(EMPTY_LIST_FILTER)} className="font-semibold text-primary hover:underline cursor-pointer">{t("Clear", "Zrušiť", "Törlés")}</button>
+          </p>
+        </Surface>
+      )}
+
+      {phoneTodayOnly && !filterActive && !byDay.has(today) && !loading && cards.length > 0 && !entries.some((e) => e.running) && (
+        <Surface className="ws-sm:hidden">
+          <p className="text-body text-gray-500" data-testid="time-today-empty">{t("Nothing tracked today yet. Start the timer above.", "Dnes ešte nie je zaznamenaný žiadny čas. Spustite časovač vyššie.", "Ma még nincs rögzített idő. Indítsa el az időzítőt fent.")}</p>
         </Surface>
       )}
 
@@ -170,21 +260,44 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
         const list = byDay.get(date) ?? [];
         const rows = collapseIdentical(list);
         const holiday = holidayLabel(date);
+        const hiddenCost = list.some((m) => !tt.viewer.canCosts && m.userId !== (tt.userId || ""));
+        const dayCost = hiddenCost ? null : totalCost(list.map((m) => withoutHiddenCost(m, tt.userId || "", tt.viewer.canCosts)));
         return (
-          <Surface key={date} padding="none" className="overflow-hidden" >
+          <Surface key={date} padding="none" className={`overflow-hidden ${phoneTodayOnly && date !== today && !list.some((m) => m.running) ? "hidden ws-sm:block" : ""}`}>
             <div className={`flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-4 py-3 ${calendar.isOffDay(date) ? "bg-gray-50" : ""}`} data-testid="day-card-header" data-date={date}>
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`type-card-title capitalize ${date === today ? "text-entity-text" : "text-gray-900"}`}>{longDate(date)}</span>
+                <input
+                  type="checkbox"
+                  ref={(el) => { if (el) el.indeterminate = list.some((m) => selected.has(m.id)) && !list.every((m) => selected.has(m.id)); }}
+                  checked={list.length > 0 && list.every((m) => selected.has(m.id))}
+                  disabled={list.length === 0}
+                  onChange={(e) =>
+                    setSelected((prev) => {
+                      const next = new Set(prev);
+                      for (const m of list) (e.target.checked ? next.add(m.id) : next.delete(m.id));
+                      return next;
+                    })
+                  }
+                  aria-label={t("Select all entries of this day", "Vybrať všetky záznamy dňa", "A nap összes bejegyzésének kijelölése")}
+                  data-testid="day-select-all"
+                  className="size-4 shrink-0 accent-[var(--entity-accent-solid)]"
+                />
+                <span className={`type-card-title capitalize ${date === today ? "text-entity-text" : "text-gray-900"}`} title={longDate(date)}>{dayName(date)}</span>
+                <span className="type-meta text-gray-500">{shortDate(date)}</span>
                 {holiday && (
                   <span className="rounded-full bg-gray-200 px-2 py-0.5 text-micro font-semibold text-gray-600" data-testid="holiday-chip" title={holiday}>
                     {t("State holiday", "Štátny sviatok", "Állami ünnep")} · {holiday}
                   </span>
                 )}
               </div>
-              <ClockDigits value={formatDuration(totalSeconds(list, nowMs), true)} className="font-semibold text-gray-900" />
+              <div className="flex items-center gap-3">
+                {dayCost !== null && <span className="type-meta tabular-nums text-gray-500" data-testid="day-cost">{money(dayCost)}</span>}
+                <WorkedTotal projectSec={totalSeconds(list, nowMs)} workedSec={totalWorkedSeconds(list, nowMs)} className="font-semibold text-gray-900" />
+              </div>
             </div>
             <div role="table" className="divide-y divide-gray-100">
-              {rows.map(({ entry, members }) => {
+              {segmentByCluster(rows, clusterEntries(list, nowMs), (r) => r.members.map((m) => m.id)).map((seg, si) => {
+              const inner = seg.items.map(({ entry, members }) => {
                 const visible = members.map((m) => withoutHiddenCost(m, tt.userId || "", tt.viewer.canCosts));
                 const isOpen = members.length > 1 && expanded.has(entry.id);
                 const toggleSelect = (ids: string[]) => (checked: boolean) =>
@@ -193,7 +306,7 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
                     for (const id of ids) (checked ? next.add(id) : next.delete(id));
                     return next;
                   });
-                const onContinue = viewScope === "me" || entry.userId === tt.userId ? (e: TimeEntry) => void tt.start(continueInput(e)) : undefined;
+                const onContinue = viewScope === "me" || entry.userId === tt.userId ? (e: TimeEntry, anchor?: Element) => void tt.start(continueInput(e), { anchor }) : undefined;
                 return (
                   <Fragment key={entry.id}>
                     <EntryRow
@@ -231,11 +344,25 @@ export function TimeListView({ deps, scope, onOpen }: Props) {
                       ))}
                   </Fragment>
                 );
-              })}
+              });
+              return seg.cluster ? <ClusterGroup key={`c${si}`} cluster={seg.cluster}>{inner}</ClusterGroup> : <Fragment key={`s${si}`}>{inner}</Fragment>;
+            })}
             </div>
           </Surface>
         );
       })}
+
+      {isCurrentWeek && !entriesFocus && cards.some((d) => d !== today) && (
+        <button
+          type="button"
+          onClick={() => { setSelected(new Set()); setWholeWeek((v) => !v); }}
+          aria-expanded={wholeWeek}
+          data-testid="time-whole-week"
+          className="inline-flex min-h-11 items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-ui font-semibold text-primary hover:bg-gray-50 cursor-pointer ws-sm:hidden"
+        >
+          {wholeWeek ? t("Today only", "Iba dnes", "Csak a mai nap") : t("Whole week", "Celý týždeň", "Egész hét")}
+        </button>
+      )}
     </div>
   );
 }

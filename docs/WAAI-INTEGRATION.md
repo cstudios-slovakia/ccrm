@@ -216,7 +216,7 @@ otherwise — WAAI's client depends on them:
 | `GET /ping` | any | `{client, scopes, server_time}` |
 | `GET /users` | `users:read` | Active users: `id` (string), `name`, `email`, `phone` (from the linked employee, raw). |
 | `GET /directory?updated_since=&after_id=&limit=` | `directory:read` | Paged, ordered by `(updated_at, id)`. Items: `{type:'lead', id, name, is_client, client_id, phone, country, archived, updated_at, url}` and `{type:'project', id, name, client_id, lead_id, contact_phone, contact_lead_ids[], status, archived, updated_at, url}`. `is_client` follows the `client-*`/`adjustment>0` rule; `contact_lead_ids` are the project's "contact"-attribute values. No financial data. |
-| `PUT /tasks/external/{externalId}` | `tasks:push` | As in the bridge design, plus optional top-level `lead_id`, `project_id`, `start` (all three-way merged). |
+| `PUT /tasks/external/{externalId}` | `tasks:push` | As in the bridge design, plus optional top-level `lead_id`, `project_id`, `start`, `category` (all three-way merged). |
 | `GET /tasks/feed` | `tasks:pull` | `updated_since` (unix s), `after_id` (**string**), `limit ≤ 100`, `open_only`. |
 | `POST /tasks/lookup` | `tasks:push` or `tasks:pull` | `task_ids` (**strings**), `external_ids`; ≤ 200. |
 | `POST /tasks/{id}/complete` | `tasks:pull` | Idempotent; `requires_conclusion` without a conclusion → 422 `completion_refused`. |
@@ -232,7 +232,7 @@ assignee_ids, is_automation, updated_at`) with these CCRM specifics:
 
 - all ids are strings; `created_by`/`assignee_ids` are user ids resolved from the
   stored names (an unresolvable name is dropped, never guessed);
-- extra fields `lead_id`, `project_id`, `start` (ISO date or null);
+- extra fields `lead_id`, `project_id`, `start` (ISO date or null) and `category` (`"bug"` for a task marked as a Bug, otherwise `null`);
 - `state.code` = the stored status, `done` = `mcp_done_task_state()` rule;
 - `due.at` = `deadline` + `deadline_time` (23:59 when null) in `Europe/Bratislava`,
   `all_day = deadline_time IS NULL`;
@@ -252,6 +252,7 @@ assignee_ids, is_automation, updated_at`) with these CCRM specifics:
 | `owner_id` | `created_by` | owner user's *name*; must be one of the client's `owner_user_ids` |
 | `assignee_ids` | `owner` + `task_assignees` | names of active users; first one is `owner`; empty → the owner |
 | `lead_id` / `project_id` | `related_lead_id` / `related_project_id` | must exist; three-way merged, so a CCRM user's re-link survives |
+| `category` | `category` | optional; `"bug"` (or another short lowercase slug `[a-z0-9_-]{1,32}`) sets it, `null` or `""` clears it, an absent key leaves it alone, anything else is a 422 on `category`; three-way merged like the links. While a database has not migrated the column yet the field is ignored |
 | — | `priority` | `medium` on create, never touched again |
 | — | `external_source='waai'`, `external_url` (WAAI path), `external_meta_json` | **new server-only columns**; never in `sync.php`'s upsert list; returned by the GET for display |
 
@@ -271,7 +272,7 @@ decision D9.
 
 - **Wire shapes.** `PUT /tasks/external/{externalId}` takes `revision` (positive int), `title`,
   `description`, `status` (`open|completed`), `owner_id`, `assignee_ids`, `due {at, all_day}`,
-  top-level `start` (the old `context.start` is still read), optional `lead_id` / `project_id`
+  top-level `start` (the old `context.start` is still read), optional `lead_id` / `project_id` / `category`
   and `context {conversation, is_group, assignee_label, path}`. A `lead_id` / `project_id` key
   that is **absent** leaves the link alone; `null` clears it (when the chat changed it). User ids
   are strings (an integer is accepted and read as a string). Answers: 201 on create, 200

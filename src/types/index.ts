@@ -360,6 +360,8 @@ export interface Task {
   conclusion?: string;
   /** Expected effort, in minutes. Compared with tracked time; null when unset. */
   estimateMinutes?: number | null;
+  /** Task category: null / absent = none, "bug" = Bug. A string so more categories need no migration. */
+  category?: string | null;
   /**
    * The deadline the task was first given. Kept by the server on every save (set when the task is
    * created, or pinned to the previous date at its first postponement); never sent by a client.
@@ -371,6 +373,8 @@ export interface Task {
   firstStartedAt?: string | null;
   /** Server-maintained count of how many times this task was reopened from a done status. */
   reopenedCount?: number;
+  /** Every reopening of a finished task, oldest first: `at` is a UTC ISO instant, `by` the user's name. Written by the server only; read-only. */
+  reopens?: { at: string; by: string | null }[];
   /** Integration that pushed the task in over the machine API ("waai"); read-only, set by the server. */
   externalSource?: string | null;
   /** Path of the source chat in that system (WhatsApp: `/c/<id>`); read-only. */
@@ -448,6 +452,8 @@ export interface RecurringTaskTemplate {
   isLocking?: boolean;
   requiresConclusion?: boolean;
   estimateMinutes?: number | null;
+  /** Copied onto every occurrence; see `Task.category`. */
+  category?: string | null;
   emailReminders?: Record<string, TaskEmailReminder>;
   tags?: string[];
   recurrence: TaskRecurrence;
@@ -744,6 +750,21 @@ export interface ProjectGanttRow {
  */
 export type ProjectStatus = string;
 
+/**
+ * One acceptance criterion of a project. `createdAt` / `removedAt` are UTC ISO 8601 with `Z`; `removedAt` is
+ * null while it is live. The server owns the stamps (`createdAt`, `createdBy`, `removedAt`, `removedBy`);
+ * the browser's are provisional until the next pull. `createdAt` is null only for a stored entry without one.
+ */
+export interface AcceptanceCriterion {
+  id: string;
+  title: string;
+  done: boolean;
+  createdAt: string | null;
+  createdBy: string | null;
+  removedAt: string | null;
+  removedBy: string | null;
+}
+
 export interface Project {
   id: string;
   projectTypeId: string;
@@ -834,6 +855,28 @@ export interface Project {
    * Absent on save means "unchanged", so an older client cannot wipe it.
    */
   contactPhone?: string | null;
+  /**
+   * Acceptance criteria of the project; a removed one stays in the list (soft removal, `removedAt`).
+   * Stored whole in `projects.acceptance_criteria_json`; absent from a payload means "unchanged".
+   * Rules: utils/acceptanceCriteria.ts.
+   */
+  acceptanceCriteria?: AcceptanceCriterion[];
+  /**
+   * When the scope was approved (UTC ISO 8601 with `Z`); null = not approved. Criteria created after it are
+   * scope creep. Read-only: the server stamps it through its own action (api/project_scope_action.php); a
+   * project save never carries it.
+   */
+  scopeApprovedAt?: string | null;
+  /** Name of the user who approved the scope. Read-only, like `scopeApprovedAt`. */
+  scopeApprovedBy?: string | null;
+  /**
+   * The GitHub repository this project is paired with, "owner/name"; pushes to it are stored by the
+   * webhook (api/github_webhook.php). Normalised by the server (utils/githubRepo.ts has the same rules);
+   * absent on save means "unchanged", null or "" clears it.
+   */
+  githubRepo?: string | null;
+  /** The server branch whose pushes count; empty or null = the repository's default branch. Same save rules. */
+  githubBranch?: string | null;
   /** Hours the project is expected to take. Null while unset. */
   hoursBudget?: number | null;
   /** Default billable hourly rate for time logged on this project. */
@@ -1377,6 +1420,8 @@ export interface Employee {
   salaryType?: 'monthly' | 'daily' | 'hourly';
   salaryAmount?: number;
   salaryDueDay?: number | null;
+  /** Contracted hours per day (part-time). Null = the company's hoursPerDay time tracking setting. */
+  hoursPerDay?: number | null;
   vacationAllowances?: Record<string, number>;
   timeTrackingProvider?: 'toggl' | 'clockify' | 'manual';
   timeTrackingUserId?: string | null;

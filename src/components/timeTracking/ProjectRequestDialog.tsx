@@ -34,7 +34,11 @@ export function ProjectRequestDialog({ deps }: { deps: TimeDeps }) {
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
             <h3 className="type-panel-title text-gray-900">{t("Which project is this for?", "Pre ktorý projekt to je?", "Melyik projekthez tartozik?")}</h3>
-            <p className="type-meta text-gray-500">{t("Pick a project to stop the timer.", "Vyberte projekt na zastavenie časovača.", "Az időzítő leállításához válasszon projektet.")}</p>
+            <p className="type-meta text-gray-500">
+              {projectRequest.purpose === "start"
+                ? t("Pick a project to start the timer.", "Vyberte projekt na spustenie časovača.", "Az időzítő indításához válasszon projektet.")
+                : t("Pick a project to stop the timer.", "Vyberte projekt na zastavenie časovača.", "Az időzítő leállításához válasszon projektet.")}
+            </p>
           </div>
           <button type="button" onClick={() => projectRequest.resolve(null)} aria-label={t("Cancel", "Zrušiť", "Mégse")} className="rounded-md p-1 text-gray-400 hover:bg-gray-100 cursor-pointer">
             <X className="size-5" />

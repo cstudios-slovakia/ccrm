@@ -14,6 +14,7 @@ import {
 import type { Language } from "../utils/translations";
 import type { ProjectType } from "../types";
 import { projectStatusOptions } from "../utils/projects";
+import { taskCategoryOptions } from "../utils/taskCategory";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { CustomSelect } from "./ui/CustomSelect";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
@@ -3196,6 +3197,17 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                     icon={<User className="h-3.5 w-3.5 text-gray-400 shrink-0" />}
                                     placeholder={t("Unassigned", "Nepriradené", "Nincs felelős")}
                                     options={assigneeOptions}
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="type-overline text-slate-400">{t("Category", "Kategória", "Kategória")}</label>
+                                <div className="mt-0.5">
+                                  <CustomSelect
+                                    size="sm"
+                                    value={node.data.category || ""}
+                                    onChange={(v) => updateActionField("category", v)}
+                                    options={taskCategoryOptions(t)}
                                   />
                                 </div>
                               </div>

@@ -2,27 +2,30 @@ import React, { useState, useMemo, useCallback } from "react";
 import { SectionIcon } from "./icons/SectionIcon";
 import {
   Award, Compass, TrendingUp, Users, Target, PieChart,
-  MapPin, Coins, Crown, Medal, Flame, Trophy, Briefcase, X, Maximize2,
-  Layers, Landmark
+  MapPin, Crown, Medal, Flame, Trophy, Briefcase,
+  Layers
 } from "lucide-react";
-import type { Lead, Project, ProjectType, FinancialRecord, FinancialCategory, InvoiceOffer, ProjectStatus } from "../types";
+import type { Lead, Project, ProjectType, FinancialRecord, FinancialCategory, InvoiceOffer, ProjectStatus, Task, Employee, Ticket, TicketStatusDef, TicketSettingsConfig } from "../types";
 import { isPipelineLead, isWonLeadState, leadKpis } from "../utils/dashboardMetrics";
-import { financeForPeriod, financeRevenue, type FinanceInput, type Period } from "../utils/marketingRoi";
-import { MarketingRoiSummary, MarketingRoiTab, type AdCampaign } from "./dashboard/MarketingRoiTab";
+import { type FinanceInput, type Period } from "../utils/marketingRoi";
+import { MarketingRoiTab, type AdCampaign } from "./dashboard/MarketingRoiTab";
 import { getTranslation } from "../utils/translations";
 import { isLiveInvoiceStatus, type OfferStatusDef } from "../utils/offerStatuses";
 import type { Language } from "../utils/translations";
 import { resolveCurrencySymbol, resolveCurrencyPosition, formatMoney, currencyForRegion } from "../utils/currency";
 import { projectBilling, resolveProjectValue } from "../utils/projectBilling";
-import { formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
-import { liftAccent, readableOn } from "../utils/accentColor";
+import { formatTimestampLocalized } from "../utils/localTime";
 import { isClosedLeadState } from "../utils/leadSla";
 import { openProjectStatuses, projectStatusColor, projectStatusLabel } from "../utils/projects";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
-import { GroupedStatusValueEquationStats, type StatusStatGroup, type StatusStatItem, type StatusStatDetailRow } from "./GroupedStatusValueEquationStats";
+import type { StatusStatGroup, StatusStatItem, StatusStatDetailRow } from "./GroupedStatusValueEquationStats";
+import { PerformanceOverview } from "./dashboard/performance/PerformanceOverview";
+import { PeriodControl } from "./dashboard/performance/PeriodControl";
+import { usePerformanceOverview } from "./dashboard/performance/usePerformanceOverview";
+import { periodRangeLabel } from "../utils/performance/labels";
+import { periodPresetFromName, presetNameOf, presetRange } from "../utils/performance/period";
 import { useUserPref } from "../utils/userPrefs";
-import { StatGrid, PageHeader, Tabs } from "./layout";
-import { entityAccentStyle } from "../utils/entityAccent";
+import { PageHeader, Tabs } from "./layout";
 import { PRODUCT_NAME } from "../utils/brand";
 
 interface DashboardProps {
@@ -47,6 +50,16 @@ interface DashboardProps {
   invoicesOffers?: InvoiceOffer[];
   /** Settings → Invoice statuses: which invoices still count as billed. */
   invoiceStatuses?: OfferStatusDef[];
+  /** The rest feed the performance overview tab. */
+  tasks?: Task[];
+  taskStates?: string[];
+  employees?: Employee[];
+  tickets?: Ticket[];
+  ticketStatuses?: TicketStatusDef[];
+  ticketSettings?: TicketSettingsConfig;
+  offerStatuses?: OfferStatusDef[];
+  /** Hides the Finance section and the project profitability when false. */
+  canSeeFinancials?: boolean;
 }
 
 const Sparkline: React.FC<{ points: number[]; color: string }> = ({ points, color }) => {
@@ -251,10 +264,7 @@ const getPresetTranslationKey = (name: string) => {
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  systemName,
   leads,
-  leadSourceColors = {},
-  leadCategoryColors = {},
   leadStageGroups = {},
   leadStates = [],
   leadStateColors = {},
@@ -269,7 +279,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
   financialMode = "connected",
   financialSimplifiedTable = {},
   invoicesOffers = [],
-  invoiceStatuses
+  invoiceStatuses,
+  tasks = [],
+  taskStates = [],
+  employees = [],
+  tickets = [],
+  ticketStatuses = [],
+  ticketSettings,
+  offerStatuses,
+  canSeeFinancials = true,
 }) => {
   const projectStatuses = useProjectStatuses();
   // Inline translation helper for short UI strings
@@ -320,7 +338,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       return {
         key: stateLower,
-        name: state.toUpperCase(),
+        name: state,
         value: val,
         count: leadsInState.length,
         color: col,
@@ -401,7 +419,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       return {
         key: status,
-        name: projectStatusLabel(status, t, projectStatuses).toUpperCase(),
+        name: projectStatusLabel(status, t, projectStatuses),
         value: statusInvoicableVal,
         count: projectsInStatus.length,
         color: projectStatusColor(status, projectStatuses),
@@ -445,37 +463,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Sub-tabs active status inside Dashboard
   const [activeTab, setActiveTab] = useState<"overview" | "campaigns" | "crm" | "clients">("overview");
 
-  // Equation panel preferences
-  const [storedEquationView, setEquationView] = useUserPref("dashboardEquationView");
-  const [equationCounts, setEquationCounts] = useUserPref("dashboardEquationCounts");
+  // Statuses the user unticked in "Na fakturovanie" (`<group>:<status>` keys)
   const [storedEquationExcluded, setEquationExcluded] = useUserPref("dashboardEquationExcluded");
-  const equationView = storedEquationView === "summary" ? "summary" : "detail";
   const equationExcluded = Array.isArray(storedEquationExcluded) ? storedEquationExcluded : [];
-
-  // Funnel metric state (can be "count" or "value")
-  const [funnelMetric, setFunnelMetric] = useState<"count" | "value">("count");
+  const toggleEquationStatus = (id: string) =>
+    setEquationExcluded(equationExcluded.includes(id) ? equationExcluded.filter((key) => key !== id) : [...equationExcluded, id]);
 
   // Chart inspector states
   const [inspectingChart, setInspectingChart] = useState<InspectableSparkline | null>(null);
   const [isClosingInspector, setIsClosingInspector] = useState(false);
   const [hoveredPointIdx, setHoveredPointIdx] = useState<number | null>(null);
 
-  // Right side lead details drawer states
-  const [selectedLeadForDrawer, setSelectedLeadForDrawer] = useState<Lead | null>(null);
-  const [isClosingLeadDrawer, setIsClosingLeadDrawer] = useState(false);
+  // One clock per render pass (refreshed once a minute), shared by the period and the overview
+  const clockMinute = Math.floor(Date.now() / 60_000);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const now = useMemo(() => new Date(), [clockMinute]);
 
-  const closeLeadDrawer = () => {
-    setIsClosingLeadDrawer(true);
-    setTimeout(() => {
-      setSelectedLeadForDrawer(null);
-      setIsClosingLeadDrawer(false);
-    }, 350);
-  };
-
-  // Interval date range filter states (defaults to all time initially)
-  const [filterStartDate, setFilterStartDate] = useState<Date | null>(null);
-  const [filterEndDate, setFilterEndDate] = useState<Date | null>(null);
-  const [filterPresetName, setFilterPresetName] = useState<string>("All Time");
+  // Interval date range filter states (opens on "This month")
+  const [filterStartDate, setFilterStartDate] = useState<Date | null>(() => presetRange("month", new Date()).start);
+  const [filterEndDate, setFilterEndDate] = useState<Date | null>(() => presetRange("month", new Date()).end);
+  const [filterPresetName, setFilterPresetName] = useState<string>(() => presetNameOf("month"));
   const [isDatePickerOpen, setIsDatePickerOpen] = useState<boolean>(false);
 
   // PM comparison aspect state
@@ -509,17 +516,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     });
   }, [leads, filterStartDate, filterEndDate]);
 
-  // Projects sorted by valuation descending for the Valuation table
-  const sortedProjects = useMemo(() => {
-    return [...filteredLeads]
-      .filter(l => l.value > 0)
-      .sort((a, b) => b.value - a.value);
-  }, [filteredLeads]);
-
-  const totalProjectsSum = useMemo(() => {
-    return sortedProjects.reduce((acc, l) => acc + l.value, 0);
-  }, [sortedProjects]);
-
   // Paid Meta/Google campaigns from Settings → Integrations → Ads.
   const campaigns = useMemo<AdCampaign[]>(() => propCampaigns || [], [propCampaigns]);
 
@@ -540,11 +536,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const wonLeads = useMemo(() => pipelineLeads.filter(l => isWon(l.status)), [pipelineLeads, isWon]);
   const activePipelineLeads = useMemo(() => pipelineLeads.filter(l => isOpen(l.status)), [pipelineLeads, isOpen]);
   const wonValue = kpis.won.value;
-  const activePipelineValue = kpis.active.value;
   const averageDealValue = wonLeads.length > 0 ? wonValue / wonLeads.length : 0;
 
-  // Real revenue: paid income from Finance (ledger or simplified table, whichever Finance runs
-  // on), over the same date filter as the rest of the dashboard.
+  // The date filter as Finance bounds (ledger or simplified table, whichever Finance runs on).
   const pad2 = (n: number) => String(n).padStart(2, "0");
   const isoOf = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   const period = useMemo<Period>(
@@ -557,68 +551,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [financialMode, financialRecords, financialCategories, financialSimplifiedTable],
   );
-  const financeIncome = useMemo(() => financeRevenue(financeForPeriod(financeInput, period)), [financeInput, period]);
   const roiProps = {
     t, money, period, allLeads: leads, pipelineLeads, isWon, finance: financeInput,
     invoices: invoicesOffers, invoiceStatuses, adCampaigns: campaigns,
   };
 
-  // --- SPARKLINE COORDINATES GENERATORS ---
+  // Performance overview tab and the period control of the header
+  const overview = usePerformanceOverview({
+    today: now, active: activeTab === "overview", language: systemLanguage, presetName: filterPresetName, startDate: filterStartDate, endDate: filterEndDate,
+    canSeeFinancials, leads, leadStageGroups, leadStateParents,
+    invoicesOffers, invoiceStatuses, offerStatuses,
+    financeInput, financialRecords, uncategorizedLabel: t("Uncategorized", "Bez kategórie", "Kategória nélkül"),
+    invoicingGroups: dashboardEquationGroups, excludedStatusKeys: equationExcluded,
+    projects, projectTypes, projectStatuses, defaultCurrency,
+    tasks, taskStates, employees, tickets, ticketStatuses, ticketSettings,
+  });
+
   const sortedLeads = useMemo(() => {
     return [...pipelineLeads]
       .filter(l => l.createdAt)
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   }, [pipelineLeads]);
-
-  const revenuePoints = useMemo(() => {
-    let sum = 0;
-    const points: number[] = [];
-    sortedLeads.forEach(l => {
-      if (isWon(l.status)) {
-        sum += l.value;
-      }
-      points.push(sum);
-    });
-    return points.length > 1 ? points : [0, 0];
-  }, [sortedLeads, isWon]);
-
-  const pipelinePoints = useMemo(() => {
-    let sum = 0;
-    const points: number[] = [];
-    sortedLeads.forEach(l => {
-      if (isOpen(l.status)) {
-        sum += l.value;
-      }
-      points.push(sum);
-    });
-    return points.length > 1 ? points : [0, 0];
-  }, [sortedLeads, isOpen]);
-
-  const leadCountPoints = useMemo(() => {
-    let count = 0;
-    const points: number[] = [];
-    sortedLeads.forEach(l => {
-      if (isOpen(l.status)) {
-        count += 1;
-      }
-      points.push(count);
-    });
-    return points.length > 1 ? points : [0, 0];
-  }, [sortedLeads, isOpen]);
-
-  const conversionPoints = useMemo(() => {
-    let wonCount = 0;
-    let totalCount = 0;
-    const points: number[] = [];
-    sortedLeads.forEach(l => {
-      totalCount += 1;
-      if (isWon(l.status)) {
-        wonCount += 1;
-      }
-      points.push((wonCount / totalCount) * 100);
-    });
-    return points.length > 1 ? points : [0, 0];
-  }, [sortedLeads, isWon]);
 
   // Project Managers leaderboard
   const pmLeaderboard = useMemo(() => {
@@ -807,81 +760,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const currencyValuePrefix = currencyPosition === "suffix" ? "" : currencySymbol;
   const currencyValueSuffix = currencyPosition === "suffix" ? ` ${currencySymbol}` : "";
 
-  const handleInspectChart = (type: "revenue" | "pipeline" | "leads" | "conversion" | "pm", pmName?: string) => {
+  const handleInspectChart = (type: "pm", pmName?: string) => {
     let title = "";
     let color = "";
     let valuePrefix = "";
     let valueSuffix = "";
     let details: InspectableDataPoint[] = [];
 
-    if (type === "revenue") {
-      title = t("Won Deals Value Trend", "Vývoj hodnoty vyhratých obchodov", "Megnyert üzletek értékének alakulása");
-      color = "#10b981";
-      valuePrefix = currencyValuePrefix;
-      valueSuffix = currencyValueSuffix;
-      let sum = 0;
-      details = sortedLeads
-        .filter(l => isWon(l.status))
-        .map(l => {
-          sum += l.value;
-          return {
-            label: l.name,
-            value: l.value,
-            cumulative: sum,
-            date: l.createdAt ? l.createdAt.substring(0, 16).replace("T", " ") : "N/A"
-          };
-        });
-    } else if (type === "pipeline") {
-      title = t("Active Pipeline Chronological Trend", "Chronologický vývoj aktívneho pipeline", "Aktív pipeline kronologikus trendje");
-      color = "#6366f1";
-      valuePrefix = currencyValuePrefix;
-      valueSuffix = currencyValueSuffix;
-      let sum = 0;
-      details = sortedLeads
-        .filter(l => isOpen(l.status))
-        .map(l => {
-          sum += l.value;
-          return {
-            label: l.name,
-            value: l.value,
-            cumulative: sum,
-            date: l.createdAt ? l.createdAt.substring(0, 16).replace("T", " ") : "N/A"
-          };
-        });
-    } else if (type === "leads") {
-      title = t("Lead Growth Chronological Trend", "Chronologický vývoj rastu záujemcov", "Érdeklődők növekedésének kronologikus trendje");
-      color = "#3b82f6";
-      valueSuffix = t(" leads", " záujemcov", " érdeklődő");
-      let count = 0;
-      details = sortedLeads.filter(l => isOpen(l.status)).map(l => {
-        count += 1;
-        return {
-          label: l.name,
-          value: 1,
-          cumulative: count,
-          date: l.createdAt ? l.createdAt.substring(0, 16).replace("T", " ") : "N/A"
-        };
-      });
-    } else if (type === "conversion") {
-      title = t("Lead-to-Client Conversion Rolling Rate", "Priebežná miera konverzie záujemca → klient", "Érdeklődő–ügyfél konverziós ráta");
-      color = "#f43f5e";
-      valueSuffix = "%";
-      let wonCount = 0;
-      let totalCount = 0;
-      details = sortedLeads.map(l => {
-        totalCount += 1;
-        const won = isWon(l.status);
-        if (won) {
-          wonCount += 1;
-        }
-        return {
-          label: `${l.name} (${won ? t("Won", "Vyhraný", "Megnyert") : t("Registered", "Registrovaný", "Regisztrált")})`,
-          value: won ? 100 : 0,
-          cumulative: Number(((wonCount / totalCount) * 100).toFixed(1)),
-          date: l.createdAt ? l.createdAt.substring(0, 16).replace("T", " ") : "N/A"
-        };
-      });
-    } else if (type === "pm" && pmName) {
+    if (type === "pm" && pmName) {
       title = `${pmName} - ${t("Sales Performance Trend", "Vývoj predajnej výkonnosti", "Értékesítési teljesítmény trendje")}`;
       color = "#f59e0b";
       valuePrefix = currencyValuePrefix;
@@ -942,27 +828,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
       <PageHeader
         icon={<SectionIcon id="overview" />}
         title={getTranslation(systemLanguage, "header.title.dashboard")}
-        subtitle={<>{systemName} &bull; {getTranslation(systemLanguage, "dashboard.subtitle")}</>}
+        subtitle={t("Finance, sales, projects, team and support for the selected period", "Financie, obchod, projekty, tím a podpora za zvolené obdobie", "Pénzügyek, értékesítés, projektek, csapat és támogatás a kiválasztott időszakra")}
         actions={<>
-          {/* Date Interval Selector Dropdown */}
+          {/* Period switch and date picker */}
           <div className="relative">
-            <button
-              type="button"
-              onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-gray-200 hover:border-entity rounded-lg type-overline font-heading text-gray-800 transition-all shadow-sm cursor-pointer select-none"
-            >
-              <Compass className="h-4 w-4 text-purple-600 animate-spin-slow" />
-              {getTranslation(systemLanguage, "dashboard.analyze_interval")} <span className="text-purple-600 font-bold">{getTranslation(systemLanguage, getPresetTranslationKey(filterPresetName) as any) || (filterPresetName === "Custom Range" ? t("Custom Range", "Vlastný rozsah", "Egyéni tartomány") : filterPresetName)}</span>
-              {filterStartDate && (
-                <span className="text-gray-400 font-bold ml-1">
-                  ({filterStartDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                  {filterEndDate ? ` - ${filterEndDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : t(" - Ongoing", " - Prebieha", " - Folyamatban")}
-                </span>
-              )}
-            </button>
+            <PeriodControl
+              preset={periodPresetFromName(filterPresetName)}
+              onPreset={(preset) => {
+                const range = presetRange(preset, now);
+                setFilterStartDate(range.start);
+                setFilterEndDate(range.end);
+                setFilterPresetName(presetNameOf(preset));
+                setIsDatePickerOpen(false);
+              }}
+              rangeLabel={periodRangeLabel(overview.period, systemLanguage)}
+              onOpenPicker={() => setIsDatePickerOpen(!isDatePickerOpen)}
+              pickerOpen={isDatePickerOpen}
+              language={systemLanguage}
+            />
 
             {isDatePickerOpen && (
-              <div className="absolute top-12 right-0 bg-white border-2 border-gray-100 shadow-xl rounded-lg p-6 flex flex-col ws-md:flex-row gap-6 z-[999] animate-in fade-in slide-in-from-top-4 duration-200 w-full ws-md:w-210">
+              <div className="absolute top-full mt-1 right-0 bg-white border border-gray-100 shadow-xl rounded-lg p-6 flex flex-col ws-md:flex-row gap-6 z-[999] animate-in fade-in slide-in-from-top-4 duration-200 w-full ws-md:w-210">
           
                 {/* Left sidebar: Preset quick intervals */}
                 <div className="w-full ws-md:w-65 border-r border-gray-100 pr-4 flex flex-col space-y-1.5 justify-start text-left shrink-0">
@@ -1139,21 +1025,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </>}
       />
 
-      {/* Combined Grouped Status Equation Statistics (Leads + Projects + Remaining Invoicable) */}
-      {dashboardEquationGroups.length > 0 && (
-        <GroupedStatusValueEquationStats
-          groups={dashboardEquationGroups}
-          currency={currencyCode}
-          language={systemLanguage}
-          view={equationView}
-          onViewChange={setEquationView}
-          showCounts={equationCounts !== false}
-          onShowCountsChange={setEquationCounts}
-          excludedKeys={equationExcluded}
-          onExcludedKeysChange={setEquationExcluded}
-        />
-      )}
-
       {/* Navigation sub-tabs */}
       <Tabs
         value={activeTab}
@@ -1166,441 +1037,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
         ]}
       />
 
-      {/* --- TAB 1: EXECUTIVE OVERVIEW --- */}
+      {/* --- TAB 1: PERFORMANCE OVERVIEW --- */}
       {activeTab === "overview" && (
-        <div className="space-y-6">
-          {/* Key Metric cards */}
-          <StatGrid count={5} className="animate-in slide-in-from-bottom duration-300">
-            <div 
-              onClick={() => handleInspectChart("revenue")}
-              className="bg-white p-5 rounded-lg border border-gray-200 shadow-xs flex items-center gap-4 hover:border-emerald-300 cursor-pointer transition-colors relative overflow-hidden group"
-            >
-              <div className="h-11 w-11 rounded-md bg-emerald-600 text-white flex items-center justify-center text-title shadow-2xs relative z-20 shrink-0">
-                <Coins className="h-5 w-5" />
-              </div>
-              <div className="flex flex-col relative z-20 min-w-0">
-                <span className="type-overline text-emerald-700">{getTranslation(systemLanguage, "dashboard.kpi.won_value")}</span>
-                <span className="type-metric text-gray-900">{money(wonValue)}</span>
-                <span className="text-micro text-emerald-600 font-bold flex items-center gap-0.5 mt-0.5">
-                  {kpis.won.count} {t("won deals", "vyhratých obchodov", "megnyert üzlet")}
-                </span>
-              </div>
-              <Sparkline points={revenuePoints} color="#10b981" />
-            </div>
-
-            {/* Real revenue: paid income from Finance, not lead values. */}
-            <div style={entityAccentStyle("financial") as React.CSSProperties} className="bg-white p-5 rounded-lg border border-gray-200 shadow-xs flex items-center gap-4 relative overflow-hidden">
-              <div className="h-11 w-11 rounded-md bg-entity-solid text-white flex items-center justify-center text-title shadow-2xs relative z-20 shrink-0">
-                <Landmark className="h-5 w-5" />
-              </div>
-              <div className="flex flex-col relative z-20 min-w-0">
-                <span className="type-overline text-entity-text">{getTranslation(systemLanguage, "dashboard.kpi.revenue")}</span>
-                <span className="type-metric text-gray-900">{money(financeIncome.paid)}</span>
-                <span className="text-micro text-entity-text font-semibold mt-0.5">
-                  {financialMode === "simplified"
-                    ? t("Income from the Finance table", "Príjmy z tabuľky Financií", "Bevételek a Pénzügyek táblából")
-                    : t("Paid income in Finance", "Zaplatené príjmy vo Financiách", "Befolyt bevételek a Pénzügyekben")}
-                  {financeIncome.expected > 0 && (
-                    <span className="block text-gray-500 font-semibold">
-                      + {money(financeIncome.expected)} {t("still expected", "ešte očakávané", "még várható")}
-                    </span>
-                  )}
-                </span>
-              </div>
-            </div>
-
-            <div 
-              onClick={() => handleInspectChart("pipeline")}
-              style={entityAccentStyle("leads") as React.CSSProperties}
-              className="bg-white p-5 rounded-lg border border-gray-200 shadow-xs flex items-center gap-4 hover:border-entity-border cursor-pointer transition-colors relative overflow-hidden group"
-            >
-              <div className="h-11 w-11 rounded-md bg-entity-solid text-white flex items-center justify-center text-title shadow-2xs relative z-20 shrink-0">
-                <TrendingUp className="h-5 w-5" />
-              </div>
-              <div className="flex flex-col relative z-20 min-w-0">
-                <span className="type-overline text-entity-text">{t("Active Pipeline", "Aktívny pipeline", "Aktív pipeline")}</span>
-                <span className="type-metric text-gray-900">{money(activePipelineValue)}</span>
-                <span className="text-micro text-entity-text font-semibold flex items-center gap-0.5 mt-0.5">
-                  {activePipelineLeads.length} {t("Ongoing Deals", "Prebiehajúce obchody", "Folyamatban lévő üzletek")}
-                </span>
-              </div>
-              <Sparkline points={pipelinePoints} color="#4f46e5" />
-            </div>
-
-            <div 
-              onClick={() => handleInspectChart("leads")}
-              style={entityAccentStyle("clients") as React.CSSProperties}
-              className="bg-white p-5 rounded-lg border border-gray-200 shadow-xs flex items-center gap-4 hover:border-entity-border cursor-pointer transition-colors relative overflow-hidden group"
-            >
-              <div className="h-11 w-11 rounded-md bg-entity-solid text-white flex items-center justify-center text-title shadow-2xs relative z-20 shrink-0">
-                <Users className="h-5 w-5" />
-              </div>
-              <div className="flex flex-col relative z-20 min-w-0">
-                <span className="type-overline text-entity-text">{getTranslation(systemLanguage, "dashboard.kpi.leads")}</span>
-                <span className="type-metric text-gray-900">{kpis.active.count}</span>
-                <span className="text-micro text-gray-500 font-semibold flex items-center gap-0.5 mt-0.5">
-                  {t("Open in the pipeline, clients excluded", "Otvorené v pipeline, bez klientov", "Nyitott a pipeline-ban, ügyfelek nélkül")}
-                </span>
-              </div>
-              <Sparkline points={leadCountPoints} color="#059669" />
-            </div>
-
-            <div 
-              onClick={() => handleInspectChart("conversion")}
-              className="bg-white p-5 rounded-lg border border-gray-200 shadow-xs flex items-center gap-4 hover:border-rose-300 cursor-pointer transition-colors relative overflow-hidden group"
-            >
-              <div className="h-11 w-11 rounded-md bg-rose-600 text-white flex items-center justify-center text-title shadow-2xs relative z-20 shrink-0">
-                <Target className="h-5 w-5" />
-              </div>
-              <div className="flex flex-col relative z-20 min-w-0">
-                <span className="type-overline text-rose-700">{getTranslation(systemLanguage, "dashboard.kpi.conversion")}</span>
-                <span className="type-metric text-gray-900">{kpis.conversionPct.toFixed(1)} %</span>
-                <span className="text-micro text-rose-600 font-semibold flex items-center gap-0.5 mt-0.5">
-                  {t(`${kpis.won.count} of ${kpis.total} leads won`, `${kpis.won.count} z ${kpis.total} leadov vyhraných`, `${kpis.total} leadből ${kpis.won.count} megnyerve`)}
-                </span>
-              </div>
-              <Sparkline points={conversionPoints} color="#f43f5e" />
-            </div>
-          </StatGrid>
-
-          <div className="grid grid-cols-1 ws-lg:grid-cols-12 gap-6">
-            {/* Playful Pipeline Funnel Graph */}
-            <div className="ws-lg:col-span-7  p-6 rounded-lg border-2 border-entity-border bg-gradient-to-br from-indigo-50/20 to-purple-50/20 shadow-xl space-y-6 flex flex-col justify-betweentransition-transform duration-300">
-              <div className="flex flex-col ws-sm:flex-row justify-between ws-sm:items-center gap-4 border-b border-entity-border pb-3">
-                <h3 className="text-ui font-heading font-bold text-gray-900 flex items-center gap-1.5">
-                  <Target className="h-4 w-4 text-entity-text animate-pulse" /> {t("Pipeline Funnel Graph", "Graf predajného lievika", "Értékesítési tölcsér grafikon")}
-                </h3>
-                
-                <div className="flex items-center gap-2">
-                  <div className="flex bg-gray-200/60 p-0.5 rounded-md border border-gray-300/40 gap-0.5 select-none shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setFunnelMetric("count")}
-                      className={`px-3 py-1 rounded-lg type-overline transition-all cursor-pointer ${
-                        funnelMetric === "count"
-                          ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10"
-                          : "text-gray-500 hover:text-gray-800 hover:bg-gray-100/50"
-                      }`}
-                    >
-                      {t("Count", "Počet", "Darab")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFunnelMetric("value")}
-                      className={`px-3 py-1 rounded-lg type-overline transition-all cursor-pointer ${
-                        funnelMetric === "value"
-                          ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10"
-                          : "text-gray-500 hover:text-gray-800 hover:bg-gray-100/50"
-                      }`}
-                    >
-                      {t("Value", "Hodnota", "Érték")} ({currencySymbol})
-                    </button>
-                  </div>
-                  <span className="type-overline text-entity-text bg-indigo-100/60 px-2.5 py-1.5 rounded-md border border-entity-border shrink-0">
-                    {t("Flow Analytics", "Analýza toku", "Folyamatelemzés")}
-                  </span>
-                </div>
-              </div>
-              
-              {/* Horizontal Funnel Diagram utilizing SVG polygons */}
-              <div className="space-y-6 pt-2 w-full">
-                {(() => {
-                  const openStates = leadStates.filter(s => {
-                    const isSubstate = !!leadStateParents[s.toLowerCase()];
-                    if (isSubstate) return false;
-                    const grp = leadStageGroups[s.toLowerCase()] || "in_progress";
-                    return grp === "new" || grp === "in_progress";
-                  });
-
-                  if (openStates.length === 0) {
-                    return (
-                      <div className="h-44 flex items-center justify-center text-ui font-bold text-gray-400">
-                        {t("No active pipeline stages defined", "Nie sú definované žiadne aktívne fázy pipeline", "Nincsenek aktív pipeline szakaszok meghatározva")}
-                      </div>
-                    );
-                  }
-
-                  const stageData = openStates.map(s => {
-                    const count = pipelineLeads.filter(l => l.status.toLowerCase() === s.toLowerCase() || leadStateParents[l.status.toLowerCase()] === s.toLowerCase()).length;
-                    const value = pipelineLeads.filter(l => l.status.toLowerCase() === s.toLowerCase() || leadStateParents[l.status.toLowerCase()] === s.toLowerCase()).reduce((sum, l) => sum + l.value, 0);
-                    const metricVal = funnelMetric === "count" ? count : value;
-                    const color = leadStateColors[s.toLowerCase()] || "#6366f1";
-                    return { name: s, count, value, metricVal, color };
-                  });
-
-                  const totalMetricSum = stageData.reduce((acc, s) => acc + s.metricVal, 0);
-
-                  // Calculate viewBox parameters
-                  const N = stageData.length;
-                  const viewBoxWidth = Math.max(600, N * 95);
-                  const viewBoxHeight = 200;
-                  const leftBound = 10;
-                  const rightBound = viewBoxWidth - 10;
-                  const totalAvailable = rightBound - leftBound;
-                  const gap = 6;
-                  const totalGaps = (N - 1) * gap;
-                  const distributableWidth = totalAvailable - totalGaps;
-                  const minSegmentWidth = 70;
-                  const totalMinWidths = N * minSegmentWidth;
-                  const remainingWidth = Math.max(0, distributableWidth - totalMinWidths);
-
-                  // Funnel Heights
-                  const maxH = 180;
-                  const minH = 45;
-
-                  // Render and coordinate arrays
-                  let currentX = leftBound;
-                  const renderedSegments: React.ReactNode[] = [];
-                  const maxMetricVal = Math.max(...stageData.map(s => s.metricVal));
-
-                  stageData.forEach((stage, idx) => {
-                    const w = totalMetricSum > 0 
-                      ? minSegmentWidth + (stage.metricVal / totalMetricSum) * remainingWidth
-                      : distributableWidth / N;
-
-                    const X_start = currentX;
-                    const X_end = X_start + w;
-                    currentX = X_end + gap;
-
-                    // Proportional height calculations for continuous flow
-                    const getStageHeight = (val: number) => {
-                      return maxMetricVal > 0 
-                        ? minH + (val / maxMetricVal) * (maxH - minH)
-                        : 120;
-                    };
-
-                    const H_left = getStageHeight(stage.metricVal);
-                    const H_right = idx < N - 1 
-                      ? getStageHeight(stageData[idx + 1].metricVal) 
-                      : Math.max(minH, H_left * 0.7);
-
-                    const TopY_start = 100 - H_left / 2;
-                    const BottomY_start = 100 + H_left / 2;
-                    const TopY_end = 100 - H_right / 2;
-                    const BottomY_end = 100 + H_right / 2;
-
-                    const pointsStr = `${X_start},${TopY_start} ${X_end},${TopY_end} ${X_end},${BottomY_end} ${X_start},${BottomY_start}`;
-
-                    const X_mid = X_start + w / 2;
-                    const H_mid = (H_left + H_right) / 2;
-
-                    const isTall = H_mid >= 85;
-                    const nameY = isTall ? 92 : 95;
-                    const valY = isTall ? 112 : 110;
-                    
-                    const displayPercent = totalMetricSum > 0 ? (stage.metricVal / totalMetricSum) * 100 : 0;
-
-                    renderedSegments.push(
-                      <g 
-                        key={stage.name} 
-                        className="cursor-pointer transition-all duration-300 hover:opacity-90 active:scale-[0.99]"
-                      >
-                        <title>{`${stage.name.toUpperCase()} - ${t("Count", "Počet", "Darab")}: ${stage.count} - ${t("Value", "Hodnota", "Érték")}: ${money(stage.value)}`}</title>
-                        <polygon 
-                          points={pointsStr} 
-                          fill={stage.color}
-                          className="transition-all duration-300 drop-shadow-md hover:drop-shadow-lg" 
-                        />
-                        {/* Stage Name */}
-                        <text 
-                          x={X_mid} 
-                          y={nameY} 
-                          textAnchor="middle" 
-                          fill="#ffffff" 
-                          className="type-overline select-none"
-                          style={{ fill: "#ffffff", fontWeight: 900 }}
-                        >
-                          {stage.name.length > 10 ? `${stage.name.substring(0, 9)}...` : stage.name}
-                        </text>
-                        {/* Primary Metric Value */}
-                        <text 
-                          x={X_mid} 
-                          y={valY} 
-                          textAnchor="middle" 
-                          fill="#ffffff" 
-                          className="text-ui font-bold select-none"
-                          style={{ fill: "#ffffff", fontWeight: 900 }}
-                        >
-                          {funnelMetric === "count" ? stage.count : money(stage.value)}
-                        </text>
-                        {/* Percentage */}
-                        {isTall && (
-                          <text 
-                            x={X_mid} 
-                            y={130} 
-                            textAnchor="middle" 
-                            fill="#ffffff" 
-                            opacity="0.8" 
-                            className="text-micro font-bold tracking-wider select-none"
-                          >
-                            {displayPercent.toFixed(0)}%
-                          </text>
-                        )}
-                      </g>
-                    );
-                  });
-
-                  return (
-                    <>
-                      <div className="w-full overflow-x-auto scrollbar-none">
-                        <svg viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`} className="w-full min-w-125 h-auto drop-shadow-xl select-none" style={{ overflow: "visible" }}>
-                          {renderedSegments}
-                        </svg>
-                      </div>
-
-                      {/* Swatches Legend matching reference visual layout */}
-                      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 pt-4 border-t border-gray-100 select-none">
-                        {stageData.map(stage => {
-                          const displayPercent = totalMetricSum > 0 ? (stage.metricVal / totalMetricSum) * 100 : 0;
-                          return (
-                            <div key={stage.name} className="flex items-center gap-2">
-                              <span className="h-3.5 w-3.5 rounded-full border border-white shadow-sm" style={{ backgroundColor: stage.color }} />
-                              <span className="type-overline text-gray-600">
-                                {stage.name}: <strong className="text-gray-800">{funnelMetric === "count" ? `${stage.count} ${t("leads", "záujemcov", "érdeklődő")}` : money(stage.value)}</strong> ({displayPercent.toFixed(1)}%)
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-
-            {/* Top performing channels */}
-            <div className="ws-lg:col-span-5  p-6 rounded-lg border border-gray-200 bg-white shadow-sm space-y-4">
-              <h3 className="text-ui font-heading font-bold text-gray-900 flex items-center gap-1.5">
-                <Compass className="h-4 w-4 text-emerald-600" /> {t("Marketing ROI by Channel", "Marketingové ROI podľa kanálov", "Marketing ROI csatornánként")}
-              </h3>
-
-              <MarketingRoiSummary {...roiProps} onOpen={() => setActiveTab("campaigns")} />
-            </div>
-          </div>
-
-          {/* Projects Valuation Leaderboard Table */}
-          <div className=" p-6 rounded-lg border border-gray-100 bg-white shadow-sm space-y-4transition-transform duration-300">
-            <div className="flex flex-col ws-sm:flex-row ws-sm:items-center ws-sm:justify-between gap-4">
-              <div className="flex flex-col">
-                <h3 className="text-ui font-heading font-bold text-gray-900 flex items-center gap-1.5">
-                  <Briefcase className="h-4 w-4 text-entity-text animate-pulse" /> {t("Projects Valuation Leaderboard", "Rebríček hodnoty projektov", "Projektek értékelési ranglistája")}
-                </h3>
-                <p className="type-overline text-gray-400 mt-0.5">
-                  {t("Active business ventures sorted by deal size & share of portfolio worth inside selected date window", "Aktívne obchodné príležitosti zoradené podľa veľkosti obchodu a podielu na hodnote portfólia vo vybranom časovom období", "Aktív üzleti lehetőségek az üzlet mérete és a portfólió értékéből való részesedés szerint rendezve a kiválasztott időszakban")}
-                </p>
-              </div>
-              
-              <div className="bg-indigo-50/50 border border-entity-border rounded-lg px-4 py-2 flex items-center gap-2.5 shrink-0 select-none">
-                <span className="type-overline text-entity-text">{t("Total Portfolio Valuation", "Celková hodnota portfólia", "Teljes portfólió értéke")}:</span>
-                <span className="text-body font-bold text-indigo-900">{money(totalProjectsSum)}</span>
-              </div>
-            </div>
-
-            <div className="max-h-90 overflow-y-auto border border-gray-100 rounded-lg bg-gray-50/20 select-none">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-white">
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-entity-text border-b-2 border-gray-100">{t("Rank", "Poradie", "Helyezés")}</th>
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-entity-text border-b-2 border-gray-100">{t("Project / Client Name", "Názov projektu / klienta", "Projekt / ügyfél neve")}</th>
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-entity-text border-b-2 border-gray-100">{t("Location", "Lokalita", "Helyszín")}</th>
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-entity-text border-b-2 border-gray-100">{t("State", "Stav", "Állapot")}</th>
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-entity-text border-b-2 border-gray-100">{t("Project Owner", "Vlastník projektu", "Projekt felelőse")}</th>
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-entity-text border-b-2 border-gray-100 text-right">{t("Value", "Hodnota", "Érték")}</th>
-                    <th className="sticky top-0 bg-white z-10 px-4 py-3.5 type-overline text-entity-text border-b-2 border-gray-100 text-right">{t("Share Of Total", "Podiel z celku", "Részesedés az összesből")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedProjects.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-ui font-bold text-gray-400">
-                        {t("No projects found within the active interval", "V aktívnom období neboli nájdené žiadne projekty", "Nincsenek projektek a kiválasztott időszakban")}
-                      </td>
-                    </tr>
-                  ) : (
-                    sortedProjects.map((p, idx) => {
-                      const sharePercent = totalProjectsSum > 0 ? (p.value / totalProjectsSum) * 100 : 0;
-                      return (
-                        <tr 
-                          key={p.id}
-                          onClick={() => {
-                            setSelectedLeadForDrawer(p);
-                            setIsClosingLeadDrawer(false);
-                          }}
-                          className="hover:bg-gray-50/80 transition-all border-b border-gray-100/50 group cursor-pointer active:scale-[0.99]"
-                        >
-                          <td className="px-4 py-3 text-ui font-bold text-gray-400 group-hover:text-entity-text transition-colors">
-                            #{idx + 1}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex flex-col">
-                              <span className="text-ui font-bold text-gray-800">{p.name}</span>
-                              <div className="flex items-center gap-1 mt-0.5">
-                                <span className="type-overline text-gray-400">{t("source", "zdroj", "forrás")}:</span>
-                                <span 
-                                  className="inline-block px-1.5 py-0.5 rounded type-overline border select-none leading-none"
-                                  style={{
-                                    backgroundColor: `${leadSourceColors[p.source.toLowerCase()] || "#10b981"}15`,
-                                    color: liftAccent(leadSourceColors[p.source.toLowerCase()] || "#10b981"),
-                                    borderColor: `${leadSourceColors[p.source.toLowerCase()] || "#10b981"}35`
-                                  }}
-                                >
-                                  {p.source}
-                                </span>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-micro font-bold text-gray-500">{p.city}</td>
-                          <td className="px-4 py-3">
-                            {(() => {
-                              const sName = p.status.toLowerCase();
-                              const parentName = leadStateParents[sName];
-                              if (parentName) {
-                                const parentColor = leadStateColors[parentName.toLowerCase()] || "#6366f1";
-                                const subColor = leadStateColors[sName] || "#38bdf8";
-                                return (
-                                  <span 
-                                    className="inline-flex items-center px-2 py-0.5 rounded-full type-overline select-none leading-none"
-                                    style={{
-                                      background: `linear-gradient(135deg, ${parentColor}, ${subColor})`,
-                                      // The gradient's midpoint is what the text
-                                      // actually sits on; a pale state colour
-                                      // needs ink, not more white.
-                                      color: readableOn(subColor)
-                                    }}
-                                  >
-                                    {parentName.toUpperCase()} &gt; {p.status.toUpperCase()}
-                                  </span>
-                                );
-                              } else {
-                                const mainColor = leadStateColors[sName] || "#6366f1";
-                                return (
-                                  <span 
-                                    className="inline-flex items-center px-2 py-0.5 rounded-full type-overline select-none leading-none"
-                                    style={{
-                                      backgroundColor: mainColor,
-                                      color: readableOn(mainColor)
-                                    }}
-                                  >
-                                    {p.status.toUpperCase()}
-                                  </span>
-                                );
-                              }
-                            })()}
-                          </td>
-                          <td className="px-4 py-3 text-micro font-bold text-gray-600">{p.owner}</td>
-                          <td className="px-4 py-3 text-ui font-bold text-gray-900 text-right">{money(p.value)}</td>
-                          <td className="px-4 py-3 text-right">
-                            <span className="text-micro font-bold text-entity-text">{sharePercent.toFixed(1)}%</span>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        <PerformanceOverview
+          data={overview}
+          language={systemLanguage}
+          currencyCode={currencyCode}
+          canSeeFinancials={canSeeFinancials}
+          now={now}
+          onToggleStatus={toggleEquationStatus}
+          onClearSelection={() => setEquationExcluded([])}
+        />
       )}
 
       {/* --- TAB 2: MARKETING ROI (newsletter, social media, paid ads) --- */}
@@ -2189,252 +1636,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               </div>
 
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Lead details right slideout drawer */}
-      {selectedLeadForDrawer && (
-        <div style={entityAccentStyle("leads") as React.CSSProperties} className="fixed inset-0 z-[9998] flex justify-end">
-          {/* Backdrop overlay */}
-          <div 
-            onClick={closeLeadDrawer}
-            className={`absolute inset-0 bg-gray-900/40 transition-opacity duration-300 ${
-              isClosingLeadDrawer ? "opacity-0 animate-fade-out" : "opacity-100 animate-fade-in"
-            }`}
-          />
-          
-          {/* Slideout panel content */}
-          <div 
-            className={`relative h-screen w-full ws-sm:w-130 bg-white border-l border-gray-200 shadow-xl flex flex-col justify-between p-6 z-[9999] transition-transform duration-300 ${
-              isClosingLeadDrawer ? "animate-slide-out-right" : "animate-slide-in-right"
-            }`}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-gray-100 pb-4 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-md bg-entity-solid text-white flex items-center justify-center font-heading font-bold text-body shadow-2xs">
-                  {selectedLeadForDrawer.name.substring(0, 2).toUpperCase()}
-                </div>
-                <div className="flex flex-col">
-                  <h3 className="text-body font-heading font-bold text-gray-900">{t("Project Details", "Detaily projektu", "Projekt részletei")}</h3>
-                  <span className="type-overline text-gray-400 mt-0.5">{t("ID", "ID", "Azonosító")}: {selectedLeadForDrawer.id}</span>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={() => {
-                    // Navigate to dedicated fullscreen view via SPA hash routing
-                    window.location.hash = "lead-" + selectedLeadForDrawer.id;
-                  }}
-                  className="h-8.5 px-3 rounded-md border border-entity-border hover:bg-entity-subtle bg-entity-subtle text-entity-text flex items-center justify-center gap-1.5 cursor-pointer transition-colors type-overline"
-                  title={t("Open in Dedicated Full Screen View", "Otvoriť v samostatnom zobrazení na celú obrazovku", "Megnyitás külön teljes képernyős nézetben")}
-                >
-                  <Maximize2 className="h-3.5 w-3.5" /> {t("Full Screen", "Celá obrazovka", "Teljes képernyő")}
-                </button>
-                
-                <button 
-                  onClick={closeLeadDrawer}
-                  className="h-8.5 w-8.5 rounded-md border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-500 hover:text-gray-800 flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-sm"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Scrollable details area */}
-            <div className="flex-1 overflow-y-auto py-6 space-y-6 scrollbar-thin pr-1 text-left">
-              {/* Financial metrics header card */}
-              <div className="p-5 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg text-white shadow-lg space-y-2.5 relative overflow-hidden shrink-0">
-                {/* Background glow decoration */}
-                <div className="absolute -bottom-10 -right-10 w-32 h-32 rounded-full bg-white/10 blur-2xl pointer-events-none" />
-                <span className="type-overline text-indigo-100 block">{t("Estimated Deal Worth", "Odhadovaná hodnota obchodu", "Becsült üzletérték")}</span>
-                <span className="type-metric block leading-none">{money(selectedLeadForDrawer.value)}</span>
-                
-                <div className="flex items-center gap-2 border-t border-white/20 pt-2.5 mt-1 text-micro font-bold text-indigo-100">
-                  <Compass className="h-3.5 w-3.5" />
-                  <span>{t("Channel", "Kanál", "Csatorna")}: </span>
-                  <span 
-                    className="px-2 py-0.5 rounded type-overline border select-none"
-                    style={{
-                      backgroundColor: `${leadSourceColors[selectedLeadForDrawer.source.toLowerCase()] || "#10b981"}25`,
-                      color: leadSourceColors[selectedLeadForDrawer.source.toLowerCase()] || "#10b981",
-                      borderColor: `${leadSourceColors[selectedLeadForDrawer.source.toLowerCase()] || "#10b981"}45`
-                    }}
-                  >
-                    {selectedLeadForDrawer.source}
-                  </span>
-                </div>
-              </div>
-
-              {/* Basic Lead Parameters */}
-              <div className="space-y-4">
-                <h4 className="type-overline text-gray-400 border-b border-gray-100 pb-2">{t("Basic Lead Data", "Základné údaje o záujemcovi", "Alapvető érdeklődői adatok")}</h4>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Status */}
-                  <div className="bg-gray-50 border border-gray-100 p-3.5 rounded-lg space-y-1">
-                    <span className="type-overline text-gray-400 block">{t("Pipeline Stage", "Fáza pipeline", "Pipeline szakasz")}</span>
-                    {(() => {
-                      const sName = selectedLeadForDrawer.status.toLowerCase();
-                      const parentName = leadStateParents[sName];
-                      if (parentName) {
-                        const parentColor = leadStateColors[parentName.toLowerCase()] || "#6366f1";
-                        const subColor = leadStateColors[sName] || "#38bdf8";
-                        return (
-                          <span 
-                            className="inline-flex items-center px-2.5 py-0.5 rounded-full type-overline select-none text-white leading-none mt-1"
-                            style={{
-                              background: `linear-gradient(135deg, ${parentColor}, ${subColor})`
-                            }}
-                          >
-                            {parentName.toUpperCase()} &gt; {selectedLeadForDrawer.status.toUpperCase()}
-                          </span>
-                        );
-                      } else {
-                        const mainColor = leadStateColors[sName] || "#6366f1";
-                        return (
-                          <span 
-                            className="inline-flex items-center px-2.5 py-0.5 rounded-full type-overline select-none text-white leading-none mt-1"
-                            style={{
-                              backgroundColor: mainColor
-                            }}
-                          >
-                            {selectedLeadForDrawer.status.toUpperCase()}
-                          </span>
-                        );
-                      }
-                    })()}
-                  </div>
-
-                  {/* Owner */}
-                  <div className="bg-gray-50 border border-gray-100 p-3.5 rounded-lg space-y-1">
-                    <span className="type-overline text-gray-400 block">{t("Project Manager", "Projektový manažér", "Projektmenedzser")}</span>
-                    <span className="text-ui font-bold text-gray-800 block mt-1">{selectedLeadForDrawer.owner}</span>
-                  </div>
-
-                  {/* City */}
-                  <div className="bg-gray-50 border border-gray-100 p-3.5 rounded-lg space-y-1">
-                    <span className="type-overline text-gray-400 block">{t("City Location", "Mesto", "Város")}</span>
-                    <span className="text-ui font-bold text-gray-800 block mt-1">{selectedLeadForDrawer.city}</span>
-                  </div>
-
-                  {/* Registered Date */}
-                  <div className="bg-gray-50 border border-gray-100 p-3.5 rounded-lg space-y-1">
-                    <span className="type-overline text-gray-400 block">{t("System Inflow Date", "Dátum zaevidovania", "Rendszerbe kerülés dátuma")}</span>
-                    <span className="text-ui font-bold text-gray-800 block mt-1">{formatDateLocalized(selectedLeadForDrawer.createdAt, systemLanguage)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Interested Categories list */}
-              <div className="space-y-4">
-                <h4 className="type-overline text-gray-400 border-b border-gray-100 pb-2">{getTranslation(systemLanguage, "profile.interested_categories")}</h4>
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {selectedLeadForDrawer.categories && selectedLeadForDrawer.categories.length > 0 ? (
-                    selectedLeadForDrawer.categories.map((cat) => {
-                      const color = leadCategoryColors[cat] || "#6366f1";
-                      return (
-                        <span 
-                          key={cat} 
-                          className="px-2.5 py-1 rounded-lg type-overline border transition-all"
-                          style={{
-                            backgroundColor: `${color}15`,
-                            color: color,
-                            borderColor: `${color}35`
-                          }}
-                        >
-                          {cat}
-                        </span>
-                      );
-                    })
-                  ) : (
-                    <span className="type-overline text-gray-400 italic">
-                      {t("No interested categories selected", "Neboli vybrané žiadne kategórie záujmu", "Nincs kiválasztott érdeklődési kategória")}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Client Profile details */}
-              <div className="space-y-4">
-                <h4 className="type-overline text-gray-400 border-b border-gray-100 pb-2">{t("Client Credentials", "Údaje o klientovi", "Ügyfél adatai")}</h4>
-                
-                <div className="space-y-3 bg-gray-50/50 border border-gray-100/40 p-4.5 rounded-lg text-caption font-semibold text-gray-500">
-                  <div className="flex justify-between items-center py-1">
-                    <span>{t("Legal Client Type", "Právny typ klienta", "Jogi ügyféltípus")}:</span>
-                    <span className="text-gray-800 type-overline">{selectedLeadForDrawer.clientType}</span>
-                  </div>
-                  {selectedLeadForDrawer.phone && (
-                    <div className="flex justify-between items-center py-1 border-t border-gray-100">
-                      <span>{t("Phone Line", "Telefón", "Telefonszám")}:</span>
-                      <strong className="text-gray-800 font-bold">{selectedLeadForDrawer.phone}</strong>
-                    </div>
-                  )}
-                  {selectedLeadForDrawer.email && (
-                    <div className="flex justify-between items-center py-1 border-t border-gray-100">
-                      <span>{t("E-mail Inbox", "E-mailová schránka", "E-mail postafiók")}:</span>
-                      <strong className="text-gray-800 font-bold select-all">{selectedLeadForDrawer.email}</strong>
-                    </div>
-                  )}
-                  {selectedLeadForDrawer.address && (
-                    <div className="flex flex-col gap-1 py-1 border-t border-gray-100 text-left">
-                      <span>{t("Mailing Address", "Korešpondenčná adresa", "Levelezési cím")}:</span>
-                      <strong className="text-gray-800 font-bold leading-normal mt-0.5">
-                        {selectedLeadForDrawer.address.street}, {selectedLeadForDrawer.address.postalCode} {selectedLeadForDrawer.address.city}, {selectedLeadForDrawer.address.country}
-                      </strong>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Timeline Activity Logs */}
-              {selectedLeadForDrawer.timeline && selectedLeadForDrawer.timeline.length > 0 && (
-                <div className="space-y-4">
-                  <h4 className="type-overline text-gray-400 border-b border-gray-100 pb-2">{getTranslation(systemLanguage, "timeline.activity")}</h4>
-                  
-                  <div className="relative border-l-2 border-gray-100 pl-5.5 ml-2.5 space-y-5 text-caption font-semibold text-gray-500">
-                    {selectedLeadForDrawer.timeline.map((event) => {
-                      let eventColor = "text-entity-text bg-indigo-50 border-entity-border";
-                      if (event.type === "phone") eventColor = "text-blue-600 bg-blue-50 border-blue-100";
-                      else if (event.type === "email") eventColor = "text-emerald-600 bg-emerald-50 border-emerald-100";
-                      else if (event.type === "offer") eventColor = "text-purple-600 bg-purple-50 border-purple-100";
-                      else if (event.type === "appointment") eventColor = "text-amber-600 bg-amber-50 border-amber-100";
-
-                      return (
-                        <div key={event.id} className="relative group text-left">
-                          {/* Timeline bullet dot */}
-                          <span className="absolute -left-7.75 top-1.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-indigo-600 ring-4 ring-indigo-50 shrink-0" />
-                          
-                          <div className="flex justify-between items-center text-micro font-bold text-gray-400">
-                            <span className="uppercase tracking-widest">{formatTimestampLocalized(event.timestamp, systemLanguage)}</span>
-                            <span className={`px-2 py-0.5 rounded type-overline border ${eventColor}`}>
-                              {getTranslation(systemLanguage, `timeline.badge.${event.type}`)}
-                            </span>
-                          </div>
-                          
-                          <div className="mt-1 bg-gray-50/40 hover:bg-gray-50 border border-gray-100 rounded-md p-3 transition-colors">
-                            <h5 className="font-bold text-gray-800 leading-snug">{event.title}</h5>
-                            <p className="text-gray-400 leading-relaxed mt-1 text-micro font-semibold">{event.content}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Action buttons footer */}
-            <div className="pt-4 border-t border-gray-100 flex gap-3 shrink-0">
-              <button 
-                onClick={closeLeadDrawer}
-                className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 hover:text-gray-800 text-gray-600 rounded-md text-ui font-bold transition-colors cursor-pointer border border-gray-200 text-center"
-              >
-                {t("Close View", "Zavrieť", "Bezárás")}
-              </button>
             </div>
           </div>
         </div>

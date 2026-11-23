@@ -219,6 +219,25 @@ function mcp_task_done_state(\PDO $pdo): string {
     return ccrm_task_done_state(is_array($states) ? $states : []) ?? 'done';
 }
 
+/**
+ * The optional 'category' argument of create_task / update_task as [write?, value]: omitted leaves the
+ * task alone, null or "" clears, a slug ("bug") sets, anything else is an argument error (the rule is
+ * ccrm_task_category_write(), the one sync.php uses). While `tasks.category` is not migrated yet a
+ * clear is a no-op and a set is refused with a clear message; no statement ever names a missing column.
+ */
+function mcp_task_category_arg(\PDO $pdo, array $args): array {
+    if (!array_key_exists('category', $args)) return [false, null];
+    $w = ccrm_task_category_checked($args);
+    if ($w === null) {
+        throw new \InvalidArgumentException("'category' must be \"bug\" (or another short lowercase slug), or null / an empty string to clear it.");
+    }
+    if (!ccrm_tasks_have_category($pdo)) {
+        if ($w[0] !== null) throw new \InvalidArgumentException("Task categories are not available on this database yet (an update is still rolling out). Try again shortly.");
+        return [false, null];
+    }
+    return [true, $w[0]];
+}
+
 function mcp_do_create_task(\PDO $pdo, array $user, array $args): array {
     $title = mcp_require_string($args, 'title');
     $deadline = mcp_require_date($args, 'deadline');
@@ -240,17 +259,20 @@ function mcp_do_create_task(\PDO $pdo, array $user, array $args): array {
     if ($leadId !== null) mcp_row_exists($pdo, 'leads', $leadId, 'Client/lead');
     if ($agencyWorkerId !== null) mcp_row_exists($pdo, 'agency_workers', $agencyWorkerId, 'Agency worker');
     if ($ticketId !== null) mcp_row_exists($pdo, 'tickets', $ticketId, 'Ticket');
+    [$catWrite, $category] = mcp_task_category_arg($pdo, $args);
     $assignees = [$owner];
     if (is_array($args['assignees'] ?? null)) {
         foreach ($args['assignees'] as $a) { if (trim((string)$a) !== '') $assignees[] = mcp_user_exists($pdo, (string)$a); }
     }
 
     $id = 'tsk_' . bin2hex(random_bytes(8));
-    mcp_tx($pdo, function () use ($pdo, $id, $title, $args, $priority, $startDate, $deadline, $time, $status, $owner, $user, $projId, $leadId, $agencyWorkerId, $ticketId, $isLocking, $requiresConclusion, $assignees) {
+    mcp_tx($pdo, function () use ($pdo, $id, $title, $args, $priority, $startDate, $deadline, $time, $status, $owner, $user, $projId, $leadId, $agencyWorkerId, $ticketId, $isLocking, $requiresConclusion, $assignees, $catWrite, $category) {
+        // The category column is named only when the database has it (mcp_task_category_arg checked).
         $pdo->prepare(
-            "INSERT INTO tasks (id, title, description, priority, start_date, deadline, deadline_time, status, owner, created_by, related_project_id, related_lead_id, related_agency_worker_id, is_locking, requires_conclusion)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" /* recurring-template: mcp creates normal tasks */
-        )->execute([$id, $title, $args['description'] ?? null, $priority, $startDate, $deadline, $time, $status, $owner, $user['name'], $projId, $leadId, $agencyWorkerId, $isLocking, $requiresConclusion]);
+            "INSERT INTO tasks (id, title, description, priority, start_date, deadline, deadline_time, status, owner, created_by, related_project_id, related_lead_id, related_agency_worker_id, is_locking, requires_conclusion"
+            . ($catWrite ? ', category' : '') . ")
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?" . ($catWrite ? ', ?' : '') . ")" /* recurring-template: mcp creates normal tasks */
+        )->execute(array_merge([$id, $title, $args['description'] ?? null, $priority, $startDate, $deadline, $time, $status, $owner, $user['name'], $projId, $leadId, $agencyWorkerId, $isLocking, $requiresConclusion], $catWrite ? [$category] : []));
         $ins = $pdo->prepare("INSERT IGNORE INTO task_assignees (task_id, user_name) VALUES (?, ?)");
         foreach (array_unique($assignees) as $a) $ins->execute([$id, $a]);
         if (!empty($args['tags']) && is_array($args['tags'])) {
@@ -276,7 +298,7 @@ function mcp_do_create_task(\PDO $pdo, array $user, array $args): array {
     // After the commit, so a rolled-back create never mails anyone.
     require_once __DIR__ . '/task_reminders.php';
     ccrm_notify_new_task_assignees($pdo, $id, $user['name']);
-    return ['success' => true, 'id' => $id, 'title' => $title, 'status' => $status, 'deadline' => $deadline, 'assignees' => array_values(array_unique($assignees))];
+    return ['success' => true, 'id' => $id, 'title' => $title, 'status' => $status, 'deadline' => $deadline, 'assignees' => array_values(array_unique($assignees)), 'category' => $catWrite ? $category : null];
 }
 
 /**
@@ -290,7 +312,26 @@ function mcp_require_conclusion_to_finish(array $row, $incoming): void {
     throw new \InvalidArgumentException("This task requires a conclusion before it can be completed. Pass 'conclusion' with a short note on how it was finished.");
 }
 
+/**
+ * TT2 phase 8 (D10.2, C14): after a committed status change, pause or stop the MCP key user's own
+ * timer on that task (never a start, never anyone else's). A timer failure never fails the task
+ * write that already committed; it is logged and left out of the answer.
+ */
+function mcp_task_status_timer(\PDO $pdo, array $user, string $taskId, string $oldStatus, string $newStatus): ?array {
+    $uid = (string)($user['id'] ?? '');
+    if ($uid === '' || $oldStatus === $newStatus) return null;
+    try {
+        require_once __DIR__ . '/time_status_lib.php';
+        $r = ccrm_tt_task_status_changed($pdo, $taskId, $oldStatus, $newStatus, $uid);
+        return $r['applied'] ? $r : null;
+    } catch (\Throwable $e) {
+        if (function_exists('ccrm_log_exception')) ccrm_log_exception($e);
+        return null;
+    }
+}
+
 function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
+    require_once __DIR__ . '/task_done.php';
     $id = mcp_require_string($args, 'id');
     $chkKind = $pdo->prepare("SELECT task_kind FROM tasks WHERE id = ? LIMIT 1"); /* recurring-template: template refusal */
     $chkKind->execute([$id]);
@@ -310,7 +351,7 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
     $assStmtBefore->execute([$id]);
     $oldAssMcp = $assStmtBefore->fetchAll(\PDO::FETCH_COLUMN) ?: [];
 
-    $sets = []; $params = []; $newOwner = null; $becameDone = false;
+    $sets = []; $params = []; $newOwner = null; $becameDone = false; $reopened = false;
     $add = function (string $col, $val) use (&$sets, &$params) { $sets[] = "`{$col}` = ?"; $params[] = $val; };
     if (array_key_exists('title', $args)) $add('title', mcp_require_string($args, 'title'));
     if (array_key_exists('description', $args)) $add('description', $args['description']);
@@ -343,6 +384,8 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
         if ($isDone || !ccrm_task_is_initial_state($status, $taskStates)) {
             $sets[] = "`first_started_at` = COALESCE(`first_started_at`, NOW())";
         }
+        // A finished task moved to an open state is a reopening (the block above already cleared who finished it and counted it); log it in reopens_json.
+        $reopened = ccrm_task_is_reopened($row, $status, $taskStates);
     }
     if (array_key_exists('requires_conclusion', $args)) $add('requires_conclusion', !empty($args['requires_conclusion']) ? 1 : 0);
     if (array_key_exists('is_locking', $args)) $add('is_locking', !empty($args['is_locking']) ? 1 : 0);
@@ -372,14 +415,23 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
     }
     $ticketId = array_key_exists('ticket_id', $args) ? trim((string)$args['ticket_id']) : null;
     if ($ticketId !== null && $ticketId !== '') mcp_row_exists($pdo, 'tickets', $ticketId, 'Ticket');
+    [$catWrite, $category] = mcp_task_category_arg($pdo, $args);
+    if ($catWrite) $add('category', $category);
     $hasTags = !empty($args['tags']) && is_array($args['tags']);
     if (!$sets && $ticketId === null && !$hasTags) return ['success' => true, 'message' => 'No fields updated'];
     $params[] = $id;
     require_once __DIR__ . '/task_activity_lib.php';
     ccrm_migrate_task_activities($pdo);
-    mcp_tx($pdo, function () use ($pdo, $sets, $params, $id, $newOwner, $becameDone, $ticketId, $args, $hasTags, $row, $oldAssMcp, $user) {
+    mcp_tx($pdo, function () use ($pdo, $sets, $params, $id, $newOwner, $becameDone, $reopened, $ticketId, $args, $hasTags, $row, $oldAssMcp, $user) {
         if ($sets) {
             $pdo->prepare("UPDATE tasks SET " . implode(', ', $sets) . " WHERE id = ? AND " . ccrm_sql_real_tasks())->execute($params);
+        }
+        if ($reopened) {
+            try { ccrm_task_record_reopen($pdo, $id, (string)($user['name'] ?? '')); }
+            catch (\PDOException $e) { // only a column not migrated yet is tolerated (the update stands); a deadlock must roll back
+                if (stripos($e->getMessage(), 'Unknown column') === false) throw $e;
+                if (function_exists('ccrm_log_exception')) ccrm_log_exception($e);
+            }
         }
         // The assignee list is the visibility rule, so a new owner must be on it.
         if ($newOwner !== null) $pdo->prepare("INSERT IGNORE INTO task_assignees (task_id, user_name) VALUES (?, ?)")->execute([$id, $newOwner]);
@@ -418,7 +470,12 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
         if ($becameDone && function_exists('mcp_crm_plus_resolve_linked_tickets')) mcp_crm_plus_resolve_linked_tickets($pdo, $id);
     });
     mcp_audit($pdo, $user, 'task_update', "Updated task $id");
-    return ['success' => true, 'id' => $id];
+    $out = ['success' => true, 'id' => $id];
+    if (isset($status) && $status !== (string)$row['status']) {
+        $timer = mcp_task_status_timer($pdo, $user, $id, (string)$row['status'], $status);
+        if ($timer !== null) $out['timer'] = $timer;
+    }
+    return $out;
 }
 
 function mcp_do_complete_task(\PDO $pdo, array $user, array $args): array {
@@ -453,7 +510,10 @@ function mcp_do_complete_task(\PDO $pdo, array $user, array $args): array {
     if (function_exists('mcp_crm_plus_bump_locking_projects')) mcp_crm_plus_bump_locking_projects($pdo, $id);
     if (function_exists('mcp_crm_plus_resolve_linked_tickets')) mcp_crm_plus_resolve_linked_tickets($pdo, $id);
     mcp_audit($pdo, $user, 'task_complete', "Marked task $id as done");
-    return ['success' => true, 'id' => $id, 'status' => $done, 'completed_by' => $user['name']];
+    $out = ['success' => true, 'id' => $id, 'status' => $done, 'completed_by' => $user['name']];
+    $timer = mcp_task_status_timer($pdo, $user, $id, (string)($row['status'] ?? ''), $done);
+    if ($timer !== null) $out['timer'] = $timer;
+    return $out;
 }
 
 // ---------------------------------------------------------------------------

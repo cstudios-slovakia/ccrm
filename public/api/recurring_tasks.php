@@ -30,6 +30,49 @@ if (!function_exists('ccrm_sql_real_tasks')) {
     }
 }
 
+if (!function_exists('ccrm_task_category_write')) {
+    /**
+     * What a saved task or template does to `tasks.category`: [value, write flag]. Key absent or value
+     * invalid keeps the stored category (flag 0); null or "" clears it; a slug ('bug') sets it.
+     */
+    function ccrm_task_category_write(array $row): array {
+        if (!array_key_exists('category', $row)) return [null, 0];
+        $raw = $row['category'];
+        if ($raw === null || $raw === '') return [null, 1];
+        $slug = is_string($raw) ? strtolower(trim($raw)) : '';
+        return preg_match('/^[a-z0-9_-]{1,32}$/', $slug) ? [$slug, 1] : [null, 0];
+    }
+}
+
+if (!function_exists('ccrm_task_category_checked')) {
+    /**
+     * Strict form of ccrm_task_category_write() for callers that answer with an error instead of keeping
+     * silently (MCP, the integration API): the same [value, write flag], or null when the key is present
+     * with a value the rule rejects. An absent key is [null, 0], a valid slug [slug, 1], null or "" [null, 1].
+     */
+    function ccrm_task_category_checked(array $row): ?array {
+        $w = ccrm_task_category_write($row);
+        return (array_key_exists('category', $row) && $w[1] === 0) ? null : $w;
+    }
+}
+
+if (!function_exists('ccrm_tasks_have_category')) {
+    /**
+     * Whether `tasks.category` exists yet. Writers outside sync.php use it to pick a statement without the
+     * column during a rollout window (the migration adds the column, never the caller): one lookup per
+     * process, no DDL.
+     */
+    function ccrm_tasks_have_category(PDO $pdo): bool {
+        static $has = null;
+        if ($has === null) {
+            $q = $pdo->prepare("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'category'");
+            $q->execute();
+            $has = (int)$q->fetchColumn() > 0;
+        }
+        return $has;
+    }
+}
+
 /**
  * Returns the date of the nth weekday of a given month.
  * $nth <= 0 or > 4 indicates the last occurrence of that weekday in the month.
@@ -440,6 +483,38 @@ function ccrm_process_recurring_tasks(PDO $pdo, ?string $onlyTemplateId = null):
     $stmt->execute($params);
     $templates = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    // `tasks.category` is copied onto each occurrence. This file never runs DDL (it can run on the
+    // poll path): SELECT * shows whether the database already has the column, and while it does not
+    // (a stale-schema window during a rollout) the occurrence is inserted without it.
+    $hasCategory = !$templates || array_key_exists('category', $templates[0]);
+    $insertOccurrenceSql = $hasCategory
+        ? "INSERT IGNORE INTO `tasks` (
+                    `id`, `title`, `description`, `priority`, `start_date`, `deadline`,
+                    `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`,
+                    `related_project_id`, `related_agency_worker_id`, `is_locking`, `archived`, `email_reminders_json`,
+                    `requires_conclusion`, `estimate_minutes`, `recurring_source_id`,
+                    `recurring_occurrence_date`, `task_kind`, `category`
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?,
+                    ?, ?, ?, 0, ?,
+                    ?, ?, ?,
+                    ?, NULL, ?
+                )" /* recurring-template: generator inserts occurrence */
+        : "INSERT IGNORE INTO `tasks` (
+                    `id`, `title`, `description`, `priority`, `start_date`, `deadline`,
+                    `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`,
+                    `related_project_id`, `related_agency_worker_id`, `is_locking`, `archived`, `email_reminders_json`,
+                    `requires_conclusion`, `estimate_minutes`, `recurring_source_id`,
+                    `recurring_occurrence_date`, `task_kind`
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?,
+                    ?, ?, ?, 0, ?,
+                    ?, ?, ?,
+                    ?, NULL
+                )"; /* recurring-template: generator inserts occurrence (column not migrated yet) */
+
     foreach ($templates as $tmpl) {
         $summary['checked']++;
         $tmplId = $tmpl['id'];
@@ -565,23 +640,9 @@ function ccrm_process_recurring_tasks(PDO $pdo, ?string $onlyTemplateId = null):
         try {
             $pdo->beginTransaction();
 
-            $insStmt = $pdo->prepare(
-                "INSERT IGNORE INTO `tasks` (
-                    `id`, `title`, `description`, `priority`, `start_date`, `deadline`,
-                    `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`,
-                    `related_project_id`, `related_agency_worker_id`, `is_locking`, `archived`, `email_reminders_json`,
-                    `requires_conclusion`, `estimate_minutes`, `recurring_source_id`,
-                    `recurring_occurrence_date`, `task_kind`
-                ) VALUES (
-                    ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?,
-                    ?, ?, ?, 0, ?,
-                    ?, ?, ?,
-                    ?, NULL
-                )" /* recurring-template: generator inserts occurrence */
-            );
+            $insStmt = $pdo->prepare($insertOccurrenceSql);
 
-            $insStmt->execute([
+            $occurrenceParams = [
                 $newTaskId,
                 $tmpl['title'],
                 $tmpl['description'] ?? '',
@@ -601,7 +662,11 @@ function ccrm_process_recurring_tasks(PDO $pdo, ?string $onlyTemplateId = null):
                 isset($tmpl['estimate_minutes']) ? (int)$tmpl['estimate_minutes'] : null,
                 $tmplId,
                 $scheduledDate,
-            ]);
+            ];
+            if ($hasCategory) {
+                $occurrenceParams[] = $tmpl['category'] ?? null;
+            }
+            $insStmt->execute($occurrenceParams);
 
             if ($insStmt->rowCount() === 1) {
                 // Copy assignees
@@ -661,6 +726,7 @@ function ccrm_process_recurring_tasks(PDO $pdo, ?string $onlyTemplateId = null):
                         'relatedAgencyWorkerId' => $tmpl['related_agency_worker_id'] ?? null,
                         'isLocking' => intval($tmpl['is_locking'] ?? 0) === 1,
                         'requiresConclusion' => intval($tmpl['requires_conclusion'] ?? 0) === 1,
+                        'category' => $tmpl['category'] ?? null,
                         'recurringSourceId' => $tmplId,
                         'recurringOccurrenceDate' => $scheduledDate,
                     ];

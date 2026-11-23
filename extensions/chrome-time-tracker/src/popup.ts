@@ -1,8 +1,9 @@
 import "./popup.css";
 import { EXTENSION_VERSION, badgeLabel, hostOnly } from "../../../src/utils/timeTrackerRules.ts";
 import { TrackerError, trackerCall } from "./client.ts";
-import { PRODUCT_NAME, t } from "./i18n.ts";
 import { loadLocal, saveLocal, type QueueItem } from "./storage.ts";
+import { PRODUCT_NAME, errorMessage, t } from "./i18n.ts";
+import { formatClock, formatCountdown, serverOffset, timeOfDay, type PresenceState } from "./presence.ts";
 
 declare const chrome: any;
 
@@ -10,6 +11,28 @@ const app = document.querySelector("#app") as HTMLElement;
 const esc = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] || ch);
 
 let clock: number | undefined;
+let questionClock: number | undefined;
+let signedInName = "";
+
+const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join("");
+const PLAY = `<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M3 1.5v9l7.5-4.5z" fill="currentColor"/></svg>`;
+const SQUARE = `<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><rect x="2" y="2" width="8" height="8" rx="1.5" fill="currentColor"/></svg>`;
+
+/** The popup header: product name, worked time today, and the person's initials. */
+function header(todaySeconds: number | null): string {
+  const today = todaySeconds === null ? "" : `<span class="muted">${esc(t("Today", "Dnes", "Ma"))} ${esc(badgeLabel(todaySeconds))}</span>`;
+  const avatar = initials(signedInName) ? `<span class="avatar" title="${esc(signedInName)}">${esc(initials(signedInName))}</span>` : "";
+  return `<div class="head"><strong class="brand">${esc(PRODUCT_NAME)}</strong><span class="head-end">${today}${avatar}</span></div>`;
+}
+
+/** What the `running` answer adds since phase 10: the presence state and the paused items. */
+interface Extras {
+  presence: PresenceState | null;
+  paused: any[];
+  offsetMs: number;
+  ccrmUrl: string;
+}
+const noExtras = (ccrmUrl: string): Extras => ({ presence: null, paused: [], offsetMs: 0, ccrmUrl });
 
 function originOf(input: string): string | null {
   try {
@@ -48,19 +71,21 @@ async function enqueue(item: Omit<QueueItem, "id">, optimistic: { startedAt: str
 
 function footer(unsorted: number, ccrmUrl: string): string {
   const link = `<a href="${esc(ccrmUrl)}/#time-tracking" target="_blank" rel="noreferrer">${esc(t(`Open ${PRODUCT_NAME}`, `Otvoriť ${PRODUCT_NAME}`, `${PRODUCT_NAME} megnyitása`))}</a>`;
-  const count = unsorted > 0 ? `<span class="amber">${esc(unsorted)} ${esc(t("unsorted", "nezaradených", "besorolatlan"))}</span>` : "<span></span>";
+  const count = unsorted > 0 ? `<span class="unsorted">${esc(unsorted)} ${esc(t("unsorted", "nezaradené", "rendezetlen"))}</span>` : "<span></span>";
   return `<div class="footer">${link}${count}</div>`;
 }
 
 function renderPair(error = ""): void {
+  window.clearInterval(clock);
   app.innerHTML = `
-    <div class="stack">
-      <h1>${esc(t(`Connect ${PRODUCT_NAME}`, `Pripojiť ${PRODUCT_NAME}`, `${PRODUCT_NAME} csatlakoztatása`))}</h1>
-      <p class="muted">${esc(t(`Enter the address of your ${PRODUCT_NAME} and the one-time code from Time tracking → Settings.`, `Zadajte adresu vášho ${PRODUCT_NAME} a jednorazový kód z Sledovanie času → Nastavenia.`, `Adja meg a ${PRODUCT_NAME} címét és az Időkövetés → Beállítások oldalon kapott egyszeri kódot.`))}</p>
+    ${header(null)}
+    <div class="body stack">
+      <h1>${esc(t(`Connect to ${PRODUCT_NAME}`, `Pripojiť k ${PRODUCT_NAME}`, `Csatlakozás: ${PRODUCT_NAME}`))}</h1>
       <label>${esc(t(`${PRODUCT_NAME} address`, `Adresa ${PRODUCT_NAME}`, `${PRODUCT_NAME} címe`))}<input id="url" placeholder="https://crm.example.com" autocomplete="url" /></label>
-      <label>${esc(t("Pairing code", "Párovací kód", "Párosítási kód"))}<input id="code" placeholder="K7Q4-9MZT" autocapitalize="characters" /></label>
+      <label>${esc(t("Pairing code", "Párovací kód", "Párosítási kód"))}<input id="code" class="mono" placeholder="K7Q4-9MZT" autocapitalize="characters" /></label>
       ${error ? `<p class="error">${esc(error)}</p>` : ""}
-      <button id="connect" class="primary" type="button">${esc(t("Connect", "Pripojiť", "Csatlakozás"))}</button>
+      <button id="connect" class="primary wide" type="button">${esc(t("Connect", "Pripojiť", "Csatlakozás"))}</button>
+      <p class="muted">${esc(t(`Use the address you open ${PRODUCT_NAME} at. Get a one-time code in ${PRODUCT_NAME} under Settings → Projects & tasks → Time tracking → Chrome extension.`, `Použite adresu, na ktorej otvárate ${PRODUCT_NAME}. Jednorazový kód získate v ${PRODUCT_NAME} v Nastavenia → Projekty a úlohy → Evidencia času → Rozšírenie Chrome.`, `Használja azt a címet, amelyen a ${PRODUCT_NAME} megnyílik. Az egyszeri kódot a ${PRODUCT_NAME} Beállítások → Projektek és feladatok → Időkövetés → Chrome-bővítmény részében kapja meg.`))}</p>
     </div>`;
   void loadLocal().then((state) => {
     const url = app.querySelector("#url") as HTMLInputElement;
@@ -96,20 +121,16 @@ async function connect(): Promise<void> {
     await showTracker();
   } catch (error) {
     const codeName = error instanceof TrackerError ? error.code : "offline";
-    const message = codeName === "code_expired" ? t("That code has expired. Ask for a new one.", "Platnosť kódu vypršala. Požiadajte o nový.", "A kód lejárt. Kérjen újat.")
-      : codeName === "code_used" ? t("That code was already used.", "Tento kód už bol použitý.", "Ezt a kódot már felhasználták.")
-      : codeName === "rate_limited" ? t("Too many attempts. Wait and try again.", "Príliš veľa pokusov. Počkajte a skúste znova.", "Túl sok próbálkozás. Várjon, majd próbálja újra.")
-      : codeName === "extension_disabled" ? t("The extension is turned off for this company.", "Rozšírenie je pre túto firmu vypnuté.", "A bővítmény ki van kapcsolva ennél a cégnél.")
-      : codeName === "offline" ? t(`Could not reach ${PRODUCT_NAME}.`, `${PRODUCT_NAME} sa nepodarilo kontaktovať.`, `A ${PRODUCT_NAME} nem érhető el.`)
-      : t("That code was not accepted.", "Kód nebol prijatý.", "A kódot nem fogadta el a rendszer.");
+    const message = errorMessage(codeName === "not_paired" ? "code_invalid" : codeName);
     renderPair(message);
   }
 }
 
 async function showTracker(): Promise<void> {
   const state = await loadLocal();
+  signedInName = state.userName || "";
   if (!state.deviceKey || !state.ccrmUrl) {
-    renderPair(state.lost.length ? t("This browser is not paired. The actions below were not saved.", "Tento prehliadač nie je spárovaný. Akcie nižšie sa neuložili.", "Ez a böngésző nincs párosítva. Az alábbi műveletek nem lettek mentve.") : "");
+    renderPair(state.lost.length ? t("This browser is not paired. The actions below were not saved.", "Tento prehliadač nie je spárovaný. Akcie nižšie neboli uložené.", "Ez a böngésző nincs párosítva. Az alábbi műveletek nem lettek mentve.") : "");
     if (state.lost.length) renderLost(state.lost);
     return;
   }
@@ -123,13 +144,23 @@ async function showTracker(): Promise<void> {
     const entry = state.optimistic
       ? { running: true, title: state.optimistic.title, projectName: state.optimistic.projectName, startAt: state.optimistic.startedAt, taskId: state.optimistic.taskTitle ? "local" : null, titleSource: "entry" }
       : running.entry;
-    if (entry?.running) renderRunning(entry, recent, count.count || 0, rules, state.ccrmUrl);
-    else renderIdle(recent, count.count || 0, rules, state.ccrmUrl);
+    const extras: Extras = {
+      presence: running.presence && typeof running.presence.phase === "string" ? running.presence : null,
+      paused: Array.isArray(running.paused) ? running.paused : [],
+      offsetMs: serverOffset(running.serverNow),
+      ccrmUrl: state.ccrmUrl,
+    };
+    // Several timers run (started in the app): the container lists them, each with its own Stop,
+    // under the worked clock. Start stays a switch (TT2 D5.6, phase 10).
+    if (!state.optimistic && (running.count || 0) > 1) renderMany(running, count.count || 0, rules, state.ccrmUrl, extras);
+    else if (entry?.running) renderRunning(entry, recent, count.count || 0, rules, state.ccrmUrl, false, state.optimistic ? noExtras(state.ccrmUrl) : extras);
+    else renderIdle(recent, count.count || 0, rules, state.ccrmUrl, false, extras);
   } catch (error) {
     if (error instanceof TrackerError && error.code === "not_paired") {
       const lost = (await loadLocal()).lost;
+      signedInName = "";
       await saveLocal({ deviceKey: "", userName: "", optimistic: null });
-      renderPair(t("This browser was revoked. Pair it again.", "Tento prehliadač bol odobraný. Spárujte ho znova.", "Ez a böngésző vissza lett vonva. Párosítsa újra."));
+      renderPair(t("This browser was revoked. Pair it again.", "Tomuto prehliadaču bol prístup odobratý. Spárujte ho znova.", "Ennek a böngészőnek a hozzáférését visszavonták. Párosítsa újra."));
       if (lost.length) renderLost(lost);
       return;
     }
@@ -138,7 +169,7 @@ async function showTracker(): Promise<void> {
       else renderIdle({ entries: [], todaySeconds: 0 }, 0, { enabled: false }, state.ccrmUrl, true);
       return;
     }
-    renderPair(error instanceof TrackerError ? error.code : t(`Could not reach ${PRODUCT_NAME}.`, `${PRODUCT_NAME} sa nepodarilo kontaktovať.`, `A ${PRODUCT_NAME} nem érhető el.`));
+    renderPair(error instanceof TrackerError ? errorMessage(error.code) : t(`Could not reach ${PRODUCT_NAME}.`, `${PRODUCT_NAME} nie je dostupný.`, `A ${PRODUCT_NAME} nem érhető el.`));
   }
 }
 
@@ -150,7 +181,7 @@ function renderLost(lost: QueueItem[]): void {
   });
 }
 
-function renderRunning(entry: any, recent: any, unsorted: number, rules: { enabled?: boolean }, ccrmUrl: string, offline = false): void {
+function renderRunning(entry: any, recent: any, unsorted: number, rules: { enabled?: boolean }, ccrmUrl: string, offline = false, extras: Extras = noExtras(ccrmUrl)): void {
   const started = Date.parse(entry.startAt);
   const paint = () => {
     const node = app.querySelector("#elapsed");
@@ -163,43 +194,204 @@ function renderRunning(entry: any, recent: any, unsorted: number, rules: { enabl
   const subtitle = [entry.projectName, entry.taskId && entry.titleSource !== "entry" ? entry.title : ""].filter(Boolean).join(" · ");
   const today = (recent.todaySeconds || 0) + (Number.isFinite(started) ? Math.max(0, Math.floor((Date.now() - started) / 1000)) : 0);
   app.innerHTML = `
-    <div class="stack">
-      ${offline ? `<p class="amber">${esc(t("Offline. Stop will be sent when you are back.", "Offline. Zastavenie sa odošle po obnovení pripojenia.", "Offline. A leállítás a kapcsolat visszatértekor megy el."))}</p>` : ""}
-      <div>
+    ${header(today)}
+    ${offline ? `<p class="amber note">${esc(t("Offline. Stop will be sent when you are back.", "Offline. Zastavenie sa odošle po obnovení pripojenia.", "Offline. A leállítás a kapcsolat visszatértekor kerül elküldésre."))}</p>` : ""}
+    <div class="body stack">${extrasTop(extras)}</div>
+    <div class="running-band">
+      <div class="grow">
         <h1>${esc(entry.title || t("Running", "Beží", "Fut"))}</h1>
-        <p class="muted">${esc(subtitle || t("No project yet", "Zatiaľ bez projektu", "Még nincs projekt"))}</p>
+        <p class="project-line"><span class="dot"></span>${esc(subtitle || t("No project yet", "Zatiaľ bez projektu", "Még nincs projekt"))}</p>
+        <div class="elapsed" id="elapsed">0:00</div>
       </div>
-      <div class="elapsed" id="elapsed">0:00</div>
-      <button id="stop" class="stop" type="button">${esc(t("Stop", "Zastaviť", "Leállítás"))}</button>
-      <p class="muted">${esc(t("Today", "Dnes", "Ma"))} <strong id="today"></strong></p>
+      <button id="stop" class="round stop" type="button" aria-label="${esc(t("Stop", "Zastaviť", "Leállítás"))}" title="${esc(t("Stop", "Zastaviť", "Leállítás"))}">${SQUARE}</button>
+    </div>
+    <div id="notice" class="notice"></div>
+    <div class="body stack">
+      ${pausedRows(extras)}
       ${recentRows(recent.entries || [])}
       ${captureRow(!!rules.enabled)}
       ${footer(unsorted, ccrmUrl)}
     </div>`;
-  const todayNode = app.querySelector("#today");
-  if (todayNode) todayNode.textContent = badgeLabel(today);
   paint();
   window.clearInterval(clock);
   clock = window.setInterval(paint, 1000);
   app.querySelector("#stop")?.addEventListener("click", () => void stop(entry));
+  wireExtras(extras);
   wireContinue(recent.entries || []);
   wireCapture(!!rules.enabled);
   wireOpen(ccrmUrl);
 }
 
-function renderIdle(recent: any, unsorted: number, rules: { enabled?: boolean }, ccrmUrl: string, offline = false): void {
+function renderMany(running: { count?: number; workedTodaySeconds?: number; running?: any[] }, unsorted: number, rules: { enabled?: boolean }, ccrmUrl: string, extras: Extras): void {
+  const loadedAt = Date.now();
+  const base = Number(running.workedTodaySeconds) || 0;
+  const items = Array.isArray(running.running) ? running.running : [];
+  // The union of the running intervals grows one second per second, however many run.
+  const paint = () => {
+    const node = app.querySelector("#worked");
+    if (node) node.textContent = formatClock(base + (Date.now() - loadedAt) / 1000);
+    app.querySelectorAll<HTMLElement>(".item-elapsed").forEach((cell) => {
+      const started = Date.parse(cell.dataset.start || "");
+      if (Number.isFinite(started)) cell.textContent = formatClock((Date.now() + extras.offsetMs - started) / 1000);
+    });
+  };
+  const rows = items.map((item, index) => `
+    <div class="card spread">
+      <span class="grow">${esc(item.title || t("Untitled", "Bez názvu", "Névtelen"))}<br /><span class="muted">${esc(item.projectName || t("No project", "Bez projektu", "Nincs projekt"))}</span></span>
+      <span class="item-elapsed" data-start="${esc(item.startAt)}">0:00:00</span>
+      <button class="round small stop stop-item" type="button" data-index="${index}" aria-label="${esc(t("Stop", "Zastaviť", "Leállítás"))} ${esc(item.title || t("timer", "časovač", "időzítő"))}" title="${esc(t("Stop", "Zastaviť", "Leállítás"))}">${SQUARE}</button>
+    </div>`).join("");
+  app.innerHTML = `
+    ${header(base)}
+    <div id="notice" class="notice"></div>
+    <div class="body stack">
+      ${extrasTop(extras)}
+      <div class="spread">
+        <h1>${esc(running.count || items.length)} ${esc(t("timers running", "bežiacich časovačov", "futó időzítő"))}</h1>
+        <span><span class="muted">${esc(t("Worked today", "Odpracované dnes", "Ma dolgozott"))}</span> <strong id="worked">0:00:00</strong></span>
+      </div>
+      <div class="stack">${rows}</div>
+      ${pausedRows(extras)}
+      <button id="open-app" class="ghost" type="button">${esc(t("Open the app", "Otvoriť aplikáciu", "Az alkalmazás megnyitása"))}</button>
+      ${captureRow(!!rules.enabled)}
+      ${footer(unsorted, ccrmUrl)}
+    </div>`;
+  paint();
+  window.clearInterval(clock);
+  clock = window.setInterval(paint, 1000);
+  app.querySelectorAll<HTMLElement>(".stop-item").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = items[Number(button.dataset.index)];
+      if (item) void stop(item);
+    });
+  });
+  app.querySelector("#open-app")?.addEventListener("click", () => {
+    void chrome.tabs.create({ url: `${ccrmUrl}/#time-tracking` });
+  });
+  wireExtras(extras);
+  wireCapture(!!rules.enabled);
+  wireOpen(ccrmUrl);
+}
+
+/** The question banner (Still working? + countdown) or the paused banner, above the timers. */
+function extrasTop(extras: Extras): string {
+  const p = extras.presence;
+  if (p?.phase === "question" && p.enabled !== false) {
+    return `
+      <div class="question" role="alert">
+        <div class="spread"><strong>${esc(t("Still working?", "Stále pracuješ?", "Még dolgozol?"))}</strong><span class="countdown" id="countdown"></span></div>
+        <p class="muted">${esc(t(`Without an answer the timers pause at ${timeOfDay(p.deadlineAt)}.`, `Bez odpovede sa časovače o ${timeOfDay(p.deadlineAt)} pozastavia.`, `Válasz nélkül az időzítők ${timeOfDay(p.deadlineAt)}-kor szünetelnek.`))}</p>
+        <button id="confirm" class="primary" type="button">${esc(t("Still working", "Pracujem", "Dolgozom"))}</button>
+      </div>`;
+  }
+  if (p?.phase === "paused") {
+    const how = extras.paused.length ? t("resume below or open the app", "obnovte nižšie alebo otvorte aplikáciu", "folytassa alább vagy nyissa meg az alkalmazást") : t("open the app to resume", "obnovte v aplikácii", "folytassa az alkalmazásban");
+    return `<div class="paused-banner"><strong>${esc(t(`Paused at ${timeOfDay(p.autoPausedAt)}`, `Pozastavené o ${timeOfDay(p.autoPausedAt)}`, `Szüneteltetve: ${timeOfDay(p.autoPausedAt)}`))}</strong> · ${how}</div>`;
+  }
+  return "";
+}
+
+/** The paused items, each with Resume and Stop. */
+function pausedRows(extras: Extras): string {
+  if (!extras.paused.length) return "";
+  const rows = extras.paused.map((item, index) => `
+    <div class="card spread">
+      <span class="grow">${esc(item.title || t("Untitled", "Bez názvu", "Névtelen"))}<br /><span class="muted">${esc(item.projectName || t("No project", "Bez projektu", "Nincs projekt"))} · ${esc(t(`paused ${timeOfDay(item.pausedAt)}`, `pozastavené ${timeOfDay(item.pausedAt)}`, `szüneteltetve ${timeOfDay(item.pausedAt)}`))}</span></span>
+      <button class="round small soft resume-item" type="button" data-index="${index}" aria-label="${esc(t("Resume", "Pokračovať", "Folytatás"))}" title="${esc(t("Resume", "Pokračovať", "Folytatás"))}">${PLAY}</button>
+      <button class="round small stop stop-paused" type="button" data-index="${index}" aria-label="${esc(t("Stop", "Zastaviť", "Leállítás"))}" title="${esc(t("Stop", "Zastaviť", "Leállítás"))}">${SQUARE}</button>
+    </div>`).join("");
+  return `<div class="stack"><span class="section-label">${esc(t("Paused", "Pozastavené", "Szüneteltetve"))}</span>${rows}</div>`;
+}
+
+function wireExtras(extras: Extras): void {
+  window.clearInterval(questionClock);
+  const p = extras.presence;
+  const node = app.querySelector("#countdown");
+  const deadline = p?.deadlineAt ? Date.parse(p.deadlineAt) : Number.NaN;
+  if (node && Number.isFinite(deadline)) {
+    const tickDown = () => {
+      const left = deadline - (Date.now() + extras.offsetMs);
+      node.textContent = formatCountdown(left);
+      if (left <= 0) {
+        // The deadline passed: the server has paused the timers; read it again.
+        window.clearInterval(questionClock);
+        void refreshBadge().then(() => showTracker());
+      }
+    };
+    tickDown();
+    questionClock = window.setInterval(tickDown, 1000);
+  }
+  app.querySelector("#confirm")?.addEventListener("click", () => void confirmPresence());
+  app.querySelectorAll<HTMLElement>(".resume-item").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = extras.paused[Number(button.dataset.index)];
+      if (item) void resume(item);
+    });
+  });
+  app.querySelectorAll<HTMLElement>(".stop-paused").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = extras.paused[Number(button.dataset.index)];
+      if (item) void stop(item);
+    });
+  });
+}
+
+function showNotice(message: string): void {
+  const box = app.querySelector("#notice") ?? app.querySelector(".stack");
+  if (box) box.innerHTML = `<p class="error">${esc(message)}</p>`;
+}
+
+/** "Still working" (D7.4): only before the deadline; after it the server answers 409 paused. */
+async function confirmPresence(): Promise<void> {
+  const button = app.querySelector("#confirm") as HTMLButtonElement | null;
+  if (button) button.disabled = true;
+  const state = await loadLocal();
+  try {
+    await trackerCall(state.ccrmUrl, state.deviceKey, "POST", "confirm");
+  } catch (error) {
+    if (error instanceof TrackerError && error.code === "offline") {
+      if (button) button.disabled = false;
+      showNotice(t(`Could not reach ${PRODUCT_NAME}. Try again.`, `${PRODUCT_NAME} nie je dostupný. Skúste znova.`, `A ${PRODUCT_NAME} nem érhető el. Próbálja újra.`));
+      return;
+    }
+    /* paused or not_running: the repaint below shows what the server decided */
+  }
+  await refreshBadge();
+  await showTracker();
+}
+
+/** Resume one paused item: a switch, like Start (the others stop). */
+async function resume(item: any): Promise<void> {
+  const state = await loadLocal();
+  try {
+    await trackerCall(state.ccrmUrl, state.deviceKey, "POST", "resume", { id: item.id });
+  } catch (error) {
+    const code = error instanceof TrackerError ? error.code : "offline";
+    await refreshBadge();
+    await showTracker();
+    if (code !== "already_running" && code !== "not_paused") showNotice(errorMessage(code));
+    return;
+  }
+  await refreshBadge();
+  await showTracker();
+}
+
+function renderIdle(recent: any, unsorted: number, rules: { enabled?: boolean }, ccrmUrl: string, offline = false, extras: Extras = noExtras(ccrmUrl)): void {
   window.clearInterval(clock);
   app.innerHTML = `
-    <div class="stack">
-      ${offline ? `<p class="amber">${esc(t("Offline. A start is queued and sent later.", "Offline. Spustenie sa zaradí a odošle neskôr.", "Offline. Az indítás sorba kerül, és később megy el."))}</p>` : ""}
-      <h1>${esc(t("What are you working on?", "Na čom pracujete?", "Min dolgozik?"))}</h1>
-      <label>${esc(t("Title", "Názov", "Cím"))}<input id="title" placeholder="${esc(t("Title", "Názov", "Cím"))}" /></label>
-      <label>${esc(t("Project", "Projekt", "Projekt"))}<input id="project" placeholder="${esc(t("Search projects", "Hľadať projekty", "Projektek keresése"))}" /></label>
-      <div id="project-list"></div>
+    ${header(recent.todaySeconds || 0)}
+    <div id="notice" class="notice"></div>
+    <div class="body stack">
+      ${offline ? `<p class="amber note">${esc(t("Offline. A start is queued and sent later.", "Offline. Spustenie sa odošle neskôr.", "Offline. Az indítás később kerül elküldésre."))}</p>` : ""}
+      ${extrasTop(extras)}
+      ${pausedRows(extras)}
+      <h1>${esc(t("What are you working on?", "Na čom pracuješ?", "Min dolgozik?"))}</h1>
+      <input id="title" aria-label="${esc(t("Title", "Názov", "Cím"))}" placeholder="${esc(t("What are you working on?", "Na čom pracuješ?", "Min dolgozik?"))}" />
+      <input id="project" aria-label="${esc(t("Project", "Projekt", "Projekt"))}" placeholder="${esc(t("Search projects", "Hľadať projekty", "Projektek keresése"))}" autocomplete="off" />
+      <div id="project-list" class="picker"></div>
       <label>${esc(t("Task", "Úloha", "Feladat"))}<select id="task"><option value="">${esc(t("No task", "Bez úlohy", "Nincs feladat"))}</option></select></label>
       <p id="form-error" class="error" hidden></p>
-      <button id="start" class="primary" type="button">${esc(t("Start", "Spustiť", "Indítás"))}</button>
-      <p class="muted">${esc(t("Today", "Dnes", "Ma"))} <strong>${esc(badgeLabel(recent.todaySeconds || 0))}</strong></p>
+      <button id="start" class="primary wide" type="button">${PLAY} ${esc(t("Start timer", "Spustiť časovač", "Időzítő indítása"))}</button>
       ${recentRows(recent.entries || [])}
       ${captureRow(!!rules.enabled)}
       ${footer(unsorted, ccrmUrl)}
@@ -225,6 +417,7 @@ function renderIdle(recent: any, unsorted: number, rules: { enabled?: boolean },
     taskId: (app.querySelector("#task") as HTMLSelectElement).value,
     taskTitle: (app.querySelector("#task") as HTMLSelectElement).selectedOptions[0]?.textContent || "",
   }));
+  wireExtras(extras);
   wireContinue(recent.entries || []);
   wireCapture(!!rules.enabled);
   wireOpen(ccrmUrl);
@@ -234,11 +427,11 @@ function renderIdle(recent: any, unsorted: number, rules: { enabled?: boolean },
 function recentRows(entries: any[]): string {
   if (!entries.length) return "";
   const rows = entries.slice(0, 3).map((entry, index) => `
-    <div class="card spread">
-      <span>${esc(entry.title || t("Untitled", "Bez názvu", "Névtelen"))}<br /><span class="muted">${esc(entry.projectName || "")}</span></span>
-      <button class="tiny continue" type="button" data-index="${index}">${esc(t("Continue", "Pokračovať", "Folytatás"))}</button>
+    <div class="recent-row">
+      <span class="grow"><span class="recent-title">${esc(entry.title || t("Untitled", "Bez názvu", "Névtelen"))}</span><span class="muted">${esc(entry.projectName || "")}</span></span>
+      <button class="round small soft continue" type="button" data-index="${index}" aria-label="${esc(t("Continue", "Pokračovať", "Folytatás"))}" title="${esc(t("Continue", "Pokračovať", "Folytatás"))}">${PLAY}</button>
     </div>`).join("");
-  return `<div class="stack">${rows}</div>`;
+  return `<div class="stack"><span class="section-label">${esc(t("Recent", "Nedávne", "Legutóbbi"))}</span>${rows}</div>`;
 }
 
 function captureRow(enabled: boolean): string {
@@ -300,7 +493,7 @@ async function searchProjects(q: string, pick: (id: string, name: string) => voi
     if (!list) return;
     const projects = res.projects || [];
     list.innerHTML = projects.slice(0, 6).map((project: any, index: number) =>
-      `<button class="tiny project" type="button" data-index="${index}" style="margin:2px">${esc(project.suggested ? t("Suggested · ", "Navrhnuté · ", "Javasolt · ") : "")}${esc(project.name)}</button>`,
+      `<button class="pick project" type="button" data-index="${index}"><span class="dot"></span><span class="grow">${esc(project.name)}</span>${project.suggested ? `<span class="muted">${esc(t("suggested", "navrhnuté", "javasolt"))}</span>` : ""}</button>`,
     ).join("");
     list.querySelectorAll(".project").forEach((button) => {
       button.addEventListener("click", () => {
@@ -375,14 +568,22 @@ async function start(input: { description: string; projectId: string; projectNam
       return;
     }
     if (error instanceof TrackerError && error.code === "not_paired") {
+      signedInName = "";
       await saveLocal({ deviceKey: "", optimistic: null });
       renderPair(t("Pair this browser again.", "Spárujte tento prehliadač znova.", "Párosítsa újra ezt a böngészőt."));
+      return;
+    }
+    if (error instanceof TrackerError && error.code === "already_running") {
+      // That exact work is already running (another tab or device started it): show it.
+      await saveLocal({ optimistic: null });
+      await refreshBadge();
+      await showTracker();
       return;
     }
     const node = app.querySelector("#form-error") as HTMLElement | null;
     if (node) {
       node.hidden = false;
-      node.textContent = error instanceof TrackerError ? error.code : t("Could not start.", "Nepodarilo sa spustiť.", "Az indítás nem sikerült.");
+      node.textContent = error instanceof TrackerError ? errorMessage(error.code) : t("Could not start.", "Nepodarilo sa spustiť.", "Az indítás nem sikerült.");
     }
   }
 }
@@ -408,9 +609,15 @@ async function stop(entry: any): Promise<void> {
       await showTracker();
       return;
     }
+    if (error instanceof TrackerError && error.code === "ambiguous") {
+      // Several timers run and this one had no id: repaint, which shows "N timers running".
+      await saveLocal({ optimistic: null });
+      await showTracker();
+      return;
+    }
     if (error instanceof TrackerError && error.code === "project_required") {
-      const node = app.querySelector(".stack");
-      node?.insertAdjacentHTML("beforeend", `<p class="error">${esc(t(`Pick a project in ${PRODUCT_NAME} before stopping, or add one and stop again.`, `Pred zastavením vyberte projekt v ${PRODUCT_NAME} alebo ho pridajte a zastavte znova.`, `Leállítás előtt válasszon projektet a ${PRODUCT_NAME}ben, vagy adjon hozzá egyet, és állítsa le újra.`))}</p><label>${esc(t("Project id", "ID projektu", "Projektazonosító"))}<input id="stop-project" /></label><button id="stop-retry" class="stop" type="button">${esc(t("Stop", "Zastaviť", "Leállítás"))}</button>`);
+      const node = app.querySelector("#notice") ?? app.querySelector(".stack");
+      if (node) node.innerHTML = (`<p class="error">${esc(errorMessage("project_required"))}</p><label>${esc(t("Project id", "ID projektu", "Projekt azonosító"))}<input id="stop-project" /></label><button id="stop-retry" class="stop" type="button">${esc(t("Stop", "Zastaviť", "Leállítás"))}</button>`);
       app.querySelector("#stop-retry")?.addEventListener("click", () => {
         body.projectId = (app.querySelector("#stop-project") as HTMLInputElement).value.trim();
         void trackerCall(state.ccrmUrl, state.deviceKey, "POST", "stop", { ...body, stoppedAt: at })
@@ -420,10 +627,20 @@ async function stop(entry: any): Promise<void> {
       return;
     }
     if (error instanceof TrackerError && error.code === "not_paired") {
+      signedInName = "";
       await saveLocal({ deviceKey: "", optimistic: null, lost: [...state.lost, { id: crypto.randomUUID(), kind: "stop", at, body }] });
-      renderPair(t("Pair this browser again. The stop was kept on this device.", "Spárujte tento prehliadač znova. Zastavenie zostalo uložené v tomto zariadení.", "Párosítsa újra ezt a böngészőt. A leállítás ezen az eszközön megmaradt."));
+      renderPair(t("Pair this browser again. The stop was kept on this device.", "Spárujte tento prehliadač znova. Zastavenie zostalo uložené v tomto zariadení.", "Párosítsa újra ezt a böngészőt. A leállítás ezen az eszközön maradt."));
+      return;
     }
+    const failure = error instanceof TrackerError ? error.code : "offline";
+    if (failure === "not_found" || failure === "not_running") {
+      await saveLocal({ optimistic: null });
+      await refreshBadge();
+      await showTracker();
+    }
+    showNotice(errorMessage(failure));
   }
 }
 
+document.title = t(`${PRODUCT_NAME} Time Tracker`, `${PRODUCT_NAME} Sledovanie času`, `${PRODUCT_NAME} Időkövetés`);
 void showTracker();

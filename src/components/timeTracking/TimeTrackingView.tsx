@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { SectionIcon } from "../icons/SectionIcon";
-import { Calendar, CalendarDays, LayoutGrid, List, Settings as SettingsIcon } from "lucide-react";
+import { Calendar, CalendarDays, LayoutGrid, List } from "lucide-react";
 import { Page, PageHeader, Tabs } from "../layout";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { useRecentProjects } from "../../hooks/useRecentProjects";
@@ -11,10 +11,15 @@ import { TimeCalendarView } from "./TimeCalendarView";
 import { TimeDayView } from "./TimeDayView";
 import { TimeListView } from "./TimeListView";
 import { TimeTimesheetView } from "./TimeTimesheetView";
+import { MobileRunningCard } from "./MobileRunningCard";
 import { TimerBar } from "./TimerBar";
 import { TimeTrackingMobileBar } from "./TimeTrackingMobileBar";
-import { ViewingAsProvider, useViewingAs } from "./ViewingAsContext";
+import { ViewingAsProvider, useEntriesFocus, useViewingAs } from "./ViewingAsContext";
 import { ViewingAsSelect } from "./ViewingAsSelect";
+import { TimeHeaderActions } from "./TimeHeaderActions";
+import { TimeToolbarEndTarget, TimeToolbarProvider, TimeToolbarTarget } from "./TimeToolbarSlot";
+import { TimeListFilterProvider } from "./TimeListFilter";
+import { UnsortedListChip } from "./UnsortedInbox";
 import { useEntryDeletion, type TimeDeps } from "./shared";
 
 interface Props {
@@ -35,7 +40,11 @@ const tabFromRoute = (route: string): string => {
 export function TimeTrackingView(props: Props) {
   return (
     <ViewingAsProvider>
-      <TimeTrackingScreen {...props} />
+      <TimeListFilterProvider>
+      <TimeToolbarProvider>
+        <TimeTrackingScreen {...props} />
+      </TimeToolbarProvider>
+      </TimeListFilterProvider>
     </ViewingAsProvider>
   );
 }
@@ -48,8 +57,19 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
   const [tab, setTab] = useState(() => tabFromRoute(route));
   const [open, setOpen] = useState<TimeEntry | null>(null);
   const remove = useEntryDeletion();
+  const entriesFocus = useEntriesFocus();
 
   const { recentProjectIds, secondsByProject } = useRecentProjects();
+  // Phone, one timer running: the big card replaces the slim bar; its chips bring the bar's fields back.
+  const [barOpen, setBarOpen] = useState(false);
+  const singleRunning = tt.running.length === 1 && tt.paused.length === 0;
+  const [addOpen, setAddOpen] = useState(false);
+  useEffect(() => {
+    if (!singleRunning) {
+      setBarOpen(false);
+      setAddOpen(false);
+    }
+  }, [singleRunning]);
 
   useEffect(() => {
     setTab(tabFromRoute(route));
@@ -81,19 +101,22 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
       <PageHeader
         icon={<SectionIcon id="time-tracking" />}
         title={t("Time tracking", "Evidencia času", "Időkövetés")}
-        subtitle={t("Track what you work on — every hour is priced at its real cost.", "Zaznamenávajte, na čom pracujete — každá hodina má svoju skutočnú cenu.", "Rögzítse, min dolgozik — minden óra a valós költségén szerepel.")}
-        actions={
-          <button type="button" onClick={() => onNavigate("settings/projects/time")} title={t("Time tracking settings", "Nastavenia evidencie času", "Időkövetés beállításai")} className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-ui font-semibold text-gray-500 hover:bg-gray-100 hover:text-gray-800 cursor-pointer">
-            <SettingsIcon className="size-4" />
-            <span className="hidden ws-sm:inline">{t("Settings", "Nastavenia", "Beállítások")}</span>
-          </button>
-        }
+        subtitle={t("Track work against projects and tasks. Labour cost is calculated from each employee's salary.", "Sledujte prácu na projektoch a úlohách. Náklady na prácu sa počítajú z platu každého zamestnanca.", "Kövesse nyomon a projektekre és feladatokra fordított munkát. A munkaköltséget az egyes munkatársak fizetéséből számoljuk.")}
+        actions={<TimeHeaderActions onNavigate={onNavigate} />}
       />
 
-      <TimerBar deps={deps} recentProjectIds={recentProjectIds} secondsByProject={secondsByProject} />
+      <MobileRunningCard deps={deps} editing={barOpen} onToggleEdit={() => setBarOpen((v) => !v)} onAdd={() => setAddOpen((v) => !v)} />
+      {addOpen && singleRunning && (
+        <div className="ws-sm:hidden">
+          <TimerBar deps={deps} recentProjectIds={recentProjectIds} secondsByProject={secondsByProject} adding onStarted={() => setAddOpen(false)} />
+        </div>
+      )}
+      <div className={singleRunning && !barOpen ? "hidden ws-sm:contents" : "contents"}>
+        <TimerBar deps={deps} recentProjectIds={recentProjectIds} secondsByProject={secondsByProject} />
+      </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-60 flex-1">
+      <div className="flex flex-wrap items-center justify-between gap-3" data-testid="time-toolbar">
+        <div className="min-w-0 max-w-full shrink">
           <Tabs<string>
             testId="time-tabs"
             value={tab}
@@ -103,11 +126,16 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
               { key: "day", label: t("Day", "Deň", "Nap"), icon: <CalendarDays /> },
               { key: "calendar", label: t("Calendar", "Kalendár", "Naptár"), icon: <Calendar /> },
               { key: "timesheet", label: t("Timesheet", "Výkaz", "Munkaidő-nyilvántartás"), icon: <LayoutGrid /> },
-              ...extraTimeTrackingTabs.map((item: ExtraTimeTrackingTab) => ({ key: item.id, label: item.label(t) })),
+              ...extraTimeTrackingTabs.map((item: ExtraTimeTrackingTab) => ({ key: item.id, label: item.label(t), icon: item.icon })),
             ]}
           />
         </div>
-        <ViewingAsSelect users={people} />
+        <div className="flex flex-wrap items-center gap-2">
+          <TimeToolbarTarget />
+          {scope === "me" && !entriesFocus && <UnsortedListChip refreshKey={tab} />}
+          <ViewingAsSelect users={people} />
+          <TimeToolbarEndTarget />
+        </div>
       </div>
 
       {!ready ? (
@@ -138,7 +166,7 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
           }}
         />
       )}
-      <TimeTrackingMobileBar onNavigate={onNavigate} />
+      <TimeTrackingMobileBar onNavigate={onNavigate} deps={deps} recentProjectIds={recentProjectIds} secondsByProject={secondsByProject} />
     </Page>
   );
 }

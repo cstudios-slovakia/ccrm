@@ -7,6 +7,7 @@
 chdir(dirname(__DIR__));
 require_once __DIR__ . '/../public/api/time_cost.php';
 require_once __DIR__ . '/../public/api/holidays_lib.php';
+require_once __DIR__ . '/../public/api/time_leave.php';
 
 $fails = 0;
 $check = function (string $name, bool $ok, string $detail = '') use (&$fails) {
@@ -17,15 +18,41 @@ $check = function (string $name, bool $ok, string $detail = '') use (&$fails) {
 $fixtures = json_decode((string)file_get_contents(__DIR__ . '/fixtures/time-cost-cases.json'), true);
 foreach ($fixtures['cases'] as $case) {
     $settings = $case['settings'] ?? $fixtures['settings'];
-    $r = ccrm_tc_cost_rate($case['person'], (int)$case['workingDays'], $settings);
-    $cost = ccrm_tc_entry_cost($case['durationSec'], $r['rate']);
+    $r = ccrm_tc_cost_rate($case['person'], (int)$case['workingDays'], $settings, $case['leave'] ?? []);
+    $cost = ccrm_tc_worked_cost(isset($case['workedMs']) ? (int)$case['workedMs'] : (int)$case['durationSec'] * 1000, $r['rate']);
     $e = $case['expect'];
     $ok = $r['rate'] === ($e['rate'] === null ? null : (float)$e['rate'])
         && $r['source'] === $e['source']
         && $r['basisDays'] === $e['basisDays']
         && $cost === ($e['cost'] === null ? null : (float)$e['cost']);
+    // Optional keys (D4.1): numbers compared as floats, booleans strictly.
+    foreach (['monthCost', 'basisHours', 'fallback', 'paidLeaveDays', 'unpaidLeaveDays', 'hoursPerDay'] as $key) {
+        if (!array_key_exists($key, $e)) { continue; }
+        $got = $r[$key] ?? null;
+        $ok = $ok && (is_bool($e[$key]) ? $got === $e[$key] : ($got !== null && (float)$got === (float)$e[$key]));
+    }
     $check($case['name'], $ok, json_encode(['got' => $r, 'cost' => $cost]));
 }
+
+// leaveDaysInMonth (D4.2): the same fixtures as src/utils/timeLeave.test.ts.
+$leave = json_decode((string)file_get_contents(__DIR__ . '/fixtures/time-leave-cases.json'), true);
+$leaveHolidays = array_flip($leave['holidays']);
+$leaveIsWorkingDay = fn(string $d): bool => !isset($leaveHolidays[$d]) && ccrm_holiday_is_weekday($d);
+foreach ($leave['cases'] as $case) {
+    $got = ccrm_tl_leave_days_in_month($case['rows'], $case['month'], $leaveIsWorkingDay, ccrm_tl_leave_type_is_paid($case['vacationTypes'] ?? $leave['vacationTypes']));
+    $ok = $got['paid'] === (float)$case['expect']['paid'] && $got['unpaid'] === (float)$case['expect']['unpaid'];
+    $check('leave: ' . $case['name'], $ok, json_encode($got));
+}
+$check('leave fixture calendar = built-in SK 2026', $leave['holidays'] === array_column(ccrm_holidays_builtin('SK', 2026), 'date'));
+$dbRows = [
+    ['start_date' => '2026-05-11', 'end_date' => '2026-05-13', 'days_count' => '3.0', 'status' => 'approved', 'vacation_type_id' => 'annual'],
+    ['start_date' => '2026-05-18', 'end_date' => '2026-05-19', 'days_count' => '2.0', 'status' => 'taken', 'vacation_type_id' => 'unpaid'],
+];
+$erikLeave = ccrm_tl_leave_days_in_month($dbRows, '2026-05', $leaveIsWorkingDay, ccrm_tl_leave_type_is_paid(null));
+$erik = ccrm_tc_cost_rate(['kind' => 'employee', 'salaryType' => 'monthly', 'salaryAmount' => 3200], 20, [], ['paidLeaveDays' => $erikLeave['paid'], 'unpaidLeaveDays' => $erikLeave['unpaid']]);
+$check('Erik end to end from DB-shaped rows: 32.448', $erik['rate'] === 32.448 && $erik['monthCost'] === 3893.76 && $erik['basisHours'] === 120);
+$check('three identical 2 h entries at EUR 10/h: 6.6667 each, 20.00 in total', ccrm_tc_worked_cost(2400000, 10.0) === 6.6667 && round(3 * 6.6667, 2) === 20.0);
+$check('cost is null without a rate or worked time; 0 ms costs 0', ccrm_tc_worked_cost(3600000, null) === null && ccrm_tc_worked_cost(null, 20.0) === null && ccrm_tc_worked_cost(0, 20.0) === 0.0);
 $check('fixtures use the default settings', $fixtures['settings'] == ccrm_tc_default_settings());
 
 // Working days of the months the fixtures rely on, with no database (override list is empty).

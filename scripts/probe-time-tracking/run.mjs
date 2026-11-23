@@ -24,6 +24,22 @@ const SCRATCH_DB = 'ccrm_tt_probe';
 const SCRATCH_DIR = '/var/www/html/ttprobe';
 const publicDir = fileURLToPath(new URL('../../public/', import.meta.url));
 
+// Node's fetch keeps sockets alive; Apache closes an idle one after KeepAliveTimeout (5 s). A section
+// that pauses longer (a `docker exec` cron pass) then reuses a dead socket and fails with
+// "other side closed" before the request reached PHP. Retry exactly that failure once.
+const rawFetch = globalThis.fetch;
+globalThis.fetch = async (...args) => {
+  try {
+    return await rawFetch(...args);
+  } catch (e) {
+    const code = e?.cause?.code || '';
+    if (/other side closed/i.test(String(e?.cause?.message || '')) || code === 'UND_ERR_SOCKET' || code === 'ECONNRESET') {
+      return rawFetch(...args);
+    }
+    throw e;
+  }
+};
+
 const run = (cmd, args, input) =>
   execFileSync(cmd, args, { encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
 const docker = (...args) => run('docker', args);
@@ -71,6 +87,11 @@ function setup() {
   docker('exec', WEB, 'sh', '-c', `rm -rf ${SCRATCH_DIR} && mkdir -p ${SCRATCH_DIR}`);
   docker('cp', publicDir + '.', `${WEB}:${SCRATCH_DIR}/`);
   docker('exec', WEB, 'sh', '-c', `sed "s/define('DB_NAME', '[^']*')/define('DB_NAME', '${SCRATCH_DB}')/" /var/www/html/config.php > ${SCRATCH_DIR}/config.php`);
+  // TT2 phase 6b: the test clock (ccrm_tt_now_utc reads system_settings TT_TEST_NOW only with this constant).
+  // Defined right after the opening tag, so it does not matter whether config.php ends in a closing tag.
+  docker('exec', WEB, 'sh', '-c', `sed -i "1s/^<?php/<?php define('CCRM_TT_TEST_CLOCK', true);/" ${SCRATCH_DIR}/config.php && grep -q CCRM_TT_TEST_CLOCK ${SCRATCH_DIR}/config.php`);
+  // The extension authenticates with a Bearer key: the scratch copy's .htaccess (copied from public/) forwards the
+  // Authorization header that the dev container's Apache would otherwise drop (A4 finding 11, fixed 2026-11-19).
   docker('exec', WEB, 'chown', '-R', 'www-data:www-data', SCRATCH_DIR);
   // A fresh database: the real schema code builds every table.
   docker('exec', '-u', 'www-data', WEB, 'php', '-r',
@@ -100,6 +121,9 @@ function setup() {
   lines.push(task('task-tt-1', 'Write the offer', 'TT Erik', 'proj-tt-1'));
   lines.push(task('task-tt-2', 'Secret task of the manager', 'TT Manager', null));
   lines.push(task('task-tt-3', 'Task without a project', 'TT Erik', null));
+  // Past dates (previous month, fixed Oct 2026 sections) are older than the default lockAfterDays (14): switch the age
+  // lock off for the whole probe (null = off). Sections that test the lock turn it on for themselves (T13).
+  lines.push(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('TIME_TRACKING_SETTINGS', ${q(JSON.stringify({ lockAfterDays: null }))});`);
   sql(lines.join('\n'));
 }
 
@@ -141,6 +165,24 @@ async function api(sess, path, { method = 'GET', body, query = '' } = {}) {
 const te = (sess, body) => api(sess, 'time_entries.php', { method: 'POST', body });
 const list = (sess, query = '') => api(sess, 'time_entries.php', { query });
 const dbEntry = (id) => rows(`SELECT * FROM time_entries WHERE id=${q(id)}`)[0];
+/** Run PHP against the scratch copy with $pdo connected (the rate card has no HTTP surface of its own). */
+const php = (code) =>
+  docker('exec', '-u', 'www-data', WEB, 'php', '-r',
+    `require '${SCRATCH_DIR}/config.php'; require_once '${SCRATCH_DIR}/api/schema.php'; require_once '${SCRATCH_DIR}/api/time_entries_lib.php'; require_once '${SCRATCH_DIR}/api/time_rate_card.php'; $pdo = get_db_connection(); ${code}`);
+
+// Date-independent months (TT2 phase 3): the current and the previous calendar month are always open
+// (C12 freezes a month at the start of month + 2), so the probe prices entries there and reads the expected
+// working days from the same holiday calendar the PHP uses, instead of hard-coding May / October 2026.
+const monthOffset = (back) => {
+  const d = new Date();
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - back, 1));
+  const ym = `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}`;
+  return { ym, year: t.getUTCFullYear(), month: t.getUTCMonth() + 1, last: new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).toISOString().slice(0, 10) };
+};
+const round4 = (n) => Math.round((n + Number.EPSILON) * 10000) / 10000;
+const near = (actual, expected) => actual !== null && actual !== undefined && Math.abs(Number(actual) - expected) < 0.00011;
+const MULT = 1.352; // default employer multiplier; Erik: EUR 3200 / month, 8 h per day
+const monthlyRate = (days) => round4((3200 / (days * 8)) * MULT);
 
 async function main() {
   console.log('Setting up the time tracking probe scratch environment...');
@@ -156,43 +198,56 @@ async function main() {
     check('T1: an Employee may open the module', (await list(S.erik)).status === 200);
 
     section('T2: cost rate per employment status (frozen on save)');
-    const oct = await te(S.erik, { action: 'create', description: 'Offer work', entryDate: '2026-10-14', durationSec: 8100, source: 'day' });
+    // M1 = previous month, M2 = current month: both open on any date. wd() = working days from the PHP calendar.
+    const M1 = monthOffset(1);
+    const M2 = monthOffset(0);
+    const wd = (country, m) => parseInt(php(`echo ccrm_holidays_working_days($pdo, '${country}', ${m.year}, ${m.month}, [], false);`).trim(), 10);
+    const skDays1 = wd('SK', M1);
+    const skDays2 = wd('SK', M2);
+    const huDays1 = wd('HU', M1);
+    const rate1 = monthlyRate(skDays1);
+    const cost1 = round4((8100 / 3600) * rate1); // a 2:15:00 entry
+    const oct = await te(S.erik, { action: 'create', description: 'Offer work', entryDate: `${M1.ym}-14`, durationSec: 8100, source: 'day' });
     check('T2: create returns 201', oct.status === 201, oct.raw);
     const octRow = dbEntry(oct.data?.entry?.id);
-    check('T2: Erik Oct 2026 SK -> 24.5818/h, source monthly, 22 days', octRow?.cost_rate === '24.5818' && octRow?.cost_rate_source === 'monthly' && octRow?.cost_rate_basis_days === '22', JSON.stringify(octRow));
-    check('T2: a 2:15:00 entry costs 55.31', octRow?.cost === '55.31', octRow?.cost);
+    check(`T2: Erik ${M1.ym} SK -> 3200 / (${skDays1} x 8) x 1.352 = ${rate1}/h, source monthly`, near(octRow?.cost_rate, rate1) && octRow?.cost_rate_source === 'monthly' && octRow?.cost_rate_basis_days === String(skDays1), JSON.stringify(octRow));
+    check(`T2: a 2:15:00 entry costs ${cost1} (4 decimals, D3.2)`, near(octRow?.cost, cost1), octRow?.cost);
     check('T2: employee_id is resolved from the owner', octRow?.employee_id === 'emp-erik');
-    const may = await te(S.erik, { action: 'create', description: 'May work', entryDate: '2026-05-12', durationSec: 3600, source: 'day' });
+    const may = await te(S.erik, { action: 'create', description: 'May work', entryDate: `${M2.ym}-12`, durationSec: 3600, source: 'day' });
     const mayRow = dbEntry(may.data?.entry?.id);
-    check('T2: Erik May 2026 (20 days) -> 27.04/h, differs from October', mayRow?.cost_rate === '27.0400' && mayRow?.cost_rate_basis_days === '20', JSON.stringify(mayRow));
-    const free = await te(S.free, { action: 'create', description: 'Contract work', entryDate: '2026-10-14', durationSec: 3600, source: 'day' });
+    check(`T2: Erik ${M2.ym} (${skDays2} days) -> ${monthlyRate(skDays2)}/h, priced with its own month's days`, near(mayRow?.cost_rate, monthlyRate(skDays2)) && mayRow?.cost_rate_basis_days === String(skDays2), JSON.stringify(mayRow));
+    const free = await te(S.free, { action: 'create', description: 'Contract work', entryDate: `${M1.ym}-14`, durationSec: 3600, source: 'day' });
     const freeRow = dbEntry(free.data?.entry?.id);
-    check('T2: freelancer hourly 20 -> flat 20.00, no multiplier', freeRow?.cost_rate === '20.0000' && freeRow?.cost_rate_source === 'contractor_hourly' && freeRow?.cost === '20.00', JSON.stringify(freeRow));
-    const pmEntry = await te(S.pm, { action: 'create', description: 'Manager work', entryDate: '2026-10-14', durationSec: 3600, source: 'day' });
+    check('T2: freelancer hourly 20 -> flat 20.00, no multiplier', freeRow?.cost_rate === '20.0000' && freeRow?.cost_rate_source === 'contractor_hourly' && freeRow?.cost === '20.0000', JSON.stringify(freeRow));
+    const pmEntry = await te(S.pm, { action: 'create', description: 'Manager work', entryDate: `${M1.ym}-14`, durationSec: 3600, source: 'day' });
     const pmRow = dbEntry(pmEntry.data?.entry?.id);
     check('T2: no employee linked -> no rate, cost NULL', pmRow?.cost_rate === null && pmRow?.cost_rate_source === 'none' && pmRow?.cost === null && pmRow?.employee_id === null, JSON.stringify(pmRow));
     // Same salary, Hungarian calendar: give Erik the HU calendar and add a second October entry.
     sql(`UPDATE employees SET work_country='HU' WHERE id='emp-erik'`);
-    const hu = await te(S.erik, { action: 'create', description: 'HU calendar', entryDate: '2026-10-15', durationSec: 3600, source: 'day' });
+    const hu = await te(S.erik, { action: 'create', description: 'HU calendar', entryDate: `${M1.ym}-15`, durationSec: 3600, source: 'day' });
     const huRow = dbEntry(hu.data?.entry?.id);
-    check('T2: Oct 2026 in Hungary has 21 working days -> 25.7524/h', huRow?.cost_rate === '25.7524' && huRow?.cost_rate_basis_days === '21', JSON.stringify(huRow));
+    const rateHu1 = monthlyRate(huDays1);
+    check(`T2: ${M1.ym} in Hungary has ${huDays1} working days (SK ${skDays1}) -> ${rateHu1}/h`, near(huRow?.cost_rate, rateHu1) && huRow?.cost_rate_basis_days === String(huDays1), JSON.stringify(huRow));
+    // C12 (TT2 phase 3): October is still open, so the calendar change re-priced the earlier October entry too.
+    check(`T2: an open month follows the calendar: the earlier ${M1.ym} entry is re-priced to ${rateHu1}`, near(dbEntry(oct.data.entry.id)?.cost_rate, rateHu1), JSON.stringify(dbEntry(oct.data.entry.id)));
     sql(`UPDATE employees SET work_country=NULL WHERE id='emp-erik'`);
-    check('T2: the frozen October rate did not change when the calendar did', dbEntry(oct.data.entry.id)?.cost_rate === '24.5818');
+    php(`ccrm_tt_rate_for($pdo, 'emp-erik', '${M1.ym}', ccrm_tt_load_settings($pdo), true);`);
+    check(`T2: ...and back to ${rate1} (cost ${cost1}) once the rate card sees the SK calendar again`, near(dbEntry(oct.data.entry.id)?.cost_rate, rate1) && near(dbEntry(oct.data.entry.id)?.cost, cost1), JSON.stringify(dbEntry(oct.data.entry.id)));
 
     section('T3: cost visibility is enforced by the server');
-    const asPm = await list(S.pm, '?userId=all&from=2026-01-01&to=2026-12-31');
+    const asPm = await list(S.pm, `?userId=all&from=${M1.ym}-01&to=${M2.last}`);
     const erikFromPm = (asPm.data?.entries || []).find((e) => e.id === oct.data.entry.id);
     check('T3: a manager (team, no costs) sees the entry', !!erikFromPm);
     check('T3: ...without cost, rate, source or billable rate', erikFromPm && !('cost' in erikFromPm) && !('costRate' in erikFromPm) && !('costRateSource' in erikFromPm) && !('billableRate' in erikFromPm), JSON.stringify(erikFromPm));
-    check('T3: no cost number appears anywhere in the raw body of that list', !asPm.raw.includes('24.58') && !asPm.raw.includes('55.31'), 'found a cost figure');
-    const asCosts = await list(S.costs, '?userId=all&from=2026-01-01&to=2026-12-31');
+    check('T3: no cost number appears anywhere in the raw body of that list', !asPm.raw.includes(rate1.toFixed(2)) && !asPm.raw.includes(cost1.toFixed(2)), 'found a cost figure');
+    const asCosts = await list(S.costs, `?userId=all&from=${M1.ym}-01&to=${M2.last}`);
     const erikFromCosts = (asCosts.data?.entries || []).find((e) => e.id === oct.data.entry.id);
-    check('T3: a role with time_tracking_costs sees cost 55.31 and rate 24.5818', erikFromCosts?.cost === 55.31 && erikFromCosts?.costRate === 24.5818, JSON.stringify(erikFromCosts));
-    const own = await list(S.erik, '?from=2026-01-01&to=2026-12-31');
+    check(`T3: a role with time_tracking_costs sees cost ${cost1} and rate ${rate1}`, near(erikFromCosts?.cost, cost1) && near(erikFromCosts?.costRate, rate1), JSON.stringify(erikFromCosts));
+    const own = await list(S.erik, `?from=${M1.ym}-01&to=${M2.last}`);
     const ownEntry = (own.data?.entries || []).find((e) => e.id === oct.data.entry.id);
-    check('T3: the owner always sees their own cost', ownEntry?.cost === 55.31);
+    check('T3: the owner always sees their own cost', near(ownEntry?.cost, cost1));
     check('T3: ...but not the billable rate', ownEntry && !('billableRate' in ownEntry));
-    const spy = await list(S.erik, `?userId=${USERS.free.id}&from=2026-01-01&to=2026-12-31`);
+    const spy = await list(S.erik, `?userId=${USERS.free.id}&from=${M1.ym}-01&to=${M2.last}`);
     check('T3: asking for a colleague without time_tracking_team returns only own entries', (spy.data?.entries || []).every((e) => e.userId === USERS.erik.id) && !spy.raw.includes('Contract work'), spy.raw.slice(0, 200));
 
     section('T4: ownership');
@@ -217,12 +272,11 @@ async function main() {
     check('T5: starting the running target again is refused with the running entry', restart.status === 409 && restart.data?.code === 'already_running' && restart.data?.entry?.id === b.data.entry.id && dbEntry(b.data.entry.id)?.end_at === null, restart.raw);
     const stoppedRow = dbEntry(a.data.entry.id);
     check('T5: the stopped entry was priced when it stopped', stoppedRow?.cost_rate !== null && stoppedRow?.duration_sec !== null, JSON.stringify(stoppedRow));
-    // The database itself refuses a second running row.
-    let dup = false;
-    try {
-      sql(`INSERT INTO time_entries (id, user_id, recorded_by_user_id, entry_date, start_at) VALUES ('te-dup', 'tt-erik', 'tt-erik', CURDATE(), UTC_TIMESTAMP())`);
-    } catch { dup = true; }
-    check('T5: UNIQUE running_guard rejects a second running timer for the same user', dup);
+    // Phase 4 (D5.1): running_guard is a plain index, so the database accepts a second running row; the per-user
+    // lock in time_presence serialises timer writes instead (T15 races two starts).
+    const guardIdx = rows(`SELECT INDEX_NAME, NON_UNIQUE FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'time_entries' AND COLUMN_NAME = 'running_guard'`);
+    check('T5: running_guard has the plain index idx_te_running and no unique key (D5.1)', guardIdx.length === 1 && guardIdx[0].INDEX_NAME === 'idx_te_running' && guardIdx[0].NON_UNIQUE === '1', JSON.stringify(guardIdx));
+    check('T5: the per-user lock table time_presence exists', rows(`SHOW TABLES LIKE 'time_presence'`).length === 1);
     const undo = await te(S.erik, { action: 'undo_start', newId: b.data.entry.id, stoppedId: a.data.entry.id });
     check('T5: Undo removes B and reopens A', undo.status === 200 && undo.data?.entry?.running === true && !dbEntry(b.data.entry.id), undo.raw);
     const runningNow = await api(S.erik, 'time_entries.php', { query: '?running=1' });
@@ -289,11 +343,11 @@ async function main() {
     const noRateRow = dbEntry(pmEntry.data.entry.id);
     check('T11: the manager entry starts with no rate', noRateRow?.cost_rate_source === 'none');
     sql(`INSERT INTO employees (id, name, kind, user_id, salary_type, salary_amount, is_active) VALUES ('emp-pm', 'TT Manager', 'employee', 'tt-pm', 'hourly', 10, 1)`);
-    check('T11: re-pricing is admin only', (await te(S.pm, { action: 'reprice', from: '2026-10-01', to: '2026-10-31' })).status === 403);
-    const rp = await te(S.admin, { action: 'reprice', from: '2026-10-01', to: '2026-10-31' });
-    check('T11: the admin re-prices October (a month-picker end of the 31st is accepted)', rp.status === 200 && rp.data?.repriced >= 3, rp.raw);
+    check('T11: re-pricing is admin only', (await te(S.pm, { action: 'reprice', from: `${M1.ym}-01`, to: M1.last })).status === 403);
+    const rp = await te(S.admin, { action: 'reprice', from: `${M1.ym}-01`, to: M1.last });
+    check(`T11: the admin re-prices ${M1.ym} (a month-picker end on the last day of the month is accepted)`, rp.status === 200 && rp.data?.repriced >= 3, rp.raw);
     const pricedRow = dbEntry(pmEntry.data.entry.id);
-    check('T11: the entry that had no rate is now priced: hourly 10 x 1.4 (saved multiplier)', pricedRow?.cost_rate === '14.0000' && pricedRow?.cost === '14.00' && pricedRow?.employee_id === 'emp-pm', JSON.stringify(pricedRow));
+    check('T11: the entry that had no rate is now priced: hourly 10 x 1.4 (saved multiplier)', pricedRow?.cost_rate === '14.0000' && pricedRow?.cost === '14.0000' && pricedRow?.employee_id === 'emp-pm', JSON.stringify(pricedRow));
 
     section('T10: holidays');
     const hol = await api(S.erik, 'holidays.php', { query: '?country=SK&year=2026' });
@@ -324,6 +378,1075 @@ async function main() {
     sql(`UPDATE projects SET billable_rate = 80 WHERE id = 'proj-tt-1'`);
     const rated = await te(S.admin, { action: 'create', projectId: 'proj-tt-1', description: 'Rated', entryDate: '2026-10-20', durationSec: 3600, source: 'manual' });
     check('T12: an entry with no rate of its own freezes the project billable rate', dbEntry(rated.data?.entry?.id)?.billable_rate === '80.00', JSON.stringify(dbEntry(rated.data?.entry?.id)));
+
+    section('T13: worked time and parallel cost (TT2 phase 1)');
+    sql(`UPDATE system_settings SET value = JSON_SET(value, '$.requireProjectToStop', false) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+    {
+      const round4 = (n) => Math.round(n * 10000) / 10000;
+      const near = (a, b, tol = 0.00011) => Math.abs(Number(a) - Number(b)) <= tol;
+      const cents = (n) => Number(n).toFixed(2);
+      const setLock = (days) => te(S.admin, { action: 'settings', settings: { lockAfterDays: days } });
+      // Timed manual entry for Erik; times are UTC on a fixed past day (October 2026, still CEST: UTC+2).
+      const mk = (date, from, to, desc, extra = {}) =>
+        te(S.erik, { action: 'create', description: desc, startAt: `${date}T${from}:00Z`, endAt: `${date}T${to}:00Z`, source: 'manual', ...extra });
+      const row = (r) => dbEntry(r.data?.entry?.id);
+      const H2 = 7200000;
+      const min = (n) => String(n * 60000);
+
+      // One entry alone.
+      const a = await mk('2026-10-05', '09:00', '11:00', 'T13 A');
+      check('T13: timed entry A is created', a.status === 201, a.raw);
+      let aRow = row(a);
+      const rate = Number(aRow?.cost_rate);
+      check('T13: A alone: worked_ms = 7 200 000', aRow?.worked_ms === String(H2), JSON.stringify(aRow));
+      const fullCost = round4(2 * rate).toFixed(4);
+      check('T13: A alone: cost = round4(2 x rate), stored with 4 decimals', rate > 0 && aRow?.cost === fullCost, `${aRow?.cost} vs ${fullCost}`);
+
+      // Identical interval: they split it.
+      const b = await mk('2026-10-05', '09:00', '11:00', 'T13 B');
+      aRow = row(a);
+      let bRow = row(b);
+      check('T13: B (identical interval) is created', b.status === 201, b.raw);
+      check('T13: identical intervals: A and B each get worked_ms 3 600 000', aRow?.worked_ms === '3600000' && bRow?.worked_ms === '3600000', `${aRow?.worked_ms} / ${bRow?.worked_ms}`);
+      check('T13: A.cost + B.cost = the cost of A alone (4 decimals and to the cent)', near(Number(aRow?.cost) + Number(bRow?.cost), fullCost) && cents(Number(aRow?.cost) + Number(bRow?.cost)) === cents(fullCost), `${aRow?.cost} + ${bRow?.cost} vs ${fullCost}`);
+      check('T13: B\'s create re-settled A (its stored cost dropped to half)', near(aRow?.cost, rate), aRow?.cost);
+      check('T13: project time (duration_sec) is untouched: 7200 each', aRow?.duration_sec === '7200' && bRow?.duration_sec === '7200');
+
+      // Soft delete B, restore B.
+      await te(S.erik, { action: 'delete', id: b.data.entry.id });
+      aRow = row(a);
+      check('T13: deleting B returns A to 7 200 000 and the full cost', aRow?.worked_ms === String(H2) && aRow?.cost === fullCost, JSON.stringify(aRow));
+      await te(S.erik, { action: 'restore', id: b.data.entry.id });
+      aRow = row(a); bRow = row(b);
+      check('T13: restoring B splits them again', aRow?.worked_ms === '3600000' && bRow?.worked_ms === '3600000', `${aRow?.worked_ms} / ${bRow?.worked_ms}`);
+
+      // Move B away.
+      const moved = await te(S.erik, { action: 'update', id: b.data.entry.id, startAt: '2026-10-05T13:00:00Z', endAt: '2026-10-05T15:00:00Z' });
+      aRow = row(a); bRow = row(b);
+      check('T13: moving B so it no longer overlaps: both worked_ms 7 200 000', moved.status === 200 && aRow?.worked_ms === String(H2) && bRow?.worked_ms === String(H2), `${moved.raw.slice(0, 160)} ${aRow?.worked_ms} / ${bRow?.worked_ms}`);
+      check('T13: ...and both carry the full cost', aRow?.cost === fullCost && bRow?.cost === fullCost, `${aRow?.cost} / ${bRow?.cost}`);
+
+      // Staggered example of D2 (one day; C overlaps A and B).
+      const sa = await mk('2026-10-06', '09:00', '11:00', 'T13 SA');
+      const sb = await mk('2026-10-06', '09:30', '10:30', 'T13 SB');
+      const sc = await mk('2026-10-06', '10:00', '10:30', 'T13 SC');
+      const [ra, rb, rc] = [row(sa), row(sb), row(sc)];
+      check('T13: staggered: worked 85 / 25 / 10 minutes in ms', ra?.worked_ms === min(85) && rb?.worked_ms === min(25) && rc?.worked_ms === min(10), `${ra?.worked_ms} / ${rb?.worked_ms} / ${rc?.worked_ms}`);
+      check('T13: staggered: sum of worked_ms = 7 200 000 (the union)', Number(ra?.worked_ms) + Number(rb?.worked_ms) + Number(rc?.worked_ms) === H2);
+      const sumCost = Number(ra?.cost) + Number(rb?.cost) + Number(rc?.cost);
+      check('T13: staggered: sum of cost = the cost of 2 h, to the cent', cents(sumCost) === cents(fullCost) && near(sumCost, fullCost, 0.00031), `${sumCost} vs ${fullCost}`);
+
+      // Hours-only entry on the same day as timed ones.
+      const day = await te(S.erik, { action: 'create', description: 'T13 Day', entryDate: '2026-10-06', durationSec: 5400, source: 'day' });
+      check('T13: hours-only entry: worked_ms = duration x 1000 (C15)', row(day)?.worked_ms === '5400000', JSON.stringify(row(day)));
+      check('T13: ...and the timed entries of that day are untouched by it', row(sa)?.worked_ms === min(85) && row(sb)?.worked_ms === min(25) && row(sc)?.worked_ms === min(10));
+
+      // Running entry.
+      const run1 = await te(S.erik, { action: 'start', description: 'T13 running' });
+      check('T13: a running entry has worked_ms NULL', run1.status === 201 && row(run1)?.worked_ms === null, run1.raw);
+      const stopped = await te(S.erik, { action: 'stop' });
+      check('T13: after stop, worked_ms is set', stopped.status === 200 && row(run1)?.worked_ms !== null, JSON.stringify(row(run1)));
+
+      // Lock rule (D3.3): overlapping a locked neighbour. The new entry gets today's date (so the age rule does
+      // not lock it itself) but its interval overlaps A on 2026-10-05, which lockAfterDays=1 locks.
+      const today = new Date().toISOString().slice(0, 10);
+      await setLock(1);
+      const blocked = await mk('2026-10-05', '09:30', '10:00', 'T13 overlaps locked', { entryDate: today });
+      check('T13: lock: an Employee creating an entry that overlaps a locked entry is refused (entry_locked)', (blocked.status === 409 || blocked.status === 403) && blocked.data?.code === 'entry_locked', blocked.raw);
+      check('T13: lock: the refused entry was not stored and A is unchanged', rows(`SELECT id FROM time_entries WHERE description='T13 overlaps locked'`).length === 0 && row(a)?.worked_ms === String(H2));
+      const control = await mk('2026-10-20', '09:00', '10:00', 'T13 control, no neighbour', { entryDate: today });
+      check('T13: lock (control): the same trick without a locked neighbour is allowed', control.status === 201, control.raw);
+      const forErik = await te(S.admin, { action: 'create', userId: USERS.erik.id, description: 'T13 admin override', startAt: '2026-10-05T09:30:00Z', endAt: '2026-10-05T10:00:00Z', entryDate: today, source: 'manual' });
+      check('T13: lock: the admin acting for Erik may overlap the locked entry', forErik.status === 201, forErik.raw);
+      await setLock(null);
+      check('T13: lock: the setting is restored (age lock off again)', (await api(S.erik, 'time_entries.php', { query: '?action=settings' })).data?.settings?.lockAfterDays === null);
+
+      // These two land in a later package of the same phase (D5.3 last row): list and totals expose worked time.
+      const listed = (await list(S.erik, '?from=2026-10-05&to=2026-10-06')).data?.entries || [];
+      const la = listed.find((e) => e.id === a.data.entry.id);
+      check('T13 [later package]: list entries carry workedMs', listed.length > 0 && la?.workedMs !== undefined && la.workedMs !== null && Number(la.workedMs) > 0, JSON.stringify(la));
+      const totals = await api(S.erik, 'time_entries.php', { query: '?action=totals' });
+      const proj = totals.data?.byProject?.['proj-tt-1'];
+      check('T13 [later package]: action=totals carries workedMs next to seconds', !!proj && typeof proj.seconds === 'number' && typeof proj.workedMs === 'number', totals.raw);
+    }
+    section("T14: today's timer behaviour (REST, extension, MCP)");
+    {
+      // Baseline for phase 4 (parallel timers): single-timer use must keep behaving like this (A4.4, A4.8, D5.6).
+      // Fixture user Erik; every description is unique to this section so earlier counts are untouched.
+      const runningRows = () => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL`);
+      const countDesc = (d) => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND description=${q(d)} AND deleted_at IS NULL`).length;
+      await te(S.erik, { action: 'stop' }); // leftovers of earlier sections (404 when nothing runs)
+      check('T14: starting point: Erik has no running entry', runningRows().length === 0);
+
+      // ---- REST (api/time_entries.php) ----
+      const ra = await te(S.erik, { action: 'start', description: 'T14 REST A' });
+      check('T14 REST: start returns 201, a running entry and stopped null', ra.status === 201 && ra.data?.entry?.running === true && ra.data?.stopped === null, ra.raw);
+      const runA = await api(S.erik, 'time_entries.php', { query: '?running=1' });
+      // Shape today: { entry: <entry|null>, success }. Phase 4 keeps `entry` and adds running[], paused[], presence, serverNow.
+      check('T14 REST: ?running=1 returns { entry } with the running entry', runA.status === 200 && 'entry' in (runA.data || {}) && runA.data.entry?.id === ra.data?.entry?.id, runA.raw);
+      const rb = await te(S.erik, { action: 'start', description: 'T14 REST B' });
+      check('T14 REST: starting another target returns the stopped entry', rb.status === 201 && rb.data?.stopped?.id === ra.data?.entry?.id && rb.data?.stopped?.running === false, rb.raw);
+      check('T14 REST: ...the first entry now has end_at and a duration, only B runs', dbEntry(ra.data?.entry?.id)?.end_at !== null && dbEntry(ra.data?.entry?.id)?.duration_sec !== null && runningRows().length === 1 && runningRows()[0].id === rb.data?.entry?.id);
+      const rb2 = await te(S.erik, { action: 'start', description: 'T14 REST B' });
+      check('T14 REST: starting the running target again is 409 already_running with the running entry', rb2.status === 409 && rb2.data?.code === 'already_running' && rb2.data?.entry?.id === rb.data?.entry?.id, rb2.raw);
+      check('T14 REST: ...and nothing new was stored', countDesc('T14 REST B') === 1 && runningRows().length === 1);
+      const undo = await te(S.erik, { action: 'undo_start', newId: rb.data?.entry?.id, stoppedId: ra.data?.entry?.id });
+      check('T14 REST: undo_start removes the new entry and reopens the stopped one', undo.status === 200 && undo.data?.entry?.id === ra.data?.entry?.id && undo.data?.entry?.running === true && !dbEntry(rb.data?.entry?.id) && runningRows().length === 1 && runningRows()[0].id === ra.data?.entry?.id, undo.raw);
+      const st1 = await te(S.erik, { action: 'stop' });
+      const endAfterFirstStop = dbEntry(ra.data?.entry?.id)?.end_at;
+      const st2 = await te(S.erik, { action: 'stop', id: ra.data?.entry?.id });
+      check('T14 REST: stop ends the running entry', st1.status === 200 && st1.data?.entry?.id === ra.data?.entry?.id && st1.data?.entry?.running === false && endAfterFirstStop !== null, st1.raw);
+      check('T14 REST: stopping again is idempotent (200, end_at unchanged)', st2.status === 200 && dbEntry(ra.data?.entry?.id)?.end_at === endAfterFirstStop, st2.raw);
+      const runNone = await api(S.erik, 'time_entries.php', { query: '?running=1' });
+      check('T14 REST: ?running=1 is { entry: null } with nothing running', runNone.status === 200 && runNone.data?.entry === null, runNone.raw);
+
+      // ---- Chrome extension (api/time_tracker_ext.php, Authorization: Bearer ttk_...) ----
+      const ext = (method, action, body, key) =>
+        fetch(`${BASE}/ttprobe/api/time_tracker_ext.php${method === 'GET' ? `?action=${action}` : ''}`, {
+          method,
+          headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(key ? { Authorization: `Bearer ${key}` } : {}) },
+          body: body === undefined ? undefined : JSON.stringify({ action, ...body }),
+        }).then(async (res) => { const raw = await res.text(); let data = null; try { data = JSON.parse(raw); } catch {} return { status: res.status, raw, data }; });
+      const code = await api(S.erik, 'time_tracker_ext.php', { method: 'POST', body: { action: 'code' } });
+      const paired = await ext('POST', 'pair', { code: code.data?.code, deviceName: 'T14 probe', version: '1.0.0' });
+      const key = paired.data?.deviceKey;
+      check('T14 EXT: a pairing code (session) pairs a device and returns a ttk_ key', code.status === 200 && paired.status === 200 && /^ttk_[a-f0-9]{64}$/.test(key || ''), `${code.raw} / ${paired.raw}`);
+      const e0 = await ext('GET', 'running', undefined, key);
+      // If this fails with 401 not_paired while the key is right, the container's Apache drops the Authorization header
+      // (the same trap scripts/probe-mcp documents); the remaining EXT checks then fail for that reason alone.
+      check('T14 EXT: running with the device key returns { entry: null }', e0.status === 200 && e0.data?.entry === null, e0.raw);
+      const ea = await ext('POST', 'start', { description: 'T14 EXT A' }, key);
+      check('T14 EXT: start returns 201 with a running entry (source extension)', ea.status === 201 && ea.data?.entry?.running === true && dbEntry(ea.data?.entry?.id)?.source === 'extension', ea.raw);
+      const e1 = await ext('GET', 'running', undefined, key);
+      check('T14 EXT: running returns that entry', e1.data?.entry?.id === ea.data?.entry?.id, e1.raw);
+      const rToday = await ext('GET', 'recent', undefined, key); // the popup's "today" data: last 3 stopped entries + todaySeconds
+      check('T14 EXT: recent returns { entries[], todaySeconds }', rToday.status === 200 && Array.isArray(rToday.data?.entries) && typeof rToday.data?.todaySeconds === 'number', rToday.raw);
+      const rSwitch = await te(S.erik, { action: 'start', description: 'T14 EXT then REST' });
+      check('T14 EXT: a REST start while the extension timer runs stops it', rSwitch.status === 201 && rSwitch.data?.stopped?.id === ea.data?.entry?.id && runningRows().length === 1, rSwitch.raw);
+      const eSwitch = await ext('POST', 'start', { description: 'T14 EXT B' }, key);
+      check('T14 EXT: an extension start while a REST timer runs stops it', eSwitch.status === 201 && eSwitch.data?.stopped?.id === rSwitch.data?.entry?.id && runningRows().length === 1, eSwitch.raw);
+      const eStop = await ext('POST', 'stop', {}, key);
+      check('T14 EXT: stop ends the running entry', eStop.status === 200 && eStop.data?.entry?.id === eSwitch.data?.entry?.id && eStop.data?.entry?.running === false && runningRows().length === 0, eStop.raw);
+
+      // ---- MCP (api/mcp.php, tools get_running_timer / start_timer / stop_timer) ----
+      const token = 'ccrm_mcp_probe_tt_erik_' + '0'.repeat(40);
+      sql(`INSERT INTO mcp_keys (id, user_id, key_hash, key_prefix, name, created_at) VALUES ('pk-tt-erik', 'tt-erik', SHA2(${q(token)}, 256), 'ccrm_mcp_p...', 'probe', NOW() - INTERVAL 1 DAY);`);
+      let rpcId = 1;
+      const mcp = async (tool, args = {}) => {
+        const res = await fetch(`${BASE}/ttprobe/api/mcp.php`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CCRM-MCP-KEY': token },
+          body: JSON.stringify({ jsonrpc: '2.0', id: rpcId++, method: 'tools/call', params: { name: tool, arguments: args } }),
+        });
+        const raw = await res.text();
+        let body = null; try { body = JSON.parse(raw); } catch {}
+        const text = body?.result?.content?.[0]?.text;
+        let data = null; try { data = JSON.parse(text); } catch {}
+        return { status: res.status, raw, isError: !!body?.result?.isError || !!body?.error, data };
+      };
+      const m0 = await mcp('get_running_timer');
+      check('T14 MCP: get_running_timer with nothing running is { running: null }', m0.status === 200 && !m0.isError && m0.data?.running === null, m0.raw);
+      const m1 = await mcp('start_timer', { description: 'T14 MCP A' });
+      check('T14 MCP: start_timer returns success, a running entry and stopped_previous_id null', !m1.isError && m1.data?.success === true && m1.data?.entry?.running === true && m1.data?.stopped_previous_id === null, m1.raw);
+      const m2 = await mcp('get_running_timer');
+      check('T14 MCP: get_running_timer returns that entry', m2.data?.running?.id === m1.data?.entry?.id, m2.raw);
+      const m3 = await mcp('start_timer', { description: 'T14 MCP B' });
+      check('T14 MCP: starting another target reports stopped_previous_id and leaves one running', m3.data?.stopped_previous_id === m1.data?.entry?.id && dbEntry(m1.data?.entry?.id)?.end_at !== null && runningRows().length === 1, m3.raw);
+      const m4 = await mcp('stop_timer');
+      check('T14 MCP: stop_timer ends the running entry', !m4.isError && m4.data?.success === true && m4.data?.entry?.id === m3.data?.entry?.id && m4.data?.entry?.running === false && runningRows().length === 0, m4.raw);
+      const m5 = await mcp('get_running_timer');
+      check('T14 MCP: get_running_timer is { running: null } again', m5.data?.running === null, m5.raw);
+      // A4.4: starting the running target changes nothing (REST answers 409; MCP answers success:false, code already_running).
+      const s1 = await mcp('start_timer', { description: 'T14 MCP same target' });
+      const s2 = await mcp('start_timer', { description: 'T14 MCP same target' });
+      check('T14: MCP start_timer of the running target does not split the entry (A4.4, fixed in phase 4)',
+        countDesc('T14 MCP same target') === 1 && runningRows().length === 1 && runningRows()[0].id === s1.data?.entry?.id, `${countDesc('T14 MCP same target')} rows; ${s2.raw}`);
+      check('T14 MCP: ...it answers success:false, code already_running, with the running entry (not an error)',
+        !s2.isError && s2.data?.success === false && s2.data?.code === 'already_running' && s2.data?.entry?.id === s1.data?.entry?.id, s2.raw);
+
+      // Leave nothing running for whoever uses Erik after this section.
+      await te(S.erik, { action: 'stop' });
+      sql(`DELETE FROM mcp_keys WHERE id = 'pk-tt-erik'`);
+      check('T14: cleanup: Erik has no running entry', runningRows().length === 0);
+    }
+    section('T15: parallel timers (phase 4)');
+    {
+      // D5.1–D5.3. Erik (role Employee, index 2 of ROLES_RBAC in setup) gets `time_tracking_parallel` here and has it set to `nothing` at the end (the default is now `edit`, so removing the key would grant it);
+      // `parallel` settings are written straight into TIME_TRACKING_SETTINGS and removed at the end. requireProjectToStop is still
+      // false (T13 switched it off; restored after this section).
+      const runningRows = () => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL ORDER BY start_at, id`);
+      const setParallel = (p) => sql(`UPDATE system_settings SET value = JSON_SET(value, '$.parallel', CAST(${q(JSON.stringify(p))} AS JSON)) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      const grant = (on) => sql(on
+        ? `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'edit') WHERE \`key\` = 'ROLES_RBAC'`
+        : `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'nothing') WHERE \`key\` = 'ROLES_RBAC'`);
+      const iso = (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const ON = { enabled: true, maxParallel: 4, sameProject: 'differentTasks' };
+
+      const roleName = rows(`SELECT JSON_UNQUOTE(JSON_EXTRACT(value, '$[2].name')) AS n FROM system_settings WHERE \`key\` = 'ROLES_RBAC'`)[0]?.n;
+      check('T15: setup: ROLES_RBAC[2] is the Employee role Erik has', roleName === 'Employee', roleName);
+      await te(S.erik, { action: 'stop', all: true });
+      check('T15: starting point: Erik has no running entry', runningRows().length === 0);
+      for (const [id, title] of [['task-tt-p1', 'T15 task one'], ['task-tt-p2', 'T15 task two'], ['task-tt-p3', 'T15 task three']]) {
+        sql(`INSERT INTO tasks (id, title, priority, deadline, status, owner, created_by, related_project_id) VALUES (${q(id)}, ${q(title)}, 'medium', '2026-12-31', 'todo', 'TT Erik', 'TT Erik', 'proj-tt-1');`);
+      }
+      setParallel(ON);
+      grant(true);
+
+      // Two parallel starts; differentTasks lets two different tasks of proj-tt-1 run together.
+      const p1 = await te(S.erik, { action: 'start', taskId: 'task-tt-p1', startedAt: iso(Date.now() - 120000) });
+      const p2 = await te(S.erik, { action: 'start', taskId: 'task-tt-p2', mode: 'parallel' });
+      check('T15: a parallel start (two different tasks of one project) returns 201 and stops nothing', p1.status === 201 && p2.status === 201 && p2.data?.stopped === null && Array.isArray(p2.data?.stoppedAll) && p2.data.stoppedAll.length === 0, `${p1.raw} / ${p2.raw}`);
+      check('T15: ...both run in the database', runningRows().length === 2 && dbEntry(p1.data?.entry?.id)?.end_at === null);
+      const gr = await api(S.erik, 'time_entries.php', { query: '?running=1' });
+      // Two starts in one second tie on start_at; the order is (start_at, id), the same as runningRows().
+      check('T15: ?running=1 lists both (oldest first, ties by id), entry = the first, paused [], presence tracking (phase 6b), serverNow',
+        gr.status === 200 && gr.data?.running?.length === 2 && gr.data.running.map((e) => e.id).join() === runningRows().map((e) => e.id).join() && gr.data.entry?.id === runningRows()[0]?.id
+          && Array.isArray(gr.data.paused) && gr.data.paused.length === 0 && gr.data.presence?.phase === 'tracking' && typeof gr.data.serverNow === 'string', gr.raw);
+
+      // The identical target never runs twice.
+      const same = await te(S.erik, { action: 'start', taskId: 'task-tt-p1', mode: 'parallel' });
+      check('T15: parallel start of the running target is 409 already_running with that entry', same.status === 409 && same.data?.code === 'already_running' && same.data?.entry?.id === p1.data?.entry?.id && runningRows().length === 2, same.raw);
+      // A switch to a target among several running stops the others (T15b checks it).
+
+      // sameProject 'never'.
+      setParallel({ ...ON, sameProject: 'never' });
+      const never = await te(S.erik, { action: 'start', taskId: 'task-tt-p3', mode: 'parallel' });
+      check('T15: sameProject never: a third task of the same project is 409 same_project', never.status === 409 && never.data?.code === 'same_project' && runningRows().length === 2, never.raw);
+
+      // The cap.
+      setParallel({ ...ON, maxParallel: 2, sameProject: 'always' });
+      const cap = await te(S.erik, { action: 'start', description: 'T15 over the cap', mode: 'parallel' });
+      check('T15: maxParallel 2 with two running: a third is 409 parallel_limit', cap.status === 409 && cap.data?.code === 'parallel_limit' && runningRows().length === 2, cap.raw);
+
+      // Off, and no permission.
+      setParallel({ ...ON, enabled: false });
+      const off = await te(S.erik, { action: 'start', description: 'T15 disabled', mode: 'parallel' });
+      check('T15: parallel disabled: 409 parallel_disabled', off.status === 409 && off.data?.code === 'parallel_disabled' && runningRows().length === 2, off.raw);
+      setParallel(ON);
+      grant(false);
+      const noPerm = await te(S.erik, { action: 'start', description: 'T15 forbidden', mode: 'parallel' });
+      check('T15: without time_tracking_parallel: 409 parallel_forbidden', noPerm.status === 409 && noPerm.data?.code === 'parallel_forbidden' && runningRows().length === 2, noPerm.raw);
+      grant(true);
+
+      // A third item (free text, no project), then stop without an id is ambiguous.
+      const p3 = await te(S.erik, { action: 'start', description: 'T15 free C', mode: 'parallel' });
+      check('T15: a third parallel item (free text) starts', p3.status === 201 && runningRows().length === 3, p3.raw);
+      const amb = await te(S.erik, { action: 'stop' });
+      check('T15: stop without an id while several run is 409 ambiguous with running[]', amb.status === 409 && amb.data?.code === 'ambiguous' && amb.data?.running?.length === 3 && runningRows().length === 3, amb.raw);
+
+      // switch with three running stops three; undo reopens all three.
+      const sw = await te(S.erik, { action: 'start', description: 'T15 switch D' });
+      const threeIds = [p1, p2, p3].map((r) => r.data?.entry?.id);
+      check('T15: switch (no mode) with three running stops all three: stoppedAll 3, stopped = the first',
+        sw.status === 201 && sw.data?.stoppedAll?.length === 3 && sw.data.stopped?.id === p1.data?.entry?.id && threeIds.every((id) => sw.data.stoppedAll.some((e) => e.id === id && e.running === false)), sw.raw);
+      check('T15: ...only the new entry runs', runningRows().length === 1 && runningRows()[0].id === sw.data?.entry?.id);
+      const undo = await te(S.erik, { action: 'undo_start', newId: sw.data?.entry?.id, stoppedIds: threeIds });
+      check('T15: undo_start with stoppedIds removes the new entry and reopens all three',
+        undo.status === 200 && undo.data?.reopened?.length === 3 && undo.data.entry?.id === threeIds[0] && !dbEntry(sw.data?.entry?.id) && runningRows().length === 3 && threeIds.every((id) => dbEntry(id)?.end_at === null), undo.raw);
+
+      // stop all.
+      const all = await te(S.erik, { action: 'stop', all: true });
+      check('T15: stop {all:true} ends every running item', all.status === 200 && all.data?.stoppedAll?.length === 3 && runningRows().length === 0 && threeIds.every((id) => dbEntry(id)?.end_at !== null), all.raw);
+      const allAgain = await te(S.erik, { action: 'stop', all: true });
+      check('T15: stop {all:true} with nothing running is idempotent (200, empty)', allAgain.status === 200 && allAgain.data?.stoppedAll?.length === 0, allAgain.raw);
+
+      // Two parallel 1 h entries share the hour: 30 min worked each. A window 5 h back, clear of the probe's own timers.
+      const t0 = Date.now() - 5 * 3600000;
+      const w1 = await te(S.erik, { action: 'start', description: 'T15 worked 1', startedAt: iso(t0) });
+      const w2 = await te(S.erik, { action: 'start', description: 'T15 worked 2', startedAt: iso(t0), mode: 'parallel' });
+      const s1 = await te(S.erik, { action: 'stop', id: w1.data?.entry?.id, stoppedAt: iso(t0 + 3600000) });
+      const s2 = await te(S.erik, { action: 'stop', id: w2.data?.entry?.id, stoppedAt: iso(t0 + 3600000) });
+      const [r1, r2] = [dbEntry(w1.data?.entry?.id), dbEntry(w2.data?.entry?.id)];
+      check('T15: two parallel 1 h entries: duration 3600 each (project time is not split)', w1.status === 201 && w2.status === 201 && s1.status === 200 && s2.status === 200 && r1?.duration_sec === '3600' && r2?.duration_sec === '3600', `${JSON.stringify(r1)} / ${JSON.stringify(r2)}`);
+      check('T15: ...and worked_ms 1 800 000 each (C1)', r1?.worked_ms === '1800000' && r2?.worked_ms === '1800000', `${r1?.worked_ms} / ${r2?.worked_ms}`);
+
+      // A race: two switch starts at the same moment leave exactly one running entry (the per-user lock).
+      // Two sessions of Erik (two devices): one PHP session would serialise the requests on its own session-file lock.
+      const erik2 = await login(USERS.erik.email);
+      const race = await Promise.all([
+        te(S.erik, { action: 'start', description: 'T15 race A' }),
+        te(erik2, { action: 'start', description: 'T15 race B' }),
+      ]);
+      check('T15: race: two concurrent switch starts both answer 201', race.every((r) => r.status === 201), race.map((r) => r.raw).join(' / '));
+      check('T15: race: exactly one running entry afterwards', runningRows().length === 1, JSON.stringify(runningRows()));
+
+      // T15b: concurrency fixes from review (undo, switch among several, the owner's permission).
+      await te(S.erik, { action: 'stop', all: true });
+      setParallel({ ...ON, sameProject: 'always' });
+      const eid = (r) => r.data?.entry?.id;
+      // (a) Undo of an old start after a later one: nothing was undone, so nothing is reopened.
+      const u1 = await te(S.erik, { action: 'start', description: 'T15b undo A' });
+      const u2 = await te(S.erik, { action: 'start', description: 'T15b undo B' }); // stops A
+      const u3 = await te(S.erik, { action: 'start', description: 'T15b undo C' }); // stops B
+      const oldUndo = await te(S.erik, { action: 'undo_start', newId: eid(u2), stoppedIds: [eid(u1)] });
+      check('T15b: undo of an old start after a later start is 409 conflict', oldUndo.status === 409 && oldUndo.data?.code === 'conflict', oldUndo.raw);
+      check('T15b: ...the entry it once stopped stays stopped, the old start stays, only the latest runs',
+        dbEntry(eid(u1))?.end_at !== null && !!dbEntry(eid(u2)) && runningRows().length === 1 && runningRows()[0].id === eid(u3), JSON.stringify(runningRows()));
+      // (b) Switch to a target that already runs among two: the other stops, the identical one keeps running.
+      await te(S.erik, { action: 'stop', all: true });
+      const b1 = await te(S.erik, { action: 'start', taskId: 'task-tt-p1' });
+      const b2 = await te(S.erik, { action: 'start', taskId: 'task-tt-p2', mode: 'parallel' });
+      const bs = await te(S.erik, { action: 'start', taskId: 'task-tt-p2' });
+      check('T15b: switch to a running target among two answers 200 alreadyRunning with that entry and stops the other',
+        b1.status === 201 && b2.status === 201 && bs.status === 200 && bs.data?.alreadyRunning === true && eid(bs) === eid(b2)
+          && bs.data?.stoppedAll?.length === 1 && bs.data.stoppedAll[0].id === eid(b1) && bs.data.stopped?.id === eid(b1), bs.raw);
+      check('T15b: ...exactly the identical one runs', runningRows().length === 1 && runningRows()[0].id === eid(b2), JSON.stringify(runningRows()));
+      // (c) The permission is the owner's: a manager who has it cannot run a parallel timer for Erik, whose role lacks it.
+      await te(S.erik, { action: 'stop', all: true });
+      const grantPm = (on) => sql(on
+        ? `UPDATE system_settings SET value = JSON_SET(value, '$[1].permissions.time_tracking_parallel', 'edit') WHERE \`key\` = 'ROLES_RBAC'`
+        : `UPDATE system_settings SET value = JSON_SET(value, '$[1].permissions.time_tracking_parallel', 'nothing') WHERE \`key\` = 'ROLES_RBAC'`);
+      grant(false);
+      grantPm(true);
+      const c1 = await te(S.erik, { action: 'start', description: 'T15b Erik own' });
+      const c2 = await te(S.pm, { action: 'start', userId: USERS.erik.id, description: 'T15b by the manager', mode: 'parallel' });
+      check('T15b: a manager with the permission starting parallel for Erik (role without it) is 409 parallel_forbidden',
+        c1.status === 201 && c2.status === 409 && c2.data?.code === 'parallel_forbidden' && runningRows().length === 1, c2.raw);
+      grantPm(false);
+      grant(true);
+
+      // Cleanup.
+      await te(S.erik, { action: 'stop', all: true });
+      sql(`UPDATE system_settings SET value = JSON_REMOVE(value, '$.parallel') WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      grant(false);
+      check('T15: cleanup: Erik has no running entry, parallel settings and permission removed', runningRows().length === 0);
+    }
+    // T13/T14 stop free-text timers; Erik can pick a project, so "require a project" would refuse those stops
+    // (that rule is T5's subject). Restore it for anything that runs after.
+    sql(`UPDATE system_settings SET value = JSON_SET(value, '$.requireProjectToStop', true) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+
+    section('T16: leave-aware rate card (phase 3)');
+    {
+      // Erik: monthly 3 200 in SK. The open month is the current one (not frozen; the age lock is off);
+      // the closed one is the previous month with a closed payroll record. Multiplier and hours per day
+      // are whatever T9 saved, read back from the rate card row.
+      const near = (a, b, tol = 0.00011) => Math.abs(Number(a) - Number(b)) <= tol;
+      const round4 = (n) => Math.round(n * 10000) / 10000;
+      const today = new Date().toISOString().slice(0, 10);
+      const month = today.slice(0, 7);
+      const pd = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 2, 1));
+      const prev = pd.toISOString().slice(0, 7);
+      const card = (m) => rows(`SELECT * FROM time_rate_months WHERE employee_id='emp-erik' AND month=${q(m)}`)[0];
+      const audits = (m) => Number(rows(`SELECT COUNT(*) AS n FROM audit_log WHERE action='time_tracking.rate_card' AND detail LIKE ${q(`Rate card emp-erik ${m}:%`)}`)[0]?.n ?? 0);
+      // The first two SK working days of a month (weekdays that are not public holidays).
+      const holidayCache = {};
+      const firstWorkingDays = async (m) => {
+        const y = m.slice(0, 4);
+        holidayCache[y] ??= new Set(((await api(S.erik, 'holidays.php', { query: `?country=SK&year=${y}` })).data?.days || []).map((d) => d.date));
+        const out = [];
+        for (let d = new Date(`${m}-01T00:00:00Z`); out.length < 2; d.setUTCDate(d.getUTCDate() + 1)) {
+          const ymd = d.toISOString().slice(0, 10);
+          if (d.getUTCDay() !== 0 && d.getUTCDay() !== 6 && !holidayCache[y].has(ymd)) out.push(ymd);
+        }
+        return out;
+      };
+      const bookPaidLeave = async (id, m) => {
+        const [d1, d2] = await firstWorkingDays(m);
+        // 'annual' is a paid type in the EMPLOYEE_SETTINGS.vacationTypes the schema seeds (isPaid: true).
+        sql(`INSERT INTO employee_vacations (id, employee_id, vacation_type_id, start_date, end_date, days_count, status) VALUES (${q(id)}, 'emp-erik', 'annual', ${q(d1)}, ${q(d2)}, 2.0, 'approved')`);
+      };
+      const expected = (row, pl) => round4((3200 * Number(row.multiplier)) / ((Number(row.working_days) - pl) * Number(row.hours_per_day)));
+      const day = (desc, date) => te(S.erik, { action: 'create', description: desc, entryDate: date, durationSec: 3600, source: 'day' });
+
+      // ---- open month: leave booked after tracking re-prices the month once ----
+      const a = await day('T16 A', today);
+      check('T16: an entry in the open month is created and priced monthly', a.status === 201 && dbEntry(a.data?.entry?.id)?.cost_rate_source === 'monthly', a.raw);
+      const before = card(month);
+      check('T16: the rate card has the open month, no leave, not frozen, same rate as the entry', before && before.paid_leave_days === '0.0' && before.frozen_at === null && before.rate === dbEntry(a.data.entry.id)?.cost_rate, JSON.stringify(before));
+      const n0 = audits(month);
+      await bookPaidLeave('vac-t16-open', month);
+      const b = await day('T16 B', today); // pricing B reads the rate card, which sees the new leave
+      const after = card(month);
+      const want = after ? expected(after, 2) : NaN;
+      check('T16: the rate card row now has 2 paid leave days and the D4.1 rate', after?.paid_leave_days === '2.0' && near(after?.rate, want), `${JSON.stringify(after)} want ${want}`);
+      const aRow = dbEntry(a.data?.entry?.id);
+      check('T16: the earlier entry A was re-priced: rate = salary x multiplier / ((WD - PL) x H), 4 decimals', near(aRow?.cost_rate, want), `${aRow?.cost_rate} vs ${want}`);
+      check('T16: ...and its cost (1 h) follows, written by settle', near(aRow?.cost, want), `${aRow?.cost} vs ${want}`);
+      check('T16: the new entry B carries the same rate', b.status === 201 && near(dbEntry(b.data?.entry?.id)?.cost_rate, want), b.raw);
+      check('T16: one audit-log line for the re-pricing', audits(month) === n0 + 1, `${audits(month)} vs ${n0 + 1}`);
+      const c = await day('T16 C', today);
+      php(`echo json_encode(ccrm_tt_rate_card_cron($pdo, true));`);
+      check('T16: another entry and a cron pass re-price nothing more (no new audit line)', c.status === 201 && audits(month) === n0 + 1 && near(dbEntry(a.data.entry.id)?.cost_rate, want), `${audits(month)} audit lines`);
+
+      // ---- closed payroll month: not re-priced; the admin "Re-price a period" does recompute ----
+      const p = await day('T16 P', `${prev}-10`);
+      check('T16: an entry in the previous month is created', p.status === 201, p.raw);
+      const p0 = dbEntry(p.data?.entry?.id)?.cost_rate;
+      sql(`INSERT INTO employee_salaries (id, employee_id, period_type, period_key, year, period_number, items_json, total_salary, total_paid, status, closed_at) VALUES ('sal-t16', 'emp-erik', 'monthly', ${q(prev)}, ${Number(prev.slice(0, 4))}, ${Number(prev.slice(5, 7))}, '[]', 3200, 3200, 'paid', UTC_TIMESTAMP())`);
+      const np0 = audits(prev);
+      await bookPaidLeave('vac-t16-closed', prev);
+      php(`echo json_encode(ccrm_tt_rate_card_cron($pdo, true));`);
+      const frozen = card(prev);
+      check('T16: closed payroll month: the entry keeps its rate', p0 && dbEntry(p.data.entry.id)?.cost_rate === p0, `${dbEntry(p.data.entry.id)?.cost_rate} vs ${p0}`);
+      check('T16: ...the rate card row is frozen and ignores the new leave', !!frozen?.frozen_at && frozen?.paid_leave_days === '0.0', JSON.stringify(frozen));
+      check('T16: ...and no audit line was written for it', audits(prev) === np0, `${audits(prev)} vs ${np0}`);
+      const lastDay = new Date(Date.UTC(Number(prev.slice(0, 4)), Number(prev.slice(5, 7)), 0)).toISOString().slice(0, 10);
+      const rp = await te(S.admin, { action: 'reprice', from: `${prev}-01`, to: lastDay, userIds: [USERS.erik.id] });
+      const re = card(prev);
+      const want2 = re ? expected(re, 2) : NaN;
+      check('T16: admin re-price of the closed month succeeds', rp.status === 200 && rp.data?.repriced >= 1, rp.raw);
+      check('T16: ...recomputes the frozen row (2 paid leave days, frozen_at kept)', re?.paid_leave_days === '2.0' && !!re?.frozen_at && re?.frozen_at === frozen?.frozen_at && near(re?.rate, want2), JSON.stringify(re));
+      check('T16: ...and re-prices the entry with the new rate and cost', near(dbEntry(p.data.entry.id)?.cost_rate, want2) && near(dbEntry(p.data.entry.id)?.cost, want2), JSON.stringify(dbEntry(p.data.entry.id)));
+    }
+    section('T17: the extension with parallel timers (phase 4c)');
+    {
+      // D5.6: the extension stays single-timer but is safe beside parallel timers. Uses the T15 tasks (proj-tt-1), so
+      // requireProjectToStop (true again) never refuses a stop. Pairs its own device: T14's key is out of scope here.
+      const runningRows = () => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL ORDER BY start_at, id`);
+      const setParallel = (p) => sql(`UPDATE system_settings SET value = JSON_SET(value, '$.parallel', CAST(${q(JSON.stringify(p))} AS JSON)) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      const grant = (on) => sql(on
+        ? `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'edit') WHERE \`key\` = 'ROLES_RBAC'`
+        : `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'nothing') WHERE \`key\` = 'ROLES_RBAC'`);
+      const iso = (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const ext = (method, action, body, key) =>
+        fetch(`${BASE}/ttprobe/api/time_tracker_ext.php${method === 'GET' ? `?action=${action}` : ''}`, {
+          method,
+          headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(key ? { Authorization: `Bearer ${key}` } : {}) },
+          body: body === undefined ? undefined : JSON.stringify({ action, ...body }),
+        }).then(async (res) => { const raw = await res.text(); let data = null; try { data = JSON.parse(raw); } catch {} return { status: res.status, raw, data }; });
+
+      await te(S.erik, { action: 'stop', all: true });
+      check('T17: starting point: Erik has no running entry', runningRows().length === 0);
+      const code = await api(S.erik, 'time_tracker_ext.php', { method: 'POST', body: { action: 'code' } });
+      const key = (await ext('POST', 'pair', { code: code.data?.code, deviceName: 'T17 probe', version: '1.0.0' })).data?.deviceKey;
+      check('T17: a device is paired', /^ttk_[a-f0-9]{64}$/.test(key || ''), code.raw);
+      setParallel({ enabled: true, maxParallel: 4, sameProject: 'differentTasks' });
+      grant(true);
+
+      const t0 = Date.now() - 60000; // both started a minute ago: worked = 60 s, a plain sum would say 120 s
+      const p1 = await te(S.erik, { action: 'start', taskId: 'task-tt-p1', startedAt: iso(t0) });
+      const p2 = await te(S.erik, { action: 'start', taskId: 'task-tt-p2', mode: 'parallel', startedAt: iso(t0 + 1000) });
+      check('T17: two REST timers run in parallel', p1.status === 201 && p2.status === 201 && runningRows().length === 2, `${p1.raw} / ${p2.raw}`);
+
+      const er = await ext('GET', 'running', undefined, key);
+      check('T17: extension running reports count 2, running[2], entry = the first, workedTodaySeconds a number',
+        er.status === 200 && er.data?.count === 2 && er.data?.running?.length === 2 && er.data?.entry?.id === p1.data?.entry?.id && typeof er.data?.workedTodaySeconds === 'number', er.raw);
+      // Running part = workedTodaySeconds - recent.todaySeconds (closed entries of today).
+      const closed = (await ext('GET', 'recent', undefined, key)).data?.todaySeconds;
+      const runningPart = er.data?.workedTodaySeconds - closed;
+      check('T17: ...the worked clock adds the union of the running intervals (about 60 s, not 120)', runningPart >= 55 && runningPart < 100, `${er.data?.workedTodaySeconds} - ${closed}`);
+
+      const amb = await ext('POST', 'stop', {}, key);
+      check('T17: extension stop without an id while two run is 409 ambiguous with running = 2', amb.status === 409 && amb.data?.code === 'ambiguous' && amb.data?.running === 2 && runningRows().length === 2, amb.raw);
+
+      const same = await ext('POST', 'start', { taskId: 'task-tt-p1' }, key);
+      check('T17: extension start of a running target is 409 already_running with that entry, nothing stopped',
+        same.status === 409 && same.data?.code === 'already_running' && same.data?.entry?.id === p1.data?.entry?.id && runningRows().length === 2, same.raw);
+
+      const sw = await ext('POST', 'start', { taskId: 'task-tt-p3' }, key);
+      const ids = [p1, p2].map((r) => r.data?.entry?.id);
+      check('T17: extension start switches both off: stoppedAll 2, stopped = the first, one running',
+        sw.status === 201 && sw.data?.stoppedAll?.length === 2 && sw.data?.stopped?.id === ids[0] && ids.every((id) => dbEntry(id)?.end_at !== null)
+          && runningRows().length === 1 && runningRows()[0].id === sw.data?.entry?.id, sw.raw);
+
+      const one = await ext('POST', 'stop', {}, key);
+      check('T17: with one running, extension stop without an id ends it', one.status === 200 && one.data?.entry?.id === sw.data?.entry?.id && runningRows().length === 0, one.raw);
+
+      await te(S.erik, { action: 'stop', all: true });
+      sql(`UPDATE system_settings SET value = JSON_REMOVE(value, '$.parallel') WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      grant(false);
+      check('T17: cleanup: Erik has no running entry, parallel settings and permission removed', runningRows().length === 0);
+    }
+    section('T18: MCP with parallel timers (phase 4)');
+    {
+      // D5.6: the MCP tools follow the REST contract. Erik gets parallel settings and the permission as in T15; the
+      // free-text timers here have no project, so requireProjectToStop is switched off for the section and restored after.
+      const runningRows = () => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL ORDER BY start_at, id`);
+      const countDesc = (d) => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND description=${q(d)} AND deleted_at IS NULL`).length;
+      const setParallel = (p) => sql(`UPDATE system_settings SET value = JSON_SET(value, '$.parallel', CAST(${q(JSON.stringify(p))} AS JSON)) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      const grant = (on) => sql(on
+        ? `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'edit') WHERE \`key\` = 'ROLES_RBAC'`
+        : `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'nothing') WHERE \`key\` = 'ROLES_RBAC'`);
+      const ON = { enabled: true, maxParallel: 4, sameProject: 'differentTasks' };
+      const token = 'ccrm_mcp_probe_tt_erik18_' + '0'.repeat(38);
+      sql(`INSERT INTO mcp_keys (id, user_id, key_hash, key_prefix, name, created_at) VALUES ('pk-tt-erik18', 'tt-erik', SHA2(${q(token)}, 256), 'ccrm_mcp_p...', 'probe T18', NOW() - INTERVAL 1 DAY);`);
+      let rpcId = 1000;
+      const mcp = async (tool, args = {}) => {
+        const res = await fetch(`${BASE}/ttprobe/api/mcp.php`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CCRM-MCP-KEY': token },
+          body: JSON.stringify({ jsonrpc: '2.0', id: rpcId++, method: 'tools/call', params: { name: tool, arguments: args } }),
+        });
+        const raw = await res.text();
+        let body = null; try { body = JSON.parse(raw); } catch {}
+        const text = body?.result?.content?.[0]?.text;
+        let data = null; try { data = JSON.parse(text); } catch {}
+        return { status: res.status, raw, isError: !!body?.result?.isError || !!body?.error, data };
+      };
+      sql(`UPDATE system_settings SET value = JSON_SET(value, '$.requireProjectToStop', false) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      await te(S.erik, { action: 'stop', all: true });
+      check('T18: starting point: Erik has no running entry', runningRows().length === 0);
+      setParallel(ON);
+      grant(true);
+
+      const a = await mcp('start_timer', { description: 'T18 MCP A', mode: 'parallel' });
+      const b = await mcp('start_timer', { description: 'T18 MCP B', mode: 'parallel' });
+      check('T18: two parallel start_timer calls both succeed and stop nothing', !a.isError && !b.isError && a.data?.success === true && b.data?.success === true
+        && b.data?.mode === 'parallel' && b.data?.stopped_previous_id === null && Array.isArray(b.data?.stopped_ids) && b.data.stopped_ids.length === 0, `${a.raw} / ${b.raw}`);
+      check('T18: ...two entries run in the database', runningRows().length === 2);
+      const gr = await mcp('get_running_timer');
+      // Two starts in one second tie on start_at and the tie is broken by id: compare with the (start_at, id) order.
+      check('T18: get_running_timer lists both in timers (by start_at, id), running = the first, paused []',
+        !gr.isError && gr.data?.timers?.length === 2 && gr.data.timers.map((e) => e.id).join() === runningRows().map((e) => e.id).join() && [a.data?.entry?.id, b.data?.entry?.id].every((id) => gr.data.timers.some((e) => e.id === id)) && gr.data.running?.id === runningRows()[0]?.id
+          && Array.isArray(gr.data.paused) && gr.data.paused.length === 0, gr.raw);
+      const again = await mcp('start_timer', { description: 'T18 MCP A', mode: 'parallel' });
+      check('T18: parallel start_timer of a running target: success:false, already_running, nothing new stored',
+        !again.isError && again.data?.success === false && again.data?.code === 'already_running' && again.data?.entry?.id === a.data?.entry?.id
+          && countDesc('T18 MCP A') === 1 && runningRows().length === 2, again.raw);
+      const amb = await mcp('stop_timer');
+      check('T18: stop_timer without arguments while several run is an error naming several timers', amb.isError && /several/i.test(amb.raw) && runningRows().length === 2, amb.raw);
+      const one = await mcp('stop_timer', { entry_id: b.data?.entry?.id });
+      check('T18: stop_timer {entry_id} stops that entry only', !one.isError && one.data?.entry?.id === b.data?.entry?.id && one.data?.entry?.running === false
+        && runningRows().length === 1 && runningRows()[0].id === a.data?.entry?.id, one.raw);
+      const c = await mcp('start_timer', { description: 'T18 MCP C', mode: 'parallel' });
+      check('T18: a third parallel start runs beside A', !c.isError && c.data?.success === true && runningRows().length === 2, c.raw);
+      setParallel({ ...ON, enabled: false });
+      const off = await mcp('start_timer', { description: 'T18 MCP disabled', mode: 'parallel' });
+      check('T18: parallel disabled: start_timer {mode:parallel} is an error naming parallel_disabled', off.isError && off.raw.includes('parallel_disabled') && countDesc('T18 MCP disabled') === 0 && runningRows().length === 2, off.raw);
+      setParallel(ON);
+      const all = await mcp('stop_timer', { all: true });
+      check('T18: stop_timer {all:true} stops every running timer', !all.isError && all.data?.success === true && all.data?.stopped_ids?.length === 2 && all.data?.stopped?.length === 2 && runningRows().length === 0, all.raw);
+      const allAgain = await mcp('stop_timer', { all: true });
+      check('T18: stop_timer {all:true} with nothing running is idempotent', !allAgain.isError && allAgain.data?.success === true && allAgain.data?.stopped_ids?.length === 0, allAgain.raw);
+      const gr0 = await mcp('get_running_timer');
+      check('T18: get_running_timer is { running: null, timers: [] } again', gr0.data?.running === null && gr0.data?.timers?.length === 0, gr0.raw);
+
+      // D9: a person's sum is worked time. T15 left two parallel 1 h entries (worked 30 min each), so Erik's project hours exceed his worked hours.
+      const sum = await mcp('get_time_tracking_summary', { group_by: 'user' });
+      const erikRow = (sum.data?.groups || []).find((g) => g.key === 'tt-erik');
+      check('T18: get_time_tracking_summary group_by=user carries worked_hours and leverage per person and in total',
+        !sum.isError && typeof erikRow?.worked_hours === 'number' && 'leverage' in (erikRow || {}) && typeof sum.data?.total_worked_hours === 'number', sum.raw);
+      check('T18: ...Erik\'s worked hours are below his project hours (the T15 parallel hour counts once)', erikRow && erikRow.worked_hours < erikRow.hours && erikRow.leverage > 1, JSON.stringify(erikRow));
+      const byProject = await mcp('get_time_tracking_summary', { group_by: 'project' });
+      check('T18: group_by=project is unchanged (no worked_hours)', !byProject.isError && (byProject.data?.groups || []).every((g) => !('worked_hours' in g)) && !('total_worked_hours' in (byProject.data || {})), byProject.raw);
+
+      // Cleanup.
+      await te(S.erik, { action: 'stop', all: true });
+      sql(`UPDATE system_settings SET value = JSON_REMOVE(value, '$.parallel') WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      grant(false);
+      sql(`UPDATE system_settings SET value = JSON_SET(value, '$.requireProjectToStop', true) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      sql(`DELETE FROM mcp_keys WHERE id = 'pk-tt-erik18'`);
+      check('T18: cleanup: Erik has no running entry', runningRows().length === 0);
+    }
+    section('T19: pause and resume (phase 6a)');
+    {
+      // D6, C8, C17. Erik again; parallel settings and the Erik permission are set here and removed at the end
+      // (T18 cleaned both up). requireProjectToStop is true again after T18; Erik cannot pick a project, so it does not block him.
+      const runningRows = () => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL ORDER BY start_at, id`);
+      const pausedRows = () => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND paused_at IS NOT NULL AND deleted_at IS NULL ORDER BY start_at, id`);
+      const setParallel = (p) => sql(`UPDATE system_settings SET value = JSON_SET(value, '$.parallel', CAST(${q(JSON.stringify(p))} AS JSON)) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      const grant = (on) => sql(on
+        ? `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'edit') WHERE \`key\` = 'ROLES_RBAC'`
+        : `UPDATE system_settings SET value = JSON_SET(value, '$[2].permissions.time_tracking_parallel', 'nothing') WHERE \`key\` = 'ROLES_RBAC'`);
+      const runningNow = () => api(S.erik, 'time_entries.php', { query: '?running=1' });
+
+      await te(S.erik, { action: 'stop', all: true }); // also clears any pause left over
+      check('T19: starting point: Erik has nothing running and nothing paused', runningRows().length === 0 && pausedRows().length === 0);
+      const cols = rows(`SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'time_entries' AND COLUMN_NAME IN ('paused_at','pause_reason','resume_until','continues_id','end_reason')`);
+      check('T19: the five D6 columns exist', cols.length === 5, JSON.stringify(cols));
+
+      // Pause one item.
+      const a = await te(S.erik, { action: 'start', description: 'T19 pause A' });
+      const aId = a.data?.entry?.id;
+      const pa = await te(S.erik, { action: 'pause', id: aId });
+      const aRow = dbEntry(aId);
+      check('T19: pause closes the entry and sets the marker (manual, resume_until NULL, end_reason NULL)',
+        pa.status === 200 && pa.data?.paused?.length === 1 && pa.data.entry?.id === aId && pa.data.entry.state === 'paused' && pa.data.entry.running === false
+          && aRow?.end_at !== null && aRow?.duration_sec !== null && aRow?.paused_at === aRow?.end_at && aRow?.pause_reason === 'manual' && aRow?.resume_until === null && aRow?.end_reason === null, `${pa.raw} / ${JSON.stringify(aRow)}`);
+      const pa2 = await te(S.erik, { action: 'pause', id: aId });
+      check('T19: pausing a paused item again is idempotent', pa2.status === 200 && pa2.data?.entry?.state === 'paused' && dbEntry(aId)?.paused_at === aRow?.paused_at, pa2.raw);
+      const g1 = await runningNow();
+      check('T19: ?running=1 lists it in paused[] with pauseExpiresAt, nothing running',
+        g1.data?.running?.length === 0 && g1.data?.paused?.length === 1 && g1.data.paused[0].id === aId && typeof g1.data.paused[0].pauseExpiresAt === 'string', g1.raw);
+
+      // Resume it: a new running entry continues it, the old marker goes.
+      const ra = await te(S.erik, { action: 'resume', id: aId });
+      const newId = ra.data?.entry?.id;
+      const newRow = dbEntry(newId);
+      check('T19: resume starts a new running entry with continues_id = the paused one (201, resumed [old])',
+        ra.status === 201 && newId && newId !== aId && ra.data.entry.state === 'ongoing' && ra.data.entry.continuesId === aId && ra.data.resumed?.[0] === aId
+          && newRow?.continues_id === aId && newRow?.end_at === null && newRow?.description === 'T19 pause A' && newRow?.source === 'timer', `${ra.raw} / ${JSON.stringify(newRow)}`);
+      const aAfter = dbEntry(aId);
+      check('T19: ...the old entry lost its marker, keeps its pause_reason and has no end_reason', aAfter?.paused_at === null && aAfter?.pause_reason === 'manual' && aAfter?.end_reason === null, JSON.stringify(aAfter));
+      check('T19: ...it is no longer in paused[]', ((await runningNow()).data?.paused || []).length === 0);
+
+      // Undo of the resume: the new entry goes, the old one is paused again.
+      const undo = await te(S.erik, { action: 'undo_start', newId, stoppedIds: [] });
+      check('T19: undo_start of a resume removes the new entry and re-marks the old one paused',
+        undo.status === 200 && !dbEntry(newId) && dbEntry(aId)?.paused_at === dbEntry(aId)?.end_at && runningRows().length === 0, `${undo.raw} / ${JSON.stringify(dbEntry(aId))}`);
+
+      // Stop on a paused item clears the marker, adds no time.
+      const durBefore = dbEntry(aId)?.duration_sec;
+      const sp = await te(S.erik, { action: 'stop', id: aId });
+      const aStopped = dbEntry(aId);
+      check('T19: stop on a paused item clears the marker, end_reason user, no new time',
+        sp.status === 200 && sp.data?.entry?.state === 'stopped' && sp.data.entry.endReason === 'user' && aStopped?.paused_at === null && aStopped?.end_reason === 'user' && aStopped?.duration_sec === durBefore && runningRows().length === 0, `${sp.raw} / ${JSON.stringify(aStopped)}`);
+      const rs = await te(S.erik, { action: 'resume', id: aId });
+      check('T19: resuming a stopped item is 409 not_paused', rs.status === 409 && rs.data?.code === 'not_paused' && runningRows().length === 0, rs.raw);
+
+      // An expired pause: resume answers 409 pause_expired and clears the marker.
+      const b = await te(S.erik, { action: 'start', description: 'T19 expired B' });
+      const bId = b.data?.entry?.id;
+      await te(S.erik, { action: 'pause', id: bId });
+      sql(`UPDATE time_entries SET resume_until = UTC_TIMESTAMP() - INTERVAL 1 MINUTE WHERE id = ${q(bId)}`);
+      const rb = await te(S.erik, { action: 'resume', id: bId });
+      const bRow = dbEntry(bId);
+      check('T19: resume of an expired pause is 409 pause_expired, the marker is cleared, nothing starts',
+        rb.status === 409 && rb.data?.code === 'pause_expired' && bRow?.paused_at === null && bRow?.end_reason === 'user' && runningRows().length === 0, `${rb.raw} / ${JSON.stringify(bRow)}`);
+      // The lazy read clears an expired marker too.
+      const c = await te(S.erik, { action: 'start', description: 'T19 lazy C' });
+      const cId = c.data?.entry?.id;
+      await te(S.erik, { action: 'pause', id: cId });
+      sql(`UPDATE time_entries SET resume_until = UTC_TIMESTAMP() - INTERVAL 1 MINUTE WHERE id = ${q(cId)}`);
+      const g2 = await runningNow();
+      check('T19: ?running=1 leaves out an expired pause and clears its marker', (g2.data?.paused || []).length === 0 && dbEntry(cId)?.paused_at === null, g2.raw);
+
+      // end_reason of stop and switch.
+      const d = await te(S.erik, { action: 'start', description: 'T19 switch D' });
+      const e = await te(S.erik, { action: 'start', description: 'T19 switch E' }); // switch: stops D
+      const dId = d.data?.entry?.id;
+      const eId = e.data?.entry?.id;
+      check('T19: a switch-start sets end_reason switch on what it stops', dbEntry(dId)?.end_reason === 'switch' && e.data?.stopped?.endReason === 'switch', e.raw);
+      await te(S.erik, { action: 'stop', id: eId, projectId: 'proj-tt-1' }); // "require a project" is on again here
+      check('T19: a stop sets end_reason user', dbEntry(eId)?.end_reason === 'user', JSON.stringify(dbEntry(eId)));
+
+      // Pause all / resume all with two parallel items.
+      setParallel({ enabled: true, maxParallel: 4, sameProject: 'always' });
+      grant(true);
+      const p1 = await te(S.erik, { action: 'start', description: 'T19 parallel 1' });
+      const p2 = await te(S.erik, { action: 'start', description: 'T19 parallel 2', mode: 'parallel' });
+      check('T19: setup: two parallel items run', p1.status === 201 && p2.status === 201 && runningRows().length === 2, `${p1.raw} / ${p2.raw}`);
+      const pAll = await te(S.erik, { action: 'pause', all: true });
+      check('T19: pause all pauses both, nothing runs', pAll.status === 200 && pAll.data?.paused?.length === 2 && runningRows().length === 0 && pausedRows().length === 2, pAll.raw);
+      const rAll = await te(S.erik, { action: 'resume', all: true });
+      const conts = rows(`SELECT continues_id FROM time_entries WHERE user_id='tt-erik' AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL ORDER BY continues_id`).map((r) => r.continues_id).sort();
+      check('T19: resume all with parallel allowed resumes both side by side (continues_id = the paused pair)',
+        rAll.status === 201 && rAll.data?.entries?.length === 2 && rAll.data.resumed?.length === 2 && rAll.data.stoppedAll?.length === 0 && runningRows().length === 2 && pausedRows().length === 0
+          && JSON.stringify(conts) === JSON.stringify([p1.data?.entry?.id, p2.data?.entry?.id].sort()), `${rAll.raw} / ${JSON.stringify(conts)}`);
+      // Parallel off: resume all after pause all switches and resumes one; the other stays paused (skipped).
+      await te(S.erik, { action: 'pause', all: true });
+      setParallel({ enabled: false, maxParallel: 4, sameProject: 'always' });
+      const rOff = await te(S.erik, { action: 'resume', all: true });
+      check('T19: resume all with parallel off resumes one, the other stays paused (skipped)',
+        rOff.status === 201 && rOff.data?.entries?.length === 1 && rOff.data.skipped?.length === 1 && runningRows().length === 1 && pausedRows().length === 1, rOff.raw);
+      // A resume while something else runs and parallel is off is a switch.
+      const skippedId = rOff.data?.skipped?.[0];
+      const runId = runningRows()[0]?.id;
+      const rSw = await te(S.erik, { action: 'resume', id: skippedId });
+      check('T19: resuming one while another runs (parallel off) switches: the running one ends with end_reason switch',
+        rSw.status === 201 && rSw.data?.stoppedAll?.length === 1 && dbEntry(runId)?.end_reason === 'switch' && runningRows().length === 1 && runningRows()[0].id === rSw.data?.entry?.id, rSw.raw);
+      // Stop all ends the pauses too.
+      await te(S.erik, { action: 'pause', all: true });
+      const stAll = await te(S.erik, { action: 'stop', all: true });
+      check('T19: stop all with nothing running clears every pause (unpaused)', stAll.status === 200 && stAll.data?.unpaused?.length === 1 && pausedRows().length === 0 && runningRows().length === 0, stAll.raw);
+
+      // Cleanup.
+      sql(`UPDATE system_settings SET value = JSON_REMOVE(value, '$.parallel') WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      grant(false);
+      check('T19: cleanup: Erik has nothing running and nothing paused', runningRows().length === 0 && pausedRows().length === 0);
+    }
+
+    section('T21: billable value (phase 9b)');
+    {
+      // C13 / D3.2: billableValue = duration x frozen billable rate; parallel work does not reduce it. Cost is split by worked time.
+      const totalsOf = async (sess) => (await list(sess, '?action=totals')).data?.byProject || {};
+      const before = await totalsOf(S.admin);
+      const b1 = before['proj-tt-1'] || { billableValue: 0, cost: 0 };
+      const b2 = before['proj-tt-2'] || { billableValue: 0, cost: 0 };
+      const mk = (projectId) => te(S.admin, { action: 'create', projectId, description: 'T21 parallel', entryDate: '2026-10-21', startAt: '2026-10-21T08:00:00Z', endAt: '2026-10-21T09:00:00Z', billable: true, billableRate: 60, source: 'manual' });
+      const e1 = await mk('proj-tt-1');
+      const e2 = await mk('proj-tt-2');
+      check('T21: setup: two overlapping billable entries (rate 60) were created', e1.status === 201 && e2.status === 201, `${e1.raw} / ${e2.raw}`);
+      const after = await totalsOf(S.admin);
+      const a1 = after['proj-tt-1'];
+      const a2 = after['proj-tt-2'];
+      check('T21: each project gains the full hour x 60 (parallel does not reduce billable value)',
+        a1 && a2 && Math.abs((a1.billableValue - b1.billableValue) - 60) < 0.01 && Math.abs((a2.billableValue - b2.billableValue) - 60) < 0.01, JSON.stringify({ a1, a2, b1, b2 }));
+      check('T21: ...billableComplete is a boolean', typeof a1?.billableComplete === 'boolean');
+      const wk = (id) => Number(dbEntry(id)?.worked_ms);
+      check('T21: ...while the worked time is split (the two entries share one hour)',
+        wk(e1.data?.entry?.id) + wk(e2.data?.entry?.id) <= 3600000 + 1000, JSON.stringify({ w1: wk(e1.data?.entry?.id), w2: wk(e2.data?.entry?.id) }));
+      const asErik = (await list(S.erik, '?action=totals')).data?.byProject?.['proj-tt-1'];
+      check('T21: a caller without time_tracking_costs gets billableValue null', asErik && asErik.billableValue === null, JSON.stringify(asErik));
+      sql(`UPDATE time_entries SET deleted_at = NOW() WHERE id IN (${q(e1.data?.entry?.id)}, ${q(e2.data?.entry?.id)})`);
+    }
+    section('T20: presence (phase 6b)');
+    {
+      // D7, C6, C7, C9, A4.2 on the test clock: CCRM_TT_TEST_CLOCK (scratch config.php) + system_settings TT_TEST_NOW.
+      // Defaults: question at +50 min, deadline +10, resume window +10, trimTo 'prompt'. All instants are today
+      // between 06:00 and 13:00 UTC, far from the default autoStopAt (23:59 company time).
+      const MIN = 60000;
+      const utc = (ms) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+      const isoZ = (ms) => new Date(ms).toISOString().slice(0, 19) + 'Z';
+      const setNow = (ms) => sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('TT_TEST_NOW', ${q(utc(ms))})`);
+      const d = new Date();
+      const T0 = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 6, 0, 0);
+      const runningOf = (uid) => rows(`SELECT id FROM time_entries WHERE user_id=${q(uid)} AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL`);
+      const presenceRow = (uid) => rows(`SELECT anchor_at, auto_paused_at FROM time_presence WHERE user_id=${q(uid)}`)[0] || {};
+      const runningNow = (sess) => api(sess, 'time_entries.php', { query: '?running=1' });
+      const settleByCron = (uid) => JSON.parse(php(`require_once '${SCRATCH_DIR}/api/time_presence_lib.php'; echo json_encode(ccrm_tt_presence_settle($pdo, ${q(uid)}, ccrm_tt_now_utc(), ccrm_tt_load_settings($pdo)));`).trim() || 'null');
+
+      await te(S.erik, { action: 'stop', all: true });
+      await te(S.free, { action: 'stop', all: true });
+      setNow(T0);
+      const g0 = await runningNow(S.erik);
+      check('T20: the test clock drives serverNow; nothing runs: presence idle', g0.data?.serverNow === isoZ(T0) && g0.data?.presence?.phase === 'idle' && g0.data.presence.enabled === true && runningOf('tt-erik').length === 0, g0.raw);
+
+      // One cycle, answered at minute 55: nothing is lost.
+      const a = await te(S.erik, { action: 'start', description: 'T20 presence A' });
+      const aId = a.data?.entry?.id;
+      const g1 = await runningNow(S.erik);
+      check('T20: start at T0: tracking, anchor T0, promptAt T0+50, deadlineAt T0+60',
+        a.status === 201 && dbEntry(aId)?.start_at === utc(T0) && g1.data?.presence?.phase === 'tracking' && g1.data.presence.anchorAt === isoZ(T0)
+          && g1.data.presence.promptAt === isoZ(T0 + 50 * MIN) && g1.data.presence.deadlineAt === isoZ(T0 + 60 * MIN) && presenceRow('tt-erik').anchor_at === utc(T0), `${a.raw} / ${g1.raw}`);
+      setNow(T0 + 55 * MIN);
+      const g2 = await runningNow(S.erik);
+      check('T20: at T0+55 the phase is question, the entry still runs', g2.data?.presence?.phase === 'question' && dbEntry(aId)?.end_at === null, g2.raw);
+      const c1 = await te(S.erik, { action: 'confirm' });
+      check('T20: confirm at T0+55: 200, anchor = T0+55, tracking again, nothing lost (still running)',
+        c1.status === 200 && c1.data?.presence?.anchorAt === isoZ(T0 + 55 * MIN) && c1.data.presence.phase === 'tracking' && c1.data.presence.promptAt === isoZ(T0 + 105 * MIN)
+          && presenceRow('tt-erik').anchor_at === utc(T0 + 55 * MIN) && dbEntry(aId)?.end_at === null, c1.raw);
+
+      // No answer in the new cycle: at T0+116 (past the deadline T0+115) the entry ended at the question (T0+105) and is paused.
+      setNow(T0 + 116 * MIN);
+      const g3 = await runningNow(S.erik);
+      const aRow = dbEntry(aId);
+      check('T20: no answer: the entry ends at the new promptAt (T0+105), end_reason presence',
+        aRow?.end_at === utc(T0 + 105 * MIN) && aRow?.duration_sec === String(105 * 60) && aRow?.end_reason === 'presence', JSON.stringify(aRow));
+      check('T20: ...paused: paused_at = deadline (T0+115), pause_reason presence, resume_until = deadline + 10',
+        aRow?.paused_at === utc(T0 + 115 * MIN) && aRow?.pause_reason === 'presence' && aRow?.resume_until === utc(T0 + 125 * MIN), JSON.stringify(aRow));
+      check('T20: ...?running=1: nothing runs, the item is in paused[], presence paused with resumeUntil, anchor NULL',
+        g3.data?.running?.length === 0 && g3.data.paused?.length === 1 && g3.data.paused[0].id === aId && g3.data.presence?.phase === 'paused'
+          && g3.data.presence.resumeUntil === isoZ(T0 + 125 * MIN) && g3.data.presence.autoPausedAt === isoZ(T0 + 115 * MIN) && presenceRow('tt-erik').anchor_at === null, g3.raw);
+      const late = await te(S.erik, { action: 'confirm' });
+      check('T20: confirm after the deadline is 409 paused with the state', late.status === 409 && late.data?.code === 'paused' && late.data?.presence?.phase === 'paused', late.raw);
+
+      // Resume at deadline + 5: a new entry starts then (C8).
+      setNow(T0 + 120 * MIN);
+      const r = await te(S.erik, { action: 'resume', id: aId });
+      const bId = r.data?.entry?.id;
+      check('T20: resume at deadline+5 starts a new entry at T0+120 continuing the paused one; anchor = T0+120',
+        r.status === 201 && dbEntry(bId)?.start_at === utc(T0 + 120 * MIN) && dbEntry(bId)?.continues_id === aId && dbEntry(aId)?.paused_at === null
+          && dbEntry(aId)?.end_reason === 'presence' && presenceRow('tt-erik').anchor_at === utc(T0 + 120 * MIN), r.raw);
+      setNow(T0 + 125 * MIN);
+      const sb = await te(S.erik, { action: 'stop', id: bId, projectId: 'proj-tt-1' }); // "require a project" is on here
+      check('T20: stopping the last running entry clears the anchor', sb.status === 200 && dbEntry(bId)?.end_at === utc(T0 + 125 * MIN) && presenceRow('tt-erik').anchor_at === null, sb.raw);
+
+      // A second cycle with no answer until deadline + 11: the pause expired too, the entry is simply stopped.
+      setNow(T0 + 130 * MIN);
+      const c = await te(S.erik, { action: 'start', description: 'T20 presence C' });
+      const cId = c.data?.entry?.id;
+      setNow(T0 + 201 * MIN);
+      const g4 = await runningNow(S.erik);
+      const cRow = dbEntry(cId);
+      check('T20: nothing until deadline+11: ended at promptAt (T0+180), end_reason presence, marker cleared (stopped)',
+        cRow?.end_at === utc(T0 + 180 * MIN) && cRow?.end_reason === 'presence' && cRow?.paused_at === null && cRow?.pause_reason === 'presence' && cRow?.resume_until === utc(T0 + 200 * MIN), JSON.stringify(cRow));
+      check('T20: ...?running=1: nothing runs or is paused, presence idle', g4.data?.running?.length === 0 && g4.data.paused?.length === 0 && g4.data.presence?.phase === 'idle', g4.raw);
+
+      // C9: no answer without the session.
+      const anon = await api(null, 'time_entries.php', { method: 'POST', body: { action: 'confirm' } });
+      check('T20: confirm without a session is refused', anon.status === 401 || anon.status === 403, anon.raw);
+
+      // Lazy (a GET) and the cron-like call give identical rows: the same scenario for two users.
+      const T1 = T0 + 240 * MIN;
+      setNow(T1);
+      const e = await te(S.erik, { action: 'start', description: 'T20 lazy' });
+      const f = await te(S.free, { action: 'start', description: 'T20 cron' });
+      setNow(T1 + 61 * MIN);
+      await runningNow(S.erik); // lazy
+      const cron = settleByCron('tt-free'); // cron-like
+      const [eRow, fRow] = [dbEntry(e.data?.entry?.id), dbEntry(f.data?.entry?.id)];
+      const shape = (x) => x && [x.start_at, x.end_at, x.duration_sec, x.end_reason, x.paused_at, x.pause_reason, x.resume_until].join('|');
+      check('T20: lazy and cron settle give identical rows (end at T1+50, paused at T1+60, resume_until T1+70)',
+        e.status === 201 && f.status === 201 && shape(eRow) === shape(fRow) && eRow?.end_at === utc(T1 + 50 * MIN) && eRow?.paused_at === utc(T1 + 60 * MIN) && eRow?.resume_until === utc(T1 + 70 * MIN),
+        `${shape(eRow)} vs ${shape(fRow)}`);
+      check('T20: ...the cron call reports what it paused', cron?.changed === true && (cron.autoPaused || []).includes(f.data?.entry?.id) && cron.pausedAt === utc(T1 + 60 * MIN), JSON.stringify(cron));
+      const again = settleByCron('tt-erik');
+      check('T20: ...a cron pass after the lazy one changes nothing', again?.changed === false && shape(dbEntry(e.data?.entry?.id)) === shape(eRow), JSON.stringify(again));
+
+      // autoStopAt (A4.2): a running item past the company-time auto-stop instant ends exactly there.
+      const T2 = T0 + 360 * MIN;
+      const stopLocal = php(`echo (new DateTimeImmutable(${q(utc(T2 + 10 * MIN))}, new DateTimeZone('UTC')))->setTimezone(ccrm_tt_company_tz())->format('H:i');`).trim();
+      sql(`UPDATE system_settings SET value = JSON_SET(value, '$.autoStopAt', ${q(stopLocal)}) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      await te(S.erik, { action: 'stop', all: true }); // the T20 lazy pause
+      setNow(T2);
+      const s = await te(S.erik, { action: 'start', description: 'T20 auto stop' });
+      setNow(T2 + 20 * MIN);
+      const g5 = await runningNow(S.erik);
+      const sRow = dbEntry(s.data?.entry?.id);
+      check(`T20: autoStopAt ${stopLocal}: the entry ends exactly at it (T2+10), end_reason auto_stop, not paused`,
+        s.status === 201 && sRow?.end_at === utc(T2 + 10 * MIN) && sRow?.end_reason === 'auto_stop' && sRow?.paused_at === null && g5.data?.running?.length === 0 && presenceRow('tt-erik').anchor_at === null,
+        `${JSON.stringify(sRow)} / ${g5.raw}`);
+
+      // Cleanup: real clock and default auto-stop again; nothing running or paused.
+      sql(`UPDATE system_settings SET value = JSON_REMOVE(value, '$.autoStopAt') WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      await te(S.erik, { action: 'stop', all: true });
+      await te(S.free, { action: 'stop', all: true });
+      sql(`DELETE FROM system_settings WHERE \`key\` = 'TT_TEST_NOW'`);
+      const g6 = await runningNow(S.erik);
+      check('T20: cleanup: the real clock is back, nothing runs for Erik or the freelancer',
+        g6.data?.serverNow !== isoZ(T2 + 20 * MIN) && runningOf('tt-erik').length === 0 && runningOf('tt-free').length === 0, g6.raw);
+    }
+    section('T22: presence cron and pushes (phase 6d)');
+    {
+      // The per-minute pass of cron.php (ccrm_tt_presence_cron_pass, called directly: the whole cron does unrelated
+      // work). Erik is handled only by the cron, the freelancer only lazily (his own GETs), on the same timeline.
+      // The scratch DB has no push subscriptions: the pushes are asserted through time_presence.last_push_at.
+      const MIN = 60000;
+      const utc = (ms) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+      const isoZ = (ms) => new Date(ms).toISOString().slice(0, 19) + 'Z';
+      const setNow = (ms) => sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('TT_TEST_NOW', ${q(utc(ms))})`);
+      const isNull = (v) => v === null || v === undefined || v === 'NULL';
+      const d = new Date();
+      const T3 = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 13, 0, 0); // after T20's instants, far from 23:59
+      const pres = (uid) => rows(`SELECT anchor_at, last_push_at, auto_paused_at FROM time_presence WHERE user_id=${q(uid)}`)[0] || {};
+      const cronPass = () => JSON.parse(php(`require_once '${SCRATCH_DIR}/api/time_presence_cron.php'; echo json_encode(ccrm_tt_presence_cron_pass($pdo));`).trim() || 'null');
+      const lastRun = () => rows(`SELECT value FROM system_settings WHERE \`key\` = 'TT_CRON_LAST_RUN'`)[0]?.value ?? null;
+      const settingsOf = (sess) => api(sess, 'time_entries.php', { query: '?action=settings' });
+      const shape = (x) => x && [x.start_at, x.end_at, x.duration_sec, x.end_reason, x.paused_at, x.pause_reason, x.resume_until].join('|');
+
+      await te(S.erik, { action: 'stop', all: true });
+      await te(S.free, { action: 'stop', all: true });
+      setNow(T3);
+      const a = await te(S.erik, { action: 'start', description: 'T22 cron' });
+      const b = await te(S.free, { action: 'start', description: 'T22 lazy' });
+      const [aId, bId] = [a.data?.entry?.id, b.data?.entry?.id];
+      const p0 = cronPass();
+      check('T22: setup: both started at T3', a.status === 201 && b.status === 201, `${a.raw} / ${b.raw}`);
+      check('T22: a cron pass writes TT_CRON_LAST_RUN (test clock), no errors; no question yet, no push',
+        lastRun() === utc(T3) && p0?.errors === 0 && p0?.users >= 2 && p0?.questions === 0 && isNull(pres('tt-erik').last_push_at), `${JSON.stringify(p0)} / ${JSON.stringify(pres('tt-erik'))}`);
+
+      // The question window (T3+50 .. T3+60): one push per user per calendar minute.
+      setNow(T3 + 55 * MIN);
+      const p1 = cronPass();
+      check('T22: in the question window the pass pushes the question: last_push_at = now',
+        pres('tt-erik').last_push_at === utc(T3 + 55 * MIN) && p1?.questions >= 1 && p1?.errors === 0, `${JSON.stringify(p1)} / ${JSON.stringify(pres('tt-erik'))}`);
+      setNow(T3 + 55 * MIN + 30000);
+      const p2 = cronPass();
+      check('T22: a second pass within the same minute sends nothing and leaves last_push_at',
+        pres('tt-erik').last_push_at === utc(T3 + 55 * MIN) && p2?.questions === 0, `${JSON.stringify(p2)} / ${JSON.stringify(pres('tt-erik'))}`);
+      setNow(T3 + 56 * MIN);
+      const p3 = cronPass();
+      check('T22: the next minute pushes again', pres('tt-erik').last_push_at === utc(T3 + 56 * MIN) && p3?.questions >= 1, JSON.stringify(p3));
+      check('T22: ...the entry still runs (the question changes nothing)', isNull(dbEntry(aId)?.end_at), JSON.stringify(dbEntry(aId)));
+
+      const sa = await settingsOf(S.admin);
+      check('T22: action=settings (admin) shows cron.stale false and lastRunAt right after a run',
+        sa.status === 200 && sa.data?.cron?.stale === false && sa.data.cron.lastRunAt === isoZ(T3 + 56 * MIN), sa.raw);
+      const se = await settingsOf(S.erik);
+      check('T22: ...an Employee gets no cron value', se.status === 200 && se.data?.cron === undefined, se.raw);
+      const pr = sa.data?.settings?.presence;
+      check('T22: action=settings carries the presence defaults',
+        pr?.enabled === true && pr.promptAfterMinutes === 50 && pr.confirmWindowMinutes === 10 && pr.resumeWindowMinutes === 10 && pr.trimTo === 'prompt', JSON.stringify(pr));
+
+      // Past the deadline: the cron ends Erik's entry exactly as the lazy path ends the freelancer's.
+      setNow(T3 + 61 * MIN);
+      await api(S.free, 'time_entries.php', { query: '?running=1' }); // lazy first
+      const p4 = cronPass();
+      const [aRow, bRow] = [dbEntry(aId), dbEntry(bId)];
+      check('T22: after the deadline the cron pauses (end T3+50, paused T3+60, resume_until T3+70) exactly like the lazy path',
+        shape(aRow) === shape(bRow) && aRow?.end_at === utc(T3 + 50 * MIN) && aRow?.end_reason === 'presence' && aRow?.paused_at === utc(T3 + 60 * MIN) && aRow?.resume_until === utc(T3 + 70 * MIN),
+        `${shape(aRow)} vs ${shape(bRow)}`);
+      check('T22: ...the pass reports one automatic pause (the lazy user was settled already)', p4?.paused === 1 && p4?.errors === 0, JSON.stringify(p4));
+      check('T22: ...anchor cleared, auto_paused_at set', isNull(pres('tt-erik').anchor_at) && pres('tt-erik').auto_paused_at === utc(T3 + 60 * MIN), JSON.stringify(pres('tt-erik')));
+
+      // Past the resume window: the markers are cleared (stopped), again identical.
+      setNow(T3 + 71 * MIN);
+      await api(S.free, 'time_entries.php', { query: '?running=1' });
+      const p5 = cronPass();
+      const [aRow2, bRow2] = [dbEntry(aId), dbEntry(bId)];
+      check('T22: after the resume window the cron clears the marker (stopped) like the lazy path',
+        shape(aRow2) === shape(bRow2) && isNull(aRow2?.paused_at) && aRow2?.end_at === utc(T3 + 50 * MIN), `${shape(aRow2)} vs ${shape(bRow2)}`);
+      check('T22: ...the pass reports one "stopped" push and auto_paused_at is gone', p5?.stopped === 1 && isNull(pres('tt-erik').auto_paused_at), `${JSON.stringify(p5)} / ${JSON.stringify(pres('tt-erik'))}`);
+
+      // Cleanup: real clock; nothing running or paused.
+      await te(S.erik, { action: 'stop', all: true });
+      await te(S.free, { action: 'stop', all: true });
+      sql(`DELETE FROM system_settings WHERE \`key\` = 'TT_TEST_NOW'`);
+      check('T22: cleanup: nothing runs for Erik or the freelancer',
+        rows(`SELECT id FROM time_entries WHERE user_id IN ('tt-erik','tt-free') AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL`).length === 0);
+    }
+
+    section('T23: MCP status actions (phase 8c)');
+    {
+      // D10.2 "On the server", C14: an MCP status change pauses or stops the MCP key user's own timer on that
+      // task, never starts one, never touches another user's timer. Admin is the second user (sees every task).
+      // Its own task: T6 deletes task-tt-1 on purpose (the greyed-out title of a deleted task).
+      const TASK = 'task-tt-23';
+      sql(`INSERT INTO tasks (id, title, priority, deadline, status, owner, created_by, related_project_id) VALUES ('task-tt-23', 'T23 status task', 'medium', '2026-12-31', 'todo', 'TT Erik', 'TT Erik', 'proj-tt-1');`);
+      const runningOn = (uid) => rows(`SELECT id FROM time_entries WHERE user_id=${q(uid)} AND task_id=${q(TASK)} AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL`);
+      sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('TASK_STATES', ${q(JSON.stringify(['todo', 'in_progress', 'review', 'done']))});
+           REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('TASK_STATE_TIMER_ACTIONS', ${q(JSON.stringify({ done: 'stop', review: 'pause', in_progress: 'start' }))});
+           UPDATE tasks SET status = 'todo', completed_at = NULL, completed_by = NULL WHERE id = ${q(TASK)};`);
+      await te(S.erik, { action: 'stop', all: true });
+      await te(S.admin, { action: 'stop', all: true });
+      const token = 'ccrm_mcp_probe_tt_erik_t23_' + '0'.repeat(36);
+      sql(`INSERT INTO mcp_keys (id, user_id, key_hash, key_prefix, name, created_at) VALUES ('pk-tt-erik-t23', 'tt-erik', SHA2(${q(token)}, 256), 'ccrm_mcp_p...', 'probe t23', NOW() - INTERVAL 1 DAY);`);
+      let rpcId = 2300;
+      const mcp = async (tool, args = {}) => {
+        const res = await fetch(`${BASE}/ttprobe/api/mcp.php`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CCRM-MCP-KEY': token },
+          body: JSON.stringify({ jsonrpc: '2.0', id: rpcId++, method: 'tools/call', params: { name: tool, arguments: args } }),
+        });
+        const raw = await res.text();
+        let body = null; try { body = JSON.parse(raw); } catch {}
+        const text = body?.result?.content?.[0]?.text;
+        let data = null; try { data = JSON.parse(text); } catch {}
+        return { status: res.status, raw, isError: !!body?.result?.isError || !!body?.error, data };
+      };
+
+      // Both users run a timer on the same task (different users never conflict).
+      const e1 = await te(S.erik, { action: 'start', taskId: TASK, description: 'T23 Erik 1' });
+      const a1 = await te(S.admin, { action: 'start', taskId: TASK, description: 'T23 Admin' });
+      check('T23: setup: Erik and Admin both run a timer on the task', e1.status === 201 && a1.status === 201 && runningOn('tt-erik').length === 1 && runningOn('tt-admin').length === 1, `${e1.raw} / ${a1.raw}`);
+
+      const c = await mcp('complete_task', { id: TASK });
+      const e1Row = dbEntry(e1.data?.entry?.id);
+      check("T23: MCP complete_task (done = stop) stops Erik's timer with end_reason 'status', not paused",
+        !c.isError && e1Row?.end_at !== null && e1Row?.end_reason === 'status' && e1Row?.paused_at === null && (c.data?.timer?.stopped || []).includes(e1.data?.entry?.id),
+        `${c.raw} / ${JSON.stringify(e1Row)}`);
+      check("T23: ...Admin's timer on the same task keeps running (C14)", runningOn('tt-admin').length === 1 && dbEntry(a1.data?.entry?.id)?.end_at === null);
+
+      // Back to an unmapped status: nothing happens; then a fresh timer and the "pause" status.
+      const u0 = await mcp('update_task', { id: TASK, status: 'todo' });
+      check('T23: update_task to an unmapped status reports no timer action', !u0.isError && u0.data?.timer === undefined, u0.raw);
+      const e2 = await te(S.erik, { action: 'start', taskId: TASK, description: 'T23 Erik 2' });
+      const u1 = await mcp('update_task', { id: TASK, status: 'review' });
+      const e2Row = dbEntry(e2.data?.entry?.id);
+      check("T23: MCP update_task to 'review' (pause) pauses Erik's timer: pause_reason 'status', end_reason NULL",
+        e2.status === 201 && !u1.isError && e2Row?.end_at !== null && e2Row?.paused_at !== null && e2Row?.pause_reason === 'status' && e2Row?.end_reason === null,
+        `${u1.raw} / ${JSON.stringify(e2Row)}`);
+      check("T23: ...Admin's timer still runs", runningOn('tt-admin').length === 1);
+
+      const u2 = await mcp('update_task', { id: TASK, status: 'in_progress' });
+      check("T23: a status mapped to start starts nothing on the server (Erik has nothing running, the pause stays)",
+        !u2.isError && runningOn('tt-erik').length === 0 && dbEntry(e2.data?.entry?.id)?.paused_at !== null, u2.raw);
+
+      const u3 = await mcp('update_task', { id: TASK, status: 'done' });
+      const e2Stopped = dbEntry(e2.data?.entry?.id);
+      check("T23: 'done' (stop) on a paused item clears the marker with end_reason 'status'",
+        !u3.isError && e2Stopped?.paused_at === null && e2Stopped?.end_reason === 'status' && (u3.data?.timer?.unpaused || []).includes(e2.data?.entry?.id),
+        `${u3.raw} / ${JSON.stringify(e2Stopped)}`);
+      const u4 = await mcp('update_task', { id: TASK, status: 'done' });
+      check('T23: the same status again is a no-op (no timer action)', !u4.isError && u4.data?.timer === undefined, u4.raw);
+
+      // Cleanup: Admin's timer, the settings, the task status.
+      await te(S.admin, { action: 'stop', all: true });
+      sql(`DELETE FROM system_settings WHERE \`key\` IN ('TASK_STATES', 'TASK_STATE_TIMER_ACTIONS');
+           UPDATE tasks SET status = 'todo', completed_at = NULL, completed_by = NULL WHERE id = ${q(TASK)};`);
+      check('T23: cleanup: nothing runs on the task', runningOn('tt-erik').length === 0 && runningOn('tt-admin').length === 0);
+    }
+    section('T24: extension presence (phase 10)');
+    {
+      // The popup answers the question itself ("Still working", phase 10 checklist; C9 still forbids notification
+      // buttons): device `running` carries presence + paused[], device `confirm` moves the anchor before the deadline
+      // and is 409 paused after it, device `resume` continues the paused item, device `stop {id}` ends one item.
+      // Test clock as T20/T22; 18:00 UTC today, after T22's instants and far from autoStopAt (23:59 company time).
+      // Uses task-tt-p1 (proj-tt-1), so requireProjectToStop never refuses the stop.
+      const MIN = 60000;
+      const utc = (ms) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+      const isoZ = (ms) => new Date(ms).toISOString().slice(0, 19) + 'Z';
+      const setNow = (ms) => sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('TT_TEST_NOW', ${q(utc(ms))})`);
+      const d = new Date();
+      const T4 = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 18, 0, 0);
+      const runningRows = () => rows(`SELECT id FROM time_entries WHERE user_id='tt-erik' AND start_at IS NOT NULL AND end_at IS NULL AND deleted_at IS NULL ORDER BY start_at, id`);
+      const anchorOf = () => (rows(`SELECT anchor_at FROM time_presence WHERE user_id='tt-erik'`)[0] || {}).anchor_at;
+      const ext = (method, action, body, key) =>
+        fetch(`${BASE}/ttprobe/api/time_tracker_ext.php${method === 'GET' ? `?action=${action}` : ''}`, {
+          method,
+          headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(key ? { Authorization: `Bearer ${key}` } : {}) },
+          body: body === undefined ? undefined : JSON.stringify({ action, ...body }),
+        }).then(async (res) => { const raw = await res.text(); let data = null; try { data = JSON.parse(raw); } catch {} return { status: res.status, raw, data }; });
+
+      await te(S.erik, { action: 'stop', all: true });
+      const code = await api(S.erik, 'time_tracker_ext.php', { method: 'POST', body: { action: 'code' } });
+      const key = (await ext('POST', 'pair', { code: code.data?.code, deviceName: 'T24 probe', version: '1.1.0' })).data?.deviceKey;
+      check('T24: a device is paired, nothing runs', /^ttk_[a-f0-9]{64}$/.test(key || '') && runningRows().length === 0, code.raw);
+
+      setNow(T4);
+      const st = await ext('POST', 'start', { taskId: 'task-tt-p1' }, key);
+      const aId = st.data?.entry?.id;
+      const r0 = await ext('GET', 'running', undefined, key);
+      check('T24: device running carries presence (tracking, anchor T4, promptAt T4+50, deadlineAt T4+60) and paused []',
+        st.status === 201 && r0.status === 200 && r0.data?.presence?.phase === 'tracking' && r0.data.presence.anchorAt === isoZ(T4)
+          && r0.data.presence.promptAt === isoZ(T4 + 50 * MIN) && r0.data.presence.deadlineAt === isoZ(T4 + 60 * MIN)
+          && Array.isArray(r0.data.paused) && r0.data.paused.length === 0 && r0.data.count === 1, `${st.raw} / ${r0.raw}`);
+
+      setNow(T4 + 55 * MIN);
+      const r1 = await ext('GET', 'running', undefined, key);
+      check('T24: at T4+55 device running reports the question', r1.data?.presence?.phase === 'question', r1.raw);
+      const getConfirm = await ext('GET', 'confirm', undefined, key);
+      check('T24: device confirm is POST only', getConfirm.status === 405, getConfirm.raw);
+      const c1 = await ext('POST', 'confirm', {}, key);
+      check('T24: device confirm at T4+55: 200, anchor = T4+55, tracking, the entry still runs',
+        c1.status === 200 && c1.data?.presence?.anchorAt === isoZ(T4 + 55 * MIN) && c1.data.presence.phase === 'tracking'
+          && anchorOf() === utc(T4 + 55 * MIN) && dbEntry(aId)?.end_at === null, c1.raw);
+
+      // No answer in the new cycle (question T4+105, deadline T4+115): at T4+116 the confirm is too late.
+      setNow(T4 + 116 * MIN);
+      const late = await ext('POST', 'confirm', {}, key);
+      check('T24: device confirm after the deadline is 409 paused with the state', late.status === 409 && late.data?.code === 'paused' && late.data?.presence?.phase === 'paused', late.raw);
+      check('T24: ...the entry ended at the question (T4+105) and is paused', dbEntry(aId)?.end_at === utc(T4 + 105 * MIN) && dbEntry(aId)?.pause_reason === 'presence', JSON.stringify(dbEntry(aId)));
+      const r2 = await ext('GET', 'running', undefined, key);
+      check('T24: device running: count 0, paused[] holds the item with pauseExpiresAt, presence paused (autoPausedAt T4+115)',
+        r2.data?.count === 0 && r2.data.paused?.length === 1 && r2.data.paused[0].id === aId && typeof r2.data.paused[0].pauseExpiresAt === 'string'
+          && r2.data.presence?.phase === 'paused' && r2.data.presence.autoPausedAt === isoZ(T4 + 115 * MIN), r2.raw);
+
+      setNow(T4 + 118 * MIN);
+      const rs = await ext('POST', 'resume', { id: aId }, key);
+      const bId = rs.data?.entry?.id;
+      check('T24: device resume continues the paused item: 201, a new running entry with continues_id, source extension, marker cleared',
+        rs.status === 201 && bId && bId !== aId && dbEntry(bId)?.continues_id === aId && dbEntry(bId)?.source === 'extension'
+          && dbEntry(bId)?.start_at === utc(T4 + 118 * MIN) && dbEntry(aId)?.paused_at === null && runningRows().length === 1, rs.raw);
+      check('T24: ...resume restarts the cycle (anchor = T4+118)', anchorOf() === utc(T4 + 118 * MIN), anchorOf());
+      const again = await ext('POST', 'resume', { id: aId }, key);
+      check('T24: resuming the same (no longer paused) item again is 409 not_paused', again.status === 409 && again.data?.code === 'not_paused', again.raw);
+
+      const sp = await ext('POST', 'stop', { id: bId }, key);
+      check('T24: device stop {id} ends that item', sp.status === 200 && sp.data?.entry?.id === bId && dbEntry(bId)?.end_at !== null && runningRows().length === 0, sp.raw);
+
+      sql(`DELETE FROM system_settings WHERE \`key\` = 'TT_TEST_NOW'`);
+      await te(S.erik, { action: 'stop', all: true });
+      check('T24: cleanup: Erik has no running entry, the test clock is off', runningRows().length === 0);
+    }
+
+    section('T25: "Require a task on every entry" also covers manual entries');
+    {
+      const setRule = (on) => sql(`UPDATE system_settings SET value = JSON_SET(value, '$.requireTask', ${on ? 'true' : 'false'}, '$.requireProjectToStop', false) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      const countBy = (desc) => Number(rows(`SELECT COUNT(*) AS n FROM time_entries WHERE description = ${q(desc)}`)[0]?.n ?? 0);
+      // Its own task: T6 deletes task-tt-1 on purpose.
+      sql(`INSERT INTO tasks (id, title, priority, deadline, status, owner, created_by, related_project_id) VALUES ('task-tt-25', 'T25 linked task', 'medium', '2026-12-31', 'todo', 'TT Erik', 'TT Erik', 'proj-tt-1');`);
+      // An entry that predates the rule: made while it is off.
+      setRule(false);
+      const legacy = await te(S.erik, { action: 'create', description: 'T25 legacy no task', entryDate: '2026-10-21', durationSec: 1800 });
+      check('T25: with the rule off, a manual entry without a task is created', legacy.status === 201, legacy.raw);
+      setRule(true);
+
+      const bare = await te(S.erik, { action: 'create', description: 'T25 bare', entryDate: '2026-10-21', durationSec: 3600 });
+      check('T25: rule on: a manual entry without a task or ticket is refused 422 task_required (the Stop code) and nothing is stored', bare.status === 422 && bare.data?.code === 'task_required' && countBy('T25 bare') === 0, bare.raw);
+      const forOther = await te(S.admin, { action: 'create', userId: 'tt-erik', description: 'T25 for Erik', entryDate: '2026-10-21', durationSec: 3600 });
+      check('T25: ...the same when a manager creates it for someone else', forOther.status === 422 && forOther.data?.code === 'task_required' && countBy('T25 for Erik') === 0, forOther.raw);
+      const linked = await te(S.erik, { action: 'create', taskId: 'task-tt-25', entryDate: '2026-10-21', durationSec: 3600, source: 'manual' });
+      check('T25: ...a manual entry with a task is created', linked.status === 201 && dbEntry(linked.data?.entry?.id)?.task_id === 'task-tt-25', linked.raw);
+
+      const unlink = await te(S.erik, { action: 'update', id: linked.data?.entry?.id, taskId: null });
+      check('T25: an update that removes the task of a finished entry is refused 422 task_required and the link stays', unlink.status === 422 && unlink.data?.code === 'task_required' && dbEntry(linked.data?.entry?.id)?.task_id === 'task-tt-25', unlink.raw);
+      const keep = await te(S.erik, { action: 'update', id: linked.data?.entry?.id, note: 'T25 edited' });
+      check('T25: an update of other fields of a linked entry is accepted', keep.status === 200 && dbEntry(linked.data?.entry?.id)?.note === 'T25 edited', keep.raw);
+      const legacyEdit = await te(S.erik, { action: 'update', id: legacy.data?.entry?.id, note: 'T25 legacy edited', durationSec: 2400 });
+      check('T25: a legacy entry without a task stays editable in its other fields', legacyEdit.status === 200 && dbEntry(legacy.data?.entry?.id)?.note === 'T25 legacy edited' && dbEntry(legacy.data?.entry?.id)?.duration_sec === '2400', legacyEdit.raw);
+
+      const started = await te(S.erik, { action: 'start', description: 'T25 running no task' });
+      check('T25: starting a running timer without a task is still allowed', started.status === 201 || started.status === 200, started.raw);
+      const stopped = await te(S.erik, { action: 'stop', all: true });
+      check('T25: ...and the rule bites at Stop, with the same code', stopped.status === 422 && stopped.data?.code === 'task_required', stopped.raw);
+      setRule(false);
+      await te(S.erik, { action: 'stop', all: true });
+      check('T25: cleanup: the rule is off again and Erik has no running entry', runningRows().length === 0);
+      sql(`UPDATE system_settings SET value = JSON_SET(value, '$.requireProjectToStop', true) WHERE \`key\` = 'TIME_TRACKING_SETTINGS'`);
+      // Not probed: the Toggl import (needs the Toggl API) writes through its own INSERT and never reads requireTask.
+    }
   } finally {
     teardown();
   }

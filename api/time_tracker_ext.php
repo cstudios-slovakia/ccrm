@@ -2,8 +2,8 @@
 /**
  * Chrome time tracker HTTP API.
  *
- * Device calls (pair, running, start, stop, recent, projects, tasks, activity,
- * unsortedCount, capture, and GET rules with a bearer) authenticate with
+ * Device calls (pair, running, start, stop, confirm, resume, recent, projects, tasks,
+ * activity, unsortedCount, capture, and GET rules with a bearer) authenticate with
  * `Authorization: Bearer ttk_…` and never with the session cookie.
  * Management calls (code, devices, revoke, unsorted, assign, dismiss, rules,
  * projectSearch) authenticate with the session and never with a device key.
@@ -16,6 +16,7 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/time_tracker_lib.php';
+require_once __DIR__ . '/time_tracker_ext_presence.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
@@ -73,7 +74,7 @@ if (preg_match('/^Bearer\s+(ttk_[a-f0-9]{64})$/i', $authHeader, $m)) {
 }
 $extVersion = (string)($_SERVER['HTTP_X_CCRM_EXTENSION_VERSION'] ?? ($body['version'] ?? ''));
 
-$deviceActions = ['pair', 'running', 'start', 'stop', 'recent', 'projects', 'tasks', 'activity', 'unsortedCount', 'capture'];
+$deviceActions = ['pair', 'running', 'start', 'stop', 'confirm', 'resume', 'recent', 'projects', 'tasks', 'activity', 'unsortedCount', 'capture'];
 $rulesAsDevice = $action === 'rules' && $bearer !== '' && $method === 'GET';
 
 try {
@@ -128,6 +129,7 @@ try {
         $userId = (string)$user['id'];
         $viewer = ccrm_ttx_viewer($scope, $userId);
         $rules = ccrm_ttx_load_rules($pdo, $userId);
+        ccrm_ttx_presence_settle($pdo, $userId, $settings);
 
         if ($action === 'rules') {
             ccrm_ttx_out(ccrm_ttx_rules_payload($rules, $settings));
@@ -136,8 +138,9 @@ try {
             if ($method !== 'GET') {
                 ccrm_ttx_fail('method_not_allowed', 405);
             }
-            $row = ccrm_ttx_running($pdo, $userId);
-            ccrm_ttx_out(['entry' => $row ? ccrm_ttx_entry($pdo, $row['id'], $viewer) : null]);
+            // {entry: first running (old extensions), running: Entry[], count, workedTodaySeconds, serverNow,
+            //  presence: the D7.1 state, paused: Entry[] (+pauseExpiresAt)} (TT2 phase 10)
+            ccrm_ttx_out(ccrm_ttx_running_payload($pdo, $userId, $viewer) + ccrm_ttx_presence_payload($pdo, $userId, $settings, $viewer));
         }
         if ($action === 'recent') {
             if ($method !== 'GET') {
@@ -176,7 +179,8 @@ try {
             if (!$result['ok']) {
                 ccrm_ttx_fail($result['code'], (int)$result['status'], isset($result['entry']) ? ['entry' => $result['entry']] : []);
             }
-            ccrm_ttx_out(['entry' => $result['entry'], 'stopped' => $result['stopped']], 201);
+            // Always a switch (TT2 D5.6): every running entry was stopped; `stopped` = the first, for old extensions.
+            ccrm_ttx_out(['entry' => $result['entry'], 'stopped' => $result['stopped'], 'stoppedAll' => $result['stoppedAll'], 'mode' => 'switch'], 201);
         }
         if ($action === 'stop') {
             if ($method !== 'POST') {
@@ -184,9 +188,36 @@ try {
             }
             $result = ccrm_ttx_stop($pdo, $user, $device, $body, $settings, $scope);
             if (!$result['ok']) {
-                ccrm_ttx_fail($result['code'], (int)$result['status']);
+                // ambiguous (409): several timers run and no id was sent; `running` = how many.
+                ccrm_ttx_fail($result['code'], (int)$result['status'], $result['extra'] ?? []);
             }
             ccrm_ttx_out(['entry' => $result['entry']]);
+        }
+        if ($action === 'confirm') {
+            // "Still working" inside the popup (phase 10, C9): before the deadline -> {presence}; after it 409 paused {presence}.
+            if ($method !== 'POST') {
+                ccrm_ttx_fail('method_not_allowed', 405);
+            }
+            if (!ccrm_can($scope, 'time_tracking', 'edit')) {
+                ccrm_ttx_fail('forbidden', 403);
+            }
+            $answer = ccrm_ttx_confirm($pdo, $userId, $settings);
+            if (!$answer['ok']) {
+                ccrm_ttx_fail($answer['code'], 409, ['presence' => $answer['presence']]);
+            }
+            ccrm_ttx_out(['presence' => $answer['presence']]);
+        }
+        if ($action === 'resume') {
+            // {id}: continue a paused item; always a switch (D5.6) -> {entry, stoppedAll, alreadyRunning}.
+            // 409 not_paused | already_running | pause_expired (marker cleared) with {entry}.
+            if ($method !== 'POST') {
+                ccrm_ttx_fail('method_not_allowed', 405);
+            }
+            $result = ccrm_ttx_resume($pdo, $user, $device, $body, $settings, $scope);
+            if (!$result['ok']) {
+                ccrm_ttx_fail($result['code'], (int)$result['status'], isset($result['entry']) ? ['entry' => $result['entry']] : []);
+            }
+            ccrm_ttx_out(['entry' => $result['entry'], 'stoppedAll' => $result['stoppedAll'], 'alreadyRunning' => $result['alreadyRunning']], $result['alreadyRunning'] ? 200 : 201);
         }
         if ($action === 'activity') {
             if ($method !== 'POST') {
@@ -216,6 +247,7 @@ try {
     }
     $userId = (string)$sessionUser['id'];
     $canEdit = ccrm_can($scope, 'time_tracking', 'edit');
+    ccrm_ttx_presence_settle($pdo, $userId, $settings);
 
     if ($action === 'code') {
         if ($method !== 'POST' || !$canEdit) {

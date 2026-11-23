@@ -31,6 +31,7 @@ import { TaskEmailReminderField } from "./TaskEmailReminderField";
 import { TaskAddTimeLink, TaskTimeControls } from "./timeTracking/TaskTimeControls";
 import { TaskTimeBreakdown } from "./timeTracking/TaskTimeBreakdown";
 import { projectDisplayName } from "../utils/projects";
+import { taskCategoryOptions } from "../utils/taskCategory";
 import { isClientRecord, recordHref } from "../utils/clientRecord";
 import { staleLeadIdsForTasks } from "../utils/taskLeadPicker";
 import { isDoneTaskState, localStampStr } from "../utils/projectTasks";
@@ -974,6 +975,18 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                     </button>
                                 ))}
                             </div>
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="type-overline text-slate-500">
+                                {t("Category", "Kategória", "Kategória")}
+                            </label>
+                            <CustomSelect
+                                value={draft.category || ""}
+                                disabled={!canEdit}
+                                onChange={(v) => update({ category: v || null })}
+                                options={taskCategoryOptions(t)}
+                            />
                         </div>
 
                         <div className="space-y-1">

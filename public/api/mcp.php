@@ -747,14 +747,15 @@ function mcp_core_tool_definitions(): array {
                     'related_agency_worker_id' => ['type' => 'string', 'description' => 'Linked rented worker ID'],
                     'ticket_id' => ['type' => 'string', 'description' => 'Linked support ticket ID (auto_resolve link)'],
                     'is_locking' => ['type' => 'boolean', 'description' => 'Blocking/milestone task flag'],
-                    'requires_conclusion' => ['type' => 'boolean', 'description' => 'Require conclusion note on completion']
+                    'requires_conclusion' => ['type' => 'boolean', 'description' => 'Require conclusion note on completion'],
+                    'category' => ['type' => 'string', 'description' => 'Task category: "bug" marks the task as a Bug (counted as bug time on the dashboard); omitted or empty means no category']
                 ],
                 'required' => ['title', 'deadline']
             ]
         ],
         [
             'name' => 'update_task',
-            'description' => 'Update an existing task: title, description, priority, dates, status, owner, links, flags, tags, or archive / restore it. '
+            'description' => 'Update an existing task: title, description, priority, dates, status, owner, category, links, flags, tags, or archive / restore it. '
                 . 'Only the fields you pass change; pass an empty string for project_id, client_id, or related_agency_worker_id to unlink. Tasks are never deleted through MCP: archive one instead (archived=true); '
                 . 'list_tasks hides it unless include_archived=true, and archived=false restores it.',
             'inputSchema' => [
@@ -777,7 +778,8 @@ function mcp_core_tool_definitions(): array {
                     'related_agency_worker_id' => ['type' => 'string', 'description' => 'Linked agency worker ID; empty string unlinks'],
                     'ticket_id' => ['type' => 'string', 'description' => 'Support ticket ID to auto-resolve link'],
                     'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Additional tags to attach'],
-                    'archived' => ['type' => 'boolean', 'description' => 'true archives the task (the MCP way to remove one), false restores it']
+                    'archived' => ['type' => 'boolean', 'description' => 'true archives the task (the MCP way to remove one), false restores it'],
+                    'category' => ['type' => 'string', 'description' => 'Task category: "bug" marks the task as a Bug; null or an empty string clears it; omitted leaves it unchanged']
                 ],
                 'required' => ['id']
             ]

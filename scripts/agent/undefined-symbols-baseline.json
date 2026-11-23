@@ -156,7 +156,6 @@
     "public/api/agent_utils.php unknown-column tasks.due_date in build_comprehensive_crm_rag_context()",
     "public/api/agent_utils.php unknown-column tasks.lead_id in build_comprehensive_crm_rag_context()",
     "public/api/agent_utils.php unknown-column tasks.project_id in build_comprehensive_crm_rag_context()",
-    "public/api/demo_mailbox.php function ccrm_mail_event_id in ccrm_demo_mailbox_list_entry() — defined in public/api/mail_broker.php",
     "public/api/passkeys_lib.php function ccrm_start_session in ccrm_pw_auth_recent() — defined in public/api/auth.php",
     "public/api/tickets.php function ccrm_decrypt_settings_secrets in ccrm_load_ticket_settings()",
     "public/api/tickets.php function parse_email_structure in ccrm_poll_ticket_imap()",

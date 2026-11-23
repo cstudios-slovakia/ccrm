@@ -160,6 +160,8 @@ General system and operational tasks.
 * `deadline_moves` INT NOT NULL DEFAULT 0 (how many times the deadline was pushed to a later date; incremented by the sync upsert)
 * `first_started_at` DATETIME [NULLable] (first time the task moved out of its initial unstarted status or was completed; server-maintained)
 * `reopened_count` INT NOT NULL DEFAULT 0 (how many times the task was moved out of a done state back to an open status; server-maintained)
+* `category` VARCHAR(32) [NULLable] (task category slug: `NULL` = none, `'bug'` = Bug; a string so more categories need no migration. Written by the sync upsert for tasks and recurring templates (a client that omits the key leaves the stored value alone) and copied from a template to each occurrence; read by the dashboard's "Utilizácia · čas na bugoch" widget)
+* `reopens_json` TEXT [NULLable] (every reopening of a finished task as JSON `[{"at": "<UTC ISO 8601 with Z>", "by": "<user name or null>"}]`, oldest first; `NULL` = never reopened. Written only by the server through `ccrm_task_record_reopen()` in `api/task_done.php`, called from the sync upsert and MCP `update_task` when a finished task is saved with an open status; a client-sent value is ignored. Returned by the sync GET as `reopens`; series templates never carry one. Reopenings made before the column existed are not recorded)
 * `owner` VARCHAR(100) (primary assignee; empty when unassigned)
 * `created_by` VARCHAR(100) (immutable creator name; nullable for legacy rows)
 * `related_lead_id` VARCHAR(50)
@@ -334,6 +336,11 @@ Individual instances of active project lifecycles.
 * `ticket_public_hash` VARCHAR(64) [UNIQUE] (Random token for public `#public-tickets/<hash>` status page)
 * `ticket_widget_config_json` TEXT [NULLable] (JSON config for floating widget color, position, greeting, language)
 * `contact_phone` VARCHAR(50) [NULLable] (phone of the project contact as typed; WAAI pairs WhatsApp chats to the project by it; written by the app's save only when the payload carries `contactPhone`)
+* `acceptance_criteria_json` TEXT [NULLable] (the project's acceptance criteria as JSON `[{"id","title","done","createdAt","createdBy","removedAt","removedBy"}]`, `createdAt` / `removedAt` UTC ISO 8601 with `Z`; a removed criterion stays in the array with `removedAt` set (soft removal); `NULL` = none. Written by the app's save only when the payload carries `acceptanceCriteria` (a client that omits the key leaves the stored list alone) and merged into the stored list by the server (`ccrm_scope_merge_criteria()` in `api/project_scope.php`): a new id gets the server's time and the session user as `createdAt` / `createdBy`, a stored criterion keeps its stamps, a removal is stamped by the server and cannot be undone, and a stored criterion missing from the client's list is kept. Returned by the sync GET as `acceptanceCriteria`. Criteria created after `scope_approved_at` are scope creep, read by the dashboard's "Scope creep" widget)
+* `scope_approved_at` DATETIME [NULLable] (when the scope was approved, stored in UTC; `NULL` = not approved. Never written by the sync upsert: a `scopeApprovedAt` / `scopeApprovedBy` in a project payload is ignored (a stale tab would clear or restore it). Written only by the one-shot action `POST /api/project_scope_action.php { projectId, action: "approve" | "withdraw" }` through `ccrm_scope_apply_action()` in `api/project_scope.php`: approve (only when not approved) stamps the server's time and the session user, withdraw clears both and is a reset (a later approval stamps a new instant, so criteria added in between become original scope); returned by the sync GET as `scopeApprovedAt`, a UTC ISO string with `Z`)
+* `scope_approved_by` VARCHAR(100) [NULLable] (name of the user who approved the scope, taken from the session by the approval action; written together with `scope_approved_at`, returned as `scopeApprovedBy`)
+* `github_repo` VARCHAR(200) [NULLable] (the paired GitHub repository as `owner/name`, case kept as typed; the server strips a pasted `https://github.com/` prefix, a trailing slash and `.git` and stores NULL for anything that is not `owner/name`; written by the app's save only when the payload carries `githubRepo`, `""` clears it; pushes to it arrive at `api/github_webhook.php`)
+* `github_branch` VARCHAR(200) [NULLable] (the server branch whose pushes count; NULL = the repository's default branch; at most 200 characters, no whitespace or control characters; written only when the payload carries `githubBranch`)
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP [INDEX `idx_project_updated`, for the machine API's directory paging] (also moves when the project's managers (`project_managers`) or Gantt rows (`proj_gantt_*`) really change, and when the MCP creates a milestone for it: `sync.php` snapshots the set before its delete + insert and bumps only when the stored set differs, `api/sync_child_bumps.php`. An unchanged re-save leaves it alone. Timeline entries do not move it)
 
@@ -342,6 +349,22 @@ Junction table mapping project managers to projects.
 * `project_id` VARCHAR(50)
 * `user_id` VARCHAR(50)
 * Primary Key: (`project_id`, `user_id`)
+
+### `project_pushes`
+GitHub pushes delivered to `api/github_webhook.php` (Settings → Integrations → GitHub): one row per (request body, paired project). Counts pushes to the project's server branch, not pull requests. No foreign key: readers (`api/project_pushes.php`) join to `projects`, so a push of a deleted project is not reported.
+* `body_hash` CHAR(64) (SHA-256 hex of the raw request body; part of the primary key, so a redelivery and a replay of a signed body under a new delivery id are both ignored by `INSERT IGNORE`)
+* `delivery_id` VARCHAR(64) [NULLable] (GitHub's `X-GitHub-Delivery`, for reference only: the signature does not cover it)
+* `project_id` VARCHAR(50)
+* `repo` VARCHAR(200) (full name as GitHub sent it)
+* `branch` VARCHAR(200)
+* `pushed_at` DATETIME (UTC; when this server received the push, never the commit's own date)
+* `pusher` VARCHAR(100) [NULLable]
+* `commit_count` INT (clamped to 0 to 100000)
+* `head_sha` VARCHAR(40) [NULLable]
+* `head_message` VARCHAR(300) [NULLable] (first line of the head commit message)
+* `compare_url` VARCHAR(500) [NULLable] (stored only when it is an `https://github.com/<owner>/<repo>/compare|commit/...` link, else NULL)
+* `created_at` TIMESTAMP
+* Primary Key: (`body_hash`, `project_id`); indexes (`project_id`, `pushed_at`) and (`pushed_at`)
 
 ### Dynamic Tables (Per Project Type)
 Each custom project type with ID `{safeId}` generates three tables:
@@ -376,7 +399,7 @@ Saved AI-generated dashboard configurations.
 
 ### `system_settings`
 Global system configurations.
-* `key` VARCHAR(100) [PK] (e.g. INTEGRATIONS_CONFIG, SYSTEM_NAME, SYSTEM_LANGUAGE, NEWSLETTER_CONFIG, `LEAD_ATTRIBUTES`: see section 12)
+* `key` VARCHAR(100) [PK] (e.g. INTEGRATIONS_CONFIG, SYSTEM_NAME, SYSTEM_LANGUAGE, NEWSLETTER_CONFIG, `LEAD_ATTRIBUTES`: see section 12, GITHUB_WEBHOOK_SECRET: the key GitHub signs webhook deliveries with, AES-256-GCM encrypted at rest (`enc:v1:`), written only by `api/github_integration.php` and never part of a `sync.php` payload)
 * `value` LONGTEXT
 * `updated_at` TIMESTAMP
 
@@ -712,6 +735,7 @@ Staff profiles, compensation baseline, Toggl Track integration mapping, and empl
 * `salary_type` ENUM('monthly', 'daily', 'hourly') (Default `monthly`)
 * `salary_amount` DECIMAL(12, 2) (Base compensation rate)
 * `salary_due_day` INT [NULLable] (Individual payout day of month 1-31 or week 1-7; defaults to global setting if NULL)
+* `hours_per_day` DECIMAL(4,2) [NULLable] (Contracted hours per day, 0-24; NULL = company `hoursPerDay` time tracking setting)
 * `vacation_allowances_json` TEXT [NULLable] (JSON map of allowance days per vacation type, e.g. `{"annual":25,"sick":10,"doctor":7}`)
 * `time_tracking_provider` VARCHAR(50) (Default `toggl`)
 * `time_tracking_user_id` VARCHAR(100) [NULLable] (Toggl user ID)
@@ -858,6 +882,73 @@ Logged support hours (billable and non-billable) against a ticket.
 * `note` VARCHAR(500) [NULLable]
 * `logged_at` DATE
 * `created_at` TIMESTAMP
+
+### `time_entries`
+Time tracking: one row per stretch of work, owned by the login that did it. No foreign keys on purpose (an entry outlives its task, ticket, project and user). Not written by `sync.php`; written by `public/api/time_entries.php`. Vocabulary: **project time** = `duration_sec` (what the client is billed), **worked time** = `worked_ms` (the person's real clock time, shared between parallel timers). Bill project time; pay and measure worked time.
+* `id` VARCHAR(64) [PK]
+* `user_id` VARCHAR(50) (Owner: the login whose time this is)
+* `recorded_by_user_id` VARCHAR(50) (Who typed it in)
+* `employee_id` VARCHAR(50) [NULLable] (Resolved from `user_id`; supplies the salary for the cost rate)
+* `project_id` VARCHAR(50) [NULLable] (NULL = Assign project state)
+* `task_id` VARCHAR(50) [NULLable]
+* `ticket_id` VARCHAR(50) [NULLable]
+* `description` VARCHAR(500) [NULLable] (Title ONLY for entries with no task and no ticket)
+* `title_snapshot` VARCHAR(500) [NULLable]
+* `legacy_note` VARCHAR(500) [NULLable] (Read-only note migrated from `ticket_time_entries`)
+* `note` VARCHAR(1000) [NULLable] (The Description the person typed)
+* `entry_date` DATE (Company-timezone date)
+* `start_at` DATETIME [NULLable] (UTC; NULL for hours-only entries)
+* `end_at` DATETIME [NULLable] (UTC; NULL while running or hours-only)
+* `paused_at` DATETIME [NULLable] (TT2 D6: set = the item is paused and can be resumed; equals `end_at`. Cleared by resume, stop or expiry; `time_pause_migration.php`)
+* `pause_reason` VARCHAR(16) [NULLable] (`manual` | `status` | `presence`; kept after the marker is cleared, as history)
+* `resume_until` DATETIME [NULLable] (UTC; the pause expires after this. NULL = the pause day's `autoStopAt` in company time (C17); expired markers are cleared lazily on read)
+* `continues_id` VARCHAR(64) [NULLable] (On an entry created by a resume: the paused entry it continues (C8))
+* `end_reason` VARCHAR(16) [NULLable] (How the entry ended: `user` | `switch` | `status` | `presence` | `auto_stop`. NULL while running, while paused and after a resume; set by `ccrm_tt_end_entries()` in `time_pause_lib.php`)
+* `duration_sec` INT [NULLable] (Project time, billed)
+* `worked_ms` INT UNSIGNED [NULLable] (Worked time in ms; NULL while running; written only by `ccrm_tt_settle()`; backfilled `duration_sec * 1000` for closed entries)
+* `billable` TINYINT(1) (default 1)
+* `billable_rate` DECIMAL(10,2) [NULLable]
+* `cost_rate` DECIMAL(10,4) [NULLable] (Snapshot of the hourly cost rate)
+* `cost_rate_source` VARCHAR(32) (default `none`)
+* `cost_rate_basis_days` TINYINT [NULLable]
+* `cost` DECIMAL(14,4) [NULLable] (Widened from DECIMAL(12,2))
+* `tags` TEXT [NULLable] (JSON array of strings)
+* `source` VARCHAR(16) (default `manual`)
+* `origin_type` VARCHAR(16) [NULLable]
+* `origin_id` VARCHAR(64) [NULLable]
+* `device_id` VARCHAR(64) [NULLable]
+* `external_id` VARCHAR(100) [NULLable] (Toggl/Clockify id, or `tte:<id>` for migrated ticket time)
+* `approval_status` VARCHAR(16) [NULLable]
+* `running_guard` VARCHAR(50) (Generated: `user_id` while running and not deleted; plain index `idx_te_running` since TT2 phase 4: several entries of one user may run (parallel timers). The former UNIQUE `uq_te_running` is dropped by `time_parallel_migration.php`; serialisation is the per-user lock row in `time_presence`)
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+* `deleted_at` DATETIME [NULLable]
+
+### `time_presence`
+One row per user (TT2 D5.1, D7.1). Every timer mutation in `public/api/time_entries.php` locks the user's row first (`ccrm_tt_lock_user()` in `public/api/time_lock.php`: the row is created with `INSERT IGNORE` before the transaction, then `SELECT ... FOR UPDATE` inside it), so two clients never interleave a start, stop or undo. The presence columns are written from phase 6 (the presence engine). Not written by `sync.php` (no column healing).
+* `user_id` VARCHAR(50) [PK]
+* `anchor_at` DATETIME [NULLable] (UTC; the last answer of the presence cycle, NULL when nothing runs)
+* `last_push_at` DATETIME [NULLable] (UTC; the last presence push sent)
+* `auto_paused_at` DATETIME [NULLable] (UTC; when the presence engine paused everything)
+* `updated_at` TIMESTAMP
+
+### `time_rate_months`
+Time tracking rate card (docs/TIME-TRACKING-V2.md D4.3): the hourly cost rate of a person paid monthly, per employee and month, and the inputs it came from (leave-aware formula D4.1). Written only by `ccrm_tt_rate_for()` (`public/api/time_rate_card.php`), never by `sync.php`. While the month is open a changed `inputs_hash` re-prices the person's entries of the month; the row freezes when the month's `employee_salaries` record is closed, else from the first day of month + 2; after that only the admin "Re-price a period" recomputes it. Daily and hourly pay have no rows. Created by `time_rate_months_migration.php`.
+* `employee_id` VARCHAR(50) [PK part]
+* `month` CHAR(7) [PK part] (`YYYY-MM`)
+* `rate` DECIMAL(10,4) [NULLable] (Hourly cost rate)
+* `source` VARCHAR(32) (`monthly` | `contractor_monthly`)
+* `salary_type` VARCHAR(20) [NULLable]
+* `salary_amount` DECIMAL(12,2) [NULLable]
+* `working_days` INT [NULLable] (Working days of the month in the person's country)
+* `paid_leave_days` DECIMAL(4,1) (default 0; approved/taken leave of a paid type)
+* `unpaid_leave_days` DECIMAL(4,1) (default 0)
+* `hours_per_day` DECIMAL(4,2) [NULLable] (Effective: `employees.hours_per_day`, else the company's)
+* `multiplier` DECIMAL(6,4) [NULLable] (Employer multiplier; 1 for contractors)
+* `fallback` TINYINT(1) (1 = the whole month was leave; the no-leave basis was used)
+* `inputs_hash` CHAR(40) (sha1 of the inputs)
+* `frozen_at` DATETIME [NULLable] (UTC; set when the month froze)
+* `updated_at` TIMESTAMP
 
 ### `weekly_plan_cards`
 Standalone planning cards displayed on the Weekly Plan board (by day date and vertical position). Cards are independent of `tasks` (no automatic sync), while their `refs_json` can reference projects, leads, clients, employees, tickets, tasks, and `#tags`.

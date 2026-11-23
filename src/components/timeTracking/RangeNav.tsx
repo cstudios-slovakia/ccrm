@@ -14,6 +14,8 @@ export function RangeNav({
   resetLabel,
   onReset,
   labelTestId,
+  prevDisabled = false,
+  nextDisabled = false,
   className = "",
 }: {
   label: ReactNode;
@@ -25,17 +27,19 @@ export function RangeNav({
   resetLabel?: string;
   onReset?: () => void;
   labelTestId?: string;
+  prevDisabled?: boolean;
+  nextDisabled?: boolean;
   className?: string;
 }) {
   const arrow = "inline-flex size-9 items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-gray-900 cursor-pointer";
   return (
     <div className={`flex items-center gap-2 ${className}`}>
       <div className="inline-flex items-center divide-x divide-gray-200 overflow-hidden rounded-md border border-gray-200 bg-white">
-        <button type="button" onClick={onPrev} aria-label={prevLabel} className={arrow}>
+        <button type="button" onClick={onPrev} aria-label={prevLabel} disabled={prevDisabled} className={`${arrow} disabled:opacity-40 disabled:pointer-events-none`}>
           <ChevronLeft className="size-4" />
         </button>
         <span className="flex h-9 min-w-40 items-center justify-center px-3 text-ui font-semibold text-gray-800" data-testid={labelTestId}>{label}</span>
-        <button type="button" onClick={onNext} aria-label={nextLabel} className={arrow}>
+        <button type="button" onClick={onNext} aria-label={nextLabel} disabled={nextDisabled} className={`${arrow} disabled:opacity-40 disabled:pointer-events-none`}>
           <ChevronRight className="size-4" />
         </button>
       </div>

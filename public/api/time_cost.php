@@ -15,8 +15,14 @@
  *   contractor  monthly     amount / basisHours(D's month)                  (retainer)
  *   ledger / nobody linked / no salary: no rate (source "none")
  *
- * The caller supplies the month's working-day count (holidays_lib.php); nothing
- * in here touches the database or the network.
+ * Leave (docs/TIME-TRACKING-V2.md D4.1), the optional $leave argument
+ * ['paidLeaveDays', 'unpaidLeaveDays', 'hoursPerDay'] (see computeCostRate in timeCost.ts):
+ *   monthCost = salary x (WD - UL) / WD x multiplier, availableHours = (WD - UL - PL) x H
+ *   (fixed basis: fixedHoursPerMonth x (WD - UL - PL) / WD), rate = round4(monthCost / hours);
+ *   hours <= 0 falls back to the no-leave basis with 'fallback' => true. No leave = today's numbers.
+ *
+ * The caller supplies the month's working-day count (holidays_lib.php) and leave days
+ * (time_leave.php); nothing in here touches the database or the network.
  */
 
 if (!function_exists('ccrm_tc_round2')) {
@@ -43,14 +49,25 @@ if (!function_exists('ccrm_tc_round2')) {
         return ['rate' => null, 'source' => 'none', 'basisDays' => null, 'basisHours' => null, 'manDay' => null, 'multiplier' => 1, 'amount' => null];
     }
 
+    /** A non-negative float from anything; 0 for null, junk or negatives. */
+    function ccrm_tc_non_negative($n): float {
+        return is_numeric($n) && (float)$n > 0 ? (float)$n : 0.0;
+    }
+
+    /** Whole floats as ints, the way JSON.stringify prints them (basisHours, leave days, hours). */
+    function ccrm_tc_num(float $n) {
+        return $n == (int)$n ? (int)$n : $n;
+    }
+
     /**
      * computeCostRate(): the hourly cost rate of one person for one month.
      *
      * @param array|null $person   ['kind' => ..., 'salaryType' => ..., 'salaryAmount' => ...]
      * @param int        $workingDays that month's working days, in the person's country
      * @param array      $settings hoursBasis, fixedHoursPerMonth, hoursPerDay, employerMultiplier
+     * @param array      $leave    paidLeaveDays, unpaidLeaveDays, hoursPerDay (the person's; null = company's)
      */
-    function ccrm_tc_cost_rate(?array $person, int $workingDays, array $settings = []): array {
+    function ccrm_tc_cost_rate(?array $person, int $workingDays, array $settings = [], array $leave = []): array {
         $settings = $settings + ccrm_tc_default_settings();
         if ($person === null) {
             return ccrm_tc_none();
@@ -60,7 +77,8 @@ if (!function_exists('ccrm_tc_round2')) {
             return ccrm_tc_none();
         }
         $amount = (float)$amount;
-        $hoursPerDay = (float)$settings['hoursPerDay'];
+        $personHours = $leave['hoursPerDay'] ?? null;
+        $hoursPerDay = is_numeric($personHours) && (float)$personHours > 0 ? (float)$personHours : (float)$settings['hoursPerDay'];
         if (!($hoursPerDay > 0)) {
             return ccrm_tc_none();
         }
@@ -82,6 +100,7 @@ if (!function_exists('ccrm_tc_round2')) {
                 'basisDays' => null, 'basisHours' => null,
                 'manDay' => ccrm_tc_round4($amount * $hoursPerDay),
                 'multiplier' => $multiplier, 'amount' => $amount,
+                'hoursPerDay' => ccrm_tc_num($hoursPerDay),
             ];
         }
         if ($salaryType === 'daily') {
@@ -91,36 +110,55 @@ if (!function_exists('ccrm_tc_round2')) {
                 'basisDays' => null, 'basisHours' => null,
                 'manDay' => ccrm_tc_round4($amount),
                 'multiplier' => $multiplier, 'amount' => $amount,
+                'hoursPerDay' => ccrm_tc_num($hoursPerDay),
             ];
         }
         if ($salaryType === 'monthly') {
-            if (($settings['hoursBasis'] ?? 'workingDays') === 'fixed') {
-                $hours = (float)$settings['fixedHoursPerMonth'];
-                $days = null;
-            } else {
-                $hours = $workingDays * $hoursPerDay;
-                $days = $workingDays;
-            }
-            if (!($hours > 0)) {
+            $fixed = ($settings['hoursBasis'] ?? 'workingDays') === 'fixed';
+            $fullHours = $fixed ? (float)$settings['fixedHoursPerMonth'] : $workingDays * $hoursPerDay;
+            if (!($fullHours > 0)) {
                 return ccrm_tc_none();
             }
+            // Leave only makes sense against a month that has working days.
+            $wd = $workingDays > 0 ? $workingDays : 0;
+            $unpaid = $wd > 0 ? min(ccrm_tc_non_negative($leave['unpaidLeaveDays'] ?? null), (float)$wd) : 0.0;
+            $paid = $wd > 0 ? min(ccrm_tc_non_negative($leave['paidLeaveDays'] ?? null), $wd - $unpaid) : 0.0;
+            $left = $wd - $unpaid - $paid;
+            // No leave: exactly today's arithmetic (amount / hours x multiplier).
+            $monthBase = $unpaid > 0 ? ($amount * ($wd - $unpaid)) / $wd : $amount;
+            $hours = $fullHours;
+            if ($unpaid > 0 || $paid > 0) {
+                $hours = $fixed ? ((float)$settings['fixedHoursPerMonth'] * $left) / $wd : $left * $hoursPerDay;
+            }
+            $fallback = !($hours > 0);
+            if ($fallback) {
+                $hours = $fullHours;
+            }
             return [
-                'rate' => ccrm_tc_round4(($amount / $hours) * $multiplier),
+                'rate' => ccrm_tc_round4(($monthBase / $hours) * $multiplier),
                 'source' => $isContractor ? 'contractor_monthly' : 'monthly',
-                'basisDays' => $days,
-                'basisHours' => $hours == (int)$hours ? (int)$hours : $hours,
-                'manDay' => ccrm_tc_round4(($amount / $hours) * $hoursPerDay),
+                'basisDays' => $fixed ? null : $workingDays,
+                'basisHours' => ccrm_tc_num((float)$hours),
+                'manDay' => ccrm_tc_round4(($monthBase / $hours) * $hoursPerDay),
                 'multiplier' => $multiplier, 'amount' => $amount,
+                'monthCost' => ccrm_tc_round4($monthBase * $multiplier),
+                'paidLeaveDays' => ccrm_tc_num($paid),
+                'unpaidLeaveDays' => ccrm_tc_num($unpaid),
+                'hoursPerDay' => ccrm_tc_num($hoursPerDay),
+                'fallback' => $fallback,
             ];
         }
         return ccrm_tc_none();
     }
 
-    /** computeEntryCost(): `duration_sec / 3600 x rate`, 2 decimals; null with no rate or no duration. */
-    function ccrm_tc_entry_cost(?int $durationSec, ?float $rate): ?float {
-        if ($rate === null || $durationSec === null) {
+    /**
+     * computeWorkedCost(): `worked_ms / 3 600 000 x rate`, 4 decimals (D3.2); null with no rate or
+     * no worked time. A total sums these and rounds to cents once, at the end.
+     */
+    function ccrm_tc_worked_cost(?int $workedMs, ?float $rate): ?float {
+        if ($rate === null || $workedMs === null) {
             return null;
         }
-        return ccrm_tc_round2(($durationSec / 3600) * $rate);
+        return ccrm_tc_round4(($workedMs / 3600000) * $rate);
     }
 }

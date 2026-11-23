@@ -64,6 +64,14 @@ return [
         ],
     ],
 
+    // The owner's parallel morning (newest day, see demo_time_plan()): 3 overlapping agent-supervision entries, then one afternoon entry.
+    'parallel' => [
+        ['title' => 'Supervise the offer-writing agent: review the overnight drafts', 'note' => '', 'project' => 'P1', 'billable' => true],
+        ['title' => 'Supervise the supplier-quote agent: check prices against the price list', 'note' => '', 'project' => 'P3', 'billable' => false],
+        ['title' => 'Approve the cutting-plan proposal of the planning agent', 'note' => '', 'project' => 'P4', 'billable' => false],
+        ['title' => 'Weekly review of what the agents did and what needs a human', 'note' => '', 'project' => 'P1', 'billable' => false],
+    ],
+
     // Browser activity the Chrome extension captured yesterday for the owner and nobody sorted yet.
     // 'project' = the project the extension suggests (null = no idea); 'from' is local time.
     'activity' => [

@@ -6215,6 +6215,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             isLocking: taskToConvert.isLocking,
                             emailReminders: taskToConvert.emailReminders,
                             requiresConclusion: taskToConvert.requiresConclusion,
+                            category: taskToConvert.category ?? null,
                             tags: taskToConvert.tags,
                             recurrence: {
                                 ...recurrenceConfig,

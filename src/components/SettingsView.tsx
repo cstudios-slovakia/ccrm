@@ -29,6 +29,7 @@ import { ShippingMethodSettings } from "./ShippingMethodSettings";
 import { PaymentMethodSettings } from "./PaymentMethodSettings";
 import { FinanceSettings } from "./FinanceSettings";
 import { MarketingRoiSettings } from "./settings/MarketingRoiSettings";
+import { GithubIntegrationSettings } from "./settings/GithubIntegrationSettings";
 import { LeadCustomFieldsSettings } from "./settings/LeadCustomFieldsSettings";
 import type { ProjectStatusDef } from "../utils/projects";
 import type { OrderStatusDef } from "../utils/orders";
@@ -80,7 +81,10 @@ import { deleteRecordsWithUndo, archiveRecordsWithUndo } from "../utils/recordAc
 import { runUndoable } from "../utils/undoable";
 import { reinsertAt } from "../utils/undoableList";
 import { asLang, singleMessage, undoLabel } from "../utils/undoMessages";
-import { addTaskState, isDoneMarkerState } from "../utils/projectTasks";
+import { addTaskState } from "../utils/projectTasks";
+import { removeTimerActionKey, renameTimerActionKey, type TaskStateTimerActions } from "../utils/taskStateTimerActions";
+import { deleteTaskState } from "./settings/deleteTaskState";
+import { TaskStateTimerActionSelect, TaskStateTimerActionsHint } from "./settings/TaskStateTimerActionSelect";
 import { clearErrorLogsWithUndo } from "../utils/errorLogs";
 import { useUserPref } from "../utils/userPrefs";
 import { PROJECT_AUTO_CREATE_ENABLED } from "../utils/featureFlags";
@@ -562,6 +566,8 @@ interface SettingsViewProps {
   setTaskStates: React.Dispatch<React.SetStateAction<string[]>>;
   taskStateColors: Record<string, string>;
   setTaskStateColors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  taskStateTimerActions: TaskStateTimerActions;
+  setTaskStateTimerActions: React.Dispatch<React.SetStateAction<TaskStateTimerActions>>;
   /** Settings → Tasks: whether the "Requires conclusion" checkbox is offered. */
   taskSettings?: TaskSettings;
   setTaskSettings?: React.Dispatch<React.SetStateAction<TaskSettings>>;
@@ -701,6 +707,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setTaskStates,
   taskStateColors,
   setTaskStateColors,
+  taskStateTimerActions,
+  setTaskStateTimerActions,
   taskSettings,
   setTaskSettings,
   unifiedEntries = [],
@@ -960,6 +968,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (taskStates.some((s) => s.toLowerCase() === next.toLowerCase())) { toastNameExists(); return; }
     setTaskStates((prev) => prev.map((s) => (s === oldName ? next : s)));
     setTaskStateColors((prev) => migrateMapKey(prev, oldName, next));
+    setTaskStateTimerActions((prev) => renameTimerActionKey(prev, oldName, next));
     setTasks?.((prev) => prev.map((tk) => (tk.status === oldName ? { ...tk, status: next } : tk)));
   };
 
@@ -4057,7 +4066,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               language={userLanguage}
               canEdit={getPermission("general_config") === "edit"}
               isAdmin={isAdminRoleName(currentUser?.role)}
-              currency={systemCurrency || "EUR"} projects={projects} employees={employees} leads={leads}
+              currency={systemCurrency || "EUR"} projects={projects} employees={employees} leads={leads} roles={roles} canManageRoles={getPermission("pm_managers") !== "nothing"}
             />
           </div>
         );
@@ -5930,7 +5939,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       title={userLanguage === "sk" ? "Stavy úloh" : userLanguage === "hu" ? "Feladat állapotok" : "Task States"}
                       description={userLanguage === "sk" ? "Definujte rôzne stavy pre úlohy, priraďte im farby a prispôsobte si pracovný postup." : userLanguage === "hu" ? "Határozzon meg különböző állapotokat a feladatokhoz, rendeljen hozzájuk színeket, és szabja személyre a munkafolyamatot." : "Define different states for tasks, assign colors to them, and customize your workflow."}
                     >
-        
+                      <TaskStateTimerActionsHint taskStates={taskStates} actions={taskStateTimerActions} onApply={setTaskStateTimerActions} canEdit={getPermission("traffic_sources") === "edit"} lang={userLanguage} />
                       <ScrollFade axis="x" className="border border-gray-200/80 rounded-lg shadow-inner bg-white">
                         <table className="w-full text-left border-collapse">
                           <thead>
@@ -5972,6 +5981,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     >
                                       <span>{state}</span>
                                     </InlineRenameName>
+                                    <div className="mt-1 font-normal"><TaskStateTimerActionSelect value={taskStateTimerActions[state]} canEdit={getPermission("traffic_sources") === "edit"} lang={userLanguage} onChange={(a) => setTaskStateTimerActions((prev) => a ? { ...prev, [state]: a } : removeTimerActionKey(prev, state))} /></div>
                                   </td>
         
                                   {/* ACTIONS */}
@@ -5981,47 +5991,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           tone="danger"
                                           lang={userLanguage}
                                           what={state}
-                                          onConfirm={() => {
-                                          if (taskStates.length <= 1) {
-                                            (window as any).showToast(
-                                              userLanguage === "sk" 
-                                                ? "Pre správne fungovanie je potrebný aspoň jeden stav úlohy!" 
-                                                : "At least one task state is required!"
-                                            );
-                                            return;
-                                          }
-                                          // The last state is what marks a task done. Deleting it
-                                          // would make the state before it "done" and reopen every
-                                          // finished task, so it can only be renamed.
-                                          if (isDoneMarkerState(state, taskStates)) {
-                                            (window as any).showToast(
-                                              t(
-                                                "This state marks tasks as done. Rename it instead of deleting it.",
-                                                "Tento stav označuje úlohy ako hotové. Namiesto vymazania ho premenujte.",
-                                                "Ez az állapot jelöli a feladatokat késznek. Törlés helyett nevezze át."
-                                              )
-                                            );
-                                            return;
-                                          }
-                                          const taskStateIndex = taskStates.indexOf(state);
-                                          const taskStateColor = taskStateColors[state];
-                                          runUndoable({
-                                            message: singleMessage(userLanguage, "status", "delete", state),
-                                            undoLabel: undoLabel(userLanguage),
-                                            apply: () => {
-                                              setTaskStates(taskStates.filter(s => s !== state));
-                                              setTaskStateColors(prev => {
-                                                const next = { ...prev };
-                                                delete next[state];
-                                                return next;
-                                              });
-                                            },
-                                            revert: () => {
-                                              setTaskStates(prev => (prev.includes(state) ? prev : reinsertAt(prev, [{ item: state, index: taskStateIndex }], s => s)));
-                                              if (taskStateColor !== undefined) setTaskStateColors(prev => ({ ...prev, [state]: taskStateColor }));
-                                            },
-                                          });
-                                        }}
+                                          onConfirm={() => deleteTaskState({ state, taskStates, taskStateColors, taskStateTimerActions, setTaskStates,
+                                            setTaskStateColors, setTaskStateTimerActions, lang: userLanguage, t })}
                                           className="text-gray-400 hover:text-rose-600 transition-colors p-1"
                                       >
                                         <Trash2 className="h-4.5 w-4.5" />
@@ -7139,6 +7110,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         return <AiUsagePanel lang={userLanguage} />;
       case "integrations/waai":
         return <WaaiIntegrationSettings activeLang={userLanguage} />;
+      case "integrations/github":
+        return <GithubIntegrationSettings userLanguage={userLanguage} />;
       case "agency/workflow":
         return (
           <AgencySettingsSection

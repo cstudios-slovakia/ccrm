@@ -11,7 +11,9 @@
  */
 
 import { computeCostRate, round2, type CostRate } from "./timeCost.ts";
-import { hoursOf } from "./timeTracking.ts";
+import { addDays } from "./holidays.ts";
+import { hoursOf, weekStart } from "./timeTracking.ts";
+import { entryWorkedSeconds, liveWorkedShares, showsWorkedAndDelivered } from "./timeWorked.ts";
 import {
   addMoney,
   frozenCostRate,
@@ -36,9 +38,15 @@ export interface ReportEntry {
   entryDate: string;
   title: string;
   durationSec: number;
+  /** Worked seconds (D1). Missing = project time (nothing parallel known). */
+  workedSec?: number | null;
   billable: boolean;
   cost?: number | null;
   currency?: string;
+  /** Hourly rate the entry bills at; absent when the viewer may not see rates. */
+  billableRate?: number | null;
+  /** The entry's project is flagged internal. */
+  internal?: boolean;
 }
 
 export interface ReportFilters {
@@ -49,6 +57,8 @@ export interface ReportFilters {
   clientId: string | null;
   billable: BillableFilter;
   groupBy: ReportGroupBy;
+  /** Keep only entries that overlapped another entry of the same person (worked < project time). */
+  parallelOnly?: boolean;
 }
 
 export interface ReportLine {
@@ -60,21 +70,51 @@ export interface ReportLine {
   title: string;
   /** Rounded seconds. */
   seconds: number;
+  /** Worked seconds (D1), not rounded. */
+  workedSeconds: number;
   billable: boolean;
   cost: MoneyByCurrency;
+  /** Rounded billable hours x the entry's billable rate. Null when not billable, no rate, or no cost permission. */
+  billableValue: number | null;
+  currency: string;
+  internal: boolean;
+  /** Billable hours (unrounded) x rate. Null without a rate or without cost permission. */
+  marginValue: number | null;
+  /** True when the entry has a cost and its worked time equals its project time, so value and cost are comparable. */
+  marginOk: boolean;
+}
+
+/** Margin over the comparable lines only. `partial` is true when some lines were left out. */
+export interface Margin {
+  amount: MoneyByCurrency;
+  partial: boolean;
 }
 
 export interface ReportGroup {
   key: string;
   seconds: number;
+  workedSeconds: number;
   billableSeconds: number;
   cost: MoneyByCurrency;
+  billableValue: MoneyByCurrency;
+  margin: Margin | null;
+}
+
+/** Labour cost split by where the time went: client projects, internal projects, no project. */
+export interface CostSplit {
+  client: MoneyByCurrency;
+  internal: MoneyByCurrency;
+  unallocated: MoneyByCurrency;
 }
 
 export interface BuiltReport {
   lines: ReportLine[];
   groups: ReportGroup[];
-  totals: { seconds: number; billableSeconds: number; cost: MoneyByCurrency };
+  totals: { seconds: number; workedSeconds: number; billableSeconds: number; cost: MoneyByCurrency; billableValue: MoneyByCurrency; costSplit: CostSplit; margin: Margin | null };
+  /** Project time ÷ worked time over the lines (×1 = nothing parallel). Null when nothing was worked. */
+  leverage: number | null;
+  /** True when worked and project time differ, so the views show both measures. */
+  showsWorked: boolean;
   /** Logged seconds ÷ working days in the period. Null when the period has none. */
   perWorkingDaySeconds: number | null;
   shareByProject: { projectId: string | null; seconds: number; ratio: number }[];
@@ -104,6 +144,134 @@ const groupKey = (line: ReportLine, by: ReportGroupBy): string => {
   }
 };
 
+/** Leverage of a project-time / worked-time pair. */
+export const leverageOf = (projectSec: number, workedSec: number): number | null => (workedSec > 0 ? projectSec / workedSec : null);
+
+/** Billable value per currency over the lines. */
+const billableValueOf = (lines: readonly ReportLine[]): MoneyByCurrency => {
+  const bag: MoneyByCurrency = {};
+  for (const l of lines) addMoney(bag, l.currency, l.billableValue);
+  return bag;
+};
+
+const costSplitOf = (lines: readonly ReportLine[]): CostSplit => ({
+  client: sumMoney(lines.filter((l) => l.projectId != null && !l.internal).map((l) => l.cost)),
+  internal: sumMoney(lines.filter((l) => l.internal).map((l) => l.cost)),
+  unallocated: sumMoney(lines.filter((l) => l.projectId == null).map((l) => l.cost)),
+});
+
+/**
+ * Billable value minus labour cost over the lines where both are comparable: the entry has a cost
+ * and its worked time equals its project time (parallel entries bill delivered time but cost worked
+ * time), value taken from unrounded seconds to match the unrounded cost. Null when no such line
+ * carries a billable value, so pure internal time shows "—" rather than a loss. `partial` marks a
+ * margin that left lines out.
+ */
+export const marginOfLines = (lines: readonly ReportLine[]): Margin | null => {
+  const amount: MoneyByCurrency = {};
+  let hasValue = false;
+  let partial = false;
+  for (const l of lines) {
+    if (!l.marginOk) {
+      if (l.billableValue !== null || Object.keys(l.cost).length > 0 || l.billable) partial = true;
+      continue;
+    }
+    if (l.marginValue !== null) {
+      hasValue = true;
+      addMoney(amount, l.currency, l.marginValue);
+    }
+    for (const [code, c] of Object.entries(l.cost)) addMoney(amount, code, -c);
+  }
+  return hasValue ? { amount, partial } : null;
+};
+
+export interface DayBar {
+  date: string;
+  billableSeconds: number;
+  otherSeconds: number;
+}
+
+/** One bar per listed day: billable against non-billable seconds. Lines on days not listed are ignored. */
+export const hoursPerDay = (lines: readonly ReportLine[], days: readonly string[]): DayBar[] => {
+  const bars = new Map<string, DayBar>(days.map((date) => [date, { date, billableSeconds: 0, otherSeconds: 0 }]));
+  for (const l of lines) {
+    const bar = bars.get(l.entryDate);
+    if (!bar) continue;
+    if (l.billable) bar.billableSeconds += l.seconds;
+    else bar.otherSeconds += l.seconds;
+  }
+  return [...bars.values()];
+};
+
+export type ReportPeriod = "thisMonth" | "lastMonth" | "thisWeek" | "lastWeek" | "thisYear" | "custom";
+
+const monthEndIso = (iso: string): string => {
+  const [y, m] = iso.split("-").map(Number);
+  return `${iso.slice(0, 7)}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
+};
+
+/** Date range of a preset, relative to `today`. "custom" has no range of its own (null). */
+export const periodRange = (period: ReportPeriod, today: string): { from: string; to: string } | null => {
+  const thisMonth = `${today.slice(0, 7)}-01`;
+  switch (period) {
+    case "thisMonth":
+      return { from: thisMonth, to: monthEndIso(today) };
+    case "lastMonth": {
+      const last = addDays(thisMonth, -1);
+      return { from: `${last.slice(0, 7)}-01`, to: last };
+    }
+    case "thisWeek":
+      return { from: weekStart(today), to: addDays(weekStart(today), 6) };
+    case "lastWeek":
+      return { from: addDays(weekStart(today), -7), to: addDays(weekStart(today), -1) };
+    case "thisYear":
+      return { from: `${today.slice(0, 4)}-01-01`, to: `${today.slice(0, 4)}-12-31` };
+    default:
+      return null;
+  }
+};
+
+
+/**
+ * Group lines by one dimension: summed time, billable value, cost and the comparable-margin rule,
+ * biggest group first. The report's rows and every drill-down child row come from here, so a
+ * group's children always add up to it.
+ */
+const groupLines = (lines: readonly ReportLine[], by: ReportGroupBy): ReportGroup[] => {
+  const groups = new Map<string, ReportGroup>();
+  const byGroup = new Map<string, ReportLine[]>();
+  for (const line of lines) {
+    const key = groupKey(line, by);
+    const g = groups.get(key) ?? { key, seconds: 0, workedSeconds: 0, billableSeconds: 0, cost: {}, billableValue: {}, margin: null };
+    g.seconds += line.seconds;
+    g.workedSeconds += line.workedSeconds;
+    if (line.billable) g.billableSeconds += line.seconds;
+    g.cost = sumMoney([g.cost, line.cost]);
+    addMoney(g.billableValue, line.currency, line.billableValue);
+    groups.set(key, g);
+    const bucket = byGroup.get(key);
+    if (bucket) bucket.push(line);
+    else byGroup.set(key, [line]);
+  }
+  for (const g of groups.values()) g.margin = marginOfLines(byGroup.get(g.key) ?? []);
+  return [...groups.values()].sort((a, b) => b.seconds - a.seconds || a.key.localeCompare(b.key));
+};
+
+/** The lines that fall in one group of the first-level grouping. */
+export const linesOfGroup = (lines: readonly ReportLine[], by: ReportGroupBy, key: string): ReportLine[] => lines.filter((l) => groupKey(l, by) === key);
+
+/** Split one group's lines by a second dimension (same maths as the parent rows). */
+export const drillGroups = (lines: readonly ReportLine[], by: ReportGroupBy): ReportGroup[] => groupLines(lines, by);
+
+/** Second grouping level offered by default: Employee under a Project, otherwise Project. */
+export const defaultThenBy = (first: ReportGroupBy): ReportGroupBy => (first === "project" ? "person" : "project");
+
+/**
+ * The server returns at most this many entries per request (`LIMIT 5000` in
+ * public/api/time_entries.php, no truncated flag). At or above it the oldest entries are missing.
+ */
+export const TIME_ENTRIES_SERVER_LIMIT = 5000;
+
 export const buildReport = (input: {
   entries: readonly ReportEntry[];
   filters: ReportFilters;
@@ -122,9 +290,13 @@ export const buildReport = (input: {
     if (filters.clientId && e.clientId !== filters.clientId) continue;
     if (filters.billable === "yes" && !e.billable) continue;
     if (filters.billable === "no" && e.billable) continue;
+    const workedSeconds = Math.max(0, e.workedSec ?? e.durationSec);
+    if (filters.parallelOnly && !(e.durationSec - workedSeconds >= 1)) continue;
     const seconds = roundDurationSec(e.durationSec, input.rounding);
     const cost: MoneyByCurrency = {};
-    addMoney(cost, e.currency || input.currency, visibleEntryCost(e, input.viewerUserId, input.canCosts));
+    const currency = e.currency || input.currency;
+    addMoney(cost, currency, visibleEntryCost(e, input.viewerUserId, input.canCosts));
+    const billableValue = input.canCosts && e.billable && e.billableRate && e.billableRate > 0 ? round2((seconds / 3600) * e.billableRate) : null;
     lines.push({
       id: e.id,
       userId: e.userId,
@@ -133,24 +305,25 @@ export const buildReport = (input: {
       entryDate: e.entryDate,
       title: e.title,
       seconds,
+      workedSeconds,
       billable: e.billable,
       cost,
+      billableValue,
+      currency,
+      internal: e.internal === true && e.projectId != null,
+      marginValue: input.canCosts && e.billable && e.billableRate && e.billableRate > 0 ? (e.durationSec / 3600) * e.billableRate : null,
+      marginOk: Object.keys(cost).length > 0 && Math.abs(workedSeconds - e.durationSec) < 1,
     });
   }
-  const groups = new Map<string, ReportGroup>();
-  for (const line of lines) {
-    const key = groupKey(line, filters.groupBy);
-    const g = groups.get(key) ?? { key, seconds: 0, billableSeconds: 0, cost: {} };
-    g.seconds += line.seconds;
-    if (line.billable) g.billableSeconds += line.seconds;
-    g.cost = sumMoney([g.cost, line.cost]);
-    groups.set(key, g);
-  }
-  const ordered = [...groups.values()].sort((a, b) => b.seconds - a.seconds || a.key.localeCompare(b.key));
+  const ordered = groupLines(lines, filters.groupBy);
   const totals = {
     seconds: lines.reduce((s, l) => s + l.seconds, 0),
+    workedSeconds: lines.reduce((s, l) => s + l.workedSeconds, 0),
     billableSeconds: lines.reduce((s, l) => s + (l.billable ? l.seconds : 0), 0),
     cost: sumMoney(lines.map((l) => l.cost)),
+    billableValue: billableValueOf(lines),
+    costSplit: costSplitOf(lines),
+    margin: marginOfLines(lines),
   };
   const byProject = new Map<string, number>();
   for (const line of lines) {
@@ -168,6 +341,8 @@ export const buildReport = (input: {
     lines,
     groups: ordered,
     totals,
+    leverage: leverageOf(totals.seconds, totals.workedSeconds),
+    showsWorked: showsWorkedAndDelivered(totals.seconds, totals.workedSeconds),
     perWorkingDaySeconds: input.workingDays > 0 ? totals.seconds / input.workingDays : null,
     shareByProject,
   };
@@ -181,7 +356,7 @@ export interface ClientPdfRow {
   hours: string;
 }
 
-/** Billable lines only, already rounded, with no cost column. */
+/** Billable lines only, already rounded, project time only (never worked time), with no cost column. */
 export const clientPdfRows = (
   report: BuiltReport,
   label: { person: (userId: string) => string; project: (projectId: string | null) => string },
@@ -243,23 +418,28 @@ const costCells = (bag: MoneyByCurrency, codes: string[]): string[] => codes.map
 export const reportCsv = (
   report: BuiltReport,
   mode: "summary" | "detailed",
-  headers: { group: string; date: string; person: string; project: string; title: string; hours: string; billable: string; cost: string; total: string },
+  headers: { group: string; date: string; person: string; project: string; title: string; hours: string; billable: string; cost: string; total: string; workedHours?: string; leverage?: string },
   label: { group: (key: string) => string; person: (userId: string) => string; project: (id: string | null) => string },
 ): string => {
   const codes = [...new Set(report.lines.flatMap((l) => Object.keys(l.cost)))].sort();
   const lines: string[] = [];
+  const wh = (sec: number) => hoursOf(sec).toFixed(2);
+  const lev = (projectSec: number, workedSec: number) => {
+    const v = leverageOf(projectSec, workedSec);
+    return v == null ? "" : v.toFixed(2);
+  };
   if (mode === "summary") {
-    lines.push([headers.group, headers.hours, headers.billable, ...codes.map((c) => `${headers.cost} ${c}`)].map(csvCell).join(","));
+    lines.push([headers.group, headers.hours, headers.workedHours ?? "Worked hours", headers.leverage ?? "Leverage", headers.billable, ...codes.map((c) => `${headers.cost} ${c}`)].map(csvCell).join(","));
     for (const g of report.groups) {
-      lines.push([label.group(g.key), hoursOf(g.seconds).toFixed(2), hoursOf(g.billableSeconds).toFixed(2), ...costCells(g.cost, codes)].map(csvCell).join(","));
+      lines.push([label.group(g.key), wh(g.seconds), wh(g.workedSeconds), lev(g.seconds, g.workedSeconds), wh(g.billableSeconds), ...costCells(g.cost, codes)].map(csvCell).join(","));
     }
-    lines.push([headers.total, hoursOf(report.totals.seconds).toFixed(2), hoursOf(report.totals.billableSeconds).toFixed(2), ...costCells(report.totals.cost, codes)].map(csvCell).join(","));
+    lines.push([headers.total, wh(report.totals.seconds), wh(report.totals.workedSeconds), report.leverage == null ? "" : report.leverage.toFixed(2), wh(report.totals.billableSeconds), ...costCells(report.totals.cost, codes)].map(csvCell).join(","));
   } else {
-    lines.push([headers.date, headers.person, headers.project, headers.title, headers.hours, headers.billable, ...codes.map((c) => `${headers.cost} ${c}`)].map(csvCell).join(","));
+    lines.push([headers.date, headers.person, headers.project, headers.title, headers.hours, headers.workedHours ?? "Worked hours", headers.billable, ...codes.map((c) => `${headers.cost} ${c}`)].map(csvCell).join(","));
     for (const l of report.lines) {
-      lines.push([l.entryDate, label.person(l.userId), label.project(l.projectId), l.title, hoursOf(l.seconds).toFixed(2), l.billable ? "1" : "0", ...costCells(l.cost, codes)].map(csvCell).join(","));
+      lines.push([l.entryDate, label.person(l.userId), label.project(l.projectId), l.title, wh(l.seconds), wh(l.workedSeconds), l.billable ? "1" : "0", ...costCells(l.cost, codes)].map(csvCell).join(","));
     }
-    lines.push([headers.total, "", "", "", hoursOf(report.totals.seconds).toFixed(2), "", ...costCells(report.totals.cost, codes)].map(csvCell).join(","));
+    lines.push([headers.total, "", "", "", wh(report.totals.seconds), wh(report.totals.workedSeconds), "", ...costCells(report.totals.cost, codes)].map(csvCell).join(","));
   }
   return `\uFEFF${lines.join("\n")}`;
 };
@@ -284,6 +464,12 @@ export interface SalaryPerson {
 }
 
 export interface SalaryEntry {
+  /** Needed to allocate a running entry (v2); optional for older callers. */
+  id?: string;
+  running?: boolean;
+  startAt?: string | null;
+  /** Worked ms settled by the server (D1); missing = project time. */
+  workedMs?: number | null;
   userId: string;
   projectId: string | null;
   entryDate: string;
@@ -309,7 +495,10 @@ export interface SalaryRow {
    * valid then); "contract" = today's contract, because the person has no priced entry that month.
    */
   rateBasis: "snapshot" | "contract";
+  /** Worked time (D1). */
   trackedSeconds: number;
+  /** Project time delivered (Σ durationSec). */
+  deliveredSeconds: number;
   clientSeconds: number;
   internalSeconds: number;
   unallocatedSeconds: number;
@@ -325,6 +514,7 @@ export interface SalaryReport {
   totals: {
     loadedSalary: MoneyByCurrency;
     trackedSeconds: number;
+    deliveredSeconds: number;
     clientCost: MoneyByCurrency;
     internalCost: MoneyByCurrency;
     unallocatedCost: MoneyByCurrency;
@@ -332,6 +522,15 @@ export interface SalaryReport {
   /** Logged-in users with time and no employee record. */
   withoutSalary: { userId: string; name: string; seconds: number; cost: MoneyByCurrency }[];
 }
+
+const salaryWorked = (e: SalaryEntry) => ({
+  id: e.id ?? "",
+  userId: e.userId,
+  durationSec: e.durationSec,
+  running: !!e.running,
+  startAt: e.startAt ?? null,
+  workedMs: e.workedMs,
+});
 
 export const allocationOf = (projectId: string | null, projects: readonly SalaryProject[]): SalaryBucket => {
   if (!projectId) return "unallocated";
@@ -368,12 +567,14 @@ export const snapshotSalaryRate = (
   workingDays: number,
 ): CostRate | null => {
   const weight = new Map<string, { seconds: number; rate: CostRate }>();
+  const nowMs = Date.now();
+  const live = entries.some((e) => e.running) ? liveWorkedShares(entries.map(salaryWorked), nowMs) : undefined;
   for (const e of entries) {
     const frozen = frozenCostRate(e, settings);
     if (!frozen) continue;
     const key = `${frozen.rate}|${frozen.source}|${frozen.basisDays ?? ""}`;
     const slot = weight.get(key) ?? { seconds: 0, rate: frozen };
-    slot.seconds += Math.max(0, Math.round(e.durationSec || 0));
+    slot.seconds += Math.max(0, entryWorkedSeconds(salaryWorked(e), nowMs, live));
     weight.set(key, slot);
   }
   let best: { seconds: number; rate: CostRate } | null = null;
@@ -401,7 +602,10 @@ export const buildSalaryReport = (input: {
   currency: string;
   settings: { hoursBasis: "workingDays" | "fixed"; fixedHoursPerMonth: number; hoursPerDay: number; employerMultiplier: number };
   monthWorkingDays: (country: "SK" | "HU", year: number, month: number) => number;
+  /** Clock for running entries; defaults to Date.now(). */
+  nowMs?: number;
 }): SalaryReport => {
+  const nowMs = input.nowMs ?? Date.now();
   const [y, m] = input.from.split("-").map(Number);
   const inRange = input.entries.filter((e) => e.entryDate >= input.from && e.entryDate <= input.to);
   const employed = input.people.filter((p) => p.employeeId);
@@ -410,6 +614,7 @@ export const buildSalaryReport = (input: {
   const bucket = (userId: string) => {
     const acc = {
       seconds: 0,
+      delivered: 0,
       clientSeconds: 0,
       internalSeconds: 0,
       unallocatedSeconds: 0,
@@ -417,10 +622,12 @@ export const buildSalaryReport = (input: {
       internalCost: {} as MoneyByCurrency,
       unallocatedCost: {} as MoneyByCurrency,
     };
-    for (const e of inRange) {
-      if (e.userId !== userId) continue;
-      const sec = Math.max(0, Math.round(e.durationSec || 0));
+    const mine = inRange.filter((e) => e.userId === userId);
+    const live = mine.some((e) => e.running) ? liveWorkedShares(mine.map(salaryWorked), nowMs) : undefined;
+    for (const e of mine) {
+      const sec = Math.max(0, entryWorkedSeconds(salaryWorked(e), nowMs, live));
       acc.seconds += sec;
+      acc.delivered += Math.max(0, Math.round(e.durationSec || 0));
       const where = allocationOf(e.projectId, input.projects);
       const visible = visibleEntryCost(e, input.viewerUserId, input.canCosts);
       const code = e.currency || input.currency;
@@ -473,6 +680,7 @@ export const buildSalaryReport = (input: {
         rate,
         rateBasis: snapshot ? ("snapshot" as const) : ("contract" as const),
         trackedSeconds: acc.seconds,
+        deliveredSeconds: acc.delivered,
         clientSeconds: acc.clientSeconds,
         internalSeconds: acc.internalSeconds,
         unallocatedSeconds: acc.unallocatedSeconds,
@@ -504,6 +712,7 @@ export const buildSalaryReport = (input: {
     totals: {
       loadedSalary: salaryBag,
       trackedSeconds: rows.reduce((s, r) => s + r.trackedSeconds, 0),
+      deliveredSeconds: rows.reduce((s, r) => s + r.deliveredSeconds, 0),
       clientCost: sumMoney(rows.map((r) => r.clientCost)),
       internalCost: sumMoney(rows.map((r) => r.internalCost)),
       unallocatedCost: sumMoney(rows.map((r) => r.unallocatedCost)),

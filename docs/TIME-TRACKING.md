@@ -202,12 +202,12 @@ Spec: C15, C4.2, C4.4 (`time_tracker_ext.php`).
 
 - [x] 5a. Tables `time_tracker_pairing_codes`, `time_tracker_devices`; `public/api/time_tracker_ext.php` (Bearer device key, CORS for `chrome-extension://<id>`, pair rate-limited per IP)
 - [x] 5a. Extension source in `extensions/chrome-time-tracker/` (Manifest V3, TypeScript, Vite), popup (running, idle, not paired), badge, offline queue, "Paired browsers" with Revoke
-- [x] 5a. `npm run build:extension` zips to `public/downloads/ccrm-time-tracker.zip` (committed)
+- [x] 5a. `npm run build:extension` zips to `public/downloads/koperniq-time-tracker.zip` (committed; the name is built from `PRODUCT_SLUG`, and the old `ccrm-time-tracker.zip` is still written for existing links)
 - [x] 5b. Activity capture (opt-in, off by default), table `time_activity`, `activity` endpoint, Unsorted inbox (Day panel, List chip, extension footer), purge in cron
 - [ ] QA: pairing flow with the mock, one running timer shared with the extension, revoked device returns 401
 - [x] Unit tests. The e2e spec was not extended.
 
-**Left over:** QA was skipped at the owner's request (2026-10-27). The zip is on disk at `public/downloads/ccrm-time-tracker.zip` and is not committed. The extension download, pairing code, and paired browsers live in Settings → Time tracking. There is no module overflow-menu entry. The new PHP files exist only under `public/api/` (the sync script does not create a root copy for a file that has none).
+**Left over:** QA was skipped at the owner's request (2026-10-27). The zip is `public/downloads/koperniq-time-tracker.zip` (the old `ccrm-time-tracker.zip` is still written for existing links). The extension download, pairing code, and paired browsers live in Settings → Time tracking. There is no module overflow-menu entry. The new PHP files exist only under `public/api/` (the sync script does not create a root copy for a file that has none).
 
 ### Phase 6. Locking and approval, Toggl import, mobile polish, idle reminder
 
@@ -334,6 +334,8 @@ default; managers can pick *Whole team* or one person.
 ## C4. Data model and API
 
 ### C4.1 `time_entries` (in `public/api/schema.php`, covered by `ccrm_schema_fingerprint()`)
+
+> Replaced by [TIME-TRACKING-V2.md, D5.1](TIME-TRACKING-V2.md#d51-the-database-guard): the `running_guard` UNIQUE (one running timer per user) is replaced by the parallel-timer guard.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -487,6 +489,8 @@ logging time.**
 
 ### C6.6 Working days
 
+> Replaced by [TIME-TRACKING-V2.md, D4 (C2, C11)](TIME-TRACKING-V2.md#d4-the-monthly-rate-phase-3): approved leave now changes the monthly rate: paid leave raises it (same salary, fewer hours), unpaid leave lowers salary and hours together (D4.1, D4.2).
+
 `workingDays(month, country)` = Mon–Fri − public holidays + extra working days − extra days
 off. Vacation and sick days **do not** reduce it (the employee is paid for them).
 
@@ -496,6 +500,8 @@ rest days in 2026, § 4b); HU Oct = 21 (23 Oct is a holiday, a Friday).
 ## C7. Cost rate by employment status
 
 ### C7.1 The table (one pure module `src/utils/timeCost.ts`, no fetching, takes the working-days count as input)
+
+> Replaced by [TIME-TRACKING-V2.md, D4.1](TIME-TRACKING-V2.md#d41-formula): the monthly rows of the cost table follow the new formula.
 
 | `Employee.kind` | `salaryType` | Hourly cost rate for an entry on date D | Multiplier |
 |---|---|---|---|
@@ -528,6 +534,8 @@ monthly types. `multiplier` = employer contributions, default **1.352**. The PHP
 
 ### C7.5 Snapshot and Finance
 
+> Replaced by [TIME-TRACKING-V2.md, D4.3 (C12)](TIME-TRACKING-V2.md#d43-the-rate-card): a month's rate is provisional while the month is open and is re-priced automatically when salary, leave or holidays change; it freezes when payroll closes (or at month + 2).
+
 `cost_rate` is written when an entry is stopped or saved and is never recomputed silently.
 **Time tracking creates no financial records.** The project **Finances** tab gets a computed
 expense line **"Labour (time tracking)"** (sum of `cost`) included in real profit and the profit
@@ -542,6 +550,8 @@ Writes an audit-log entry.
 ## C8. The timer
 
 ### C8.1 Rules
+
+> Replaced by [TIME-TRACKING-V2.md, D5, D7, D8.5](TIME-TRACKING-V2.md#d5-parallel-timers-phases-4-and-5): several timers can run at once; the presence check replaces the long-entry warning and the idle reminder; `autoStopAt` stays and is now enforced by the presence engine.
 
 - **One running timer per user**, enforced by the database. Starting a new one stops the old one and shows an `UndoToast` ("Timer started on *X*. *Y* was stopped at 0:30:00. [Undo]"). Web app, PWA and extension share one running entry.
 - Elapsed = `now − start_at`. Never count ticks.
@@ -561,6 +571,25 @@ Typing suggests recent title + project + task combinations.
 You can start without a project. The entry then shows an amber **"Assign project"** chip, is
 left out of project cost and counts as unallocated. The setting "Require a project before Stop"
 (**default on**, B9) makes Stop open the picker.
+
+### C8.4 Require a task on every entry (`requireTask`, default off)
+
+With the setting on, no **finished** entry exists without a task or ticket. The server answers `task_required` (422, the same
+code Stop returns) when:
+
+- a timer is **stopped** without a task or ticket (as before);
+- `create` makes a finished entry (the timer bar's Manual mode, "+ Add entry manually", the Day add row, a Timesheet cell,
+  the Calendar's new entry, the MCP `log_time_entry`) with neither; a manager creating for someone else is held to it too;
+- `update` removes the task or ticket of a finished entry, or finishes a running one with neither.
+
+Not refused: starting a running timer without a task (the rule bites at Stop); an update that does not touch the link of an
+entry that predates the rule (it stays editable in its other fields); the Toggl import, the auto-stop, presence, the
+ticket-time migration, the demo seed and the Chrome extension's unsorted-to-entry assignment (it never reads the rule).
+There is no condition on the project type: Stop never had one.
+On the client every manual-create surface answers the message and opens the new-entry drawer (which has the task and ticket
+pickers) prefilled with what was typed (`recoverTaskRequired` in `timeCreateBridge.ts`).
+A Timesheet cell reverts to its old value and the drawer opens with that day, row and hours. "Duplicate" of a task-less entry
+(drawer, Calendar popover) shows the same message and creates nothing; the ticket "Log time" form always carries its ticket.
 
 ## C9. Entry points (prefill rules)
 
@@ -706,6 +735,8 @@ toward the contract.
 
 ## C13. Settings → Time tracking (`projects/time`)
 
+> Replaced by [TIME-TRACKING-V2.md, D7.1, D8.5](TIME-TRACKING-V2.md#d71-state): `autoStopAt` stays; `longEntryWarnHours` and `idleReminderMinutes` are removed.
+
 ```ts
 interface TimeTrackingSettings {
   hoursBasis: 'workingDays' | 'fixed';
@@ -714,7 +745,7 @@ interface TimeTrackingSettings {
   employerMultiplier: number;        // 1.352
   holidayOverrides: Record<'SK' | 'HU', Record<string, Array<{ date: string; kind: 'extraDayOff' | 'extraWorkingDay'; name: string }>>>;
   requireProjectToStop: boolean;     // true (B9)
-  requireTask: boolean;              // false
+  requireTask: boolean;              // false (C8.4: Stop and manual create/update)
   billableByDefault: boolean;        // true
   autoStopAt: string | null;         // "23:59"
   longEntryWarnHours: number | null; // 10
@@ -749,7 +780,7 @@ not built unless the user asks.
 
 Source in `extensions/chrome-time-tracker/` (Manifest V3, TypeScript, Vite →
 `extensions/chrome-time-tracker/dist`). `npm run build:extension` zips it to
-`public/downloads/ccrm-time-tracker.zip`, copied into `dist/` by the normal build. The
+`public/downloads/koperniq-time-tracker.zip` (plus the old `ccrm-time-tracker.zip` for existing links), copied into `dist/` by the normal build. The
 production server has no build step, so the zip is committed like `dist/`. The extension version
 is shown in CCRM next to the download button; a device on an older version shows "Update
 available". Until a Web Store listing exists, the setup guide explains "Load unpacked".

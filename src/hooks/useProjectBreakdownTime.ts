@@ -90,52 +90,46 @@ export function useProjectBreakdownTime({
       }
     }
 
-    if (!running || !running.projectId || running.durationSec != null) {
-      return {
-        ...raw,
-        byProject,
-      };
-    }
-
-    const extraSec = elapsedSeconds(running.startAt ?? null, tt.nowMs);
-    if (extraSec <= 0) {
+    // Every running timer (parallel tracking allows several) adds its elapsed project time.
+    const liveTimers = running.filter((r) => r.projectId && r.durationSec == null);
+    if (liveTimers.length === 0) {
       return { ...raw, byProject };
     }
 
-    const pid = running.projectId;
-    const existing = byProject[pid] ?? {
-      seconds: 0,
-      billableSeconds: 0,
-      cost: null,
-      people: [],
-    };
-    const nextPeople: BreakdownTimePerson[] = existing.people.map((p) => ({ ...p }));
-    const uid = running.userId || tt.userId || "";
-    const match = nextPeople.find((p) => p.userId === uid);
-    if (match) {
-      match.seconds += extraSec;
-      if (running.billable) match.billableSeconds += extraSec;
-    } else if (uid) {
-      nextPeople.push({
-        userId: uid,
-        employeeId: null,
-        seconds: extraSec,
-        billableSeconds: running.billable ? extraSec : 0,
-      });
+    const next = { ...byProject };
+    for (const live of liveTimers) {
+      const extraSec = elapsedSeconds(live.startAt ?? null, tt.nowMs);
+      if (extraSec <= 0) continue;
+      const pid = live.projectId as string;
+      const existing = next[pid] ?? {
+        seconds: 0,
+        billableSeconds: 0,
+        cost: null,
+        people: [],
+      };
+      const nextPeople: BreakdownTimePerson[] = existing.people.map((p) => ({ ...p }));
+      const uid = live.userId || tt.userId || "";
+      const match = nextPeople.find((p) => p.userId === uid);
+      if (match) {
+        match.seconds += extraSec;
+        if (live.billable) match.billableSeconds += extraSec;
+      } else if (uid) {
+        nextPeople.push({
+          userId: uid,
+          employeeId: null,
+          seconds: extraSec,
+          billableSeconds: live.billable ? extraSec : 0,
+        });
+      }
+      next[pid] = {
+        ...existing,
+        seconds: existing.seconds + extraSec,
+        billableSeconds: existing.billableSeconds + (live.billable ? extraSec : 0),
+        people: nextPeople,
+      };
     }
 
-    return {
-      ...raw,
-      byProject: {
-        ...byProject,
-        [pid]: {
-          ...existing,
-          seconds: existing.seconds + extraSec,
-          billableSeconds: existing.billableSeconds + (running.billable ? extraSec : 0),
-          people: nextPeople,
-        },
-      },
-    };
+    return { ...raw, byProject: next };
   }, [raw, tt.totals.byProject, tt.running, tt.nowMs, tt.userId]);
 
   return { timeData, loading };

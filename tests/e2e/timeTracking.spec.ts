@@ -61,6 +61,33 @@ test.describe('Time tracking', () => {
     await expect(row(page, 'Fakturácia')).toHaveCount(0);
   });
 
+  test('List filter: Billable → Not billable shows only the non-billable entry, Clear restores every row, the stat tiles keep the whole week', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#tasks');
+    await openTimeTrackingFromSidebar(page);
+    await expect(row(page, 'Návrh cenovej ponuky')).toBeVisible();
+    // The seeded "Porada s klientom" is dated yesterday: on a Monday it falls in the previous week, so count instead of assuming three.
+    const before = await rows(page).count();
+    const weekTotal = ((await page.getByTestId('stat-week').textContent()) ?? '').trim(); // the digits are separate spans: innerText would put each on its own line
+
+    await page.getByTestId('time-filter-button').click();
+    await expect(page.getByTestId('time-filter-popover')).toBeVisible();
+    await page.getByTestId('time-filter-billable-not-billable').click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('time-filter-popover')).toHaveCount(0);
+    await expect(page.getByTestId('time-filter-summary')).toBeVisible();
+    await expect(row(page, 'Návrh cenovej ponuky')).toHaveCount(0);
+    await expect(row(page, 'Objednať krytinu')).toHaveCount(0);
+    expect(await rows(page).count()).toBeLessThan(before);
+    await expect(page.getByTestId('stat-week')).toHaveText(weekTotal);
+
+    await page.getByTestId('time-filter-button').click();
+    await page.getByTestId('time-filter-clear').click();
+    await expect(page.getByTestId('time-filter-summary')).toHaveCount(0);
+    await expect(rows(page)).toHaveCount(before);
+    await expect(row(page, 'Návrh cenovej ponuky')).toBeVisible();
+  });
+
   test('start, stop (asks for a project), then Continue replaces the running timer and Undo brings it back', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#time-tracking');
@@ -83,6 +110,8 @@ test.describe('Time tracking', () => {
     const seeded = row(page, 'Návrh cenovej ponuky');
     await seeded.hover();
     await seeded.getByTestId('time-entry-continue').click();
+    // Parallel tracking is on by default (C4), so a start while one runs asks first (C3).
+    await page.getByTestId('start-mode-switch').click();
     await expect(page.getByTestId('header-timer-running')).toContainText('Návrh cenovej ponuky');
     await expect(page.getByTestId('undo-toast')).toBeVisible();
     await page.getByTestId('undo-toast-undo').click();
@@ -191,6 +220,39 @@ test.describe('Time tracking', () => {
     await expect(row(page, 'Ručný riadok').getByText(/iba hodiny|hours only|csak órák/)).toBeVisible();
   });
 
+  test('"Require a task" also refuses a manual entry: the Day row explains it and opens the drawer with the typed text, a task saves it', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking/day');
+    // The rule is off by default; switch it on as the admin does in Settings (the mock saves it like the server).
+    const saved = await page.evaluate(async () => {
+      const res = await fetch('/api/time_entries.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'settings', settings: { requireTask: true } }) });
+      return res.status;
+    });
+    expect(saved).toBe(200);
+    await page.getByRole('tab', { name: /Deň|Day|Nap/ }).click();
+    await page.getByTestId('day-add-row').click();
+    await page.getByTestId('day-add-form').getByTestId('project-picker-trigger').click();
+    await page.getByTestId('project-option').first().click();
+    await page.getByTestId('day-row-notes').fill('Riadok bez úlohy');
+    await page.getByTestId('day-row-hours').fill('1:30');
+    await page.getByTestId('day-row-save').click();
+    // The message names the rule, and the new-entry drawer opens with what was typed so nothing is lost.
+    await expect(page.getByText(/vyžaduje úlohu|requires a task|feladatot vagy jegyet kér/).first()).toBeVisible();
+    await expect(page.getByTestId('entry-drawer')).toBeVisible();
+    await expect(page.getByTestId('entry-title')).toHaveValue('Riadok bez úlohy');
+    await expect(page.getByTestId('entry-duration')).toHaveValue('1:30');
+    // Saving it still without a task is refused again and keeps the drawer open.
+    await page.getByTestId('entry-save').click();
+    await expect(page.getByTestId('entry-drawer')).toBeVisible();
+    // With a task it saves.
+    await page.getByTestId('entry-task-search').fill('Pripraviť');
+    await page.getByTestId('entry-task-option').first().click();
+    await page.getByTestId('entry-link-confirm-ok').click();
+    await expect(page.getByTestId('entry-linked-task')).toContainText('Pripraviť cenovú ponuku');
+    await page.getByTestId('entry-save').click();
+    await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+  });
+
   test('team view: a freelancer is costed at a flat rate, a user with no employee record shows "no rate"', async ({ page }) => {
     await startSession(page, { extraUsers: [FREELANCER] });
     await gotoView(page, '#time-tracking');
@@ -198,7 +260,7 @@ test.describe('Time tracking', () => {
     await page.getByRole('tab', { name: /Deň|Day|Nap/ }).click();
     await expect(page.getByTestId('day-user-header').filter({ hasText: 'Mária' })).toContainText(/bez sadzby|no rate|nincs díj/);
     // Erik is an employee on €3,200 a month: a rate is shown on his header.
-    await expect(page.getByTestId('day-user-header').filter({ hasText: 'Erik' })).toContainText('/h');
+    await expect(page.getByTestId('day-user-header').filter({ hasText: 'Erik' })).toContainText(/\/\s?h/);
   });
 
   test('cost of other people\'s entries is hidden without time_tracking_costs, while a person still sees their own', async ({ page }) => {
@@ -308,6 +370,7 @@ test.describe('Time tracking', () => {
     await startSession(page);
     await gotoView(page, '#time-tracking');
     await page.getByTestId('timer-title').fill('Popisná práca');
+    await page.getByTestId('timer-note-toggle').click();
     await page.getByTestId('timer-note').fill('Prvý popis');
     await page.getByTestId('timer-start').click();
     await expect(page.getByTestId('timer-note')).toHaveValue('Prvý popis');
@@ -493,6 +556,7 @@ test.describe('Time tracking', () => {
     const panel = page.getByTestId('header-timer-panel');
     await expect(panel).toBeVisible();
     await expect(panel.getByTestId('timer-title')).toBeVisible();
+    await panel.getByTestId('timer-note-toggle').click();
     await expect(panel.getByTestId('timer-note')).toBeVisible();
     await expect(panel.getByTestId('timer-stop')).toBeVisible();
 
@@ -524,5 +588,23 @@ test.describe('Time tracking', () => {
     await group.getByTestId('time-entry-group-toggle').click();
     await expect(row(page, 'Oprava od zákazníka')).toHaveCount(3);
     await expect(row(page, 'Oprava od zákazníka').getByTestId('time-entry-duration')).toHaveText(['1:22:00', '0:37:00', '0:45:00']);
+  });
+
+  test('Reports: a group row opens to its split by employee and closes again', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking');
+    await page.evaluate(async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      await fetch('/api/time_entries.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', description: 'Report drill', projectId: 'project-1', entryDate: today, durationSec: 3600, billable: true, source: 'manual' }) });
+    });
+    await gotoView(page, '#time-tracking/reports');
+    const first = page.getByTestId('report-group-row').first();
+    await expect(first).toBeVisible();
+    await expect(page.getByTestId('report-child-row')).toHaveCount(0);
+    await first.click();
+    await expect(first).toHaveAttribute('aria-expanded', 'true');
+    expect(await page.getByTestId('report-child-row').count()).toBeGreaterThan(0);
+    await first.click();
+    await expect(page.getByTestId('report-child-row')).toHaveCount(0);
   });
 });

@@ -1,0 +1,124 @@
+{
+  "_comment": "Shared by src/utils/timeAllocation.test.ts and scripts/test-time-allocation.php (docs/TIME-TRACKING-V2.md, D2). Times are epoch ms; 1777885200000 = 2026-05-04T09:00:00Z. expect = worked ms per id. Optional: rate (EUR/h) with expectCost per id = round4(worked_ms / 3600000 x rate) and expectTotalCost = round2(sum worked_ms / 3600000 x rate); billableRate with expectBillable per id = round2((endMs - startMs) / 3600000 x billableRate) and expectBillableTotal.",
+  "invariants": [
+    "I1. Sum of worked_ms of all entries = the length of the union of their intervals. Exactly.",
+    "I2. An entry that overlaps nothing: worked_ms = duration_sec x 1000.",
+    "I3. worked_ms <= duration_sec x 1000, and > 0 for any entry with a duration.",
+    "I4. The result does not depend on the order of the input."
+  ],
+  "cases": [
+    {
+      "name": "D2 the brief: A, B, C all 09:00-11:00, EUR 10/h",
+      "entries": [
+        { "id": "A", "startMs": 1777885200000, "endMs": 1777892400000 },
+        { "id": "B", "startMs": 1777885200000, "endMs": 1777892400000 },
+        { "id": "C", "startMs": 1777885200000, "endMs": 1777892400000 }
+      ],
+      "expect": { "A": 2400000, "B": 2400000, "C": 2400000 },
+      "rate": 10,
+      "expectCost": { "A": 6.6667, "B": 6.6667, "C": 6.6667 },
+      "expectTotalCost": 20
+    },
+    {
+      "name": "D2 staggered: A 09:00-11:00, B 09:30-10:30, C 10:00-10:30 (85 / 25 / 10 min)",
+      "entries": [
+        { "id": "A", "startMs": 1777885200000, "endMs": 1777892400000 },
+        { "id": "B", "startMs": 1777887000000, "endMs": 1777890600000 },
+        { "id": "C", "startMs": 1777888800000, "endMs": 1777890600000 }
+      ],
+      "expect": { "A": 5100000, "B": 1500000, "C": 600000 }
+    },
+    {
+      "name": "D2 remainder: three entries over the same 100 s, lowest id gets the extra ms",
+      "entries": [
+        { "id": "r3", "startMs": 1777885200000, "endMs": 1777885300000 },
+        { "id": "r2", "startMs": 1777885200000, "endMs": 1777885300000 },
+        { "id": "r1", "startMs": 1777885200000, "endMs": 1777885300000 }
+      ],
+      "expect": { "r1": 33334, "r2": 33333, "r3": 33333 }
+    },
+    {
+      "name": "D2 billing: the brief at a billable EUR 60/h bills project time, costs worked time",
+      "entries": [
+        { "id": "A", "startMs": 1777885200000, "endMs": 1777892400000 },
+        { "id": "B", "startMs": 1777885200000, "endMs": 1777892400000 },
+        { "id": "C", "startMs": 1777885200000, "endMs": 1777892400000 }
+      ],
+      "expect": { "A": 2400000, "B": 2400000, "C": 2400000 },
+      "rate": 10,
+      "expectCost": { "A": 6.6667, "B": 6.6667, "C": 6.6667 },
+      "expectTotalCost": 20,
+      "billableRate": 60,
+      "expectBillable": { "A": 120, "B": 120, "C": 120 },
+      "expectBillableTotal": 360
+    },
+    {
+      "name": "running entry: A 09:00-10:00, B running since 09:30, settled up to 10:15",
+      "entries": [
+        { "id": "A", "startMs": 1777885200000, "endMs": 1777888800000 },
+        { "id": "B", "startMs": 1777887000000, "endMs": 1777889700000 }
+      ],
+      "expect": { "A": 2700000, "B": 1800000 }
+    },
+    {
+      "name": "identical intervals: tie broken by id, not by input order",
+      "entries": [
+        { "id": "b", "startMs": 1777885200000, "endMs": 1777885201001 },
+        { "id": "a", "startMs": 1777885200000, "endMs": 1777885201001 }
+      ],
+      "expect": { "a": 501, "b": 500 }
+    },
+    {
+      "name": "id order is plain code-unit order: B sorts before a",
+      "entries": [
+        { "id": "a", "startMs": 1777885200000, "endMs": 1777885200003 },
+        { "id": "B", "startMs": 1777885200000, "endMs": 1777885200003 }
+      ],
+      "expect": { "B": 2, "a": 1 }
+    },
+    {
+      "name": "touching intervals do not overlap: A 09:00-10:00, B 10:00-11:00",
+      "entries": [
+        { "id": "A", "startMs": 1777885200000, "endMs": 1777888800000 },
+        { "id": "B", "startMs": 1777888800000, "endMs": 1777892400000 }
+      ],
+      "expect": { "A": 3600000, "B": 3600000 }
+    },
+    {
+      "name": "contained interval: A 09:00-11:00 holds B 09:30-10:00",
+      "entries": [
+        { "id": "A", "startMs": 1777885200000, "endMs": 1777892400000 },
+        { "id": "B", "startMs": 1777887000000, "endMs": 1777888800000 }
+      ],
+      "expect": { "A": 6300000, "B": 900000 }
+    },
+    {
+      "name": "zero-length and reversed entries get 0 and do not split stretches",
+      "entries": [
+        { "id": "A", "startMs": 1777885200000, "endMs": 1777888800000 },
+        { "id": "Z", "startMs": 1777887000000, "endMs": 1777887000000 },
+        { "id": "R", "startMs": 1777888000000, "endMs": 1777887000000 }
+      ],
+      "expect": { "A": 3600000, "R": 0, "Z": 0 }
+    },
+    {
+      "name": "single entry keeps its whole duration (I2)",
+      "entries": [
+        { "id": "solo", "startMs": 1777885200000, "endMs": 1777885200000 },
+        { "id": "one", "startMs": 1777885200000, "endMs": 1777890612345 }
+      ],
+      "expect": { "one": 5412345, "solo": 0 }
+    },
+    {
+      "name": "five entries with odd milliseconds, computed by hand stretch by stretch (sum 5400005 = union 09:00-10:30:00.005)",
+      "entries": [
+        { "id": "e3", "startMs": 1777886400007, "endMs": 1777889400000 },
+        { "id": "e1", "startMs": 1777885200000, "endMs": 1777888200000 },
+        { "id": "e5", "startMs": 1777888800000, "endMs": 1777890600005 },
+        { "id": "e4", "startMs": 1777886400007, "endMs": 1777887600000 },
+        { "id": "e2", "startMs": 1777885800000, "endMs": 1777887000001 }
+      ],
+      "expect": { "e1": 1550003, "e2": 450002, "e3": 1549998, "e4": 349997, "e5": 1500005 }
+    }
+  ]
+}

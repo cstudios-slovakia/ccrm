@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Surface } from "../layout";
 import { listEntries } from "../../utils/timeTrackingApi.ts";
 import { formatDuration } from "../../utils/timeTracking.ts";
+import { entryWorkedSeconds, liveWorkedShares } from "../../utils/timeWorked.ts";
 import type { Employee } from "../../types";
 import { PRODUCT_NAME } from "../../utils/brand";
 import { entityAccentStyle } from "../../utils/entityAccent";
@@ -37,9 +38,11 @@ export function EmployeeCcrmTimesheet({ employee, year, month, t }: Props) {
         if (cancelled) return;
         const byDay = new Map<string, number>();
         let total = 0;
-        for (const entry of entries) {
-          if (entry.userId !== userId) continue;
-          const sec = entry.durationSec ?? 0;
+        const mine = entries.filter((entry) => entry.userId === userId);
+        const nowMs = Date.now();
+        const live = mine.some((entry) => entry.running) ? liveWorkedShares(mine, nowMs) : undefined;
+        for (const entry of mine) {
+          const sec = entryWorkedSeconds(entry, nowMs, live);
           total += sec;
           byDay.set(entry.entryDate, (byDay.get(entry.entryDate) ?? 0) + sec);
         }

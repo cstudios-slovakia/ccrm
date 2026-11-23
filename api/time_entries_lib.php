@@ -36,8 +36,48 @@ if (!function_exists('ccrm_tt_default_settings')) {
             'weeklyApproval' => false,
             'rounding' => ['minutes' => 0, 'mode' => 'nearest'],
             'extension' => ['enabled' => true, 'activityCaptureAllowed' => true, 'unsortedRetentionDays' => 30],
+            'parallel' => ['enabled' => true, 'maxParallel' => 4, 'sameProject' => 'differentTasks'],
+            // TT2 D7.1: the presence cycle (question after promptAfter, automatic pause at the deadline).
+            'presence' => ['enabled' => true, 'promptAfterMinutes' => 50, 'confirmWindowMinutes' => 10, 'resumeWindowMinutes' => 10, 'trimTo' => 'prompt'],
             'ticketTimeVisibleToClients' => false,
         ];
+    }
+
+    function ccrm_tt_prefs_key(string $userId): string {
+        $key = 'TIME_TRACKING_PREFS:' . $userId;
+        return strlen($key) <= 100 ? $key : 'TT_PREFS:' . hash('sha256', $userId);
+    }
+
+    /** TT2 D8.3 / C18: the presence sound's per-person settings; the question cannot be turned off, only the sound. */
+    function ccrm_tt_sanitize_presence_sound($raw): array {
+        $raw = is_array($raw) ? $raw : [];
+        $volume = $raw['volume'] ?? 0.6;
+        $volume = is_numeric($volume) ? max(0.0, min(1.0, round((float)$volume, 2))) : 0.6;
+        $sound = in_array($raw['sound'] ?? null, ['chimeA', 'chimeB', 'chimeC'], true) ? $raw['sound'] : 'chimeA';
+        return ['volume' => $volume, 'muted' => !empty($raw['muted']), 'sound' => $sound];
+    }
+
+    /** The caller's own time-tracking preferences (system_settings, one JSON row per user). */
+    function ccrm_tt_load_prefs(\PDO $pdo, string $userId): array {
+        $out = ['startWhileRunning' => 'ask', 'presenceSound' => ccrm_tt_sanitize_presence_sound(null)];
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = ? LIMIT 1");
+            $stmt->execute([ccrm_tt_prefs_key($userId)]);
+            $raw = json_decode((string)$stmt->fetchColumn(), true);
+            if (is_array($raw) && in_array($raw['startWhileRunning'] ?? null, ['ask', 'switch', 'parallel'], true)) {
+                $out['startWhileRunning'] = $raw['startWhileRunning'];
+            }
+            if (is_array($raw)) {
+                $out['presenceSound'] = ccrm_tt_sanitize_presence_sound($raw['presenceSound'] ?? null);
+            }
+        } catch (\Throwable $e) {
+        }
+        return $out;
+    }
+
+    function ccrm_tt_save_prefs(\PDO $pdo, string $userId, array $prefs): void {
+        $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)")
+            ->execute([ccrm_tt_prefs_key($userId), json_encode($prefs, JSON_UNESCAPED_UNICODE)]);
     }
 
     function ccrm_tt_load_settings(\PDO $pdo): array {
@@ -103,6 +143,26 @@ if (!function_exists('ccrm_tt_default_settings')) {
                 'enabled' => array_key_exists('enabled', $in['extension']) ? (bool)$in['extension']['enabled'] : $ext['enabled'],
                 'activityCaptureAllowed' => array_key_exists('activityCaptureAllowed', $in['extension']) ? (bool)$in['extension']['activityCaptureAllowed'] : $ext['activityCaptureAllowed'],
                 'unsortedRetentionDays' => (int)ccrm_tt_clamp_num($in['extension']['unsortedRetentionDays'] ?? null, 1, 365, (float)$ext['unsortedRetentionDays']),
+            ];
+        }
+        if (isset($in['parallel']) && is_array($in['parallel'])) {
+            $par = $base['parallel'];
+            $same = $in['parallel']['sameProject'] ?? $par['sameProject'];
+            $out['parallel'] = [
+                'enabled' => array_key_exists('enabled', $in['parallel']) ? (bool)$in['parallel']['enabled'] : $par['enabled'],
+                'maxParallel' => (int)ccrm_tt_clamp_num($in['parallel']['maxParallel'] ?? null, 2, 10, (float)$par['maxParallel']),
+                'sameProject' => in_array($same, ['differentTasks', 'never', 'always'], true) ? $same : $par['sameProject'],
+            ];
+        }
+        if (isset($in['presence']) && is_array($in['presence'])) {
+            $pr = $base['presence'] ?? ccrm_tt_default_settings()['presence'];
+            $p = $in['presence'];
+            $out['presence'] = [
+                'enabled' => array_key_exists('enabled', $p) ? (bool)$p['enabled'] : (bool)$pr['enabled'],
+                'promptAfterMinutes' => (int)ccrm_tt_clamp_num($p['promptAfterMinutes'] ?? null, 10, 240, (float)$pr['promptAfterMinutes']),
+                'confirmWindowMinutes' => (int)ccrm_tt_clamp_num($p['confirmWindowMinutes'] ?? null, 2, 60, (float)$pr['confirmWindowMinutes']),
+                'resumeWindowMinutes' => (int)ccrm_tt_clamp_num($p['resumeWindowMinutes'] ?? null, 0, 120, (float)$pr['resumeWindowMinutes']),
+                'trimTo' => in_array($p['trimTo'] ?? null, ['prompt', 'deadline'], true) ? $p['trimTo'] : ($pr['trimTo'] === 'deadline' ? 'deadline' : 'prompt'),
             ];
         }
         if (isset($in['holidayOverrides']) && is_array($in['holidayOverrides'])) {
@@ -180,8 +240,45 @@ if (!function_exists('ccrm_tt_default_settings')) {
         return $dt->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
     }
 
+    /**
+     * "Now" for every time-tracking timestamp (start, stop, pause, resume, presence, a running
+     * entry's end in settle), UTC 'Y-m-d H:i:s'. The test clock (TT2 phase 6b): when the constant
+     * CCRM_TT_TEST_CLOCK is defined and true (only the time-tracking probe's scratch config.php
+     * defines it) AND system_settings has `TT_TEST_NOW` (UTC 'Y-m-d H:i:s'), that instant is
+     * returned instead. Never active in production: no shipped config defines the constant.
+     */
     function ccrm_tt_now_utc(): string {
+        if (defined('CCRM_TT_TEST_CLOCK') && constant('CCRM_TT_TEST_CLOCK')) {
+            $fixed = ccrm_tt_test_clock();
+            if ($fixed !== null) {
+                return $fixed;
+            }
+        }
         return gmdate('Y-m-d H:i:s');
+    }
+
+    /** Milliseconds of ccrm_tt_now_utc() (the real clock keeps its milliseconds). */
+    function ccrm_tt_now_ms(): int {
+        if (defined('CCRM_TT_TEST_CLOCK') && constant('CCRM_TT_TEST_CLOCK') && ($fixed = ccrm_tt_test_clock()) !== null) {
+            return (int)strtotime($fixed . ' UTC') * 1000;
+        }
+        return (int)floor(microtime(true) * 1000);
+    }
+
+    /** The probe's fixed instant (system_settings TT_TEST_NOW), or null. Read on every call: the probe moves it between requests. */
+    function ccrm_tt_test_clock(): ?string {
+        $pdo = $GLOBALS['pdo'] ?? null;
+        if (!$pdo instanceof \PDO) {
+            return null;
+        }
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'TT_TEST_NOW' LIMIT 1");
+            $stmt->execute();
+            $v = trim((string)$stmt->fetchColumn());
+        } catch (\Throwable $e) {
+            return null;
+        }
+        return preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $v) ? $v : null;
     }
 
     /** ISO-8601 with a Z suffix, from a UTC database value. */
@@ -234,11 +331,13 @@ if (!function_exists('ccrm_tt_default_settings')) {
 
     /**
      * Price one stretch of work: who is the employee, whose calendar applies, how many working
-     * days the month has, the hourly rate and the cost. Never prices a running entry.
+     * days the month has and the hourly rate to freeze on the entry. The cost itself comes from
+     * worked time and is written only by ccrm_tt_settle() (time_settle.php); $durationSec is
+     * accepted for older callers and ignored.
      *
      * @param bool $fetch allow one holiday-API fetch when the year is not cached. Pass false
      *                    inside a transaction, in a migration or on any poll path.
-     * @return array{employee_id: ?string, cost_rate: ?float, cost_rate_source: string, cost_rate_basis_days: ?int, cost: ?float, country: string, workingDays: int}
+     * @return array{employee_id: ?string, cost_rate: ?float, cost_rate_source: string, cost_rate_basis_days: ?int, country: string, workingDays: int}
      */
     function ccrm_tt_price(\PDO $pdo, string $userId, string $entryDate, ?int $durationSec, array $settings, bool $fetch = true): array {
         $employee = ccrm_tt_employee_for_user($pdo, $userId);
@@ -247,7 +346,25 @@ if (!function_exists('ccrm_tt_default_settings')) {
         $month = (int)substr($entryDate, 5, 2);
         $days = ccrm_holidays_working_days($pdo, $country, $year, $month, ccrm_tt_overrides_for($settings, $country), $fetch);
         if ($employee === null) {
-            return ['employee_id' => null, 'cost_rate' => null, 'cost_rate_source' => 'none', 'cost_rate_basis_days' => null, 'cost' => null, 'country' => $country, 'workingDays' => $days];
+            return ['employee_id' => null, 'cost_rate' => null, 'cost_rate_source' => 'none', 'cost_rate_basis_days' => null, 'country' => $country, 'workingDays' => $days];
+        }
+        // Monthly pay: the leave-aware rate of the month's rate card (D4.3). Computing it may re-price
+        // the person's other entries of that month when its inputs changed while it is open.
+        if ((string)$employee['salary_type'] === 'monthly' && (string)$employee['kind'] !== 'ledger') {
+            if (!function_exists('ccrm_tt_rate_for')) {
+                require_once __DIR__ . '/time_rate_card.php';
+            }
+            $card = ccrm_tt_rate_for($pdo, (string)$employee['id'], substr($entryDate, 0, 7), $settings, $fetch);
+            if (($card['source'] ?? 'none') !== 'none' || $card['rate'] !== null) {
+                return [
+                    'employee_id' => $employee['id'],
+                    'cost_rate' => $card['rate'],
+                    'cost_rate_source' => $card['source'],
+                    'cost_rate_basis_days' => $card['basisDays'],
+                    'country' => $country,
+                    'workingDays' => $days,
+                ];
+            }
         }
         $r = ccrm_tc_cost_rate(
             ['kind' => $employee['kind'], 'salaryType' => $employee['salary_type'], 'salaryAmount' => $employee['salary_amount']],
@@ -264,7 +381,6 @@ if (!function_exists('ccrm_tt_default_settings')) {
             'cost_rate' => $r['rate'],
             'cost_rate_source' => $r['source'],
             'cost_rate_basis_days' => $r['basisDays'],
-            'cost' => ccrm_tc_entry_cost($durationSec, $r['rate']),
             'country' => $country,
             'workingDays' => $days,
         ];
@@ -535,7 +651,15 @@ if (!function_exists('ccrm_tt_default_settings')) {
             'startAt' => ccrm_tt_iso($r['start_at']),
             'endAt' => ccrm_tt_iso($r['end_at']),
             'durationSec' => $r['duration_sec'] === null ? null : (int)$r['duration_sec'],
+            'workedMs' => $running || ($r['worked_ms'] ?? null) === null ? null : (int)$r['worked_ms'],
             'running' => $running,
+            // D6: three states. A paused item is an ordinary closed entry with a resumable marker.
+            'state' => $running ? 'ongoing' : (!empty($r['paused_at']) ? 'paused' : 'stopped'),
+            'pausedAt' => ccrm_tt_iso($r['paused_at'] ?? null),
+            'pauseReason' => $r['pause_reason'] ?? null,
+            'resumeUntil' => ccrm_tt_iso($r['resume_until'] ?? null),
+            'continuesId' => $r['continues_id'] ?? null,
+            'endReason' => $r['end_reason'] ?? null,
             'billable' => (bool)$r['billable'],
             'tags' => ccrm_tt_decode_tags($r['tags'] ?? null),
             'source' => $r['source'],

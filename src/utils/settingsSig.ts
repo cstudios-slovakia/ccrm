@@ -5,6 +5,7 @@ import { normalizeLeadAssignment } from "./leadAssignment";
 import { normalizeLeadAttributes } from "./leadAttributes";
 import { normalizeProjectAutoCreate } from "./projectAutoCreate";
 import { normalizeTaskSettings } from "./taskConclusion";
+import { sanitizeTimerActions } from "./taskStateTimerActions";
 import { normalizeProjectStatusDefs } from "./projects";
 import { normalizeInvoiceStatusDefs, normalizeOfferStatusDefs } from "./offerStatuses";
 import { normalizePriceLevels } from "./priceLevels";
@@ -41,6 +42,7 @@ export const computeSettingsSig = (s: any): string => {
     normalizeProjectAutoCreate(s.projectAutoCreate),
     s.taskStates ?? [],
     s.taskStateColors && Object.keys(s.taskStateColors).length ? s.taskStateColors : null,
+    sanitizeTimerActions(s.taskStateTimerActions),
     normalizeTaskSettings(s.taskSettings),
     normalizeProjectStatusDefs(s.projectStatuses),
     normalizeOfferStatusDefs(s.offerStatuses),

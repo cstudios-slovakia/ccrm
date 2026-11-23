@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeft, ChevronRight, Download } from "lucide-react";
-import { Surface, Toolbar } from "../layout";
+import { Download, Filter, Users } from "lucide-react";
+import { Surface } from "../layout";
 import { CustomSelect } from "../ui/CustomSelect";
 import { useProjectStatuses } from "../../hooks/useProjectStatuses";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
@@ -25,6 +25,8 @@ import { entrySeconds, formatDuration, todayIso, weekStart, type TFn } from "../
 import { viewSizeScale } from "../../utils/viewSize";
 import { isoWeekNumber } from "../../utils/isoWeek.ts";
 import { MoneyText } from "./MoneyText";
+import { WorkedTotal } from "./WorkedLine";
+import { RangeNav } from "./RangeNav";
 import { RoleBadge } from "./RoleBadge";
 import { requestOpenList } from "./ViewingAsContext";
 import { initials, useTimeLookups, type TimeDeps } from "./shared";
@@ -89,7 +91,7 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to, tt.enabled]);
 
-  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-US";
+  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-GB";
   const monthName = (ym: string) => {
     const [y, m] = ym.split("-").map(Number);
     return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(locale, { month: "short", year: "numeric", timeZone: "UTC" });
@@ -103,7 +105,12 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
     const employeeByUser = new Map(deps.employees.filter((e) => e.userId).map((e) => [e.userId as string, e]));
     const ids = new Set<string>([...people.keys(), ...employeeByUser.keys()]);
     return buildTeamMatrix({
+      nowMs: tt.nowMs,
       entries: entries.map((e) => ({
+        id: e.id,
+        running: e.running,
+        startAt: e.startAt,
+        workedMs: e.workedMs,
         userId: e.userId,
         projectId: e.projectId,
         entryDate: e.entryDate,
@@ -184,40 +191,67 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
 
   return (
     <div className="grid gap-4" data-testid="team-matrix">
-      <Toolbar
-        filters={
-          <>
-            <CustomSelect
-              size="sm"
-              fitLabel
-              value={projectId}
-              onChange={setProjectId}
-              options={[
-                { value: "", label: t("All projects", "Všetky projekty", "Minden projekt") },
-                ...deps.projects.map((p) => ({ value: p.id, label: lookups.projectName(p.id) })),
-              ]}
-            />
-            <button
-              type="button"
-              aria-pressed={activeOnly}
-              onClick={() => setActiveOnly(!activeOnly)}
-              className={`inline-flex h-9 items-center rounded-md border px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${activeOnly ? "border-entity-border bg-entity-solid text-white" : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"}`}
-            >
-              {t("Active projects only", "Len aktívne projekty", "Csak aktív projektek")}
-            </button>
-          </>
-        }
-        trailing={
-          <div className="flex items-center gap-1">
-            <button type="button" onClick={() => setKind("week")} className={`h-9 rounded-md px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${kind === "week" ? "bg-entity-solid text-white" : "text-gray-600 hover:bg-gray-100"}`}>
-              {t("Weekly", "Týždenne", "Hetente")}
-            </button>
-            <button type="button" onClick={() => setKind("month")} className={`h-9 rounded-md px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${kind === "month" ? "bg-entity-solid text-white" : "text-gray-600 hover:bg-gray-100"}`}>
-              {t("Monthly", "Mesačne", "Havonta")}
-            </button>
+      <div data-testid="team-header"><Surface className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-md bg-entity-subtle text-entity-text">
+          <Users className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1 basis-64">
+          <h2 className="type-card-title text-gray-900">{t("Team work & expenses", "Práca a náklady tímu", "Csapat munkája és költségei")}</h2>
+          <p className="type-meta text-gray-500">
+            {kind === "week"
+              ? t("Hours and labour cost per person and week.", "Hodiny a náklady práce na osobu a týždeň.", "Órák és munkaerőköltség személyenként és hetente.")
+              : t("Hours and labour cost per person and month.", "Hodiny a náklady práce na osobu a mesiac.", "Órák és munkaerőköltség személyenként és havonta.")}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            aria-pressed={activeOnly}
+            onClick={() => setActiveOnly(!activeOnly)}
+            className={`inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${activeOnly ? "border-entity-border bg-entity-subtle text-entity-text" : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"}`}
+          >
+            <Filter className="size-4" />
+            {t("Active projects only", "Len aktívne projekty", "Csak aktív projektek")}
+          </button>
+          <CustomSelect
+            size="sm"
+            fitLabel
+            value={projectId}
+            onChange={setProjectId}
+            options={[
+              { value: "", label: t("All projects", "Všetky projekty", "Minden projekt") },
+              ...deps.projects.map((p) => ({ value: p.id, label: lookups.projectName(p.id) })),
+            ]}
+          />
+          <div className="inline-flex w-fit gap-1 rounded-md bg-gray-100 p-1">
+            {(["week", "month"] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                aria-pressed={kind === k}
+                onClick={() => setKind(k)}
+                className={`h-8 rounded-lg px-3 text-ui font-semibold transition-all active:scale-95 cursor-pointer ${kind === k ? "bg-white text-gray-900 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}
+              >
+                {k === "week" ? t("Weekly", "Týždenne", "Hetente") : t("Monthly", "Mesačne", "Havonta")}
+              </button>
+            ))}
           </div>
-        }
-        primary={
+          <RangeNav
+            label={kind === "week" ? `${weekLabel(isoWeekNumber(from))} – ${weekLabel(isoWeekNumber(buckets[buckets.length - 1].from))}` : `${monthName(buckets[0].id)} – ${monthName(buckets[buckets.length - 1].id)}`}
+            prevLabel={t("Previous", "Predchádzajúce", "Előző")}
+            nextLabel={t("Next", "Nasledujúce", "Következő")}
+            onPrev={() => (kind === "week" ? setWeekAnchor(shiftWeekAnchor(weekAnchor, -1)) : setMonthAnchor(shiftMonthAnchor(monthAnchor, -1)))}
+            onNext={() => (kind === "week" ? setWeekAnchor(shiftWeekAnchor(weekAnchor, 1)) : setMonthAnchor(shiftMonthAnchor(monthAnchor, 1)))}
+            resetLabel={t("Current", "Aktuálne", "Aktuális")}
+            onReset={
+              (kind === "week" ? weekAnchor === weekStart(today) : monthAnchor === today.slice(0, 7))
+                ? undefined
+                : () => {
+                    setWeekAnchor(weekStart(today));
+                    setMonthAnchor(today.slice(0, 7));
+                  }
+            }
+          />
           <button
             type="button"
             onClick={() =>
@@ -242,40 +276,8 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
             <Download className="size-4" />
             CSV
           </button>
-        }
-      />
-
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          aria-label={t("Previous", "Predchádzajúce", "Előző")}
-          onClick={() => (kind === "week" ? setWeekAnchor(shiftWeekAnchor(weekAnchor, -1)) : setMonthAnchor(shiftMonthAnchor(monthAnchor, -1)))}
-          className="inline-flex size-9 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 transition-all hover:text-gray-900 active:scale-95 cursor-pointer"
-        >
-          <ChevronLeft className="size-4" />
-        </button>
-        <span className="min-w-40 text-center text-ui font-semibold text-gray-800">
-          {kind === "week" ? `${weekLabel(isoWeekNumber(from))} – ${weekLabel(isoWeekNumber(buckets[buckets.length - 1].from))}` : `${monthName(buckets[0].id)} – ${monthName(buckets[buckets.length - 1].id)}`}
-        </span>
-        <button
-          type="button"
-          aria-label={t("Next", "Nasledujúce", "Következő")}
-          onClick={() => (kind === "week" ? setWeekAnchor(shiftWeekAnchor(weekAnchor, 1)) : setMonthAnchor(shiftMonthAnchor(monthAnchor, 1)))}
-          className="inline-flex size-9 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 transition-all hover:text-gray-900 active:scale-95 cursor-pointer"
-        >
-          <ChevronRight className="size-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setWeekAnchor(weekStart(today));
-            setMonthAnchor(today.slice(0, 7));
-          }}
-          className="h-9 rounded-md px-3 text-ui font-semibold text-entity-text transition-all hover:bg-gray-100 active:scale-95 cursor-pointer"
-        >
-          {t("Current", "Aktuálne", "Aktuális")}
-        </button>
-      </div>
+        </div>
+      </Surface></div>
 
       <Surface padding="none" className="overflow-x-auto">
         {loading && matrix.rows.length === 0 ? (
@@ -302,7 +304,10 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
               </tr>
             </thead>
             <tbody>
-              {matrix.rows.map((row) => (
+              {matrix.rows.map((row) => {
+                /** Only employees have a weekly target; contractors and people without an employee record are exempt. */
+                const hasTarget = row.employeeId != null && row.badge !== "contractor";
+                return (
                 <tr key={row.userId} className="border-b border-gray-100 align-top">
                   <th className="sticky left-0 z-10 bg-white px-4 py-3 text-left font-normal">
                     <div className="flex items-center gap-2">
@@ -354,34 +359,37 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
                             }}
                             className="block w-full rounded-lg text-left transition-colors hover:bg-white/80 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-entity"
                           >
-                            <span className="block font-bold tabular-nums text-entity-text">{formatDuration(cell.seconds)}</span>
+                            <WorkedTotal workedSec={cell.seconds} projectSec={cell.deliveredSeconds} compact />
                             {Object.keys(cell.cost).length > 0 && <MoneyText bag={cell.cost} language={deps.language} tone="cost" className="type-meta" />}
-                            <span className="mt-1 block h-1 overflow-hidden rounded-full bg-gray-200">
-                              <span className={`block h-full rounded-full transition-[width] duration-500 ${ratio < 0.75 ? "bg-amber-500" : "bg-entity-solid"}`} style={{ width: `${Math.min(100, ratio * 100)}%` }} />
-                            </span>
+                            {row.employeeId != null && (
+                              <span className="mt-1 block h-1 overflow-hidden rounded-full bg-gray-200">
+                                <span className={`block h-full rounded-full transition-[width] duration-500 ${hasTarget && ratio < 0.75 ? "bg-amber-500" : "bg-entity-solid"}`} style={{ width: `${Math.min(100, ratio * 100)}%` }} />
+                              </span>
+                            )}
                           </button>
                         )}
                       </td>
                     );
                   })}
                   <td className="px-3 py-3">
-                    <span className="block font-bold tabular-nums text-entity-text">{formatDuration(row.totalSeconds)}</span>
+                    <WorkedTotal workedSec={row.totalSeconds} projectSec={row.totalDeliveredSeconds} compact />
                     <MoneyText bag={row.totalCost} language={deps.language} tone="cost" className="type-meta" />
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
             <tfoot>
               <tr className="bg-gray-50 font-semibold" data-testid="team-totals">
                 <th className="sticky left-0 z-10 bg-gray-50 px-4 py-3 text-left">{t("Totals", "Súčet", "Végösszeg")}</th>
                 {matrix.buckets.map((b, i) => (
                   <td key={b.id} className="px-3 py-3">
-                    <span className="block tabular-nums text-entity-text">{formatDuration(matrix.totals.seconds[i])}</span>
+                    <WorkedTotal workedSec={matrix.totals.seconds[i]} projectSec={matrix.totals.deliveredSeconds[i]} compact plain />
                     <MoneyText bag={matrix.totals.cost[i]} language={deps.language} tone="cost" className="type-meta" />
                   </td>
                 ))}
                 <td className="px-3 py-3">
-                  <span className="block tabular-nums text-entity-text">{formatDuration(matrix.totals.totalSeconds)}</span>
+                  <WorkedTotal workedSec={matrix.totals.totalSeconds} projectSec={matrix.totals.totalDeliveredSeconds} compact plain />
                   <MoneyText bag={matrix.totals.totalCost} language={deps.language} tone="cost" className="type-meta" />
                 </td>
               </tr>
@@ -398,7 +406,7 @@ export function TimeTeamView({ deps, onNavigate }: { deps: TimeDeps; onNavigate:
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="h-1 w-6 rounded-full bg-amber-500" />
-            {t("under 75 %", "pod 75 %", "75 % alatt")}
+            {t("under 75 % of the working hours — people with an employee record, except contractors; people without one have no bar", "pod 75 % pracovných hodín — osoby so záznamom zamestnanca okrem dodávateľov; osoby bez neho nemajú pruh", "a munkaórák 75 %-a alatt — munkatársi nyilvántartással rendelkező személyek, a vállalkozók kivételével; akinek nincs, annak nincs sávja")}
           </span>
         </p>
         <p>{t("“no rate” = the user has no linked employee or no salary, so cost cannot be calculated.", "„bez sadzby“ = používateľ nemá pripojeného zamestnanca alebo mzdu, takže náklady sa nedajú vypočítať.", "„nincs díj” = a felhasználóhoz nincs munkatárs vagy bér rendelve, ezért a költség nem számolható.")}</p>

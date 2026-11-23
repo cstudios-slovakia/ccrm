@@ -1,10 +1,13 @@
 import { badgeLabel, hostOnly, matchingSite, mergeActivityBlocks, ACTIVITY_MERGE_GAP_MS, type ActivityBlock, type WatchedSite } from "../../../src/utils/timeTrackerRules.ts";
 import { TrackerError, trackerCall } from "./client.ts";
 import { loadLocal, saveLocal, type TrackerLocal } from "./storage.ts";
+import { badgeFor, localPhase, snapshotFrom, type IdleState, type PresenceSnapshot } from "./presence.ts";
 
 declare const chrome: any;
 
 const alarmName = "ccrm-tt";
+// One-shot alarm at the next presence instant (the question, then the deadline), so the badge turns on time.
+const presenceAlarm = "ccrm-tt-presence";
 
 function paint(startedAt: string | null): void {
   if (!startedAt) {
@@ -14,6 +17,52 @@ function paint(startedAt: string | null): void {
   const sec = Math.max(0, Math.floor((Date.now() - Date.parse(startedAt)) / 1000));
   chrome.action.setBadgeText({ text: badgeLabel(sec) });
   chrome.action.setBadgeBackgroundColor({ color: "#e11d48" });
+}
+
+const elapsedLabel = (startedAt: string) => badgeLabel(Math.max(0, Math.floor((Date.now() - Date.parse(startedAt)) / 1000)));
+
+/** Paint the badge from the last server answer and the idle state: question "?", paused "II" (TT2 phase 10). */
+function paintSnapshot(snapshot: PresenceSnapshot | null, idle: IdleState): void {
+  const badge = badgeFor(snapshot, localPhase(snapshot, idle), elapsedLabel);
+  chrome.action.setBadgeText({ text: badge.text });
+  chrome.action.setBadgeBackgroundColor({ color: badge.color });
+}
+
+/** Arm the one-shot alarm at the next of promptAt / deadlineAt that is still ahead (local clock). */
+async function armPresenceAlarm(snapshot: PresenceSnapshot | null): Promise<void> {
+  await chrome.alarms.clear(presenceAlarm);
+  const p = snapshot?.presence;
+  if (!p || p.enabled === false || (p.phase !== "tracking" && p.phase !== "question")) return;
+  const now = Date.now();
+  const next = [p.promptAt, p.deadlineAt]
+    .map((iso) => (iso ? Date.parse(iso) - (snapshot?.offsetMs || 0) : Number.NaN))
+    .filter((at) => Number.isFinite(at) && at > now)
+    .sort((a, b) => a - b)[0];
+  if (next !== undefined) await chrome.alarms.create(presenceAlarm, { when: next + 500 });
+}
+
+async function idleNow(state: TrackerLocal): Promise<IdleState> {
+  try {
+    const live = await chrome.idle.queryState(60);
+    if (live === "active" || live === "idle" || live === "locked") return live;
+  } catch {
+    /* no idle permission yet (an old install before the update): keep what was stored */
+  }
+  return state.idleState || "active";
+}
+
+/** Repaint from storage alone, without asking the server (a presence instant or an idle change). */
+async function paintLocal(): Promise<void> {
+  const state = await loadLocal();
+  if (!state.deviceKey) {
+    paint(null);
+    return;
+  }
+  if (state.queue.length > 0) {
+    paint(state.optimistic?.startedAt ?? null);
+    return;
+  }
+  paintSnapshot(state.snapshot, await idleNow(state));
 }
 
 async function flush(state: TrackerLocal): Promise<TrackerLocal> {
@@ -32,7 +81,8 @@ async function flush(state: TrackerLocal): Promise<TrackerLocal> {
         return saveLocal({ deviceKey: "", userName: "", queue: [], lost: lost.concat(queue.slice(i)), optimistic: null, openBlock: null });
       }
       if (code === "already_running" && item.kind === "start") continue;
-      if (code === "timestamp_out_of_window" || code === "end_before_start") {
+      // ambiguous: a queued stop without an id while several timers run; only the app can tell which.
+      if (code === "timestamp_out_of_window" || code === "end_before_start" || code === "ambiguous") {
         lost.push(item);
         continue;
       }
@@ -152,14 +202,21 @@ async function tick(): Promise<void> {
   } else {
     try {
       const res = await trackerCall(state.ccrmUrl, state.deviceKey, "GET", "running");
-      paint(res.entry?.running ? res.entry.startAt : null);
+      // Several timers: no single elapsed time fits, so the badge shows how many run (Nx);
+      // the question and the pause override both ("?" and "II").
+      const snapshot = snapshotFrom(res);
+      await saveLocal({ snapshot });
+      paintSnapshot(snapshot, await idleNow(state));
+      await armPresenceAlarm(snapshot);
     } catch (error) {
       if (error instanceof TrackerError && error.code === "not_paired") {
         await saveLocal({ deviceKey: "", userName: "", optimistic: null });
         paint(null);
         return;
       }
-      paint(state.optimistic?.startedAt ?? null);
+      // Offline: the last answer and the clock (paused past the deadline while idle or locked).
+      if (state.optimistic) paint(state.optimistic.startedAt);
+      else paintSnapshot(state.snapshot, await idleNow(state));
     }
   }
   await sample();
@@ -178,6 +235,18 @@ chrome.runtime.onStartup.addListener(() => {
 });
 chrome.alarms.onAlarm.addListener((alarm: { name: string }) => {
   if (alarm.name === alarmName) void tick();
+  if (alarm.name === presenceAlarm) {
+    // The question or the deadline is due: repaint at once, then let the server confirm when someone is there.
+    void paintLocal().then(async () => {
+      const state = await loadLocal();
+      if ((await idleNow(state)) === "active") await tick();
+    });
+  }
+});
+// TT2 phase 10: locked or idle past the question's deadline shows "paused" locally; back to active, re-read the server.
+chrome.idle?.setDetectionInterval?.(60);
+chrome.idle?.onStateChanged?.addListener((next: IdleState) => {
+  void saveLocal({ idleState: next }).then(() => (next === "active" ? tick() : paintLocal()));
 });
 chrome.tabs?.onActivated?.addListener(() => {
   void sample();

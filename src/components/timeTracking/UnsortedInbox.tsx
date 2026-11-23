@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { Inbox, X } from "lucide-react";
 import { Surface } from "../layout";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
-import { clockTime, formatDuration } from "../../utils/timeTracking.ts";
+import { clockTime, formatDuration, projectColor } from "../../utils/timeTracking.ts";
 import { TimeApiError, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
 import { assignUnsorted, dismissUnsorted, loadUnsorted, type UnsortedItem } from "../../utils/timeTrackerApi.ts";
 import { ProjectPicker } from "./ProjectPicker";
 import type { TimeDeps } from "./shared";
 
 /** List chip. Renders nothing until there is at least one unsorted item. */
-export function UnsortedListChip() {
+/** Fired after the inbox loaded, assigned or dismissed items, so the toolbar chip recounts. */
+export const UNSORTED_CHANGED_EVENT = "ccrm-unsorted-changed";
+
+export function UnsortedListChip({ refreshKey }: { refreshKey?: string }) {
   const { t } = useTimeTracking();
   const [count, setCount] = useState<number | null>(null);
 
@@ -26,12 +29,14 @@ export function UnsortedListChip() {
     };
     load();
     const onFocus = () => load();
+    window.addEventListener(UNSORTED_CHANGED_EVENT, onFocus);
     document.addEventListener("visibilitychange", onFocus);
     return () => {
       gone = true;
       document.removeEventListener("visibilitychange", onFocus);
+      window.removeEventListener(UNSORTED_CHANGED_EVENT, onFocus);
     };
-  }, []);
+  }, [refreshKey]);
 
   if (!count) return null;
   return (
@@ -42,8 +47,9 @@ export function UnsortedListChip() {
         sessionStorage.setItem("ccrm-focus-unsorted", "1");
         window.location.hash = "#time-tracking/day";
       }}
-      className="inline-flex h-9 items-center gap-1.5 rounded-full bg-amber-50 px-3 text-ui font-semibold text-amber-900 ring-1 ring-amber-200 transition-all hover:bg-amber-100 active:scale-95 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600"
+      className="inline-flex h-10 items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 text-ui font-bold text-amber-800 transition-all hover:bg-amber-100 active:scale-95 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600"
     >
+      <Inbox className="size-4" aria-hidden />
       {t("Unsorted", "Nezaradené", "Rendezetlen")} · {count}
     </button>
   );
@@ -66,6 +72,7 @@ export function UnsortedInbox({ deps }: { deps: TimeDeps }) {
     try {
       const res = await loadUnsorted();
       setItems(res.items);
+      window.dispatchEvent(new Event(UNSORTED_CHANGED_EVENT));
       setSelected(new Set());
     } catch (e) {
       window.showToast?.(timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t), "error");
@@ -154,17 +161,23 @@ export function UnsortedInbox({ deps }: { deps: TimeDeps }) {
 
   return (
     <div ref={ref} id="unsorted-inbox" data-testid="unsorted-inbox">
-      <Surface className="grid gap-3 border border-amber-200 bg-amber-50/60">
+      <Surface className="grid gap-3">
         <div>
-          <h3 className="type-card-title text-amber-950">{t("Unsorted", "Nezaradené", "Rendezetlen")}</h3>
-          <p className="type-meta text-amber-800">{t("Captured by your Chrome extension while no timer was running. Only you see these. Assign one to turn it into a time entry.", "Zachytené vaším rozšírením pre Chrome, kým nebežal časovač. Vidíte ich len vy. Priraďte záznam k projektu a vznikne z neho časový záznam.", "A Chrome-bővítmény rögzítette, amíg nem futott időzítő. Csak Ön látja őket. Rendeljen hozzá egy projektet, és időbejegyzés lesz belőle.")}</p>
+          <div className="flex items-center gap-2.5">
+            <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-600" aria-hidden>
+              <Inbox className="size-4" />
+            </span>
+            <h3 className="type-card-title text-gray-900">{t("Unsorted", "Nezaradené", "Rendezetlen")}</h3>
+            <span className="ml-auto inline-flex size-6 items-center justify-center rounded-full bg-amber-500 text-micro font-bold text-white tabular-nums" data-testid="unsorted-count">{items.length}</span>
+          </div>
+          <p className="mt-2 type-meta text-gray-500">{t("Captured by your Chrome extension while no timer was running. Only you see these. Assign one to turn it into a time entry.", "Zachytené vaším rozšírením pre Chrome, kým nebežal časovač. Vidíte ich len vy. Priraďte záznam k projektu a vznikne z neho časový záznam.", "A Chrome-bővítmény rögzítette, amíg nem futott időzítő. Csak Ön látja őket. Rendeljen hozzá egy projektet, és időbejegyzés lesz belőle.")}</p>
         </div>
         {items.length === 0 ? (
-          <p className="text-body text-amber-800/80">{t("Nothing waiting.", "Nič nečaká.", "Nincs várakozó elem.")}</p>
+          <p className="text-body text-gray-500">{t("Nothing waiting.", "Nič nečaká.", "Nincs várakozó elem.")}</p>
         ) : (
           <>
             {selected.size > 0 && (
-              <div className="grid gap-2 rounded-md bg-white p-2">
+              <div className="grid gap-2 rounded-md bg-gray-50 p-2">
                 <ProjectPicker
                   projects={deps.projects}
                   leads={deps.leads}
@@ -178,7 +191,7 @@ export function UnsortedInbox({ deps }: { deps: TimeDeps }) {
                   type="button"
                   disabled={busy}
                   onClick={() => void assign([...selected], projectId ?? sharedSuggestion)}
-                  className="h-9 rounded-md bg-amber-600 text-ui font-semibold text-white transition-all hover:bg-amber-700 active:scale-95 disabled:opacity-60 cursor-pointer"
+                  className="h-9 rounded-md bg-entity-solid text-ui font-semibold text-white transition-all active:scale-95 disabled:opacity-60 cursor-pointer"
                 >
                   {t("Assign selected", "Priradiť vybrané", "Kijelöltek hozzárendelése")} · {selected.size}
                 </button>
@@ -188,8 +201,10 @@ export function UnsortedInbox({ deps }: { deps: TimeDeps }) {
               {items.map((item) => {
                 const title = item.pageTitle || item.domain;
                 const project = item.suggestedProjectId;
+                const color = projectColor(project);
+                const range = item.startedAt ? `${clockTime(item.startedAt)}${item.endedAt ? `–${clockTime(item.endedAt)}` : ""}` : "";
                 return (
-                  <li key={item.id} className="grid gap-2 rounded-md border border-amber-100 bg-white p-3" data-testid="unsorted-item">
+                  <li key={item.id} className="grid gap-2 rounded-md border border-gray-200 bg-card p-3" data-testid="unsorted-item">
                     <div className="flex items-start gap-2">
                       <input
                         type="checkbox"
@@ -203,49 +218,63 @@ export function UnsortedInbox({ deps }: { deps: TimeDeps }) {
                           });
                         }}
                         aria-label={title}
-                        className="mt-1 size-4 accent-amber-600"
+                        className="mt-1 size-4 accent-primary"
                       />
-                      <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-ui font-bold text-amber-800">
+                      <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-ui font-bold text-gray-600">
                         {(item.domain[0] || "?").toUpperCase()}
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-ui font-semibold text-gray-900">{title}</p>
                         <p className="type-meta text-gray-500">
                           {item.domain}
-                          {item.startedAt ? ` · ${clockTime(item.startedAt)}` : ""}
-                          {" · "}
-                          <span className="tabular-nums">{formatDuration(item.durationSec)}</span>
+                          {range ? ` · ${range}` : ""}
                         </p>
                       </div>
+                      <span className="shrink-0 text-ui font-semibold tabular-nums text-gray-900">{formatDuration(item.durationSec)}</span>
                       <button
                         type="button"
                         aria-label={t("Dismiss", "Zahodiť", "Elvetés")}
                         disabled={busy}
                         onClick={() => void dismiss([item.id])}
-                        className="inline-flex size-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 cursor-pointer"
+                        className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 cursor-pointer"
                       >
                         <X className="size-4" />
                       </button>
                     </div>
-                    {item.suggestedProjectName ? (
-                      <span className="w-fit rounded-full border border-dashed border-amber-400 px-2 py-0.5 text-micro font-semibold text-amber-800">{item.suggestedProjectName}</span>
-                    ) : (
-                      <span className="text-micro font-semibold text-amber-700">{t("No suggestion — pick a project", "Žiadny návrh — vyberte projekt", "Nincs javaslat — válasszon projektet")}</span>
-                    )}
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void assign([item.id], project)}
-                      className="h-8 w-fit rounded-lg bg-amber-600 px-3 text-ui font-semibold text-white transition-all hover:bg-amber-700 active:scale-95 disabled:opacity-60 cursor-pointer"
-                    >
-                      {t("Assign", "Priradiť", "Hozzárendelés")}
-                    </button>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      {item.suggestedProjectName ? (
+                        <span
+                          className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full px-2.5 py-0.5 text-micro font-semibold"
+                          style={{ backgroundColor: `color-mix(in srgb, ${color} 14%, transparent)`, color: `color-mix(in oklab, color-mix(in srgb, ${color} 72%, black), var(--accent-lift-color) var(--accent-lift-amount))` }}
+                        >
+                          <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                          <span className="truncate">{item.suggestedProjectName}</span>
+                        </span>
+                      ) : (
+                        <span className="rounded-full border border-dashed border-amber-400 bg-amber-50 px-2.5 py-0.5 text-micro font-semibold text-amber-700">{t("No suggestion — pick a project", "Žiadny návrh — vyberte projekt", "Nincs javaslat — válasszon projektet")}</span>
+                      )}
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void assign([item.id], project)}
+                        className="h-8 rounded-lg bg-entity-solid px-3 text-ui font-semibold text-white transition-all active:scale-95 disabled:opacity-60 cursor-pointer"
+                      >
+                        {t("Assign", "Priradiť", "Hozzárendelés")}
+                      </button>
+                    </div>
                   </li>
                 );
               })}
             </ul>
           </>
         )}
+        <a
+          href="#settings/projects/time"
+          data-testid="unsorted-extension-link"
+          className="w-fit text-ui font-semibold text-gray-600 hover:text-gray-900 hover:underline"
+        >
+          {t("Chrome extension settings", "Nastavenia rozšírenia pre Chrome", "Chrome-bővítmény beállításai")} →
+        </a>
       </Surface>
     </div>
   );

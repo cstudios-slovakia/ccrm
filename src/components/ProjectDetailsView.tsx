@@ -33,6 +33,7 @@ import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { useTimeTracking } from "../hooks/useTimeTracking";
 import { ProjectTimeTab } from "./timeTracking/ProjectTimeTab";
 import { formatDuration } from "../utils/timeTracking.ts";
+import { ProjectTimeFinanceLines } from "./timeTracking/ProjectTimeFinanceLines";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
@@ -42,6 +43,11 @@ import { ratingValue } from "../utils/rating";
 import { missingChecklistItems, readChecklistValue, writeChecklistValue } from "../utils/projectColumns";
 import { ProjectTasksPanel } from "./ProjectTasksPanel";
 import { ProjectTicketsPanel } from "./ProjectTicketsPanel";
+import { ProjectAcceptanceCriteria } from "./projects/ProjectAcceptanceCriteria";
+import { ProjectGithubFields } from "./projects/ProjectGithubFields";
+import { ProjectPushTimelineItem, ProjectPushesFailedNote } from "./projects/ProjectPushTimelineItem";
+import { useProjectPushes } from "../hooks/useProjectPushes";
+import { isPushItem, mergePushesIntoTimeline } from "../utils/projectPushTimeline";
 import type { Task, Ticket, TicketStatusDefinition, TicketSettings, SupportContract } from "../types";
 import { DEFAULT_TICKET_STATUSES, DEFAULT_TICKET_SETTINGS } from "../utils/tickets";
 import { isDoneTaskState } from "../utils/projectTasks";
@@ -58,9 +64,9 @@ import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { WhatsAppChip } from "./WhatsAppChip";
 
 /** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
-type RightTab = "timeline" | "tasks" | "time" | "gantt" | "finances" | "files" | "tickets";
+type RightTab = "timeline" | "criteria" | "tasks" | "time" | "gantt" | "finances" | "files" | "tickets";
 const isRightTab = (value: string | null): value is RightTab =>
-  value === "timeline" || value === "tasks" || value === "time" || value === "gantt" || value === "finances" || value === "files" || value === "tickets";
+  value === "timeline" || value === "criteria" || value === "tasks" || value === "time" || value === "gantt" || value === "finances" || value === "files" || value === "tickets";
 
 interface ProjectDetailsViewProps {
   project: Project | null;
@@ -343,6 +349,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [division, setDivision] = useState("");
   /* Phone of the project's contact. WAAI pairs WhatsApp chats to the project by it. */
   const [contactPhone, setContactPhone] = useState("");
+  /* GitHub pairing: repository ("owner/name") and server branch; pushes to it are stored by the webhook. */
+  const [githubRepo, setGithubRepo] = useState("");
+  const [githubBranch, setGithubBranch] = useState("");
   /* Star priority, 1-5, 0 while nobody has rated it. Like the status below it,
      a click saves on the spot. */
   const [rating, setRating] = useState(0);
@@ -410,6 +419,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   const [activeRightTab, setActiveRightTab] = useState<RightTab>(getInitialRightTab);
+
+  // GitHub pushes of a paired project: read-only items woven into the timeline (not part of the saved project).
+  const showsTimeline = layoutMode === "sidebar" || activeRightTab === "timeline";
+  const projectPushes = useProjectPushes(project?.id ?? "", showsTimeline && !isNew && !!project?.githubRepo && !!projectType?.hasTimeline);
+  const timelineEntries = useMemo(() => mergePushesIntoTimeline(timeline, projectPushes.pushes), [timeline, projectPushes.pushes]);
 
   const handleRightTabChange = (tab: RightTab) => {
     setActiveRightTab(tab);
@@ -533,6 +547,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     status: p.status || "active",
     division: p.division || "",
     contactPhone: p.contactPhone || "",
+    githubRepo: p.githubRepo || "",
+    githubBranch: p.githubBranch || "",
     rating: ratingValue(p.rating),
     leadId: p.leadId || "",
     clientId: p.clientId || "",
@@ -564,6 +580,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       status,
       division: division || null,
       contactPhone: contactPhone.trim() || null,
+      githubRepo: githubRepo || null,
+      githubBranch: githubBranch || null,
       rating,
       leadId: associatedLeadId || null,
       clientId: associatedClientId || null,
@@ -574,6 +592,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       gantt,
       ...overrides,
     };
+  };
+  const patchProject = (patch: Partial<Project>) => { // saves with `patch` applied: Tickets, Time and Acceptance criteria tabs
+    const next = buildProject(patch);
+    if (next) onSave(next, { close: false });
   };
 
   // Which project the state was last loaded from. Until the load effect has
@@ -646,6 +668,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     setStatus(s.status);
     setDivision(s.division);
     setContactPhone(s.contactPhone);
+    setGithubRepo(s.githubRepo);
+    setGithubBranch(s.githubBranch);
     setRating(s.rating);
     setAssociatedLeadId(s.leadId);
     setAssociatedClientId(s.clientId);
@@ -671,6 +695,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     status,
     division,
     contactPhone,
+    githubRepo,
+    githubBranch,
     rating,
     leadId: associatedLeadId,
     clientId: associatedClientId,
@@ -2253,6 +2279,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               )}
             </div>
 
+            <ProjectGithubFields userLanguage={userLanguage} repo={githubRepo} branch={githubBranch} canEdit={canEdit} onRepoChange={setGithubRepo} onBranchChange={setGithubBranch} />
+
             {/* Invoice date and deadline. Each has its own switch on the project
                 type (Projects -> Settings -> project type): the invoice date is
                 a plain date; the deadline is what counts down and flags a delay,
@@ -3141,6 +3169,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               }}
               items={[
                 { key: "timeline", hidden: !projectType.hasTimeline, icon: <Icons.Clock />, label: t("Timeline", "Časová os", "Idővonal") },
+                { key: "criteria", icon: <Icons.ClipboardCheck />, label: t("Acceptance criteria", "Akceptačné kritériá", "Elfogadási kritériumok") },
                 {
                   key: "tasks",
                   hidden: !(setTasks && taskAccess.view),
@@ -3203,12 +3232,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 currentUser={currentUser}
                 userLanguage={userLanguage}
                 canEdit={canEdit}
-                onUpdateProject={(patch) => {
-                  const next = buildProject(patch);
-                  if (next) {
-                    onSave(next, { close: false });
-                  }
-                }}
+                onUpdateProject={patchProject}
               />
             </div>
           )}
@@ -3216,13 +3240,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           {activeRightTab === "time" && timeTracking.enabled && project && (
             <div className="flex-1 ws-lg:overflow-y-auto scrollbar-thin ws-lg:pr-1 animate-in fade-in duration-150">
               <ProjectTimeTab
-                project={project} users={users}
+                project={project} users={users} tasks={tasks}
                 language={userLanguage}
                 currency={currencyCode || "EUR"}
-                onPatch={(patch) => {
-                  const next = buildProject(patch);
-                  if (next) onSave(next, { close: false });
-                }}
+                onPatch={patchProject}
               />
             </div>
           )}
@@ -3531,12 +3552,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
               {/* Timeline Events List */}
               <div className="flex-1 ws-lg:overflow-y-auto space-y-3.5 ws-lg:pr-1 scrollbar-thin">
-                {timeline.length === 0 ? (
+                {timelineEntries.length === 0 ? (
                   <div className="h-full min-h-50 flex items-center justify-center border border-dashed border-gray-200 rounded-lg p-6 text-gray-400 text-ui">
                     {t("No events logged for this project yet.", "Zatiaľ neboli zaznamenané žiadne udalosti.", "Még nincsenek események rögzítve.")}
                   </div>
                 ) : (
-                  timeline.map(event => (
+                  timelineEntries.map(event => isPushItem(event) ? <ProjectPushTimelineItem key={event.id} item={event} language={userLanguage} /> : (
                     <div key={event.id} className="p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-2xs text-ui font-medium relative group flex gap-3.5 animate-fade-in">
                       <div className="p-2 rounded-md bg-white border border-gray-200 shrink-0 self-start shadow-2xs">
                         {getTimelineIcon(event.type, event.eventType)}
@@ -3629,8 +3650,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     </div>
                   ))
                 )}
+                {projectPushes.failed && <ProjectPushesFailedNote language={userLanguage} />}
               </div>
             </div>
+          )}
+
+          {(isSidebar || activeRightTab === "criteria") && wrapSection("criteria", <Icons.ClipboardCheck className="h-4 w-4 text-indigo-600" />, t("Acceptance criteria", "Akceptačné kritériá", "Elfogadási kritériumok"), undefined,
+            <ProjectAcceptanceCriteria project={project} canEdit={canEdit} isNew={isNew} userName={currentUser?.name ?? ""} language={userLanguage} onPatch={patchProject} />
           )}
 
           {/* TAB CONTENT: Gantt Chart */}
@@ -4556,11 +4582,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
                   <div className="text-caption text-slate-500 mt-0.5">
                     {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.totalPlannedExpenses)}</strong>
-                    {revenueAnalysis.labourCost != null && (
-                      <div className="mt-1 type-meta text-violet-700" data-testid="project-labour-line">
-                        {t("Labour (time tracking)", "Práca (evidencia času)", "Munka (időkövetés)")}: {money(revenueAnalysis.labourCost)}
-                      </div>
-                    )}
+                    <ProjectTimeFinanceLines language={userLanguage} money={money} labourCost={revenueAnalysis.labourCost} billableValue={timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.billableValue : null} billableComplete={timeTracking.totals.byProject[project?.id ?? ""]?.billableComplete} />
                   </div>
                 </div>
 

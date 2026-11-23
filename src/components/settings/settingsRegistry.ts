@@ -4,7 +4,7 @@ import {
   ShieldCheck, ScrollText, ToggleRight, Shapes, Workflow, Signpost, Tags, Shuffle,
   Webhook, CircleDot, Sparkles, ListChecks, ListTodo, Percent, BadgePercent, CreditCard,
   LayoutTemplate, BadgeCheck, PackageCheck, Truck, BookOpen, FolderTree, Inbox, Send,
-  MailCheck, Key, Bot, Megaphone, Share2, KeyRound, Database, Bug, TriangleAlert, FileText, Timer, MessageCircle, UserCheck,
+  MailCheck, Key, Bot, Megaphone, Share2, KeyRound, Database, Bug, TriangleAlert, FileText, Timer, MessageCircle, UserCheck, GitBranch,
   SlidersHorizontal,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -219,6 +219,7 @@ export const SETTINGS_CATEGORIES: SettingsCategoryDef[] = [
       S("marketing_roi", BadgePercent, "general_config"),
       S("social", Share2, "general_config", { flag: "social" }),
       S("waai", MessageCircle, "general_config", { adminOnly: true }),
+      S("github", GitBranch, "general_config", { adminOnly: true }),
     ],
     related: [rel("leads/intake", "web_form_fields"), rel("system/errors", "error_logs")],
   },

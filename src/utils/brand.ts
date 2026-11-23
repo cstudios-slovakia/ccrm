@@ -24,6 +24,9 @@ import { useSyncExternalStore } from "react";
 
 export const PRODUCT_NAME = "Koperniq";
 
+/** File-name form of the product name (the downloadable extension zip); same rule as scripts/build-extension.mjs. */
+export const PRODUCT_SLUG = PRODUCT_NAME.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
 /**
  * What a licence key starts with: KPRNQ-XXXX-XXXX-XXXX-XXXX. Keys issued before the rename
  * start with CCRM- and stay valid; the key itself is never rewritten here.

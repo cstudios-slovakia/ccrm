@@ -5,6 +5,13 @@
 # index.php, which served the host's parking page instead of the app.
 DirectoryIndex index.html index.php
 
+# Hand the Authorization header to PHP on every request. Apache with PHP as CGI/FPM drops it, so
+# Bearer-key endpoints (the time-tracker extension, mcp.php, cron.php) answered 401 there. PHP reads
+# it as HTTP_AUTHORIZATION. The api/v1 rewrite below does the same for its own route.
+<IfModule mod_setenvif.c>
+    SetEnvIf Authorization "(.+)" HTTP_AUTHORIZATION=$1
+</IfModule>
+
 # Never expose secrets, docs, tooling manifests or data dumps via direct web
 # requests. (These files are still readable by PHP's include/require server-side.)
 # manifest.json / asset *.json are intentionally NOT blocked so the PWA works.

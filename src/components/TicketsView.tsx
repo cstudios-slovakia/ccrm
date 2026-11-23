@@ -3993,17 +3993,17 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                           <button
                             type="button"
                             data-testid="ticket-start-timer"
-                            onClick={() => {
-                              const onThis = timeTracker.running?.ticketId === selectedTicket.id && !timeTracker.running.taskId;
-                              if (onThis) void timeTracker.stop();
-                              else void timeTracker.start({ ticketId: selectedTicket.id, projectId: selectedTicket.projectId || null, description: null, originType: "ticket", originId: selectedTicket.id });
+                            onClick={(ev) => {
+                              const onThis = timeTracker.running.find((e) => e.ticketId === selectedTicket.id && !e.taskId);
+                              if (onThis) void timeTracker.stop(onThis.id);
+                              else void timeTracker.start({ ticketId: selectedTicket.id, projectId: selectedTicket.projectId || null, description: null, originType: "ticket", originId: selectedTicket.id }, { anchor: ev.currentTarget });
                             }}
                             className={`inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-ui font-semibold text-white transition-all active:scale-95 cursor-pointer ${
-                              timeTracker.running?.ticketId === selectedTicket.id ? "bg-rose-600" : "bg-entity-solid hover:opacity-90"
+                              timeTracker.running.some((e) => e.ticketId === selectedTicket.id) ? "bg-rose-600" : "bg-entity-solid hover:opacity-90"
                             }`}
                           >
                             <Timer className="h-4 w-4" />
-                            {timeTracker.running?.ticketId === selectedTicket.id
+                            {timeTracker.running.some((e) => e.ticketId === selectedTicket.id)
                               ? t("Stop", "Zastaviť", "Leállítás")
                               : t("Start timer", "Spustiť časovač", "Időzítő indítása")}
                           </button>

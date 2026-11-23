@@ -20,9 +20,12 @@ import {
   todayIso,
   type TimeEntry,
 } from "../../utils/timeTracking.ts";
+import { duplicateInput } from "./entryDuplicate";
 import { TimeApiError, createEntry, timeErrorMessage, updateEntry, type EntryInput } from "../../utils/timeTrackingApi.ts";
 import type { Task } from "../../types";
 import { ProjectPicker } from "./ProjectPicker";
+import { DrawerWorkedLine } from "./WorkedLine";
+import { RateExplanation } from "./RateExplanation";
 import { canRenameTitle, renameHint, useMoney, useTimeLookups, type TimeDeps } from "./shared";
 import { entityAccentStyle } from "../../utils/entityAccent";
 
@@ -85,7 +88,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
     () => (isLinked || !deps.canLinkTicket ? [] : matchOpenTickets(deps.tickets, ticketQuery, (row) => isClosedTicketStatus(row.status))),
     [deps.canLinkTicket, deps.tickets, ticketQuery, isLinked],
   );
-  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-US";
+  const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-GB";
 
   const close = () => {
     setClosing(true);
@@ -175,19 +178,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
 
   const duplicate = async () => {
     try {
-      await createEntry({
-        description: entry.titleSource === "entry" ? entry.title : null,
-        note: entry.note,
-        taskId: entry.taskId,
-        ticketId: entry.taskId ? null : entry.ticketId,
-        projectId: entry.projectId,
-        entryDate: entry.entryDate,
-        durationSec: entry.durationSec ?? 0,
-        billable: entry.billable,
-        tags: entry.tags,
-        source: "manual",
-        userId: entry.userId !== userId ? entry.userId : undefined,
-      });
+      await createEntry(duplicateInput(entry, userId));
       tt.bump();
       close();
     } catch (e) {
@@ -219,6 +210,8 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
   const sourceText = SOURCE_LABEL[entry.source] ? t(...SOURCE_LABEL[entry.source]) : entry.source;
   const importTool = importedFrom(entry.source);
   const hoursOnly = !entry.running && !entry.startAt && !entry.endAt;
+  const workedSec = entry.workedMs !== null && entry.workedMs !== undefined ? Math.round(entry.workedMs / 1000) : entry.durationSec;
+  const workedMatchesDuration = !entry.durationSec || !workedSec || Math.abs(workedSec - entry.durationSec) < 1;
   const sourceChip = isNew ? null : importTool
     ? t("Imported", "Importované", "Importált")
     : entry.source === "timer"
@@ -230,6 +223,12 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
           : null;
   const chipClass = "type-meta inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 font-semibold text-gray-600";
   const originTask = entry.originType === "task" && entry.originId ? lookups.taskById.get(entry.originId) : null;
+  const provenanceWhen = (() => {
+    const at = entry.startAt ? new Date(entry.startAt) : entry.createdAt ? new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(entry.createdAt) ? entry.createdAt.replace(" ", "T") : `${entry.createdAt.replace(" ", "T")}Z`) : null;
+    if (!at || Number.isNaN(at.getTime())) return "";
+    const day = at.toLocaleDateString(locale, { day: "numeric", month: "short" });
+    return entry.startAt ? `${day} ${clockTime(entry.startAt)}` : `${day} ${at.getFullYear()}`;
+  })();
   const isAdmin = isAdminRoleName(deps.currentUser.role);
   const lockSettings = {
     lockAfterDays: tt.settings.lockAfterDays,
@@ -455,6 +454,8 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
             {viewer.canCosts && entry.billableRate ? <span className="type-meta tabular-nums text-emerald-700">{money(entry.billableRate)}/h</span> : null}
           </label>
 
+          {showCost && <DrawerWorkedLine entry={entry} />}
+
           {/* Cost */}
           {showCost && (
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-4" data-testid="entry-cost-panel">
@@ -467,15 +468,25 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
                     <span className="text-ui text-gray-600">{money(entry.costRate)}/h · {sourceName(entry.costRateSource)}</span>
                     <span className="text-title font-bold tabular-nums text-gray-900">{entry.cost !== null && entry.cost !== undefined ? money(entry.cost) : "—"}</span>
                   </div>
-                  {entry.cost !== null && entry.cost !== undefined && !!entry.durationSec && (
+                  {entry.cost !== null && entry.cost !== undefined && !!workedSec && (
                     <div className="mt-1 text-ui tabular-nums text-gray-600" data-testid="entry-cost-formula">
-                      {formatDuration(entry.durationSec)} × {money(entry.costRate)}/h {Math.abs((entry.durationSec / 3600) * Number(entry.costRate) - Number(entry.cost)) < 0.005 ? "=" : "≈"} {money(entry.cost)}
+                      {formatDuration(workedSec)} × {money(entry.costRate)}/h {Math.abs((workedSec / 3600) * Number(entry.costRate) - Number(entry.cost)) < 0.005 ? "=" : "≈"} {money(entry.cost)}
                     </div>
                   )}
-                  <div className="mt-1 type-meta text-gray-500" data-testid="entry-rate-basis">
-                    {entry.costRateBasisDays ? `${monthLabel} · ${country} · ${entry.costRateBasisDays} ${t("working days", "pracovných dní", "munkanap")} · ` : `${monthLabel} · `}
-                    {t("the rate is frozen when the entry is saved", "sadzba sa zafixuje pri uložení záznamu", "a díj a mentéskor rögzül")}
-                  </div>
+                  <RateExplanation
+                    employeeId={entry.costRateSource === "monthly" || entry.costRateSource === "contractor_monthly" ? entry.employeeId : null}
+                    month={entry.entryDate.slice(0, 7)}
+                    monthLabel={monthLabel}
+                    country={country}
+                    t={t}
+                    money={money}
+                    fallback={
+                      <>
+                        {entry.costRateBasisDays ? `${monthLabel} · ${country} · ${entry.costRateBasisDays} ${t("working days", "pracovných dní", "munkanap")} · ` : `${monthLabel} · `}
+                        {t("the rate stays provisional until the month's payroll is closed, then it is frozen", "sadzba ostáva predbežná, kým sa neuzavrie výplata mesiaca, potom sa zafixuje", "a díj ideiglenes, amíg a hónap bérszámfejtése le nem zárul, utána rögzül")}
+                      </>
+                    }
+                  />
                 </>
               )}
               {billableValue !== null && (
@@ -484,7 +495,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
                   <span className="font-semibold tabular-nums text-emerald-700">{money(billableValue)}</span>
                 </div>
               )}
-              {billableValue !== null && entry.cost !== null && entry.cost !== undefined && (
+              {billableValue !== null && entry.cost !== null && entry.cost !== undefined && workedMatchesDuration && (
                 <div className="mt-1 flex justify-between text-ui" data-testid="entry-margin">
                   <span className="text-gray-600">{t("Margin", "Marža", "Árrés")}</span>
                   <span className="font-semibold tabular-nums text-gray-900">{money(billableValue - entry.cost)}</span>
@@ -498,7 +509,7 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
             {importTool
               ? `${t(`Imported from ${importTool} by`, `Z ${importTool} importoval`, `${importTool}-importot végezte:`)} ${recordedBy?.name ?? "—"}`
               : `${t("Recorded by", "Zaznamenal", "Rögzítette")} ${recordedBy?.name ?? "—"} ${t("with", "cez", "ezzel:")} ${sourceText}`}
-            {entry.createdAt ? ` ${t("on", "dňa", "ekkor:")} ${new Date(entry.createdAt.replace(" ", "T")).toLocaleDateString(locale)}` : ""}
+            {provenanceWhen ? ` ${t("on", "dňa", "ekkor:")} ${provenanceWhen}` : ""}
             {originTask ? `, ${t("started from task", "spustené z úlohy", "feladatból indítva:")} “${originTask.title}”` : ""}
             {person_ && entry.userId !== entry.recordedByUserId ? ` · ${t("time of", "čas používateľa", "személy:")} ${person_.name}` : ""}
           </p>

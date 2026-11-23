@@ -18,6 +18,8 @@ export type TFn = (en: string, sk: string, hu: string) => string;
 /** The `t(en, sk, hu)` helper for a UI language. */
 export const makeT = (language: string): TFn => (en, sk, hu) => (language === "sk" ? sk : language === "hu" ? hu : en);
 
+export type StartWhileRunning = "ask" | "switch" | "parallel";
+
 export type TimeEntrySource =
   | "timer"
   | "manual"
@@ -36,6 +38,10 @@ export const importedFrom = (source: TimeEntrySource): string | null =>
   source === "toggl" ? "Toggl" : source === "clockify" ? "Clockify" : null;
 
 export type TimeTitleSource = "task" | "ticket" | "entry";
+
+export type TimeEntryState = "ongoing" | "paused" | "stopped";
+export type TimePauseReason = "manual" | "status" | "presence";
+export type TimeEndReason = "user" | "switch" | "status" | "presence" | "auto_stop";
 
 export interface TimeEntry {
   id: string;
@@ -61,7 +67,22 @@ export interface TimeEntry {
   startAt: string | null;
   endAt: string | null;
   durationSec: number | null;
+  /** Worked time in ms: the share of the person's real clock time; null while running. Pay and measure this, bill durationSec. */
+  workedMs?: number | null;
   running: boolean;
+  /** D6: ongoing (running), paused (closed with a resumable marker) or stopped. Older servers omit it. */
+  state?: TimeEntryState;
+  /** When the item was paused (= its end); null unless paused. */
+  pausedAt?: string | null;
+  pauseReason?: TimePauseReason | null;
+  /** Stored expiry of the pause; null = the pause day's autoStopAt. */
+  resumeUntil?: string | null;
+  /** Effective expiry, only on the `paused` list of `GET ?running=1`. */
+  pauseExpiresAt?: string | null;
+  /** On a resumed entry: the entry it continues. */
+  continuesId?: string | null;
+  /** How the entry ended; null while running, paused or resumed. */
+  endReason?: TimeEndReason | null;
   billable: boolean;
   tags: string[];
   source: TimeEntrySource;
@@ -89,13 +110,32 @@ export interface TimeTrackingSettings {
   requireTask: boolean;
   billableByDefault: boolean;
   autoStopAt: string | null;
-  longEntryWarnHours: number | null;
-  idleReminderMinutes: number | null;
+  /** Retired from the UI (TT2 D8.5); kept optional for old data. */
+  longEntryWarnHours?: number | null;
+  idleReminderMinutes?: number | null;
   lockAfterDays: number | null;
   weeklyApproval: boolean;
   rounding: { minutes: 0 | 5 | 15 | 30; mode: "nearest" | "up" };
   extension: { enabled: boolean; activityCaptureAllowed: boolean; unsortedRetentionDays: number };
+  parallel: { enabled: boolean; maxParallel: number; sameProject: "differentTasks" | "never" | "always" };
+  /** TT2 D7.1: the presence cycle. Server clamps: promptAfter 10–240, confirm 2–60, resume 0–120 minutes. */
+  presence: PresenceSettings;
   ticketTimeVisibleToClients: boolean;
+}
+
+export interface PresenceSettings {
+  enabled: boolean;
+  promptAfterMinutes: number;
+  confirmWindowMinutes: number;
+  resumeWindowMinutes: number;
+  /** Where an unanswered cycle ends its items: at the question (C7) or at the deadline. */
+  trimTo: "prompt" | "deadline";
+}
+
+/** `GET time_entries.php?action=settings` → `cron` (admins / general_config only): stale = not run for 5 minutes, or never. */
+export interface TimeTrackingCronStatus {
+  lastRunAt: string | null;
+  stale: boolean;
 }
 
 /** Mirrors ccrm_tt_default_settings() in api/time_entries_lib.php. */
@@ -115,6 +155,8 @@ export const DEFAULT_TIME_TRACKING_SETTINGS: TimeTrackingSettings = {
   weeklyApproval: false,
   rounding: { minutes: 0, mode: "nearest" },
   extension: { enabled: true, activityCaptureAllowed: true, unsortedRetentionDays: 30 },
+  parallel: { enabled: true, maxParallel: 4, sameProject: "differentTasks" },
+  presence: { enabled: true, promptAfterMinutes: 50, confirmWindowMinutes: 10, resumeWindowMinutes: 10, trimTo: "prompt" },
   ticketTimeVisibleToClients: false,
 };
 
@@ -223,17 +265,20 @@ export const billablePercent = (entries: readonly TimeEntry[], nowMs: number): n
   return total > 0 ? Math.round((billableSeconds(entries, nowMs) / total) * 100) : null;
 };
 
-/** The sum of the cost fields the viewer was allowed to see; null when none of them was. */
+/**
+ * The sum of the cost fields the viewer was allowed to see; null when none of them was.
+ * Costs carry four decimals; the sum is rounded to cents once, at the end (TIME-TRACKING-V2 D3.2).
+ */
 export const totalCost = (entries: readonly TimeEntry[]): number | null => {
   let any = false;
-  let cents = 0;
+  let sum = 0;
   for (const e of entries) {
     if (typeof e.cost === "number") {
       any = true;
-      cents += Math.round(e.cost * 100);
+      sum += e.cost;
     }
   }
-  return any ? cents / 100 : null;
+  return any ? Math.round(sum * 100) / 100 : null;
 };
 
 /** entries -> { date -> entries }, entries of a day newest first (running one on top). */
