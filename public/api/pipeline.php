@@ -4,6 +4,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/pipeline_extras.php';
 require_once __DIR__ . '/pipeline_match.php';
+require_once __DIR__ . '/pipeline_attachments.php';
 
 // This file exposes a PUBLIC lead-capture webhook (POST, authenticated by the
 // X-API-KEY header) that is intentionally reachable cross-origin from external
@@ -351,24 +352,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ccrm_pipeline_reject(429, 'rate_limited', 'Too many requests. Slow down and retry shortly.', [], ['Retry-After: 60']);
     }
 
-    // Read payload (a lead form is a few KB; the cap stops oversized blobs being
-    // stored in the lead's metadata)
-    $input = file_get_contents('php://input', false, null, 0, 65537);
     $ctype = (string)($_SERVER['CONTENT_TYPE'] ?? '-');
-    if (!$input) {
-        ccrm_pipeline_reject(400, 'empty_body', 'Empty request body', ['content_type' => $ctype]);
-    }
-    if (strlen($input) > 65536) {
-        ccrm_pipeline_reject(413, 'body_too_large', 'Request body too large (64 KB maximum).', ['content_type' => $ctype]);
-    }
+    // Files arrive validated but not yet stored; they are moved into uploads/
+    // only once the submission itself has passed every check (pipeline_attachments.php).
+    $uploadFiles = [];
+    $skippedAttachments = [];
+    if (ccrm_pipeline_is_multipart($ctype)) {
+        // PHP drops BOTH $_POST and $_FILES when the body exceeds post_max_size.
+        if (!$_POST && !$_FILES && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+            ccrm_pipeline_reject(413, 'body_too_large', 'Request body is larger than the server accepts.', ['content_type' => $ctype]);
+        }
+        $payload = ccrm_pipeline_multipart_payload($_POST);
+        if ($payload === null) {
+            ccrm_pipeline_reject(400, 'malformed_json', 'Malformed JSON in the `payload` field', ['content_type' => $ctype]);
+        }
+        // The form fields keep the JSON body's 64 KB cap; the files have their own limits.
+        if (strlen((string)json_encode($payload)) > 65536) {
+            ccrm_pipeline_reject(413, 'body_too_large', 'Form fields too large (64 KB maximum).', ['content_type' => $ctype]);
+        }
+        // A refused file is skipped, never the submission: the lead matters more.
+        $uploadCheck = ccrm_pipeline_validate_uploads(ccrm_pipeline_collect_uploads($_FILES));
+        $uploadFiles = $uploadCheck['files'];
+        $skippedAttachments = $uploadCheck['skipped'];
+    } else {
+        // Read payload (a lead form is a few KB; the cap stops oversized blobs being
+        // stored in the lead's metadata)
+        $input = file_get_contents('php://input', false, null, 0, 65537);
+        if (!$input) {
+            ccrm_pipeline_reject(400, 'empty_body', 'Empty request body', ['content_type' => $ctype]);
+        }
+        if (strlen($input) > 65536) {
+            ccrm_pipeline_reject(413, 'body_too_large', 'Request body too large (64 KB maximum).', ['content_type' => $ctype]);
+        }
 
-    $payload = json_decode($input, true);
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        ccrm_pipeline_reject(400, 'malformed_json', 'Malformed JSON payload', [
-            'json_error' => json_last_error_msg(),
-            'content_type' => $ctype,
-            'body_len' => strlen($input),
-        ]);
+        $payload = json_decode($input, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            ccrm_pipeline_reject(400, 'malformed_json', 'Malformed JSON payload', [
+                'json_error' => json_last_error_msg(),
+                'content_type' => $ctype,
+                'body_len' => strlen($input),
+            ]);
+        }
     }
 
     // Required fields: company_name or contact_name
@@ -551,6 +575,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'extra_lines' => $extraLines,
     ];
 
+    // The submission's timeline note, which also carries its attachments. The
+    // files go to disk before the database transaction and are deleted again if
+    // it fails, so a lead never lists a file that is not there.
+    $teId = 'ev-' . uniqid();
+    $attachments = [];
+    $storedPaths = [];
+    if ($uploadFiles) {
+        $storeResult = ccrm_pipeline_store_uploads($uploadFiles, $teId, ccrm_uploads_dir());
+        $attachments = $storeResult['attachments'];
+        $storedPaths = $storeResult['stored'];
+        $skippedAttachments = array_merge($skippedAttachments, $storeResult['skipped']);
+    }
+    $attachmentsJson = $attachments ? json_encode($attachments, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null;
+    if ($skippedAttachments) {
+        error_log('[ccrm pipeline] skipped attachments: ' . ccrm_pipeline_skipped_note($skippedAttachments));
+    }
+    // The note says which files were sent but not kept, so nobody assumes the
+    // client never sent them.
+    $skippedNote = ccrm_pipeline_skipped_note($skippedAttachments);
+
     // Archived and closed leads never take the inquiry (see pipeline_match.php).
     $existingLead = ccrm_pipeline_pick_open_lead($potentialLeads, is_array($leadStageGroups) ? $leadStageGroups : []);
 
@@ -622,14 +666,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // 3. Insert timeline event note representing the new form submission.
             // The existing lead's interest note is a person's text and is left
             // alone; the extra answers are kept on this timeline note only.
-            $teContent = ccrm_pipeline_submission_note($submissionNoteFields);
-            $teId = 'ev-' . uniqid();
-            $insTe = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`) VALUES (?, ?, 'note', ?, 'Form Inquiry (Existing Active Lead)', ?)");
+            $teContent = trim(ccrm_pipeline_submission_note($submissionNoteFields) . "\n\n" . $skippedNote);
+            $insTe = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `attachments_json`) VALUES (?, ?, 'note', ?, 'Form Inquiry (Existing Active Lead)', ?, ?)");
             $insTe->execute([
                 $teId,
                 $existingLeadId,
                 date('Y-m-d H:i:s'),
-                $teContent
+                $teContent,
+                $attachmentsJson
             ]);
 
             // A child-table write must also bump the parent's updated_at, or the sync
@@ -654,13 +698,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'name' => $existingLead['name'],
                     'status' => $existingLead['status'],
                     'source' => $existingLead['source'],
-                    'appended_categories' => $categories
+                    'appended_categories' => $categories,
+                    'attachments' => $attachments,
+                    'skipped_attachments' => $skippedAttachments
                 ]
             ]);
         } catch (\Exception $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
+            ccrm_pipeline_remove_stored_paths($storedPaths);
             error_log('[ccrm pipeline] write failed: ' . $e->getMessage());
             http_response_code(500);
             echo json_encode(['status' => 'error', 'message' => 'Database write failed.']);
@@ -711,16 +758,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // 3. Insert timeline event
-        $teId = 'ev-' . uniqid();
         // The same field-by-field note an appended inquiry gets: the lead's
         // phone and e-mail can be edited later, the note keeps what was sent.
-        $teContent = ccrm_pipeline_submission_note($submissionNoteFields);
-        $insTe = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`) VALUES (?, ?, 'note', ?, 'Lead Created via Public API', ?)");
+        $teContent = trim(ccrm_pipeline_submission_note($submissionNoteFields) . "\n\n" . $skippedNote);
+        $insTe = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `attachments_json`) VALUES (?, ?, 'note', ?, 'Lead Created via Public API', ?, ?)");
         $insTe->execute([
             $teId,
             $newLeadId,
             date('Y-m-d H:i:s'),
-            $teContent
+            $teContent,
+            $attachmentsJson
         ]);
 
         // 4. Pair the lead with its projects, when the operator asked for any
@@ -757,13 +804,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // read; `project_ids` carries the rest, one per matched
                 // interest category.
                 'project_id' => $autoProjects[0]['id'] ?? null,
-                'project_ids' => array_column($autoProjects, 'id')
+                'project_ids' => array_column($autoProjects, 'id'),
+                'attachments' => $attachments,
+                'skipped_attachments' => $skippedAttachments
             ]
         ]);
     } catch (\Exception $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
         }
+        ccrm_pipeline_remove_stored_paths($storedPaths);
         error_log('[ccrm pipeline] write failed: ' . $e->getMessage());
         http_response_code(500);
         echo json_encode(['status' => 'error', 'message' => 'Database write failed.']);
