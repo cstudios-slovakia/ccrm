@@ -99,11 +99,11 @@ export function TaskTimeControls({
 
   const party = clientForTask(task, leads);
   const canCreate = !!readTimeCreate().onCreateProject && !!party?.id;
-  const createForClient = () => {
+  const createForClient = async () => {
     const create = readTimeCreate().onCreateProject;
     const name = newName.trim();
     if (!create || !party?.id || !name || !newType) return;
-    const made = create({ name, clientId: party.id, projectTypeId: newType });
+    const made = await create({ name, clientId: party.id, projectTypeId: newType });
     if (made) void begin(made.id, saveOnTask);
   };
 
@@ -242,7 +242,7 @@ export function TaskTimeControls({
               className="mt-2 grid gap-2 rounded-lg bg-gray-50 p-2.5"
               onSubmit={(e) => {
                 e.preventDefault();
-                createForClient();
+                void createForClient();
               }}
             >
               <span className="type-meta text-gray-600">{party.name}</span>

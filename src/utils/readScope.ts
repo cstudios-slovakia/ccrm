@@ -16,12 +16,48 @@ export type ReadScope = {
     projects: Record<string, string>;
     agencyWorkers: Record<string, string>;
   };
+  /**
+   * Without the projects module: every active project, client and project type, names only,
+   * for the time-tracking picker and its "create project" form. Null with the projects module
+   * (the full lists arrive instead) or from an older server.
+   */
+  timePicker: TimePickerOptions | null;
+};
+
+export type TimePickerOptions = {
+  projects: { id: string; name: string; clientId: string | null; status: string }[];
+  clients: { id: string; name: string }[];
+  projectTypes: { id: string; name: string }[];
 };
 
 export const EMPTY_READ_SCOPE: ReadScope = {
   restricted: [],
   rowScoped: [],
   referenceNames: { leads: {}, projects: {}, agencyWorkers: {} },
+  timePicker: null,
+};
+
+const asNamedList = (value: unknown): { id: string; name: string }[] =>
+  Array.isArray(value)
+    ? value
+        .filter((v) => v && typeof v === "object" && typeof v.id === "string")
+        .map((v) => ({ id: v.id as string, name: typeof v.name === "string" ? v.name : "" }))
+    : [];
+
+const parseTimePicker = (raw: unknown): TimePickerOptions | null => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const projects = Array.isArray(r.projects)
+    ? r.projects
+        .filter((p) => p && typeof p === "object" && typeof p.id === "string")
+        .map((p) => ({
+          id: p.id as string,
+          name: typeof p.name === "string" ? p.name : "",
+          clientId: typeof p.clientId === "string" && p.clientId !== "" ? p.clientId : null,
+          status: typeof p.status === "string" ? p.status : "",
+        }))
+    : [];
+  return { projects, clients: asNamedList(r.clients), projectTypes: asNamedList(r.projectTypes) };
 };
 
 const asStringMap = (value: unknown): Record<string, string> => {
@@ -47,6 +83,7 @@ export const parseReadScope = (raw: unknown): ReadScope => {
       projects: asStringMap(names.projects),
       agencyWorkers: asStringMap(names.agencyWorkers),
     },
+    timePicker: parseTimePicker(r.timePicker),
   };
 };
 

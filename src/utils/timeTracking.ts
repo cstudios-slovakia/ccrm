@@ -390,4 +390,7 @@ export const TIME_ERROR_CODES = [
   "bad_time",
   "not_found",
   "save_failed",
+  "name_required",
+  "type_not_found",
+  "client_not_found",
 ] as const;

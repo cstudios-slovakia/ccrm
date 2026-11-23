@@ -32,9 +32,9 @@ export interface TimeDeps {
   onRenameTicket: (ticketId: string, title: string) => void;
   /** Whether a task counts as finished (its status is a done state). */
   isTaskDone: (task: Task) => boolean;
-  /** May the signed-in user pick a project directly (the projects module)? */
+  /** May the signed-in user pick a project directly (anyone with a project to pick from)? */
   canPickProject: boolean;
-  onCreateProject?: (input: NewProjectInput) => Project | null;
+  onCreateProject?: (input: NewProjectInput) => Project | null | Promise<Project | null>;
   /** May the signed-in user edit this task (and so rename it)? */
   canEditTask: (task: Task) => boolean;
   /** Rename a task through the normal task save path (sync.php): conflict handling, audit, permissions. */

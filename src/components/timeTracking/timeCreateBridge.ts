@@ -11,7 +11,7 @@ import { TimeApiError, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
 import type { NewProjectInput } from "./ProjectPicker";
 
 export interface TimeCreateEnv {
-  onCreateProject?: (input: NewProjectInput) => Project | null;
+  onCreateProject?: (input: NewProjectInput) => Project | null | Promise<Project | null>;
   projectTypes: ProjectType[];
   currency: string;
   language: Language;

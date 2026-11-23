@@ -100,6 +100,27 @@ const get = async (query: Record<string, string | undefined>): Promise<any> => {
   return parse(await fetch(`${ENDPOINT}?${qs.toString()}`, { headers: { Accept: "application/json" } }));
 };
 
+/** A project created from the time-tracking picker by someone without the projects module (`api/time_projects.php`). */
+export interface CreatedTimeProject {
+  id: string;
+  name: string;
+  clientId: string | null;
+  leadId: string | null;
+  projectTypeId: string;
+  status: string;
+}
+
+export const createTimeProject = async (input: { name: string; clientId: string | null; projectTypeId: string }): Promise<CreatedTimeProject> => {
+  const body = await parse(
+    await fetch("/api/time_projects.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
+  return body.project as CreatedTimeProject;
+};
+
 export interface ListParams {
   from?: string;
   to?: string;
@@ -413,7 +434,13 @@ export const timeErrorMessage = (
     case "forbidden":
       return t("You do not have permission to do this.", "Na toto nemáte oprávnenie.", "Ehhez nincs jogosultsága.");
     case "forbidden_project":
-      return t("You cannot pick a project directly. Start from a task instead.", "Projekt nemôžete vybrať priamo. Začnite z úlohy.", "Projektet nem választhat közvetlenül. Indítson egy feladatból.");
+      return t("You do not have access to that project.", "K tomuto projektu nemáte prístup.", "Ehhez a projekthez nincs hozzáférése.");
+    case "name_required":
+      return t("Enter a project name.", "Zadajte názov projektu.", "Adja meg a projekt nevét.");
+    case "type_not_found":
+      return t("That project type no longer exists. Reload the page and try again.", "Tento typ projektu už neexistuje. Obnovte stránku a skúste znova.", "Ez a projekttípus már nem létezik. Töltse újra az oldalt, és próbálja újra.");
+    case "client_not_found":
+      return t("That client no longer exists. Pick another one.", "Tento klient už neexistuje. Vyberte iného.", "Ez az ügyfél már nem létezik. Válasszon másikat.");
     case "forbidden_ticket":
       return t("You do not have access to tickets.", "Nemáte prístup k tiketom.", "Nincs hozzáférése a jegyekhez.");
     case "task_not_found":

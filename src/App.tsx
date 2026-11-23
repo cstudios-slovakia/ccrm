@@ -94,7 +94,8 @@ import { AppLoadingScreen } from "./components/AppLoadingScreen";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { startViewSizeWatcher } from "./utils/viewSize";
 import { baselineOf, diffRecords, FINANCIAL_BLOB_KEYS, omitUnchangedGithubPairing, skipHoldsBaseline, skipIsLostWork, withStockRowIds, type FinancialBlobKey, type RecordBaseline } from "./utils/syncDiff";
-import { workableProjectStubs } from "./utils/workableProjects";
+import { pickerProjectTypes, withPickerClients, workableProjectStubs } from "./utils/workableProjects";
+import { createPickerProject } from "./components/timeTracking/createPickerProject";
 import { EMPTY_READ_SCOPE, parseReadScope, sameReadScope, type ReadScope } from "./utils/readScope";
 import { ReadScopeContext } from "./hooks/useReadScope";
 import { WhatsAppLinksContext } from "./hooks/useWhatsAppLinks";
@@ -767,6 +768,8 @@ function App() {
   }, []);
   // What the server withheld from this session (sync.php `readScope`).
   const [readScope, setReadScope] = useState<ReadScope>(EMPTY_READ_SCOPE);
+  // Projects created from the time-tracking picker without the projects module, until a sync lists them.
+  const [timeCreatedProjects, setTimeCreatedProjects] = useState<Project[]>([]);
   // WhatsApp chats WAAI paired with clients, leads and projects. Read-only: never pushed back.
   const [whatsAppData, setWhatsAppData] = useState<WhatsAppData>(EMPTY_WHATSAPP_DATA);
 
@@ -4768,10 +4771,16 @@ ${log.payload || ''}
       }}
     />
   ) : null;
-  // Without the projects module the list arrives empty, but the project a person works on is
-  // still pickable for their time: the server names those in readScope.referenceNames.
+  // Without the projects module the list arrives empty, but anyone who tracks time may pick any
+  // active project and create one: the server sends a slim list in readScope.timePicker.
   const canSeeProjects = access.can("projects");
-  const workableProjects = canSeeProjects ? [] : workableProjectStubs(readScope, defaultProjectStatus(projectStatuses));
+  const pickerDefaultStatus = defaultProjectStatus(projectStatuses);
+  const workableProjects = useMemo(
+    () => (canSeeProjects ? [] : workableProjectStubs(readScope, pickerDefaultStatus, timeCreatedProjects)),
+    [canSeeProjects, readScope, pickerDefaultStatus, timeCreatedProjects],
+  );
+  const pickerTypes = useMemo(() => (canSeeProjects ? projectTypes : pickerProjectTypes(readScope)), [canSeeProjects, projectTypes, readScope]);
+  const pickerLeads = useMemo(() => (canSeeProjects ? leads : withPickerClients(readScope, leads)), [canSeeProjects, leads, readScope]);
   const timeDeps: TimeDeps | null = currentUser ? {
     language: userLanguage,
     currency: systemCurrency || "EUR",
@@ -4779,8 +4788,8 @@ ${log.payload || ''}
     users,
     employees,
     projects: canSeeProjects ? projects : workableProjects,
-    projectTypes,
-    leads,
+    projectTypes: pickerTypes,
+    leads: pickerLeads,
     tasks,
     tickets,
     canLinkTicket: access.can("tickets"),
@@ -4789,7 +4798,7 @@ ${log.payload || ''}
     onRenameTicket: (ticketId, title) =>
       updateTicketsAndSync((prev) => prev.map((tk) => (tk.id === ticketId ? { ...tk, title, subject: title } : tk))),
     isTaskDone: (task) => isDoneTaskState(task.status, taskStates),
-    canPickProject: canSeeProjects || workableProjects.length > 0,
+    canPickProject: canSeeProjects || workableProjects.length > 0 || access.canEdit("time_tracking"),
     onCreateProject: access.canEdit("projects")
       ? ({ name, clientId, projectTypeId }) => {
           const record = clientId ? leads.find((l) => l.id === clientId) : undefined;
@@ -4809,7 +4818,9 @@ ${log.payload || ''}
           updateProjectsAndSync((prev) => [created, ...prev]);
           return created;
         }
-      : undefined,
+      : access.canEdit("time_tracking")
+        ? (input) => createPickerProject(input, (p) => setTimeCreatedProjects((prev) => [...prev, p]), userLanguage)
+        : undefined,
     canEditTask: (task) => userMayEditTask(task, currentUser, taskAccess),
     onRenameTask: (taskId, title) =>
       updateTasksAndSync((prev) => prev.map((tk) => (tk.id === taskId ? { ...tk, title } : tk))),

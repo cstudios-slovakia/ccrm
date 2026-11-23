@@ -31,8 +31,8 @@ interface Props {
   recentIds?: string[];
   /** Seconds tracked on each project this week, for the meta line. */
   secondsByProject?: Record<string, number>;
-  /** Creating a project needs the projects create permission. */
-  onCreateProject?: (input: NewProjectInput) => Project | null;
+  /** Anyone who may log time may create one; without the projects module it is a server call. */
+  onCreateProject?: (input: NewProjectInput) => Project | null | Promise<Project | null>;
   disabled?: boolean;
   /** Open on mount (the "pick a project before stopping" dialog). */
   defaultOpen?: boolean;
@@ -72,7 +72,13 @@ export function ProjectPicker({
   const [newName, setNewName] = useState("");
   const [newClient, setNewClient] = useState<string>("");
   const [newType, setNewType] = useState<string>(projectTypes[0]?.id ?? "");
+  const [saving, setSaving] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+
+  // The types can arrive after mount (the first sync): preselect the first one then.
+  useEffect(() => {
+    if (!newType && projectTypes[0]) setNewType(projectTypes[0].id);
+  }, [newType, projectTypes]);
 
   useEffect(() => {
     if (!open || inline) return;
@@ -116,13 +122,18 @@ export function ProjectPicker({
     if (!inline) setOpen(false);
   };
 
-  const create = () => {
-    if (!onCreateProject || !newType || !newName.trim()) return;
-    const made = onCreateProject({ name: newName.trim(), clientId: newClient || null, projectTypeId: newType });
-    if (made) {
-      setCreating(false);
-      setQuery("");
-      choose(made.id);
+  const create = async () => {
+    if (!onCreateProject || !newType || !newName.trim() || saving) return;
+    setSaving(true);
+    try {
+      const made = await onCreateProject({ name: newName.trim(), clientId: newClient || null, projectTypeId: newType });
+      if (made) {
+        setCreating(false);
+        setQuery("");
+        choose(made.id);
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -260,7 +271,7 @@ export function ProjectPicker({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    create();
+                    void create();
                   }
                 }}
                 data-testid="project-create-name"
@@ -300,7 +311,7 @@ export function ProjectPicker({
             </p>
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setCreating(false)} className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-ui font-semibold text-gray-600 hover:bg-gray-50 cursor-pointer">{t("Back", "Späť", "Vissza")}</button>
-              <button type="button" onClick={create} disabled={!newType || !newName.trim()} data-testid="project-create-submit" className="h-9 rounded-lg bg-entity-solid px-3 text-ui font-semibold text-white disabled:opacity-50 cursor-pointer">{t("Create & assign", "Vytvoriť a priradiť", "Létrehozás és hozzárendelés")}</button>
+              <button type="button" onClick={() => void create()} disabled={!newType || !newName.trim() || saving} data-testid="project-create-submit" className="h-9 rounded-lg bg-entity-solid px-3 text-ui font-semibold text-white disabled:opacity-50 cursor-pointer">{t("Create & assign", "Vytvoriť a priradiť", "Létrehozás és hozzárendelés")}</button>
             </div>
           </div>
         )}

@@ -2516,8 +2516,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
     }
 
-    // Without the projects module the caller still needs the names of the projects they work
-    // on (ones they manage or log time on), so the time-tracking picker can offer them.
+    // Without the projects module the caller still needs the names of the projects they may log
+    // time on (with time tracking: every active one), so task rows and entries can name them.
     if (!ccrm_can($scope, 'projects')) {
         foreach (ccrm_workable_projects($pdo, $scope) as $wpId => $wpName) {
             if (!isset($visibleProjectIds[(string)$wpId])) {
@@ -2589,6 +2589,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'projects' => !empty($refProjects) ? (object)$refProjects : (object)[],
             'agencyWorkers' => !empty($refAgencyWorkers) ? (object)$refAgencyWorkers : (object)[],
         ],
+        // Without the projects module: every active project, client and project type, names only,
+        // for the time-tracking picker and its "create project" form (ccrm_time_picker_options).
+        'timePicker' => ccrm_can($scope, 'projects') ? null : ccrm_time_picker_options($pdo, $scope),
     ];
 
     // DB clock at read time. The client echoes this back as baseSyncedAt on the

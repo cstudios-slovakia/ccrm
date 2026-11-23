@@ -554,6 +554,13 @@ function ccrm_workable_projects(\PDO $pdo, array $scope): array {
         foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $pid) {
             $ids[(string)$pid] = true;
         }
+        // Anyone who tracks time may put it on any active project (owner decision 2026-11-23):
+        // the picker offers them all, names only, without opening the projects module.
+        if (ccrm_can($scope, 'time_tracking')) {
+            foreach ($pdo->query("SELECT `id` FROM `projects` WHERE `archived` = 0")->fetchAll(\PDO::FETCH_COLUMN) as $pid) {
+                $ids[(string)$pid] = true;
+            }
+        }
         if (!$ids) {
             return [];
         }
@@ -574,9 +581,92 @@ function ccrm_workable_projects(\PDO $pdo, array $scope): array {
     }
 }
 
-/** May the caller log time on this project without the projects module (see ccrm_workable_projects)? */
+/**
+ * May the caller log time on this project without the projects module? With time tracking:
+ * any existing project (an archived one too, so an old entry stays editable). Without it:
+ * only the ones they work on (ccrm_workable_projects).
+ */
 function ccrm_works_on_project(\PDO $pdo, array $scope, string $projectId): bool {
-    return $projectId !== '' && isset(ccrm_workable_projects($pdo, $scope)[$projectId]);
+    if ($projectId === '') {
+        return false;
+    }
+    if (ccrm_can($scope, 'time_tracking')) {
+        try {
+            $stmt = $pdo->prepare("SELECT 1 FROM `projects` WHERE `id` = ? LIMIT 1");
+            $stmt->execute([$projectId]);
+            return (bool)$stmt->fetchColumn();
+        } catch (\Throwable $e) {
+            error_log('[ccrm] project lookup failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+    return isset(ccrm_workable_projects($pdo, $scope)[$projectId]);
+}
+
+/** A leads row is a client record when its id is client-* or it carries an adjustment (twin of src/utils/clientRecord.ts). */
+function ccrm_is_client_row(array $row): bool {
+    return strpos((string)($row['id'] ?? ''), 'client-') === 0 || (float)($row['adjustment'] ?? 0) > 0;
+}
+
+/**
+ * The time-tracking project picker for someone WITHOUT the projects module: a slim list of
+ * every active project, every client and every project type, ids and names only (plus a
+ * project's client and status, for grouping and the "show finished" toggle). It grants no
+ * right to open a project or a client. Empty for a caller without time tracking.
+ *
+ * @return array{projects: list<array{id:string,name:string,clientId:?string,status:string}>, clients: list<array{id:string,name:string}>, projectTypes: list<array{id:string,name:string}>}
+ */
+function ccrm_time_picker_options(\PDO $pdo, array $scope): array {
+    $out = ['projects' => [], 'clients' => [], 'projectTypes' => []];
+    if (!ccrm_can($scope, 'time_tracking')) {
+        return $out;
+    }
+    try {
+        $clients = [];
+        foreach ($pdo->query("SELECT `id`, `name`, `adjustment` FROM `leads` WHERE `archived` = 0")->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+            if (ccrm_is_client_row($row)) {
+                $name = trim((string)($row['name'] ?? ''));
+                $clients[(string)$row['id']] = $name !== '' ? $name : 'Unknown';
+            }
+        }
+        // A project's client: its own client, else the client its lead is linked to, else the lead.
+        $rows = $pdo->query(
+            "SELECT p.`id`, p.`name`, p.`status`, p.`client_id`, p.`lead_id`, l.`name` AS `lead_name`, l.`client_id` AS `lead_client_id`
+             FROM `projects` p LEFT JOIN `leads` l ON l.`id` = p.`lead_id`
+             WHERE p.`archived` = 0"
+        )->fetchAll(\PDO::FETCH_ASSOC);
+        foreach ($rows as $row) {
+            $clientId = null;
+            foreach ([$row['client_id'] ?? null, $row['lead_client_id'] ?? null] as $candidate) {
+                if ($candidate !== null && $candidate !== '' && isset($clients[(string)$candidate])) {
+                    $clientId = (string)$candidate;
+                    break;
+                }
+            }
+            if ($clientId === null && !empty($row['lead_id']) && $row['lead_name'] !== null) {
+                // A lead without a client still groups the project: add it to the names.
+                $clientId = (string)$row['lead_id'];
+                $leadName = trim((string)$row['lead_name']);
+                $clients[$clientId] ??= $leadName !== '' ? $leadName : 'Unknown';
+            }
+            $name = trim((string)($row['name'] ?? ''));
+            $out['projects'][] = [
+                'id' => (string)$row['id'],
+                'name' => $name !== '' ? $name : 'Unknown',
+                'clientId' => $clientId,
+                'status' => (string)($row['status'] ?? ''),
+            ];
+        }
+        foreach ($clients as $id => $name) {
+            $out['clients'][] = ['id' => (string)$id, 'name' => $name];
+        }
+        foreach ($pdo->query("SELECT `id`, `name` FROM `project_types` ORDER BY `created_at` ASC")->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+            $out['projectTypes'][] = ['id' => (string)$row['id'], 'name' => (string)($row['name'] ?? '')];
+        }
+    } catch (\Throwable $e) {
+        error_log('[ccrm] time picker options failed: ' . $e->getMessage());
+    }
+    return $out;
 }
 
 /**
