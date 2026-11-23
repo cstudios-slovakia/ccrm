@@ -9,7 +9,7 @@ const SWATCH: Record<TicketCategoryKey, string> = {
   open: "bg-indigo-500",
   waiting: "bg-amber-500",
   resolved: "bg-emerald-500",
-  closed: "bg-slate-400",
+  closed: "bg-gray-400",
 };
 
 export const TicketsCard = ({
@@ -49,13 +49,13 @@ export const TicketsCard = ({
       <div className="mt-4 flex flex-wrap gap-3">
         {data.categories.map((c) => (
           <Surface key={c.category} tone="inset" className="min-w-0 flex-1 basis-26">
-            <div className="type-meta flex items-center gap-1.5 text-slate-600">
+            <div className="type-meta flex items-center gap-1.5 text-gray-600">
               <span className={`size-2.5 rounded-full ${SWATCH[c.category]}`} />
               {names[c.category]}
             </div>
             <div className="mt-1 flex items-baseline gap-1.5">
-              <span className="type-metric text-slate-900">{count(c.count, language)}</span>
-              <span className="type-meta text-slate-600">{percent(c.sharePct, language, 0)}</span>
+              <span className="type-metric text-gray-900">{count(c.count, language)}</span>
+              <span className="type-meta text-gray-600">{percent(c.sharePct, language, 0)}</span>
             </div>
           </Surface>
         ))}

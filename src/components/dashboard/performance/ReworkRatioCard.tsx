@@ -52,15 +52,15 @@ export const ReworkRatioCard = ({
             {data.rows.map((row) => (
               <div
                 key={row.employeeId}
-                className="grid h-10 grid-cols-[--spacing(7)_--spacing(31)_minmax(0,1fr)_--spacing(24)_--spacing(11)] items-center gap-x-2.5 border-t border-slate-100"
+                className="grid h-10 grid-cols-[--spacing(7)_--spacing(31)_minmax(0,1fr)_--spacing(24)_--spacing(11)] items-center gap-x-2.5 border-t border-gray-100"
               >
                 <Avatar name={row.name} />
-                <span className="truncate font-semibold text-slate-800">{row.name}</span>
+                <span className="truncate font-semibold text-gray-800">{row.name}</span>
                 <Track pct={ratioPct(row.ratePct, data.scaleMax)} fillClass="bg-amber-500" />
-                <span className="type-meta text-right text-slate-600">
+                <span className="type-meta text-right text-gray-600">
                   {ofTotal(row.reopened, row.completed, "task", language)}
                 </span>
-                <span className="text-right font-bold text-slate-900">{percent(row.ratePct, language, 0)}</span>
+                <span className="text-right font-bold text-gray-900">{percent(row.ratePct, language, 0)}</span>
               </div>
             ))}
           </div>

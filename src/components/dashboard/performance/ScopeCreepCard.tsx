@@ -50,7 +50,7 @@ export const ScopeCreepCard = ({
       ) : (
         <>
           <div className="mt-4 flex gap-3.5">
-            <LegendItem swatch="bg-slate-300" label={t("Original scope", "Pôvodný rozsah", "Eredeti terjedelem")} />
+            <LegendItem swatch="bg-gray-300" label={t("Original scope", "Pôvodný rozsah", "Eredeti terjedelem")} />
             <LegendItem swatch="bg-amber-500" label={t("Added", "Pridané", "Hozzáadott")} />
           </div>
           <div className="mt-2 flex flex-col text-ui tabular-nums">
@@ -59,15 +59,15 @@ export const ScopeCreepCard = ({
                 key={row.projectId}
                 className="grid h-9 grid-cols-[--spacing(28)_minmax(0,1fr)_--spacing(18)] items-center gap-x-2.5"
               >
-                <span className="truncate text-slate-800">{row.name}</span>
+                <span className="truncate text-gray-800">{row.name}</span>
                 <SegmentedBar
                   scaleMax={data.scaleMax}
                   segments={[
-                    { key: "original", value: row.original, className: "bg-slate-300" },
+                    { key: "original", value: row.original, className: "bg-gray-300" },
                     { key: "added", value: row.added, className: "bg-amber-500" },
                   ]}
                 />
-                <span className="text-right text-slate-600">
+                <span className="text-right text-gray-600">
                   {row.original} <span className="font-bold text-amber-700">+{row.added}</span>
                 </span>
               </div>

@@ -43,9 +43,9 @@ export const ThroughputCard = ({
               key={row.projectId}
               className="grid h-9 grid-cols-[--spacing(28)_minmax(0,1fr)_--spacing(15)] items-center gap-x-2.5"
             >
-              <span className="truncate text-slate-800">{row.name}</span>
-              <Track pct={ratioPct(row.days, data.scaleMax)} fillClass="bg-primary" />
-              <span className="text-right font-bold text-slate-900">{days(row.days, language)}</span>
+              <span className="truncate text-gray-800">{row.name}</span>
+              <Track pct={ratioPct(row.days, data.scaleMax)} fillClass="bg-entity-solid" />
+              <span className="text-right font-bold text-gray-900">{days(row.days, language)}</span>
             </div>
           ))}
         </div>

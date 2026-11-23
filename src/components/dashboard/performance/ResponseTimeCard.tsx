@@ -45,7 +45,7 @@ export const ResponseTimeCard = ({
       </SubLine>
       {data.slaMs !== null && (
         <>
-          <div className="type-meta mt-4 flex justify-between text-slate-600">
+          <div className="type-meta mt-4 flex justify-between text-gray-600">
             <span>0</span>
             <span>SLA {duration(data.slaMs, language)}</span>
           </div>
@@ -61,11 +61,11 @@ export const ResponseTimeCard = ({
         <NoRows language={language} />
       ) : (
         <>
-          <div className="mt-2 flex h-14 items-end gap-3 border-b border-slate-300">
+          <div className="mt-2 flex h-14 items-end gap-3 border-b border-gray-300">
             {data.weeks.map((w) => (
               <div
                 key={w.isoWeek}
-                className="flex-1 rounded-t-xs bg-primary"
+                className="flex-1 rounded-t-xs bg-entity-solid"
                 style={{ height: `${w.averageMs === null ? 0 : ratioPct(w.averageMs, weekMax)}%` }}
               />
             ))}
@@ -73,8 +73,8 @@ export const ResponseTimeCard = ({
           <div className="type-meta mt-1.5 flex gap-3 text-center tabular-nums">
             {data.weeks.map((w) => (
               <div key={w.isoWeek} className="min-w-0 flex-1">
-                <div className="font-bold text-slate-900">{duration(w.averageMs, language)}</div>
-                <div className="text-slate-600">{isoWeekLabel(w.isoWeek, language)}</div>
+                <div className="font-bold text-gray-900">{duration(w.averageMs, language)}</div>
+                <div className="text-gray-600">{isoWeekLabel(w.isoWeek, language)}</div>
               </div>
             ))}
           </div>

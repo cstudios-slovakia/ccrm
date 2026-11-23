@@ -42,9 +42,9 @@ export const RecurringIncomeCard = ({
           ]}
         />
       </SubLine>
-      <div className="type-meta mt-5 flex justify-between text-slate-600">
+      <div className="type-meta mt-5 flex justify-between text-gray-600">
         <span>{t("Share of all income", "Podiel na všetkých príjmoch", "Az összes bevétel aránya")}</span>
-        <span className="font-bold text-slate-900">{percent(data.shareOfIncomePct, language, 0)}</span>
+        <span className="font-bold text-gray-900">{percent(data.shareOfIncomePct, language, 0)}</span>
       </div>
       <Track className="mt-1.5" pct={data.shareOfIncomePct ?? 0} fillClass="bg-emerald-500" />
       <Overline className="mt-5">{t("What it is made of", "Z čoho sa skladajú", "Miből tevődik össze")}</Overline>
@@ -55,12 +55,12 @@ export const RecurringIncomeCard = ({
           {data.breakdown.map((row, i) => (
             <div
               key={`${row.label}-${i}`}
-              className={`flex h-8.5 items-center justify-between gap-3 ${i < data.breakdown.length - 1 ? "border-b border-slate-100" : ""}`}
+              className={`flex h-8.5 items-center justify-between gap-3 ${i < data.breakdown.length - 1 ? "border-b border-gray-100" : ""}`}
             >
-              <span className="truncate text-slate-800">
+              <span className="truncate text-gray-800">
                 {row.other ? t("Other", "Ostatné", "Egyéb") : row.label}
               </span>
-              <span className="font-bold text-slate-900">{money(row.amount, currencyCode, language)}</span>
+              <span className="font-bold text-gray-900">{money(row.amount, currencyCode, language)}</span>
             </div>
           ))}
         </div>

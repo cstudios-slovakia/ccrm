@@ -21,7 +21,7 @@ export const AssignedTasksCard = ({
         caption={t("Open tasks by employee", "Otvorené úlohy podľa zamestnanca", "Nyitott feladatok munkatársanként")}
         legend={
           <>
-            <LegendItem swatch="bg-primary" label={t("On time", "V termíne", "Határidőn belül")} />
+            <LegendItem swatch="bg-entity-solid" label={t("On time", "V termíne", "Határidőn belül")} />
             <LegendItem swatch="bg-rose-500" label={t("Overdue", "Po termíne", "Lejárt")} />
           </>
         }
@@ -41,18 +41,18 @@ export const AssignedTasksCard = ({
           {data.rows.map((row) => (
             <div
               key={row.employeeId}
-              className="grid h-10 grid-cols-[--spacing(7)_--spacing(29)_minmax(0,1fr)_--spacing(6)] items-center gap-x-2.5 border-t border-slate-100"
+              className="grid h-10 grid-cols-[--spacing(7)_--spacing(29)_minmax(0,1fr)_--spacing(6)] items-center gap-x-2.5 border-t border-gray-100"
             >
               <Avatar name={row.name} />
-              <span className="truncate font-semibold text-slate-800">{row.name}</span>
+              <span className="truncate font-semibold text-gray-800">{row.name}</span>
               <SegmentedBar
                 scaleMax={data.scaleMax}
                 segments={[
-                  { key: "ontime", value: Math.max(0, row.open - row.overdue), className: "bg-primary" },
+                  { key: "ontime", value: Math.max(0, row.open - row.overdue), className: "bg-entity-solid" },
                   { key: "overdue", value: row.overdue, className: "bg-rose-500" },
                 ]}
               />
-              <span className="text-right font-bold text-slate-900">{row.open}</span>
+              <span className="text-right font-bold text-gray-900">{row.open}</span>
             </div>
           ))}
         </div>

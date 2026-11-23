@@ -6,17 +6,17 @@ import { Card, CardTitle, NoRows } from "./shared";
 const CHIP: Record<DeadlineTone, string> = {
   overdue: "border-rose-200 bg-rose-50 text-rose-700",
   soon: "border-amber-200 bg-amber-50 text-amber-700",
-  later: "border-slate-200 bg-slate-100 text-slate-600",
+  later: "border-gray-200 bg-gray-100 text-gray-600",
 };
 const DATE_BOX: Record<DeadlineTone, string> = {
   overdue: "bg-rose-50 text-rose-700",
   soon: "bg-amber-50 text-amber-700",
-  later: "bg-slate-100 text-slate-600",
+  later: "bg-gray-100 text-gray-600",
 };
 const DISTANCE: Record<DeadlineTone, string> = {
   overdue: "font-bold text-rose-700",
   soon: "font-bold text-amber-700",
-  later: "font-semibold text-slate-600",
+  later: "font-semibold text-gray-600",
 };
 
 export const DeadlinesCard = ({
@@ -58,15 +58,15 @@ export const DeadlinesCard = ({
           {data.rows.map((row) => (
             <div
               key={row.projectId}
-              className="grid h-13 grid-cols-[--spacing(11)_minmax(0,1fr)_auto] items-center gap-x-3 border-t border-slate-100"
+              className="grid h-13 grid-cols-[--spacing(11)_minmax(0,1fr)_auto] items-center gap-x-3 border-t border-gray-100"
             >
-              <div className={`flex h-10 flex-col items-center justify-center rounded-xl leading-tight ${DATE_BOX[row.tone]}`}>
+              <div className={`flex h-10 flex-col items-center justify-center rounded-lg leading-tight ${DATE_BOX[row.tone]}`}>
                 <span className="type-body font-extrabold">{row.deadline.getDate()}</span>
                 <span className="text-micro font-bold uppercase">{monthShort(row.deadline.getMonth(), language)}</span>
               </div>
               <div className="min-w-0">
-                <div className="truncate text-ui font-semibold text-slate-900">{row.name}</div>
-                <div className="type-meta truncate text-slate-500">{row.clientName}</div>
+                <div className="truncate text-ui font-semibold text-gray-900">{row.name}</div>
+                <div className="type-meta truncate text-gray-500">{row.clientName}</div>
               </div>
               <span className={`type-meta whitespace-nowrap tabular-nums ${DISTANCE[row.tone]}`}>
                 {deadlineDistance(row.daysFromToday, language)}

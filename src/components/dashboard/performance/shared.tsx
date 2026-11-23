@@ -16,7 +16,7 @@ const TONE_TEXT: Record<Tone, string> = {
   good: "text-emerald-700",
   bad: "text-rose-700",
   warn: "text-amber-700",
-  neutral: "text-slate-600",
+  neutral: "text-gray-600",
 };
 
 /** Tone of a delta by what the change means: `higherIsBetter` false for days, durations. */
@@ -62,13 +62,13 @@ export const DeltaPhrase = ({ text, tone, phrase }: { text: string | null; tone:
   );
 
 export const Overline = ({ children, className = "" }: { children: ReactNode; className?: string }) => (
-  <div className={`type-overline text-slate-500 ${className}`}>{children}</div>
+  <div className={`type-overline text-gray-500 ${className}`}>{children}</div>
 );
 
 export const NoRows = ({ language }: { language: Language }) => {
   const t = makeT(language);
   return (
-    <p className="type-meta mt-4 text-slate-500">
+    <p className="type-meta mt-4 text-gray-500">
       {t("No data for the selected period", "Žiadne údaje za zvolené obdobie", "Nincs adat a kiválasztott időszakra")}
     </p>
   );
@@ -81,7 +81,7 @@ export const Card = ({ children, className = "" }: { children: ReactNode; classN
 );
 
 export const LegendItem = ({ swatch, label, dot = false }: { swatch: string; label: string; dot?: boolean }) => (
-  <span className="type-meta flex items-center gap-1.5 text-slate-600">
+  <span className="type-meta flex items-center gap-1.5 text-gray-600">
     <span className={`size-2.5 ${dot ? "rounded-full" : "rounded-xs"} ${swatch}`} />
     {label}
   </span>
@@ -91,8 +91,8 @@ export const LegendItem = ({ swatch, label, dot = false }: { swatch: string; lab
 export const CardTitle = ({ title, caption, legend }: { title: string; caption: string; legend?: ReactNode }) => (
   <div className="flex flex-wrap items-start justify-between gap-3">
     <div className="min-w-0">
-      <h3 className="type-card-title text-slate-900">{title}</h3>
-      <p className="type-meta mt-0.5 text-slate-500">{caption}</p>
+      <h3 className="type-card-title text-gray-900">{title}</h3>
+      <p className="type-meta mt-0.5 text-gray-500">{caption}</p>
     </div>
     {legend && <div className="flex flex-wrap items-center gap-3.5">{legend}</div>}
   </div>
@@ -101,13 +101,13 @@ export const CardTitle = ({ title, caption, legend }: { title: string; caption: 
 /** The big figure with its unit ("27 dní" + "v priemere"). */
 export const HeadlineValue = ({ value, unit }: { value: ReactNode; unit?: ReactNode }) => (
   <div className="mt-4 flex items-baseline gap-1.5">
-    <span className="type-metric text-slate-900">{value}</span>
-    {unit && <span className="text-ui text-slate-500">{unit}</span>}
+    <span className="type-metric text-gray-900">{value}</span>
+    {unit && <span className="text-ui text-gray-500">{unit}</span>}
   </div>
 );
 
 export const SubLine = ({ children }: { children: ReactNode }) => (
-  <div className="type-meta mt-1 text-slate-500">{children}</div>
+  <div className="type-meta mt-1 text-gray-500">{children}</div>
 );
 
 /** Phase 2 widget without stored data: the card frame with title, caption and an empty state. */
@@ -154,18 +154,18 @@ export const Track = ({
   tickPct?: number | null;
   className?: string;
 }) => (
-  <div className={`relative h-2 rounded-full bg-slate-100 ${className}`}>
+  <div className={`relative h-2 rounded-full bg-gray-100 ${className}`}>
     <div className={`h-full rounded-full ${fillClass}`} style={{ width: `${clampPct(pct)}%` }} />
     {tickPct !== null && tickPct !== undefined && (
-      <div className="absolute -top-1 h-4 w-0.5 bg-slate-600" style={{ left: `${clampPct(tickPct)}%` }} />
+      <div className="absolute -top-1 h-4 w-0.5 bg-gray-600" style={{ left: `${clampPct(tickPct)}%` }} />
     )}
   </div>
 );
 
 /** The tick of a legend ("Splatnosť 30 dní", "100 % = ..."). */
 export const TickLegend = ({ children, className = "" }: { children: ReactNode; className?: string }) => (
-  <div className={`type-meta flex items-center gap-1.5 text-slate-600 ${className}`}>
-    <span className="h-3.5 w-0.5 bg-slate-600" />
+  <div className={`type-meta flex items-center gap-1.5 text-gray-600 ${className}`}>
+    <span className="h-3.5 w-0.5 bg-gray-600" />
     {children}
   </div>
 );
@@ -226,7 +226,7 @@ export const SegmentedBar = ({
 export const Avatar = ({ name }: { name: string }) => (
   <span
     aria-hidden="true"
-    className="grid size-7 shrink-0 place-items-center rounded-full bg-slate-100 text-micro font-bold text-slate-600"
+    className="grid size-7 shrink-0 place-items-center rounded-full bg-gray-100 text-micro font-bold text-gray-600"
   >
     {initials(name)}
   </span>
@@ -249,15 +249,15 @@ export const SegmentedSwitch = ({
   /** Segments share the width and are lower (inside a card). */
   fill?: boolean;
 }) => (
-  <div role="group" aria-label={ariaLabel} className="flex gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-1">
+  <div role="group" aria-label={ariaLabel} className="flex gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1">
     {items.map((item) => (
       <button
         key={item.id}
         type="button"
         aria-pressed={item.id === activeId}
         onClick={() => onSelect(item.id)}
-        className={`text-ui rounded-xl font-semibold transition-colors ${fill ? "h-8 flex-1" : "h-9 px-3"} ${
-          item.id === activeId ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+        className={`text-ui rounded-lg font-semibold transition-colors ${fill ? "h-8 flex-1" : "h-9 px-3"} ${
+          item.id === activeId ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
         }`}
       >
         {item.label}
@@ -282,7 +282,7 @@ export const Section = ({
 }) => (
   <section className="flex flex-col gap-3" {...rootProps}>
     <div className="flex items-center justify-between gap-3">
-      <h2 className="type-overline text-slate-600">{title}</h2>
+      <h2 className="type-overline text-gray-600">{title}</h2>
       {action}
     </div>
     {children}

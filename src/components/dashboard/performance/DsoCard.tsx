@@ -75,13 +75,13 @@ export const DsoCard = ({
                 key={row.clientId}
                 className="grid h-8 grid-cols-[--spacing(24)_minmax(0,1fr)_--spacing(13)] items-center gap-x-2.5"
               >
-                <span className="truncate text-slate-800">{row.name}</span>
+                <span className="truncate text-gray-800">{row.name}</span>
                 <Track
                   pct={ratioPct(row.days, scale)}
                   tickPct={term !== null ? 50 : null}
-                  fillClass={term === null ? "bg-primary" : late ? "bg-rose-500" : "bg-emerald-500"}
+                  fillClass={term === null ? "bg-entity-solid" : late ? "bg-rose-500" : "bg-emerald-500"}
                 />
-                <span className={`text-right font-bold ${late ? "text-rose-700" : "text-slate-900"}`}>
+                <span className={`text-right font-bold ${late ? "text-rose-700" : "text-gray-900"}`}>
                   {days(row.days, language)}
                 </span>
               </div>

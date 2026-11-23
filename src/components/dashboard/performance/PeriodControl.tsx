@@ -47,9 +47,9 @@ export const PeriodControl = ({
         aria-haspopup="dialog"
         aria-expanded={pickerOpen}
         onClick={onOpenPicker}
-        className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-ui font-semibold text-slate-800 transition-colors hover:bg-slate-50"
+        className="inline-flex h-11 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3.5 text-ui font-semibold text-gray-800 transition-colors hover:bg-gray-50"
       >
-        <Calendar aria-hidden="true" className="size-4 text-slate-500" />
+        <Calendar aria-hidden="true" className="size-4 text-gray-500" />
         <span>{rangeLabel}</span>
       </button>
     </div>

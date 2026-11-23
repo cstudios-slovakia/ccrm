@@ -29,7 +29,7 @@ export const UtilizationCard = ({
     return (
       <Card className={className}>
         <CardTitle title={title} caption={caption} />
-        <p className="type-meta mt-4 text-slate-500">{t("Loading…", "Načítavam…", "Betöltés…")}</p>
+        <p className="type-meta mt-4 text-gray-500">{t("Loading…", "Načítavam…", "Betöltés…")}</p>
       </Card>
     );
   }
@@ -65,7 +65,7 @@ export const UtilizationCard = ({
         legend={
           <>
             <LegendItem swatch="bg-rose-500" label={t("Bugs", "Bugy", "Hibák")} />
-            <LegendItem swatch="bg-slate-300" label={t("Other work", "Ostatná práca", "Egyéb munka")} />
+            <LegendItem swatch="bg-gray-300" label={t("Other work", "Ostatná práca", "Egyéb munka")} />
           </>
         }
       />
@@ -90,20 +90,20 @@ export const UtilizationCard = ({
             {data.rows.map((row) => (
               <div
                 key={row.employeeId}
-                className="grid h-10 grid-cols-[--spacing(7)_--spacing(31)_minmax(0,1fr)_--spacing(24)_--spacing(11)] items-center gap-x-2.5 border-t border-slate-100"
+                className="grid h-10 grid-cols-[--spacing(7)_--spacing(31)_minmax(0,1fr)_--spacing(24)_--spacing(11)] items-center gap-x-2.5 border-t border-gray-100"
               >
                 <Avatar name={row.name} />
-                <span className="truncate font-semibold text-slate-800">{row.name}</span>
+                <span className="truncate font-semibold text-gray-800">{row.name}</span>
                 <SegmentedBar
                   segments={[
                     { key: "bug", value: row.sharePct, className: "bg-rose-500" },
-                    { key: "other", value: 100 - row.sharePct, className: "bg-slate-300" },
+                    { key: "other", value: 100 - row.sharePct, className: "bg-gray-300" },
                   ]}
                 />
-                <span className="type-meta text-right text-slate-600">
+                <span className="type-meta text-right text-gray-600">
                   {hours(row.bugMs, language)} {t("of", "z", "/")} {hours(row.totalMs, language)}
                 </span>
-                <span className="text-right font-bold text-slate-900">{percent(row.sharePct, language, 0)}</span>
+                <span className="text-right font-bold text-gray-900">{percent(row.sharePct, language, 0)}</span>
               </div>
             ))}
           </div>

@@ -58,7 +58,7 @@ export const KpiStrip = ({
           delta={
             <>
               <div className="mt-2">
-                <Track pct={lc.ratePct ?? 0} fillClass="bg-primary" className="h-1.5" />
+                <Track pct={lc.ratePct ?? 0} fillClass="bg-entity-solid" className="h-1.5" />
               </div>
               <div className="mt-1.5">
                 <DotJoin
@@ -85,7 +85,7 @@ export const KpiStrip = ({
                     {rejected > 0 && <div className="rounded-full bg-rose-300" style={{ flex: rejected }} />}
                   </>
                 ) : (
-                  <div className="flex-1 rounded-full bg-slate-100" />
+                  <div className="flex-1 rounded-full bg-gray-100" />
                 )}
               </BarSlot>
               <div className="mt-1.5">

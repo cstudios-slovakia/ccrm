@@ -30,7 +30,7 @@ export const DeploymentsCard = ({
     return (
       <Card className={className}>
         <CardTitle title={title} caption={caption} />
-        <p className="type-meta mt-4 text-slate-500">{t("Loading…", "Načítavam…", "Betöltés…")}</p>
+        <p className="type-meta mt-4 text-gray-500">{t("Loading…", "Načítavam…", "Betöltés…")}</p>
       </Card>
     );
   }
@@ -66,7 +66,7 @@ export const DeploymentsCard = ({
             parts={[
               <>
                 {t("Latest", "Posledný", "Utolsó")}{" "}
-                <span className="font-bold text-slate-900">{relativeTime(data.lastPushAt, now, language)}</span>
+                <span className="font-bold text-gray-900">{relativeTime(data.lastPushAt, now, language)}</span>
               </>,
               data.lastPushProject,
             ]}
@@ -77,7 +77,7 @@ export const DeploymentsCard = ({
         <NoRows language={language} />
       ) : (
         <>
-          <div className={`${COLS} type-overline mt-4 text-slate-500`}>
+          <div className={`${COLS} type-overline mt-4 text-gray-500`}>
             <span>{t("Project", "Projekt", "Projekt")}</span>
             <span>{t("Count", "Počet", "Darab")}</span>
             <span />
@@ -86,10 +86,10 @@ export const DeploymentsCard = ({
           <div className="mt-1 flex flex-col text-ui tabular-nums">
             {data.rows.map((row) => (
               <div key={row.projectId} className={`${COLS} h-9 items-center`}>
-                <span className="truncate text-slate-800">{row.name}</span>
-                <Track pct={ratioPct(row.pushes, data.scaleMax)} fillClass="bg-primary" />
-                <span className="text-right font-bold text-slate-900">{row.pushes}</span>
-                <span className={`type-meta text-right ${row.stale ? "font-bold text-amber-700" : "text-slate-600"}`}>
+                <span className="truncate text-gray-800">{row.name}</span>
+                <Track pct={ratioPct(row.pushes, data.scaleMax)} fillClass="bg-entity-solid" />
+                <span className="text-right font-bold text-gray-900">{row.pushes}</span>
+                <span className={`type-meta text-right ${row.stale ? "font-bold text-amber-700" : "text-gray-600"}`}>
                   {relativeTime(row.lastPushAt, now, language, "short")}
                 </span>
               </div>

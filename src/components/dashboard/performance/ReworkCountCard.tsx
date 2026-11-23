@@ -51,11 +51,11 @@ export const ReworkCountCard = ({
           {data.byProject.map((row) => (
             <div
               key={row.projectId}
-              className="grid h-10 grid-cols-[--spacing(33)_minmax(0,1fr)_--spacing(10)] items-center gap-x-2.5 border-t border-slate-100"
+              className="grid h-10 grid-cols-[--spacing(33)_minmax(0,1fr)_--spacing(10)] items-center gap-x-2.5 border-t border-gray-100"
             >
-              <span className="truncate font-semibold text-slate-800">{row.name}</span>
+              <span className="truncate font-semibold text-gray-800">{row.name}</span>
               <Track pct={ratioPct(row.average, data.scaleMax)} fillClass="bg-amber-500" />
-              <span className="text-right font-bold text-slate-900">{multiplier(row.average, language)}</span>
+              <span className="text-right font-bold text-gray-900">{multiplier(row.average, language)}</span>
             </div>
           ))}
         </div>
