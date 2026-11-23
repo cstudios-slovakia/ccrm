@@ -1,0 +1,2 @@
+- **Time tracking: the Task field is marked required only where the server enforces it** (`EntryDrawer.tsx`, `NewEntryHost.tsx`): a new entry, a linked entry and a running one; an old entry that never had a task, and a read-only drawer, keep "optional". A `task_required` refusal also passes the rule to the drawer directly, so the label is right even if re-reading the settings fails.
+- **Tests**: `timeTracking.spec.ts` (an old unlinked entry stays optional, a linked one is required).

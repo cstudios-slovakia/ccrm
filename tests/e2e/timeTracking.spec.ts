@@ -273,6 +273,17 @@ test.describe('Time tracking', () => {
     await expect(taskLabel).not.toContainText(/voliteľné|optional|nem kötelező/);
     await page.getByTestId('entry-drawer').getByRole('button', { name: /Zrušiť|Cancel|Mégse/ }).first().click();
     await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+    // The server does not enforce the rule on an old entry that never had a task, so its field stays optional...
+    await row(page, 'Návrh cenovej ponuky').getByTestId('time-entry-title').first().click();
+    await expect(taskLabel).toContainText(/voliteľné|optional|nem kötelező/);
+    await expect(taskLabel).not.toContainText('*');
+    await page.getByTestId('entry-drawer').getByRole('button', { name: /Zrušiť|Cancel|Mégse/ }).first().click();
+    await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+    // ...while an entry linked to a task would lose it on save, so its field is required.
+    await page.getByTestId('time-entry-title').filter({ hasText: 'Objednať krytinu' }).first().click();
+    await expect(taskLabel).toContainText('*');
+    await page.getByTestId('entry-drawer').getByRole('button', { name: /Zrušiť|Cancel|Mégse/ }).first().click();
+    await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
 
     await gotoView(page, '#settings/time-tracking');
     await page.getByTestId('tt-requireTask').click();

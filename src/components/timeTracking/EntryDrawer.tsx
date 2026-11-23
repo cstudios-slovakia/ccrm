@@ -38,6 +38,8 @@ interface Props {
   onDelete: (entry: TimeEntry) => void;
   /** A blank draft (not yet on the server): Save creates the entry; no delete or duplicate. */
   isNew?: boolean;
+  /** The server just refused a create with `task_required`: the Task field reads as required even if this page's settings lag. */
+  taskRequired?: boolean;
 }
 
 const SOURCE_LABEL: Record<string, [string, string, string]> = {
@@ -52,7 +54,7 @@ const SOURCE_LABEL: Record<string, [string, string, string]> = {
 };
 
 /** The right-hand drawer for one entry, opened from any list. */
-export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, onClose, onDelete, isNew = false }: Props) {
+export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, onClose, onDelete, isNew = false, taskRequired = false }: Props) {
   const tt = useTimeTracking();
   const { t, viewer, userId } = tt;
   const lookups = useTimeLookups(deps);
@@ -330,7 +332,8 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
           <div className="grid gap-1">
             <span className="type-label text-gray-600">
               {t("Task", "Úloha", "Feladat")}
-              {tt.settings.requireTask ? (
+              {/* The server enforces the rule on a new entry and on a linked or running one; an old unlinked entry stays editable without a task. */}
+              {!readOnly && (isNew || isLinked || entry.running) && (tt.settings.requireTask || taskRequired) ? (
                 <>
                   {" *"}
                   {deps.canLinkTicket && <span className="type-meta ml-1 font-normal text-gray-500" data-testid="entry-task-or-ticket">{t("· or a ticket", "· alebo tiket", "· vagy jegy")}</span>}
