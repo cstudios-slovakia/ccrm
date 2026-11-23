@@ -1,1 +1,0 @@
-- **Performance dashboard cards restyled to the Tremor look** (`src/components/dashboard/performance/*`): `slate-*` to `gray-*`, crisp radii (`rounded-md` buttons and inputs, `rounded-lg` cards), entity-accent tokens instead of `bg-primary`; class strings only.
