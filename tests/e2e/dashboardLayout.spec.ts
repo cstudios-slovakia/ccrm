@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { gotoView, startSession } from './helpers/appDriver';
+import { LEGACY_WIDGET_DASHBOARD } from '../../src/utils/dashboardSection';
 
 /**
  * Arranging the Dashboard by hand.
@@ -190,6 +191,7 @@ async function aimAt(page: Page, wanted: (zone: Zone) => boolean): Promise<Zone 
 }
 
 test.describe('Dashboard layout editing', () => {
+  test.skip(!LEGACY_WIDGET_DASHBOARD, 'The widget board is retired from #dashboard (src/utils/dashboardSection.ts); this runs again when LEGACY_WIDGET_DASHBOARD is restored.');
   test.beforeEach(async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#dashboard');
