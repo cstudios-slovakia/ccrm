@@ -8,6 +8,7 @@
  * - the lead's client has a different name than the lead, or
  * - another lead with the same name belongs to a different client.
  * A lead named exactly like its only client gets no label, so the list is not doubled.
+ * A lead with no client yet shows its own e-mail instead (when it has one).
  * Client records themselves never get one.
  *
  * Which client a lead belongs to follows `resolveLinkedClient` (utils/leadClient.ts):
@@ -19,7 +20,7 @@ import type { LeadLike } from "./leadClient.ts";
 
 const nameKey = (name?: string): string => (name || "").trim().toLowerCase();
 
-/** Lead id -> client name to show under it. Leads without a useful label are absent. */
+/** Lead id -> client name (or, unlinked, e-mail) to show under it. No useful label: absent. */
 export const leadClientLabels = <T extends LeadLike>(all: T[]): Map<string, string> => {
   const byId = new Map<string, T>();
   const clientByName = new Map<string, T>();
@@ -32,17 +33,22 @@ export const leadClientLabels = <T extends LeadLike>(all: T[]): Map<string, stri
   const resolved: Array<{ lead: T; client: T }> = [];
   // Lead name -> the distinct clients leads of that name belong to.
   const clientsByName = new Map<string, Set<string>>();
+  const labels = new Map<string, string>();
   for (const lead of all) {
     if (!lead.id || isClientRecord(lead)) continue;
     const key = nameKey(lead.name);
     const client = (lead.clientId && byId.get(lead.clientId)) || (key ? clientByName.get(key) : undefined);
-    if (!client?.id || client.id === lead.id) continue;
+    if (!client?.id || client.id === lead.id) {
+      // No client yet: the lead's own e-mail is what tells same-name leads apart.
+      const email = (lead.email || "").trim();
+      if (email) labels.set(lead.id, email);
+      continue;
+    }
     resolved.push({ lead, client });
     if (!clientsByName.has(key)) clientsByName.set(key, new Set());
     clientsByName.get(key)!.add(client.id);
   }
 
-  const labels = new Map<string, string>();
   for (const { lead, client } of resolved) {
     const clientName = (client.name || "").trim();
     if (!clientName) continue;

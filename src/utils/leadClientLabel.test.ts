@@ -36,9 +36,20 @@ test("same-name leads of the same client stay unlabelled", () => {
   assert.equal(leadClientLabels(all).size, 0);
 });
 
-test("leads without a client and client records get no label", () => {
+test("client records and unlinked leads without an e-mail get no label", () => {
   const all = [client("client-1", "Novák s.r.o."), { id: "lead-1", name: "Peter Malý" }];
   assert.equal(leadClientLabels(all).size, 0);
+});
+
+test("an unlinked lead shows its own e-mail until a client is linked", () => {
+  const all = [
+    client("client-1", "Novák s.r.o."),
+    { id: "lead-1", name: "Ján Novák", email: " jan@novak.example " },
+    { id: "lead-2", name: "Ján Novák", email: "jan@stavby.example", clientId: "client-1" },
+  ];
+  const labels = leadClientLabels(all);
+  assert.equal(labels.get("lead-1"), "jan@novak.example");
+  assert.equal(labels.get("lead-2"), "Novák s.r.o.");
 });
 
 test("a link to a deleted client falls back to the same-name client, like resolveLinkedClient", () => {
