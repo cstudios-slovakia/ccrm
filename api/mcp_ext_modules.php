@@ -66,13 +66,13 @@ function mcp_get_module_tool_definitions(): array {
         // --- Time Tracking ---
         [
             'name' => 'list_time_entries',
-            'description' => 'List tracked time entries. Without time_tracking_team permission, only the active user\'s own entries are returned. Supports date range, user, project, task, ticket, and billable filters.',
+            'description' => 'List tracked time entries (the rows of Time tracking). Without time_tracking_team permission only the key owner\'s own entries are returned; omit user_id for them. Each entry\'s `title` is the name the list shows: for an entry linked to a task or ticket (titleSource task/ticket) it is that task\'s or ticket\'s title, otherwise the entry\'s own `description`. `note` is the description of the work. Supports date range, user, project, task, ticket, and billable filters.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
                     'from' => ['type' => 'string', 'description' => 'Start entry date YYYY-MM-DD'],
                     'to' => ['type' => 'string', 'description' => 'End entry date YYYY-MM-DD'],
-                    'user_id' => ['type' => 'string', 'description' => 'Filter by user ID (requires time_tracking_team unless own ID)'],
+                    'user_id' => ['type' => 'string', 'description' => 'Filter by user ID (a user id such as u-..., not an employee id; requires time_tracking_team unless own ID). Omit it for your own entries.'],
                     'project_id' => ['type' => 'string', 'description' => 'Filter by project ID'],
                     'task_id' => ['type' => 'string', 'description' => 'Filter by task ID'],
                     'ticket_id' => ['type' => 'string', 'description' => 'Filter by ticket ID'],
@@ -118,12 +118,12 @@ function mcp_get_module_tool_definitions(): array {
                     'start_at' => ['type' => 'string', 'description' => 'Optional ISO start timestamp'],
                     'end_at' => ['type' => 'string', 'description' => 'Optional ISO end timestamp'],
                     'user_id' => ['type' => 'string', 'description' => 'Optional target user ID when logging on behalf of a teammate (requires time_tracking_team)'],
-                    'description' => ['type' => 'string', 'description' => 'What was worked on'],
+                    'description' => ['type' => 'string', 'description' => 'The entry\'s name (title, up to 500 characters). Used only when no task_id or ticket_id is given: a linked entry is named after its task or ticket.'],
                     'task_id' => ['type' => 'string', 'description' => 'Linked task ID'],
                     'ticket_id' => ['type' => 'string', 'description' => 'Linked support ticket ID'],
                     'project_id' => ['type' => 'string', 'description' => 'Linked project ID'],
                     'billable' => ['type' => 'boolean', 'description' => 'Whether hours are billable (default from workspace settings)'],
-                    'note' => ['type' => 'string', 'description' => 'Optional internal note'],
+                    'note' => ['type' => 'string', 'description' => 'Description of the work (up to 1000 characters)'],
                     'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Optional tags (up to 20 strings)'],
                 ],
             ],
@@ -162,7 +162,7 @@ function mcp_get_module_tool_definitions(): array {
         ],
         [
             'name' => 'update_time_entry',
-            'description' => 'Update, soft-delete (archived=true), or restore (archived=false) a time entry (own entries, or team entries with time_tracking_team). Locked/approved/paid entries cannot be edited by non-admins.',
+            'description' => 'Update, soft-delete (archived=true), or restore (archived=false) a time entry (own entries, or team entries with time_tracking_team). To fill in an entry\'s name and work description, set `description` (the name) and `note` (the description of the work); fields left out keep their value. An entry linked to a task or ticket is named after it, so `description` is ignored there (the response says so in `notice`); write the details into `note`. Locked/approved/paid entries cannot be edited by non-admins.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -172,12 +172,12 @@ function mcp_get_module_tool_definitions(): array {
                     'duration_seconds' => ['type' => 'integer', 'description' => 'Updated exact duration in seconds'],
                     'start_at' => ['type' => 'string', 'description' => 'Updated ISO start timestamp (provide with end_at)'],
                     'end_at' => ['type' => 'string', 'description' => 'Updated ISO end timestamp (provide with start_at)'],
-                    'description' => ['type' => 'string', 'description' => 'Updated description'],
+                    'description' => ['type' => 'string', 'description' => 'The entry\'s name (title, up to 500 characters). Ignored for an entry linked to a task or ticket.'],
                     'task_id' => ['type' => 'string', 'description' => 'Updated task ID (empty string clears link)'],
                     'ticket_id' => ['type' => 'string', 'description' => 'Updated ticket ID (empty string clears link)'],
                     'project_id' => ['type' => 'string', 'description' => 'Updated project ID (empty string clears link)'],
                     'billable' => ['type' => 'boolean', 'description' => 'Updated billable flag'],
-                    'note' => ['type' => 'string', 'description' => 'Updated note'],
+                    'note' => ['type' => 'string', 'description' => 'Description of the work (up to 1000 characters; empty string clears it)'],
                     'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Replacement tags array'],
                     'archived' => ['type' => 'boolean', 'description' => 'Set true to soft-delete (archive) or false to restore a deleted entry'],
                 ],
@@ -707,7 +707,7 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             $targetUser = isset($args['user_id']) && $args['user_id'] !== '' ? (string)$args['user_id'] : null;
             if (!$canTeam) {
                 if ($targetUser !== null && $targetUser !== $uid) {
-                    throw new \InvalidArgumentException('Viewing another user\'s time entries requires time_tracking_team permission.');
+                    throw new \InvalidArgumentException("Viewing another user's time entries requires time_tracking_team permission. Your user ID is {$uid}; omit user_id to list your own entries.");
                 }
                 $targetUser = $uid;
             }
@@ -1038,7 +1038,13 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             }
             mcp_audit($pdo, $user, 'time_entry_update', "Updated time entry {$id}");
             $updated = ccrm_tt_fetch_entry($pdo, $id);
-            return ['success' => true, 'archived' => false, 'entry' => $updated ? ccrm_tt_entry_json($updated, $viewer) : ['id' => $id]];
+            $out = ['success' => true, 'archived' => false, 'entry' => $updated ? ccrm_tt_entry_json($updated, $viewer) : ['id' => $id]];
+            if (array_key_exists('description', $args) && ($links['task_id'] !== null || $links['ticket_id'] !== null)) {
+                // ccrm_tt_resolve_links() drops the title of a linked entry: say so instead of a silent success.
+                $out['notice'] = 'description was not stored: this entry is linked to a ' . ($links['task_id'] !== null ? 'task' : 'ticket')
+                    . ' and is named after it. Put the details of the work in note.';
+            }
+            return $out;
         }
 
         // ------------------------------------------------------------------

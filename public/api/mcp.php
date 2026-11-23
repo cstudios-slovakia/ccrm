@@ -236,6 +236,28 @@ function mcp_tool_allowed(string $tool): bool {
     return true;
 }
 
+/**
+ * Why mcp_tool_allowed() refuses $tool, in the order it checks: the first unmet requirement.
+ * Goes into the -32003 message so a key owner (or their agent) can tell an administrator which
+ * permission to grant in Settings → Roles, instead of only hearing "no access".
+ */
+function mcp_tool_refusal_reason(string $tool, ?string $roleName): string {
+    $map = mcp_tool_permissions();
+    if (!array_key_exists($tool, $map)) return 'unknown tool; tools/list shows the tools this key may call';
+    $need = $map[$tool];
+    $role = 'the role "' . (string)$roleName . '"';
+    if (!empty($need['admin']) && empty($GLOBALS['mcp_is_admin'])) return 'only an Admin may call it';
+    if (!empty($need['any']) && !array_filter($need['any'], fn($k) => mcp_can($k))) {
+        return $role . ' needs view access to one of: ' . implode(', ', $need['any']);
+    }
+    if (!empty($need['any_edit']) && !array_filter($need['any_edit'], fn($k) => mcp_can_edit($k))) {
+        return $role . ' needs edit access to one of: ' . implode(', ', $need['any_edit']);
+    }
+    foreach ($need['view'] ?? [] as $k) { if (!mcp_can($k)) return $role . ' needs view access to ' . $k; }
+    foreach ($need['edit'] ?? [] as $k) { if (!mcp_can_edit($k)) return $role . ' needs edit access to ' . $k; }
+    return 'not permitted';
+}
+
 // Helper: audit log wrapper
 function mcp_audit(\PDO $pdo, array $user, string $action, ?string $detail = null): void {
     $detail = '[via MCP key ' . ($user['key_id'] ?? '?') . '] ' . ($detail ?? '');
@@ -444,7 +466,8 @@ switch ($rpcMethod) {
             echo json_encode([
                 'jsonrpc' => '2.0',
                 'id' => $rpcId,
-                'error' => ['code' => -32003, 'message' => 'Forbidden: this key may not call ' . $toolName . '.']
+                'error' => ['code' => -32003, 'message' => 'Forbidden: this key may not call ' . $toolName
+                    . ' (' . mcp_tool_refusal_reason($toolName, $sessionUser['role'] ?? null) . ').']
             ]);
             exit;
         }

@@ -246,6 +246,55 @@ async function authorizationChecks() {
   check('no MCP file deletes, truncates or drops anything', offenders.length === 0, offenders.join(', '));
 }
 
+// An Employee fills in the name (description) and work description (note) of their own time entries
+// through their own key, e.g. an agent at the end of the day. The role is the app's native Employee
+// default, the map Settings stores for it, not a probe role, so a change to that default shows here.
+async function employeeTimeEntryChecks() {
+  section('employee role: own time entries');
+  const { employeeRolePermissions, EMPLOYEE_ROLE_NAME } = await import(utils('permissions.ts'));
+  const rbac = JSON.parse(cell("SELECT `value` FROM system_settings WHERE `key` = 'ROLES_RBAC'"));
+  const ttView = { name: 'ProbeTimeView', permissions: { ...employeeRolePermissions(), time_tracking: 'view' } };
+  const extra = [{ name: EMPLOYEE_ROLE_NAME, permissions: employeeRolePermissions() }, ttView];
+  sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('ROLES_RBAC', ${sq(JSON.stringify([...rbac.filter((x) => !extra.some((e) => e.name === x.name)), ...extra]))});`);
+  const tok = {};
+  for (const [k, roleName] of [['emp', EMPLOYEE_ROLE_NAME], ['ttView', 'ProbeTimeView']]) {
+    const id = `probe-${k}`;
+    tok[k] = `ccrm_mcp_probe_${k}_${'0'.repeat(40)}`;
+    sql(`DELETE FROM mcp_keys WHERE id = ${sq('pk-' + k)}; DELETE FROM users WHERE id = ${sq(id)} OR email = ${sq(id + '@probe.test')};
+         INSERT INTO users (id,name,email,password_hash,role) VALUES (${sq(id)},${sq('Probe ' + k)},${sq(id + '@probe.test')},'x',${sq(roleName)});
+         INSERT INTO mcp_keys (id,user_id,key_hash,key_prefix,name,created_at) VALUES (${sq('pk-' + k)},${sq(id)},${sq(createHash('sha256').update(tok[k]).digest('hex'))},'ccrm_mcp_p...','probe',NOW() - INTERVAL 1 DAY);`);
+  }
+  const task = await call(TOKENS.admin, 'create_task', { title: 'Probe emp linked task', deadline: '2030-01-01', owner: 'Probe emp' });
+  sql(`DELETE FROM time_entries WHERE id LIKE 'te-emp-%';
+       INSERT INTO time_entries (id, user_id, recorded_by_user_id, task_id, entry_date, duration_sec, description, title_snapshot) VALUES
+         ('te-emp-own', 'probe-emp', 'probe-emp', NULL, CURDATE(), 1800, NULL, NULL),
+         ('te-emp-linked', 'probe-emp', 'probe-emp', ${sq(task.id)}, CURDATE(), 900, NULL, 'Probe emp linked task'),
+         ('te-emp-other', 'probe-admin', 'probe-admin', NULL, CURDATE(), 600, 'Admin work', 'Admin work');`);
+
+  const empTools = await listTools(tok.emp);
+  check('Employee key lists list_time_entries, update_time_entry and log_time_entry', ['list_time_entries', 'update_time_entry', 'log_time_entry'].every((t) => empTools.includes(t)), empTools.join(','));
+  const mine = await call(tok.emp, 'list_time_entries', { limit: 200 });
+  check('Employee list_time_entries returns only their own entries', Array.isArray(mine) && mine.some((e) => e.id === 'te-emp-own') && mine.every((e) => e.userId === 'probe-emp'), JSON.stringify(mine).slice(0, 300));
+  const other = await call(tok.emp, 'list_time_entries', { user_id: 'probe-admin' });
+  check('Employee listing another user is refused and told their own user id', isErr(other, /time_tracking_team.*probe-emp/), JSON.stringify(other));
+
+  let r = await call(tok.emp, 'update_time_entry', { id: 'te-emp-own', description: 'Probe day work', note: 'Wrote the probe for employee time entries' });
+  check('Employee update_time_entry sets name and work description of their own entry', r.success === true && r.entry?.title === 'Probe day work' && r.entry?.note === 'Wrote the probe for employee time entries' && !r.notice, JSON.stringify(r).slice(0, 300));
+  const stored = rows("SELECT description, note, duration_sec FROM time_entries WHERE id = 'te-emp-own'")[0];
+  check('the name and note are stored, the duration is untouched', stored?.[0] === 'Probe day work' && stored?.[1] === 'Wrote the probe for employee time entries' && stored?.[2] === '1800', JSON.stringify(stored));
+  r = await call(tok.emp, 'update_time_entry', { id: 'te-emp-linked', description: 'Ignored name', note: 'Linked work details' });
+  check('a task-linked entry keeps the task title, stores the note and says the name was ignored', r.success === true && r.entry?.title === 'Probe emp linked task' && r.entry?.note === 'Linked work details' && /linked to a task/.test(r.notice || ''), JSON.stringify(r).slice(0, 300));
+  r = await call(tok.emp, 'update_time_entry', { id: 'te-emp-other', description: 'Hijack', note: 'x' });
+  check('Employee update of another user\'s entry is refused', isErr(r, /time_tracking_team/) && cell("SELECT description FROM time_entries WHERE id = 'te-emp-other'") === 'Admin work', JSON.stringify(r));
+
+  const viewOnly = await call(tok.ttView, 'update_time_entry', { id: 'te-emp-own', note: 'x' });
+  check('a role with time_tracking at view level is refused and told which permission is missing', forbidden(viewOnly) && /ProbeTimeView.*edit access to time_tracking/.test(viewOnly.__rpc.message), JSON.stringify(viewOnly));
+  check('an unknown tool is refused with a pointer to tools/list', /unknown tool/.test((await call(tok.emp, 'update_time_entries', {})).__rpc?.message || ''), '');
+
+  sql(`DELETE FROM time_entries WHERE id LIKE 'te-emp-%'; DELETE FROM mcp_keys WHERE id IN ('pk-emp', 'pk-ttView'); DELETE FROM users WHERE id IN ('probe-emp', 'probe-ttView');
+       REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('ROLES_RBAC', ${sq(JSON.stringify(rbac))});`);
+}
+
 // ----------------------------------------------------------------------------- 2. parity
 async function employeeIdentityChecks() {
   section('employee identity (name, kind, position, department)');
@@ -1819,6 +1868,7 @@ async function wpExpansionChecks() {
 try {
   setup();
   await authorizationChecks();
+  await employeeTimeEntryChecks();
   await employeeIdentityChecks();
   await parityChecks();
   await writeChecks();
