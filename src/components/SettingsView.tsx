@@ -62,6 +62,7 @@ import { isAtSeatLimit } from "../utils/license";
 import type { LicenseState } from "../utils/license";
 import {
   ROLE_MATRIX_SECTIONS,
+  roleMatrixSectionTextKey,
   roleMatrixTextKey,
   findRole,
   isAdminRoleName,
@@ -3732,7 +3733,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 <tr key={`sec-${section.id}`} className="bg-gray-50 border-y border-gray-200 select-none">
                                   <td className="py-2.5 px-5 text-left">
                                     <span className="type-overline text-entity-text">
-                                      {getTranslation(userLanguage, `settings.rbac.section.${section.id}`)}
+                                      {getTranslation(userLanguage, `settings.rbac.section.${roleMatrixSectionTextKey(section.id)}`)}
                                     </span>
                                   </td>
                                   {roles.map((role) => (

@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { EmployeeTieIcon } from "../components/icons/EmployeeTieIcon";
 import { FlockIcon } from "../components/icons/FlockIcon";
+import { sectionVisualIdFor } from "./dashboardSection";
 import {
   SECTION_PALETTE,
   type SectionGroupId,
@@ -142,7 +143,8 @@ export const sectionVisual = (id: string): SectionVisual | undefined =>
 export function applySectionVisual<T extends { id: string; icon?: IconType; color?: string; bgColor?: string }>(
   item: T
 ): T {
-  const visualForItem = sectionVisual(item.id);
+  // A menu row for the Dashboard section is drawn as Overview while the Performance Dashboard holds it.
+  const visualForItem = sectionVisual(sectionVisualIdFor(item.id));
   if (!visualForItem) return item;
   return {
     ...item,

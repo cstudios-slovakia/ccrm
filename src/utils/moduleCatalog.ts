@@ -30,7 +30,7 @@ import { EmployeeTieIcon } from "../components/icons/EmployeeTieIcon";
 import { FlockIcon } from "../components/icons/FlockIcon";
 import { applySectionVisual } from "./sectionVisuals";
 import { PRODUCT_NAME } from "./brand.ts";
-import { LEGACY_WIDGET_DASHBOARD, isRetiredSectionId } from "./dashboardSection.ts";
+import { DASHBOARD_SECTION_LABEL_KEY, LEGACY_WIDGET_DASHBOARD, isRetiredSectionId } from "./dashboardSection.ts";
 
 /**
  * The one list of modules an admin can show or hide.
@@ -386,7 +386,7 @@ export function buildModuleCatalog(
     {
       id: "dashboard",
       category: "analytics",
-      title: getTranslation(language, "sidebar.dashboard"),
+      title: getTranslation(language, DASHBOARD_SECTION_LABEL_KEY),
       // While the Performance Dashboard holds this section it borrows the Analytics copy and screenshot.
       description: LEGACY_WIDGET_DASHBOARD
         ? t("Widget board of live metrics, charts & tables", "Nástenka so živými metrikami, grafmi a tabuľkami", "Élő mutatók, diagramok és táblázatok")

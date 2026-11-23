@@ -19,6 +19,8 @@ import {
   newRolePermissions,
   permissionKeyForRoute,
   resolvePermissionValue,
+  roleMatrixSectionTextKey,
+  roleMatrixTextKey,
   resolveRolePermissions,
   withPermission,
   withSectionGranted,
@@ -430,10 +432,14 @@ test("the role matrix offers only permissions that guard something visible", () 
     assert.deepEqual(ROLE_MATRIX_SECTIONS, PERMISSION_SECTIONS);
     return;
   }
-  // The widget board's key is hidden (its stored values stay); `overview` now guards the Dashboard.
+  // The widget board's key is hidden (its stored values stay). Overview, which now holds the first
+  // menu slot, heads the matrix; what is left of the Dashboard section is the custom dashboards.
   assert.ok(!keys.includes("dashboard"));
-  assert.ok(!ROLE_MATRIX_SECTIONS.some((s) => s.id === "overview"));
-  assert.deepEqual(dashboardSection?.permissions.map((p) => p.key), ["overview", "dashboard.custom"]);
+  assert.equal(ROLE_MATRIX_SECTIONS[0].id, "overview");
+  assert.deepEqual(ROLE_MATRIX_SECTIONS[0].permissions.map((p) => p.key), ["overview"]);
+  assert.deepEqual(dashboardSection?.permissions.map((p) => p.key), ["dashboard.custom"]);
+  assert.equal(roleMatrixTextKey("overview"), "overview_statistics");
+  assert.equal(roleMatrixSectionTextKey("dashboard"), "custom_dashboards");
   // Every other key is still offered exactly once.
   const all = PERMISSION_SECTIONS.flatMap((s) => s.permissions.map((p) => p.key)).filter((k) => k !== "dashboard");
   assert.deepEqual([...keys].sort(), [...all].sort());

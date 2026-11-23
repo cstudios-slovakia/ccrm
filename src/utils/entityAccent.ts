@@ -1,5 +1,6 @@
 import { deepenForWhite, liftAccent } from "./accentColor.ts";
 import { SECTION_PALETTE, type SectionVisualId } from "./sectionPalette.ts";
+import { sectionVisualIdFor } from "./dashboardSection.ts";
 
 /**
  * Canonical Entity Accent Resolver & CSS Variable Generator.
@@ -130,7 +131,8 @@ export function resolveRouteEntityHex(
     return SECTION_PALETTE.projects.color;
   }
 
-  return resolveEntityHex(base);
+  // The Dashboard section is drawn as Overview while the Performance Dashboard holds it.
+  return resolveEntityHex(sectionVisualIdFor(base));
 }
 
 /** Generate CSS custom properties for an entity accent hex color (Light + Dark mode safe). */
