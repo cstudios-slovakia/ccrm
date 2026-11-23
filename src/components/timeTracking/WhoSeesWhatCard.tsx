@@ -9,6 +9,7 @@ const LINES = [
   { id: "costs", keys: ["time_tracking_costs"] },
   { id: "team", keys: ["time_tracking_team", "time_tracking"] },
   { id: "salary", keys: ["time_tracking_salary_report"] },
+  { id: "create", keys: ["time_tracking_create_projects", "time_tracking"] },
 ] as const;
 
 /** Settings → Time tracking → "Who sees what" (canvas S6): the roles' real permissions as check / dash chips. */
@@ -17,6 +18,7 @@ export function WhoSeesWhatCard({ t, roles, canManageRoles }: { t: TFn; roles: R
     costs: t("See other people's labour cost and rates", "Vidieť náklady na prácu a sadzby iných ľudí", "Mások munkaköltségének és díjainak megtekintése"),
     team: t("Edit other people's entries", "Upravovať záznamy iných ľudí", "Mások bejegyzéseinek szerkesztése"),
     salary: t("See salary allocation report", "Vidieť report rozdelenia miezd", "Bérallokációs riport megtekintése"),
+    create: t("Create projects from the project picker", "Vytvárať projekty vo výbere projektu", "Projektek létrehozása a projektválasztóban"),
   };
   const rows = useMemo(() => {
     const names = roles.some((r) => r.name === ADMIN_ROLE_NAME) ? roles.map((r) => r.name) : [ADMIN_ROLE_NAME, ...roles.map((r) => r.name)];

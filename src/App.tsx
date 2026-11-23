@@ -95,7 +95,7 @@ import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, typ
 import { startViewSizeWatcher } from "./utils/viewSize";
 import { baselineOf, diffRecords, FINANCIAL_BLOB_KEYS, omitUnchangedGithubPairing, skipHoldsBaseline, skipIsLostWork, withStockRowIds, type FinancialBlobKey, type RecordBaseline } from "./utils/syncDiff";
 import { pickerProjectTypes, withPickerClients, workableProjectStubs } from "./utils/workableProjects";
-import { createPickerProject } from "./components/timeTracking/createPickerProject";
+import { canCreateProjectFromTime, createPickerProject } from "./components/timeTracking/createPickerProject";
 import { EMPTY_READ_SCOPE, parseReadScope, sameReadScope, type ReadScope } from "./utils/readScope";
 import { ReadScopeContext } from "./hooks/useReadScope";
 import { WhatsAppLinksContext } from "./hooks/useWhatsAppLinks";
@@ -4809,7 +4809,7 @@ ${log.payload || ''}
     onRenameTicket: (ticketId, title) =>
       updateTicketsAndSync((prev) => prev.map((tk) => (tk.id === ticketId ? { ...tk, title, subject: title } : tk))),
     isTaskDone: (task) => isDoneTaskState(task.status, taskStates),
-    canPickProject: canSeeProjects || workableProjects.length > 0 || access.canEdit("time_tracking"),
+    canPickProject: canSeeProjects || workableProjects.length > 0 || canCreateProjectFromTime(access),
     onCreateProject: access.canEdit("projects")
       ? ({ name, clientId, projectTypeId }) => {
           const record = clientId ? leads.find((l) => l.id === clientId) : undefined;
@@ -4829,7 +4829,7 @@ ${log.payload || ''}
           updateProjectsAndSync((prev) => [created, ...prev]);
           return created;
         }
-      : access.canEdit("time_tracking")
+      : canCreateProjectFromTime(access)
         ? (input) => createPickerProject(input, (p) => setTimeCreatedProjects((prev) => [...prev, p]), userLanguage)
         : undefined,
     canEditTask: (task) => userMayEditTask(task, currentUser, taskAccess),

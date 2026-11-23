@@ -7,7 +7,8 @@
  *   POST {name, clientId?, projectTypeId}   -> {project: {id, name, clientId, leadId, projectTypeId, status}}
  *
  * The project gets the default status and nothing else; the rest is filled in later by someone
- * with the projects module. Needs time_tracking = edit. Errors are stable codes:
+ * with the projects module. Needs the role permission `time_tracking_create_projects` (with
+ * time_tracking = edit), or projects = edit. Errors are stable codes:
  * name_required, type_not_found, client_not_found, forbidden.
  */
 
@@ -48,7 +49,7 @@ try {
 }
 
 $scope = ccrm_read_scope($pdo, $sessionUser);
-if (!ccrm_can($scope, 'time_tracking', 'edit') && !ccrm_can($scope, 'projects', 'edit')) {
+if (!ccrm_can_create_project_from_time($scope)) {
     ccrm_tp_fail('forbidden', 403);
 }
 

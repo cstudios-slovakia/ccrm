@@ -361,7 +361,7 @@ test("SAI follows leads: a role with no sales access is not offered it, and it i
 
 test("time tracking: everyone who may use the module tracks their own time, in parallel too; team, costs and the salary report are opt-in", () => {
   const sectionKeys = PERMISSION_SECTIONS.find((sec) => sec.id === "time_tracking")!.permissions.map((p) => p.key);
-  assert.deepEqual(sectionKeys, ["time_tracking", "time_tracking_team", "time_tracking_costs", "time_tracking_salary_report", "time_tracking_parallel"]);
+  assert.deepEqual(sectionKeys, ["time_tracking", "time_tracking_team", "time_tracking_costs", "time_tracking_salary_report", "time_tracking_parallel", "time_tracking_create_projects"]);
   // A role stored before the module existed: tracks own time, sees nothing of anyone else's.
   const legacy = resolveRolePermissions({ name: "Old", permissions: {} });
   assert.equal(legacy.time_tracking, "edit");
@@ -369,6 +369,8 @@ test("time tracking: everyone who may use the module tracks their own time, in p
   assert.equal(legacy.time_tracking_costs, "nothing");
   assert.equal(legacy.time_tracking_salary_report, "nothing");
   assert.equal(legacy.time_tracking_parallel, "edit");
+  // Creating a project from the picker stays on for a role saved before the toggle existed.
+  assert.equal(legacy.time_tracking_create_projects, "edit");
   // A role created in the matrix starts with the whole section off.
   const fresh = newRolePermissions();
   assert.equal(fresh.time_tracking, "nothing");

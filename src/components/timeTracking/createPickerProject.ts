@@ -4,6 +4,14 @@ import { createTimeProject, timeErrorMessage, TimeApiError } from "../../utils/t
 import type { NewProjectInput } from "./ProjectPicker";
 
 /**
+ * May someone without projects = edit create a project from the time-tracking picker? The role
+ * permission `time_tracking_create_projects` (on by default) with time_tracking = edit. Twin of
+ * ccrm_can_create_project_from_time() in public/api/read_scope.php.
+ */
+export const canCreateProjectFromTime = (access: { canEdit: (key: string) => boolean }): boolean =>
+  access.canEdit("time_tracking") && access.canEdit("time_tracking_create_projects");
+
+/**
  * "Create project" in the time-tracking picker for someone without the projects module: the
  * server creates it (api/time_projects.php) and the picker gets a name-only stub to select.
  * `onCreated` keeps the stub until the next sync lists the project. A failure shows a toast and

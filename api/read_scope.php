@@ -603,6 +603,19 @@ function ccrm_works_on_project(\PDO $pdo, array $scope, string $projectId): bool
     return isset(ccrm_workable_projects($pdo, $scope)[$projectId]);
 }
 
+/**
+ * May the caller create a project from the time-tracking picker? The role permission
+ * `time_tracking_create_projects` (on by default) on top of time_tracking = edit; someone who may
+ * edit projects anyway always may. Twin of `canCreateProjectFromTime` in
+ * src/components/timeTracking/createPickerProject.ts.
+ */
+function ccrm_can_create_project_from_time(array $scope): bool {
+    if (ccrm_can($scope, 'projects', 'edit')) {
+        return true;
+    }
+    return ccrm_can($scope, 'time_tracking', 'edit') && ccrm_can($scope, 'time_tracking_create_projects', 'edit');
+}
+
 /** A leads row is a client record when its id is client-* or it carries an adjustment (twin of src/utils/clientRecord.ts). */
 function ccrm_is_client_row(array $row): bool {
     return strpos((string)($row['id'] ?? ''), 'client-') === 0 || (float)($row['adjustment'] ?? 0) > 0;

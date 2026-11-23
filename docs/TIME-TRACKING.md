@@ -817,6 +817,7 @@ Section **Time tracking** in `PERMISSION_SECTIONS` (`src/utils/permissions.ts`),
 - `time_tracking_team`: others' entries, logging time for others, the Team tab, "Viewing as".
 - `time_tracking_costs`: cost, rates, margins of others' time (server-enforced; everyone always sees their own cost).
 - `time_tracking_salary_report`: the salary allocation report.
+- `time_tracking_create_projects` (2026-11-23): toggle, needs `time_tracking` = edit, on by default (existing and new roles). Create a project from the project picker without `projects` = edit, through `api/time_projects.php`. Picking any active project needs only `time_tracking`; the server sends a slim list (`readScope.timePicker`) to people without the Projects module.
 - `tickets.time` (phase 2, B15): toggle; needs `tickets` ≥ view.
 - Route `time-tracking` is mapped in `permissionKeyForRoute`. The module is in the sidebar, `VisibleModulesSettings` (via `moduleCatalog.ts`) and `ModuleSetupWizard` (setup step: hours basis, multiplier, which users track time, extension on/off).
 - Labels in en, sk and hu.

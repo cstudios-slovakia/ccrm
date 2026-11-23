@@ -946,6 +946,30 @@ echo json_encode(['text' => $r['raw_context']]);`;
     await api(SESSIONS.employee_a, pushUrl, { method: 'DELETE', body: { endpoint: 'https://8.8.8.8/push/probe-1' } });
     check('S4: the owner can', val("SELECT COUNT(*) FROM push_subscriptions WHERE endpoint = 'https://8.8.8.8/push/probe-1'") === '0');
 
+    // Time-tracking project picker (2026-11-23): anyone who tracks time sees every active project
+    // as a slim list, and creates one only while the role has time_tracking_create_projects.
+    const empScope = (await syncGet(SESSIONS.employee_a)).data?.readScope ?? {};
+    const pickerKeys = new Set((empScope.timePicker?.projects ?? []).flatMap((p) => Object.keys(p)));
+    check('TP1: the Employee gets the slim picker list, ids/names/client/status only',
+      Array.isArray(empScope.timePicker?.projects) && empScope.timePicker.projects.length > 0 && [...pickerKeys].every((k) => ['id', 'name', 'clientId', 'status'].includes(k)),
+      JSON.stringify([...pickerKeys]));
+    const tpType = val('SELECT id FROM project_types ORDER BY created_at LIMIT 1');
+    const tpCreate = (name) => api(SESSIONS.employee_a, 'api/time_projects.php', { method: 'POST', body: { name, projectTypeId: tpType } });
+    const tpOk = await tpCreate('Probe picker project on');
+    check('TP2: with the permission (default) the Employee creates a project from the picker',
+      tpOk.status === 200 && val("SELECT COUNT(*) FROM projects WHERE name = 'Probe picker project on'") === '1', `${tpOk.status} ${tpOk.raw.slice(0, 120)}`);
+    const tpRoles = JSON.parse(val("SELECT value FROM system_settings WHERE `key`='ROLES_RBAC'"));
+    const setTpPerm = (level) => {
+      const next = tpRoles.map((r) => (r.name === 'Employee' ? { ...r, permissions: { ...r.permissions, time_tracking_create_projects: level } } : r));
+      sql(`UPDATE system_settings SET value='${JSON.stringify(next).replace(/'/g, "''")}' WHERE \`key\`='ROLES_RBAC'`);
+    };
+    setTpPerm('nothing');
+    const tpOff = await tpCreate('Probe picker project off');
+    check('TP3: with time_tracking_create_projects off the request is refused and nothing is written',
+      tpOff.status === 403 && val("SELECT COUNT(*) FROM projects WHERE name = 'Probe picker project off'") === '0', `${tpOff.status} ${tpOff.raw.slice(0, 120)}`);
+    sql(`UPDATE system_settings SET value='${JSON.stringify(tpRoles).replace(/'/g, "''")}' WHERE \`key\`='ROLES_RBAC'`);
+    sql("DELETE FROM projects WHERE name IN ('Probe picker project on', 'Probe picker project off')");
+
     // VULN-04: an alias must not smuggle a secret column past the redaction.
     const dq2 = (body) => api(SESSIONS.admin, 'api/dashboard_query.php', { method: 'POST', body });
     for (const col of ['metadata_json', 'password_hash', 'sessions_valid_from']) {

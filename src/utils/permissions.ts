@@ -203,6 +203,7 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
       toggle("time_tracking_costs", "nothing", "nothing", { key: "time_tracking", level: "view" }),
       toggle("time_tracking_salary_report", "nothing", "nothing", { key: "time_tracking", level: "view" }),
       toggle("time_tracking_parallel", "edit", "edit", { key: "time_tracking", level: "edit" }),
+      toggle("time_tracking_create_projects", "edit", "edit", { key: "time_tracking", level: "edit" }),
     ],
   },
   {
@@ -394,6 +395,7 @@ export const employeeRolePermissions = (): Record<string, PermissionValue> => ({
   time_tracking_costs: "nothing",
   time_tracking_salary_report: "nothing",
   time_tracking_parallel: "edit",
+  time_tracking_create_projects: "edit",
   whatsapp: "nothing",
   newsletter: "nothing",
   newsletter_send: "nothing",
