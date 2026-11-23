@@ -118,7 +118,7 @@ function mcp_get_module_tool_definitions(): array {
                     'start_at' => ['type' => 'string', 'description' => 'Optional ISO start timestamp'],
                     'end_at' => ['type' => 'string', 'description' => 'Optional ISO end timestamp'],
                     'user_id' => ['type' => 'string', 'description' => 'Optional target user ID when logging on behalf of a teammate (requires time_tracking_team)'],
-                    'description' => ['type' => 'string', 'description' => 'The entry\'s name (title, up to 500 characters). Used only when no task_id or ticket_id is given: a linked entry is named after its task or ticket.'],
+                    'description' => ['type' => 'string', 'description' => 'The entry\'s name (title, up to 500 characters). An entry with a task_id or ticket_id keeps that task\'s or ticket\'s title as its name; a different description is then put at the start of note as "<description> - <note>".'],
                     'task_id' => ['type' => 'string', 'description' => 'Linked task ID'],
                     'ticket_id' => ['type' => 'string', 'description' => 'Linked support ticket ID'],
                     'project_id' => ['type' => 'string', 'description' => 'Linked project ID'],
@@ -162,7 +162,7 @@ function mcp_get_module_tool_definitions(): array {
         ],
         [
             'name' => 'update_time_entry',
-            'description' => 'Update, soft-delete (archived=true), or restore (archived=false) a time entry (own entries, or team entries with time_tracking_team). To fill in an entry\'s name and work description, set `description` (the name) and `note` (the description of the work); fields left out keep their value. An entry linked to a task or ticket is named after it, so `description` is ignored there (the response says so in `notice`); write the details into `note`. Locked/approved/paid entries cannot be edited by non-admins.',
+            'description' => 'Update, soft-delete (archived=true), or restore (archived=false) a time entry (own entries, or team entries with time_tracking_team). To fill in an entry\'s name and work description, set `description` (the name) and `note` (the description of the work); fields left out keep their value. An entry linked to a task or ticket keeps the task\'s or ticket\'s title as its name: a `description` that differs from that title is put at the start of the note as "<description> - <note>" (the response says so in `notice`), and sending the same call again does not add it twice. Locked/approved/paid entries cannot be edited by non-admins.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -172,7 +172,7 @@ function mcp_get_module_tool_definitions(): array {
                     'duration_seconds' => ['type' => 'integer', 'description' => 'Updated exact duration in seconds'],
                     'start_at' => ['type' => 'string', 'description' => 'Updated ISO start timestamp (provide with end_at)'],
                     'end_at' => ['type' => 'string', 'description' => 'Updated ISO end timestamp (provide with start_at)'],
-                    'description' => ['type' => 'string', 'description' => 'The entry\'s name (title, up to 500 characters). Ignored for an entry linked to a task or ticket.'],
+                    'description' => ['type' => 'string', 'description' => 'The entry\'s name (title, up to 500 characters). For an entry linked to a task or ticket it goes to the start of note instead (see above).'],
                     'task_id' => ['type' => 'string', 'description' => 'Updated task ID (empty string clears link)'],
                     'ticket_id' => ['type' => 'string', 'description' => 'Updated ticket ID (empty string clears link)'],
                     'project_id' => ['type' => 'string', 'description' => 'Updated project ID (empty string clears link)'],
@@ -614,6 +614,27 @@ function mcp_mod_check_te_link_access(\PDO $pdo, array $user, array $links): voi
     }
 }
 
+/**
+ * An entry linked to a task or ticket is named after it, so a different name sent for it is
+ * not lost but put at the front of the note: "<name> - <note>" (just "<name>" without a note).
+ * Nothing changes when the name is the task's / ticket's title, or the note already starts with
+ * it (the same call made twice). Returns [note, folded].
+ */
+function mcp_mod_fold_linked_name(array $links, $description, ?string $note): array {
+    if ($links['task_id'] === null && $links['ticket_id'] === null) return [$note, false];
+    $name = mb_substr(trim((string)($description ?? '')), 0, 500);
+    if ($name === '' || mb_strtolower($name) === mb_strtolower(trim((string)($links['title_snapshot'] ?? '')))) return [$note, false];
+    $base = trim((string)($note ?? ''));
+    if ($base === $name || str_starts_with($base, $name . ' - ')) return [$note, false];
+    return [ccrm_tt_clean_note($base === '' ? $name : $name . ' - ' . $base), true];
+}
+
+/** The `notice` of a reply whose name went into the note (mcp_mod_fold_linked_name). */
+function mcp_mod_folded_notice(array $links): string {
+    return 'This entry is linked to a ' . ($links['task_id'] !== null ? 'task' : 'ticket')
+        . ' and keeps its title as the name; the description you sent was put at the start of note.';
+}
+
 /** Normalize duration seconds from duration_seconds / duration_minutes / start_at+end_at. */
 function mcp_mod_resolve_te_timing(array $args, ?string $defaultDate = null): array {
     $startUtc = isset($args['start_at']) && $args['start_at'] !== '' ? ccrm_tt_to_utc($args['start_at']) : null;
@@ -884,6 +905,7 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             $pricing = ccrm_tt_price($pdo, $targetUid, $timing['entry_date'], $timing['duration_sec'], $settings, true);
             $billRate = $billable ? ccrm_tt_lookup_billable_rate($pdo, $links['project_id'], $links['ticket_id'], $timing['entry_date']) : null;
             $note = isset($args['note']) ? ccrm_tt_clean_note($args['note']) : null;
+            [$note, $nameFolded] = mcp_mod_fold_linked_name($links, $args['description'] ?? null, $note);
             $tagsJson = json_encode(ccrm_tt_clean_tags($args['tags'] ?? []), JSON_UNESCAPED_UNICODE);
             $id = ccrm_tt_new_id();
 
@@ -906,7 +928,9 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
 
             mcp_audit($pdo, $user, 'time_entry_log', "Logged time entry {$id} ({$timing['duration_sec']}s on {$timing['entry_date']})");
             $row = ccrm_tt_fetch_entry($pdo, $id);
-            return ['success' => true, 'entry' => $row ? ccrm_tt_entry_json($row, $viewer) : ['id' => $id]];
+            $out = ['success' => true, 'entry' => $row ? ccrm_tt_entry_json($row, $viewer) : ['id' => $id]];
+            if ($nameFolded) $out['notice'] = mcp_mod_folded_notice($links);
+            return $out;
         }
 
         case 'start_timer':
@@ -1004,6 +1028,8 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
 
             $billable = array_key_exists('billable', $args) ? ($args['billable'] ? 1 : 0) : (int)$cur['billable'];
             $note = array_key_exists('note', $args) ? ccrm_tt_clean_note($args['note']) : $cur['note'];
+            [$note, $nameFolded] = array_key_exists('description', $args)
+                ? mcp_mod_fold_linked_name($links, $args['description'], $note) : [$note, false];
             $tagsJson = array_key_exists('tags', $args)
                 ? (json_encode(ccrm_tt_clean_tags($args['tags']), JSON_UNESCAPED_UNICODE) ?: '[]')
                 : (is_string($cur['tags'] ?? null) ? (string)$cur['tags'] : '[]');
@@ -1039,11 +1065,7 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             mcp_audit($pdo, $user, 'time_entry_update', "Updated time entry {$id}");
             $updated = ccrm_tt_fetch_entry($pdo, $id);
             $out = ['success' => true, 'archived' => false, 'entry' => $updated ? ccrm_tt_entry_json($updated, $viewer) : ['id' => $id]];
-            if (array_key_exists('description', $args) && ($links['task_id'] !== null || $links['ticket_id'] !== null)) {
-                // ccrm_tt_resolve_links() drops the title of a linked entry: say so instead of a silent success.
-                $out['notice'] = 'description was not stored: this entry is linked to a ' . ($links['task_id'] !== null ? 'task' : 'ticket')
-                    . ' and is named after it. Put the details of the work in note.';
-            }
+            if ($nameFolded) $out['notice'] = mcp_mod_folded_notice($links);
             return $out;
         }
 

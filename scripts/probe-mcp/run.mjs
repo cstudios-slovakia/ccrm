@@ -282,8 +282,15 @@ async function employeeTimeEntryChecks() {
   check('Employee update_time_entry sets name and work description of their own entry', r.success === true && r.entry?.title === 'Probe day work' && r.entry?.note === 'Wrote the probe for employee time entries' && !r.notice, JSON.stringify(r).slice(0, 300));
   const stored = rows("SELECT description, note, duration_sec FROM time_entries WHERE id = 'te-emp-own'")[0];
   check('the name and note are stored, the duration is untouched', stored?.[0] === 'Probe day work' && stored?.[1] === 'Wrote the probe for employee time entries' && stored?.[2] === '1800', JSON.stringify(stored));
-  r = await call(tok.emp, 'update_time_entry', { id: 'te-emp-linked', description: 'Ignored name', note: 'Linked work details' });
-  check('a task-linked entry keeps the task title, stores the note and says the name was ignored', r.success === true && r.entry?.title === 'Probe emp linked task' && r.entry?.note === 'Linked work details' && /linked to a task/.test(r.notice || ''), JSON.stringify(r).slice(0, 300));
+  r = await call(tok.emp, 'update_time_entry', { id: 'te-emp-linked', description: 'Debugged OAuth redirect', note: 'Found the wrong callback URL' });
+  check('a task-linked entry keeps the task title and puts a different name at the start of the note', r.success === true && r.entry?.title === 'Probe emp linked task' && r.entry?.note === 'Debugged OAuth redirect - Found the wrong callback URL' && /linked to a task/.test(r.notice || ''), JSON.stringify(r).slice(0, 300));
+  r = await call(tok.emp, 'update_time_entry', { id: 'te-emp-linked', description: 'Debugged OAuth redirect' });
+  check('sending the same name again does not prefix the note twice', r.success === true && r.entry?.note === 'Debugged OAuth redirect - Found the wrong callback URL' && !r.notice, JSON.stringify(r).slice(0, 300));
+  r = await call(tok.emp, 'update_time_entry', { id: 'te-emp-linked', description: 'probe emp linked task', note: 'Only the work' });
+  check('a name equal to the task title (any case) leaves the note as sent', r.success === true && r.entry?.note === 'Only the work' && !r.notice, JSON.stringify(r).slice(0, 300));
+  r = await call(tok.emp, 'log_time_entry', { duration_minutes: 20, task_id: task.id, description: 'Code review' });
+  check('log_time_entry on a task with a name and no note stores the name as the note', r.success === true && r.entry?.title === 'Probe emp linked task' && r.entry?.note === 'Code review' && /start of note/.test(r.notice || ''), JSON.stringify(r).slice(0, 300));
+  if (r.entry?.id) sql(`DELETE FROM time_entries WHERE id = ${sq(r.entry.id)}`);
   r = await call(tok.emp, 'update_time_entry', { id: 'te-emp-other', description: 'Hijack', note: 'x' });
   check('Employee update of another user\'s entry is refused', isErr(r, /time_tracking_team/) && cell("SELECT description FROM time_entries WHERE id = 'te-emp-other'") === 'Admin work', JSON.stringify(r));
 
