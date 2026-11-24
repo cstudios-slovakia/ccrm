@@ -18,6 +18,8 @@
  * Only ccrm_newsletter_collect_candidates() / ccrm_newsletter_resolve_audience() touch the database.
  */
 
+require_once __DIR__ . '/contact_name.php'; // ccrm_join_name_parts(): an employee's name in the company language's order
+
 if (!function_exists('ccrm_newsletter_resolve_audience')) {
 
     /** Source precedence when one address appears several times: the first source wins. */
@@ -593,8 +595,9 @@ if (!function_exists('ccrm_newsletter_resolve_audience')) {
                   WHERE `kind` IN ('employee', 'contractor') AND `is_active` = 1
                     AND TRIM(COALESCE(`email`, '')) <> '' ORDER BY `id`"
             )->fetchAll(\PDO::FETCH_ASSOC);
+            ccrm_contact_surname_first($pdo);
             foreach ($emps as $e) {
-                $full = trim(trim((string)$e['first_name']) . ' ' . trim((string)$e['last_name']));
+                $full = ccrm_join_name_parts($e['first_name'], $e['last_name']);
                 if ($full === '') {
                     $full = trim((string)$e['name']);
                 }

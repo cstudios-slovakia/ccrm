@@ -575,7 +575,7 @@ function mcp_do_create_client(\PDO $pdo, array $user, array $args): array {
 
     $first = array_key_exists('contact_first_name', $args) ? (trim((string)$args['contact_first_name']) ?: null) : null;
     $last = array_key_exists('contact_last_name', $args) ? (trim((string)$args['contact_last_name']) ?: null) : null;
-    $contactPerson = $args['contact_person'] ?? (($first !== null || $last !== null) ? trim(($first ?? '') . ' ' . ($last ?? '')) : null);
+    $contactPerson = $args['contact_person'] ?? (($first !== null || $last !== null) ? ccrm_join_name_parts($first, $last) : null);
     $ticketEmails = null;
     if (array_key_exists('ticket_allowed_emails', $args)) {
         $rawList = is_array($args['ticket_allowed_emails']) ? $args['ticket_allowed_emails'] : [$args['ticket_allowed_emails']];

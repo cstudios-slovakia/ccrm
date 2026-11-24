@@ -620,7 +620,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
     try {
       const updated: Employee = {
         ...employee,
-        ...identityFields(editIdentity),
+        ...identityFields(editIdentity, employee),
         email: editEmail.trim() || null,
         isActive: editIsActive,
         timeTrackingUserId: editTimeTrackingUserId || null,

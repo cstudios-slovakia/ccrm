@@ -471,7 +471,7 @@ function mcp_crm_plus_update_contact(\PDO $pdo, array $user, array $args): array
         $sets[] = '`name` = ?'; $params[] = $n;
         $sets[] = '`contact_person` = ?'; $params[] = $n;
     } elseif (array_key_exists('first_name', $args) || array_key_exists('last_name', $args)) {
-        $full = trim($first . ' ' . $last);
+        $full = ccrm_join_name_parts($first, $last);
         if ($full !== '') {
             $sets[] = '`name` = ?'; $params[] = $full;
             $sets[] = '`contact_person` = ?'; $params[] = $full;
@@ -803,7 +803,7 @@ function mcp_crm_plus_create_lead(\PDO $pdo, array $user, array $args): array {
     $clientType = mcp_enum($args, 'client_type', ['person', 'business', 'partner'], 'business');
     $first = array_key_exists('contact_first_name', $args) ? (trim((string)$args['contact_first_name']) ?: null) : null;
     $last = array_key_exists('contact_last_name', $args) ? (trim((string)$args['contact_last_name']) ?: null) : null;
-    $contact = $args['contact_person'] ?? (($first !== null || $last !== null) ? trim(($first ?? '') . ' ' . ($last ?? '')) : null);
+    $contact = $args['contact_person'] ?? (($first !== null || $last !== null) ? ccrm_join_name_parts($first, $last) : null);
     $cf = [];
     if (!empty($args['custom_fields']) && is_array($args['custom_fields'])) {
         $cf = mcp_crm_plus_merge_lead_custom_fields($pdo, $args['custom_fields'], []);
@@ -1047,7 +1047,7 @@ function mcp_crm_plus_create_contact(\PDO $pdo, array $user, array $args): array
     $last = array_key_exists('last_name', $args) ? (trim((string)$args['last_name']) ?: null) : null;
     $contactName = isset($args['name']) && trim((string)$args['name']) !== ''
         ? trim((string)$args['name'])
-        : trim(($first ?? '') . ' ' . ($last ?? ''));
+        : ccrm_join_name_parts($first, $last);
     if ($contactName === '') throw new \InvalidArgumentException("'name' (or 'first_name'/'last_name') is required.");
     $email = trim((string)($args['email'] ?? '')) ?: null;
     $phone = trim((string)($args['phone'] ?? '')) ?: null;

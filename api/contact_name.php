@@ -84,6 +84,51 @@ if (!function_exists('ccrm_compose_contact_name')) {
     }
 
     /**
+     * The full name of a person record whose name other records point at (an employee: task owners,
+     * project managers and time tracking match `employees.name`, and nothing renames those references).
+     * A new record ($stored null) gets the system's order. A stored one keeps its name while its two parts
+     * are unchanged (in either order), and when a part is edited the name is rewritten in the order it was
+     * written in before, so a change of the company language never renames anybody by itself. When the
+     * stored name matches neither order of the stored parts, the system's order is used.
+     * Mirrors composeKeyedPersonName() in src/utils/nameOrder.ts.
+     *
+     * @param array|null $stored the stored row (name, first_name, last_name), null for a new record
+     */
+    function ccrm_compose_keyed_person_name(?string $first, ?string $last, ?array $stored = null, ?bool $surnameFirst = null): string {
+        $sf = $surnameFirst ?? ccrm_contact_surname_first();
+        $prevName = trim((string)($stored['name'] ?? ''));
+        if ($prevName === '') {
+            return ccrm_join_name_parts($first, $last, $sf);
+        }
+        $given = ccrm_join_name_parts($first, $last, false);
+        $surname = ccrm_join_name_parts($first, $last, true);
+        if ($prevName === $given || $prevName === $surname) {
+            return $prevName;
+        }
+        $prevGiven = ccrm_join_name_parts($stored['first_name'] ?? null, $stored['last_name'] ?? null, false);
+        $prevSurname = ccrm_join_name_parts($stored['first_name'] ?? null, $stored['last_name'] ?? null, true);
+        if ($prevGiven !== $prevSurname) {
+            if ($prevName === $prevSurname) return $surname;
+            if ($prevName === $prevGiven) return $given;
+        }
+        return ccrm_join_name_parts($first, $last, $sf);
+    }
+
+    /**
+     * ccrm_compose_employee_name() for the sync and the MCP tools: a person's name in the order
+     * ccrm_compose_keyed_person_name() decides, anything else (a company, a ledger line) as given.
+     *
+     * @param array|null $stored the stored employees row, null for a new record
+     */
+    function ccrm_compose_employee_name_ordered(string $kind, ?string $first, ?string $last, string $name, ?string $contractorType = null, ?array $stored = null): string {
+        if ($kind === 'employee' || ($kind === 'contractor' && $contractorType === 'person')) {
+            $full = ccrm_compose_keyed_person_name($first, $last, $stored);
+            if ($full !== '') return $full;
+        }
+        return trim($name);
+    }
+
+    /**
      * Rewrites stored business contact names to the system's current order: only rows whose two parts
      * are both filled and whose contact_person is exactly those parts in the OTHER order, so anything
      * typed differently is left alone. Run by the schema migration and when the system language changes.

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isSurnameFirstLanguage, joinNameParts, setNameOrderLanguage, splitNameOrdered } from "./nameOrder.ts";
+import { composeKeyedPersonName, isSurnameFirstLanguage, joinNameParts, setNameOrderLanguage, splitNameOrdered } from "./nameOrder.ts";
 import { composeContactName, contactNameFieldsOf, contactNamePatch } from "./contactName.ts";
 
 test("only Hungarian writes the surname first", () => {
@@ -46,4 +46,31 @@ test("contact names follow the system language", () => {
   } finally {
     setNameOrderLanguage(null);
   }
+});
+
+test("composeKeyedPersonName: a new record takes the system order", () => {
+  assert.equal(composeKeyedPersonName("János", "Kovács", null, true), "Kovács János");
+  assert.equal(composeKeyedPersonName("János", "Kovács", undefined, false), "János Kovács");
+  assert.equal(composeKeyedPersonName("János", "Kovács", { name: "", firstName: null, lastName: null }, true), "Kovács János");
+});
+
+test("composeKeyedPersonName: a stored name keeps its text while the parts are unchanged, in either order", () => {
+  const stored = { name: "János Kovács", firstName: "János", lastName: "Kovács" };
+  assert.equal(composeKeyedPersonName("János", "Kovács", stored, true), "János Kovács");
+  assert.equal(composeKeyedPersonName(" János", "Kovács ", stored, false), "János Kovács");
+  const hu = { name: "Kovács János", firstName: "János", lastName: "Kovács" };
+  assert.equal(composeKeyedPersonName("János", "Kovács", hu, false), "Kovács János");
+});
+
+test("composeKeyedPersonName: an edited part is rewritten in the order the name was written in", () => {
+  const given = { name: "János Kovács", firstName: "János", lastName: "Kovács" };
+  assert.equal(composeKeyedPersonName("János", "Kovácsy", given, true), "János Kovácsy");
+  const surname = { name: "Kovács János", firstName: "János", lastName: "Kovács" };
+  assert.equal(composeKeyedPersonName("Jenő", "Kovács", surname, false), "Kovács Jenő");
+});
+
+test("composeKeyedPersonName: a stored name that matches no order falls back to the system order", () => {
+  const nick = { name: "András", firstName: null, lastName: null };
+  assert.equal(composeKeyedPersonName("András", "Kiss", nick, true), "Kiss András");
+  assert.equal(composeKeyedPersonName("András", "Kiss", nick, false), "András Kiss");
 });

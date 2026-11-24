@@ -48,6 +48,7 @@ require_once __DIR__ . '/mcp_ext_commercial.php';
 require_once __DIR__ . '/mcp_ext_self.php';
 require_once __DIR__ . '/mcp_ext_newsletter.php';
 require_once __DIR__ . '/mcp_ext_comms.php';
+require_once __DIR__ . '/contact_name.php'; // name order of employee and contact names
 
 try {
     $pdo = function_exists('get_db_connection') ? get_db_connection() : ccrm_auth_pdo();
@@ -1416,6 +1417,7 @@ function mcp_core_tool_definitions(): array {
  * name is still a nickname can have its position set without being forced to complete the name.
  */
 function mcp_resolve_employee_identity(array $args, ?array $stored): ?array {
+    ccrm_contact_surname_first($GLOBALS['pdo'] ?? null); // the company language's name order
     $touches = false;
     foreach (['kind', 'contractor_type', 'first_name', 'last_name', 'company_name', 'name'] as $k) {
         if (array_key_exists($k, $args)) $touches = true;
@@ -1440,7 +1442,7 @@ function mcp_resolve_employee_identity(array $args, ?array $stored): ?array {
             $first = array_key_exists('first_name', $args) ? $clean($args['first_name']) : $clean($stored['first_name'] ?? null);
             $last = array_key_exists('last_name', $args) ? $clean($args['last_name']) : $clean($stored['last_name'] ?? null);
             if (($first === null || $last === null) && !array_key_exists('first_name', $args) && !array_key_exists('last_name', $args) && $clean($args['name'] ?? null) !== null) {
-                $split = ccrm_split_person_name((string)$args['name']);
+                $split = ccrm_split_person_name_ordered((string)$args['name']);
                 if ($split !== null) [$first, $last] = $split;
             }
             if ($first === null || $last === null) {
@@ -1449,7 +1451,7 @@ function mcp_resolve_employee_identity(array $args, ?array $stored): ?array {
             return [
                 'kind' => 'contractor', 'contractor_type' => 'person',
                 'first_name' => $first, 'last_name' => $last,
-                'name' => ccrm_compose_employee_name('contractor', $first, $last, '', 'person'),
+                'name' => ccrm_compose_employee_name_ordered('contractor', $first, $last, '', 'person', $stored),
             ];
         }
         $company = $clean($args['company_name'] ?? $args['name'] ?? null);
@@ -1476,13 +1478,13 @@ function mcp_resolve_employee_identity(array $args, ?array $stored): ?array {
     $last = array_key_exists('last_name', $args) ? $clean($args['last_name']) : $clean($stored['last_name'] ?? null);
     // Only a combined "First Last" was given: split it when that is unambiguous.
     if (($first === null || $last === null) && !array_key_exists('first_name', $args) && !array_key_exists('last_name', $args) && $clean($args['name'] ?? null) !== null) {
-        $split = ccrm_split_person_name((string)$args['name']);
+        $split = ccrm_split_person_name_ordered((string)$args['name']);
         if ($split !== null) [$first, $last] = $split;
     }
     if ($first === null || $last === null) {
         throw new \InvalidArgumentException("An employee needs both first_name and last_name (full name). For a company use kind contractor with company_name.");
     }
-    return ['kind' => 'employee', 'contractor_type' => null, 'first_name' => $first, 'last_name' => $last, 'name' => ccrm_compose_employee_name('employee', $first, $last, '')];
+    return ['kind' => 'employee', 'contractor_type' => null, 'first_name' => $first, 'last_name' => $last, 'name' => ccrm_compose_employee_name_ordered('employee', $first, $last, '', null, $stored)];
 }
 
 /**

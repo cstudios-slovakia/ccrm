@@ -12,6 +12,7 @@ import {
   needsFullName,
   splitPersonName,
 } from "./employeeIdentity.ts";
+import { setNameOrderLanguage } from "./nameOrder.ts";
 
 const emp = (over: Partial<Employee>): Employee => ({ id: "e1", name: "x", ...over });
 
@@ -116,4 +117,20 @@ test("the edit form seeds a legacy name-only person from the display name", () =
   assert.deepEqual([full.firstName, full.lastName], ["Ján", "Novák"]);
   const split = identityOf(emp({ name: "Peter Varga", firstName: "Peter", lastName: "Varga" }));
   assert.deepEqual([split.firstName, split.lastName], ["Peter", "Varga"]);
+});
+
+test("Hungarian: a new employee is Surname Given, a stored one keeps its name and its order", () => {
+  setNameOrderLanguage("hu");
+  try {
+    const base = { ...identityOf(null), firstName: "János", lastName: "Kovács" };
+    assert.equal(identityFields(base).name, "Kovács János");
+    assert.equal(identityFields(base, null).name, "Kovács János");
+    const stored = emp({ name: "János Kovács", firstName: "János", lastName: "Kovács" });
+    assert.equal(identityFields(identityOf(stored), stored).name, "János Kovács");
+    assert.equal(identityFields({ ...identityOf(stored), lastName: "Kovácsy" }, stored).name, "János Kovácsy");
+    // A name saved before it was split is read in the system order.
+    assert.deepEqual([identityOf(emp({ name: "Kovács János" })).firstName, identityOf(emp({ name: "Kovács János" })).lastName], ["János", "Kovács"]);
+  } finally {
+    setNameOrderLanguage(null);
+  }
 });

@@ -12,6 +12,7 @@ import {
 } from "../../types/agency";
 import { summarizeWorkerCompliance } from "../../utils/agencyCalculations";
 import type { AgencyRights } from "../../utils/agencyRights";
+import { isSurnameFirst, joinNameParts } from "../../utils/nameOrder";
 
 interface CandidatesPipelineViewProps {
   lang: Language;
@@ -152,7 +153,7 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const fullName = [form.surname.trim(), form.givenNames.trim()].filter(Boolean).join(" ") || form.surname.trim() || form.givenNames.trim();
+    const fullName = joinNameParts(form.givenNames, form.surname);
     if (!fullName) return;
     setSubmitting(true);
     try {
@@ -592,7 +593,7 @@ export const CandidatesPipelineView: React.FC<CandidatesPipelineViewProps> = ({
                   className="w-full px-3 py-2 rounded-md border border-gray-200 text-ui"
                 />
               </div>
-              <div>
+              <div className={isSurnameFirst() ? undefined : "order-first"}>
                 <label className="type-overline text-gray-500 block mb-1">
                   {t("Given Names", "Krstné mená", "Keresztnév")} *
                 </label>

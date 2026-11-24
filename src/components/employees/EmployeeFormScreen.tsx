@@ -390,7 +390,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
     const updatedEmployee: Employee = {
       ...employee,
       id: empId,
-      ...identityFields(identity),
+      ...identityFields(identity, employee),
       email: email.trim(),
       ...(rights.editPersonal
         ? {
