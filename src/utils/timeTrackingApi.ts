@@ -134,7 +134,7 @@ export interface ListParams {
 export interface TimeTotals {
   byTask: Record<string, number>;
   byTicket: Record<string, number>;
-  byProject: Record<string, { seconds: number; workedMs?: number; cost: number | null; /** Hours x billable rate (information only); null without time_tracking_costs. */ billableValue?: number | null; billableComplete?: boolean }>;
+  byProject: Record<string, { seconds: number; workedMs?: number; /** Null only when the viewer may not see every entry's cost; an entry without a cost counts as no cost. */ cost: number | null; /** Tracked time of entries that have no cost (no rate, unpaid): in `seconds`, not in `cost`. */ unpricedSeconds?: number; /** Hours x billable rate (information only); null without time_tracking_costs. */ billableValue?: number | null; billableComplete?: boolean }>;
   /** Worked milliseconds per user per entry date (overlaps counted once). */
   workedByUserDay?: Record<string, Record<string, number>>;
 }

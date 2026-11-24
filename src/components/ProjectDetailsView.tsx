@@ -4582,7 +4582,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
                   <div className="text-caption text-slate-500 mt-0.5">
                     {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.totalPlannedExpenses)}</strong>
-                    <ProjectTimeFinanceLines language={userLanguage} money={money} labourCost={revenueAnalysis.labourCost} billableValue={timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.billableValue : null} billableComplete={timeTracking.totals.byProject[project?.id ?? ""]?.billableComplete} />
+                    <ProjectTimeFinanceLines language={userLanguage} money={money} labourCost={revenueAnalysis.labourCost} unpricedSeconds={timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.unpricedSeconds : undefined} billableValue={timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.billableValue : null} billableComplete={timeTracking.totals.byProject[project?.id ?? ""]?.billableComplete} />
                   </div>
                 </div>
 

@@ -1,4 +1,5 @@
 import type { Language } from "../../utils/translations";
+import { formatDuration } from "../../utils/timeTracking.ts";
 
 const pick = (language: Language, en: string, sk: string, hu: string) => (language === "sk" ? sk : language === "hu" ? hu : en);
 
@@ -11,12 +12,15 @@ export function ProjectTimeFinanceLines({
   language,
   money,
   labourCost,
+  unpricedSeconds,
   billableValue,
   billableComplete,
 }: {
   language: Language;
   money: (v: number) => string;
   labourCost: number | null;
+  /** Tracked time whose entries have no cost; it is not in `labourCost`. */
+  unpricedSeconds?: number;
   billableValue: number | null | undefined;
   billableComplete: boolean | undefined;
 }) {
@@ -29,6 +33,11 @@ export function ProjectTimeFinanceLines({
           title={pick(language, "Cost of tracked time (each person's worked time × their hourly cost)", "Náklad sledovaného času (odpracovaný čas každého × jeho hodinový náklad)", "A követett idő költsége (mindenki ledolgozott ideje × órás költsége)")}
         >
           {pick(language, "Labour (time tracking)", "Práca (evidencia času)", "Munka (időkövetés)")}: {money(labourCost)}
+          {!!unpricedSeconds && (
+            <span className="ml-1 text-amber-700" data-testid="project-labour-unpriced">
+              ({formatDuration(unpricedSeconds)} {pick(language, "without a cost rate, not included", "bez nákladovej sadzby, nezahrnuté", "költségdíj nélkül, nincs beleszámítva")})
+            </span>
+          )}
         </div>
       )}
       {billableValue != null && (

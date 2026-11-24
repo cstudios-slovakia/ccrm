@@ -1066,6 +1066,11 @@ async function main() {
       const wk = (id) => Number(dbEntry(id)?.worked_ms);
       check('T21: ...while the worked time is split (the two entries share one hour)',
         wk(e1.data?.entry?.id) + wk(e2.data?.entry?.id) <= 3600000 + 1000, JSON.stringify({ w1: wk(e1.data?.entry?.id), w2: wk(e2.data?.entry?.id) }));
+      // An entry without a cost counts as no cost: the project keeps a numeric labour cost and reports the time as unpriced.
+      sql(`UPDATE time_entries SET cost = NULL WHERE id = ${q(e2.data?.entry?.id)}`);
+      const unpriced = (await totalsOf(S.admin))['proj-tt-2'];
+      check('T21: an entry without a cost keeps the project cost a number and adds its time to unpricedSeconds',
+        unpriced && typeof unpriced.cost === 'number' && unpriced.unpricedSeconds - (b2.unpricedSeconds || 0) === 3600, JSON.stringify({ unpriced, b2 }));
       const asErik = (await list(S.erik, '?action=totals')).data?.byProject?.['proj-tt-1'];
       check('T21: a caller without time_tracking_costs gets billableValue null', asErik && asErik.billableValue === null, JSON.stringify(asErik));
       sql(`UPDATE time_entries SET deleted_at = NOW() WHERE id IN (${q(e1.data?.entry?.id)}, ${q(e2.data?.entry?.id)})`);

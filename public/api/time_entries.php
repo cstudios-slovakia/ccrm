@@ -331,9 +331,10 @@ if ($method === 'GET') {
     // Hours of every user (a task's tracked time is not a private entry). Cost is
     // included only when every contributing row is one the caller may see — their
     // own always, anyone else's only with time_tracking_costs — so a partial sum
-    // is never presented as the project's labour.
+    // is never presented as the project's labour. An entry with no cost is not
+    // hidden, it simply costs nothing; `unpricedSeconds` says how much time that is.
     if ($action === 'totals') {
-        $stmt = $pdo->query("SELECT `task_id`, `ticket_id`, `project_id`, `user_id`, COALESCE(SUM(`duration_sec`), 0) AS `sec`, COALESCE(SUM(`worked_ms`), 0) AS `worked`, SUM(`cost`) AS `cost`, SUM(`cost` IS NULL) AS `missing`
+        $stmt = $pdo->query("SELECT `task_id`, `ticket_id`, `project_id`, `user_id`, COALESCE(SUM(`duration_sec`), 0) AS `sec`, COALESCE(SUM(`worked_ms`), 0) AS `worked`, SUM(`cost`) AS `cost`, COALESCE(SUM(CASE WHEN `cost` IS NULL THEN `duration_sec` ELSE 0 END), 0) AS `unpriced`
             FROM `time_entries` WHERE `deleted_at` IS NULL AND `duration_sec` IS NOT NULL
             GROUP BY `task_id`, `ticket_id`, `project_id`, `user_id`");
         $byTask = [];
@@ -350,16 +351,14 @@ if ($method === 'GET') {
             }
             if ($r['project_id']) {
                 if (!isset($byProject[$r['project_id']])) {
-                    $byProject[$r['project_id']] = ['seconds' => 0, 'workedMs' => 0, 'cost' => 0.0, 'complete' => true];
+                    $byProject[$r['project_id']] = ['seconds' => 0, 'workedMs' => 0, 'cost' => 0.0, 'unpricedSeconds' => 0, 'complete' => true];
                 }
                 $byProject[$r['project_id']]['seconds'] += $sec;
                 $byProject[$r['project_id']]['workedMs'] += (int)$r['worked'];
+                $byProject[$r['project_id']]['unpricedSeconds'] += (int)$r['unpriced'];
                 if ($own || $canCosts) {
-                    if ((int)$r['missing'] > 0) {
-                        $byProject[$r['project_id']]['complete'] = false;
-                    } else {
-                        $byProject[$r['project_id']]['cost'] += (float)$r['cost'];
-                    }
+                    // An entry without a cost counts as no cost (unpaid time, no rate yet); SUM() skips it.
+                    $byProject[$r['project_id']]['cost'] += (float)$r['cost'];
                 } else {
                     $byProject[$r['project_id']]['complete'] = false;
                 }

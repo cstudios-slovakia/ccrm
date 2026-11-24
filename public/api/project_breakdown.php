@@ -92,7 +92,7 @@ $sql = "
         COALESCE(SUM(te.`duration_sec`), 0) AS `sec`,
         COALESCE(SUM(CASE WHEN te.`billable` = 1 THEN te.`duration_sec` ELSE 0 END), 0) AS `billable_sec`,
         SUM(te.`cost`) AS `cost`,
-        SUM(te.`cost` IS NULL) AS `missing_cost`
+        COALESCE(SUM(CASE WHEN te.`cost` IS NULL THEN te.`duration_sec` ELSE 0 END), 0) AS `unpriced_sec`
     FROM `time_entries` te
     LEFT JOIN `tasks` t ON t.`id` = te.`task_id` AND /* recurring-template: lookup task project */ 1 = 1
     LEFT JOIN `tickets` tk ON tk.`id` = te.`ticket_id`
@@ -112,19 +112,21 @@ try {
         $sec = (int)$r['sec'];
         $billSec = (int)$r['billable_sec'];
         $own = $uid !== '' && $uid === $callerId;
-        $missing = (int)($r['missing_cost'] ?? 0);
+        $unpriced = (int)($r['unpriced_sec'] ?? 0);
 
         if (!isset($byProject[$pid])) {
             $byProject[$pid] = [
                 'seconds' => 0,
                 'billableSeconds' => 0,
                 'cost' => 0.0,
+                'unpricedSeconds' => 0,
                 'complete' => true,
                 'people' => [],
             ];
         }
         $byProject[$pid]['seconds'] += $sec;
         $byProject[$pid]['billableSeconds'] += $billSec;
+        $byProject[$pid]['unpricedSeconds'] += $unpriced;
 
         $personKey = $uid . '|' . ($empId ?? '');
         if (!isset($byProject[$pid]['people'][$personKey])) {
@@ -135,21 +137,16 @@ try {
                 'billableSeconds' => 0,
                 'cost' => 0.0,
                 'canSeeCost' => $own || $canCosts,
-                'hasMissingCost' => false,
             ];
         }
         $pRef = &$byProject[$pid]['people'][$personKey];
         $pRef['seconds'] += $sec;
         $pRef['billableSeconds'] += $billSec;
         if ($own || $canCosts) {
-            if ($missing > 0) {
-                $pRef['hasMissingCost'] = true;
-                $byProject[$pid]['complete'] = false;
-            } else {
-                $c = (float)($r['cost'] ?? 0);
-                $pRef['cost'] += $c;
-                $byProject[$pid]['cost'] += $c;
-            }
+            // An entry without a cost counts as no cost (SUM() skips it); `unpricedSeconds` reports it.
+            $c = (float)($r['cost'] ?? 0);
+            $pRef['cost'] += $c;
+            $byProject[$pid]['cost'] += $c;
         } else {
             $byProject[$pid]['complete'] = false;
         }
@@ -168,7 +165,7 @@ try {
                 'billableSeconds' => $p['billableSeconds'],
             ];
             if ($p['canSeeCost']) {
-                $row['cost'] = $p['hasMissingCost'] ? null : round((float)$p['cost'], 2);
+                $row['cost'] = round((float)$p['cost'], 2);
             }
             $peopleOut[] = $row;
         }
