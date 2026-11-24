@@ -2,6 +2,7 @@
 require_once __DIR__ . '/brand.php';
 ini_set('display_errors', '0');
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/mail_guard.php';
 
 // This file is both the mailbox endpoint and the home of send_smtp_email(),
 // which the workflow engine includes to deliver a "Send e-mail" action. When it
@@ -1590,6 +1591,7 @@ function delete_imap_email($settings, $folder, $uid) {
 }
 
 function send_smtp_email($settings, $to, $subject, $html) {
+    ccrm_mail_refuse_reserved((string)$to);
     $host = ccrm_resolve_mail_host($settings, 'smtp');
     $port = intval($settings['smtpPort']);
 
@@ -1734,6 +1736,7 @@ function ccrm_send_system_mail(array $config, string $to, string $subject, strin
     if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
         throw new Exception('No valid recipient address: ' . ($to === '' ? '(empty)' : $to));
     }
+    ccrm_mail_refuse_reserved($to);
 
     $provider = $config['emailProvider'] ?? ($config['provider'] ?? 'smtp');
 

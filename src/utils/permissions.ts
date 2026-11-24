@@ -437,28 +437,35 @@ export const withPermission = (role: RolePermission, key: string, value: Permiss
 
 /** True when every permission of the section is at its maximum (`edit` / on). */
 /**
- * The sections as the role matrix shows them. While the Performance Dashboard holds the Dashboard
- * section (utils/dashboardSection.ts), the `dashboard` key guards only the hidden widget board, so
- * its row is left out and the `overview` toggle, which now guards the Dashboard, moves into the
- * Dashboard section. Each role keeps its stored `dashboard` value untouched for a revert.
+ * The sections as the role matrix shows them. While the Performance Dashboard holds the first menu
+ * slot as "Overview" (utils/dashboardSection.ts), the `dashboard` key guards only the hidden widget
+ * board, so its row is left out. The Overview section (`overview`, which opens that slot) moves to
+ * the top, and the rest of the old Dashboard section becomes "Custom dashboards". Each role keeps
+ * its stored `dashboard` value untouched for a revert.
  */
 export const ROLE_MATRIX_SECTIONS: PermissionSection[] = LEGACY_WIDGET_DASHBOARD
   ? PERMISSION_SECTIONS
-  : PERMISSION_SECTIONS.filter((section) => section.id !== "overview").map((section) =>
-      section.id !== "dashboard"
-        ? section
-        : {
-            ...section,
-            permissions: [
-              ...(PERMISSION_SECTIONS.find((s) => s.id === "overview")?.permissions ?? []),
-              ...section.permissions.filter((p) => p.key !== "dashboard"),
-            ],
-          },
-    );
+  : [
+      ...PERMISSION_SECTIONS.filter((section) => section.id === "overview"),
+      ...PERMISSION_SECTIONS.filter((section) => section.id !== "overview").map((section) =>
+        section.id === "dashboard"
+          ? { ...section, permissions: section.permissions.filter((p) => p.key !== "dashboard") }
+          : section,
+      ),
+    ];
+
+const ROLE_MATRIX_PERM_TEXT: Record<string, string> = LEGACY_WIDGET_DASHBOARD
+  ? {}
+  : { overview: "overview_statistics", "dashboard.custom": "custom_widget_dashboards" };
+const ROLE_MATRIX_SECTION_TEXT: Record<string, string> = LEGACY_WIDGET_DASHBOARD
+  ? {}
+  : { overview: "overview_statistics", dashboard: "custom_dashboards" };
 
 /** Translation key stem of a matrix row (`settings.rbac.perm.<stem>.label` / `.desc`). */
-export const roleMatrixTextKey = (key: string): string =>
-  !LEGACY_WIDGET_DASHBOARD && key === "overview" ? "dashboard_section" : key;
+export const roleMatrixTextKey = (key: string): string => ROLE_MATRIX_PERM_TEXT[key] ?? key;
+
+/** Translation key stem of a matrix section heading (`settings.rbac.section.<stem>`). */
+export const roleMatrixSectionTextKey = (id: string): string => ROLE_MATRIX_SECTION_TEXT[id] ?? id;
 
 export const isSectionFullyGranted = (resolved: Record<string, PermissionValue>, section: PermissionSection): boolean =>
   section.permissions.every((p) => resolved[p.key] === "edit");

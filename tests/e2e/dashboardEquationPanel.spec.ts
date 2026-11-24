@@ -57,11 +57,15 @@ function storedPrefs(store: MetaStore): Record<string, unknown> {
 const section = (page: Page): Locator => page.locator('[data-status-equation]');
 const rows = (scope: Locator): Locator => scope.locator('[data-status-key]');
 
-/** The card (rounded surface) that carries the heading `name`. */
+/**
+ * The card that carries the heading `name`: the closest ancestor that is a direct child of the
+ * card grid. Not matched by a radius class, which changes with the card style (it was rounded-3xl
+ * until the Tremor restyle, then rounded-lg, and broke this helper once).
+ */
 const card = (page: Page, name: string): Locator =>
   section(page)
     .getByRole('heading', { level: 3, name, exact: true })
-    .locator('xpath=ancestor::div[contains(@class, "rounded-3xl")][1]');
+    .locator('xpath=ancestor::div[parent::div[contains(@class, "grid")]][1]');
 const pipeline = (page: Page): Locator => card(page, 'Obchody a Pipeline');
 const projects = (page: Page): Locator => card(page, 'Projekty a Realizácie');
 const grand = (page: Page): Locator => card(page, 'Spolu na fakturovanie');

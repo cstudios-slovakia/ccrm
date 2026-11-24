@@ -543,6 +543,15 @@ try {
 $same('smtp: 450 on RCPT is transient, not a bounce', [$caught->isTransient(), $caught->isHardBounce(), $caught->dropped], [true, false, false]);
 $caught = null;
 try {
+    $session($hello, $plain, fn($s) => $s->send('news@example.sk', 'probe-editor@probe.test', 'Subject: x'));
+} catch (ccrm_newsletter_smtp_error $e) { $caught = $e; }
+$same('smtp: a reserved-domain recipient is a hard bounce and nothing is written to the server',
+    [$caught?->stage, $caught?->smtpCode, $caught?->isHardBounce(), strpos(NlScriptStream::$written, 'RCPT'), strpos(NlScriptStream::$written, 'MAIL FROM')], ['rcpt', 550, true, false, false]);
+$same('mail guard: reserved domains are refused, real ones (and look-alikes) are not',
+    array_map('ccrm_mail_reserved_domain', ['a@probe.test', 'a@Example.COM', 'a@x.example.org', 'a@b.invalid', 'a@localhost', 'a@host.localhost', 'a@x.example', 'a@cstudios.sk', 'a@example.sk', 'a@mytest.sk', 'a@test.com', 'no-at-sign']),
+    ['probe.test', 'example.com', 'x.example.org', 'b.invalid', 'localhost', 'host.localhost', 'x.example', null, null, null, null, null]);
+$caught = null;
+try {
     $session($hello . "250 ok\r\n250 ok\r\n354 go\r\n554 5.7.1 Rejected as spam\r\n250 reset\r\n", $plain, fn($s) => $s->send('news@example.sk', 'a@x.sk', 'Subject: x'));
 } catch (ccrm_newsletter_smtp_error $e) { $caught = $e; }
 $same('smtp: a rejected body is permanent but never a bounce', [$caught->stage, $caught->isTransient(), $caught->isHardBounce()], ['body', false, false]);

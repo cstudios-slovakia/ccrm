@@ -22,7 +22,7 @@ import { PRODUCT_NAME } from "../utils/brand";
 import { isInsideMenuEditLayer } from "./menuEdit/primitives";
 import { menuEditStrings } from "./menuEdit/menuEditStrings";
 import { StartMenuEditDialog } from "./menuEdit/StartMenuEditDialog";
-import { LEGACY_WIDGET_DASHBOARD, isRetiredSectionId } from "../utils/dashboardSection";
+import { DASHBOARD_SECTION_LABEL_KEY, LEGACY_WIDGET_DASHBOARD, isRetiredSectionId } from "../utils/dashboardSection";
 
 interface StartMenuProps {
   isOpen: boolean;
@@ -409,7 +409,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       // 2. ANALYTICS & DASHBOARDS
       {
         id: "dashboard",
-        label: getTranslation(systemLanguage, "sidebar.dashboard"),
+        label: getTranslation(systemLanguage, DASHBOARD_SECTION_LABEL_KEY),
         description: LEGACY_WIDGET_DASHBOARD
           ? t("Widget board of live metrics, charts & tables", "Nástenka so živými metrikami, grafmi a tabuľkami", "Élő mutatók, diagramok és táblázatok")
           : t("Executive BI overview & marketing funnel metrics", "Manažérske BI reporty a marketingové metriky", "Vezetői BI és marketing mutatók"),

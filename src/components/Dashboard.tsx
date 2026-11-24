@@ -27,7 +27,6 @@ import { periodPresetFromName, presetNameOf, presetRange } from "../utils/perfor
 import { useUserPref } from "../utils/userPrefs";
 import { PageHeader, Tabs } from "./layout";
 import { PRODUCT_NAME } from "../utils/brand";
-import { LEGACY_WIDGET_DASHBOARD } from "../utils/dashboardSection";
 
 interface DashboardProps {
   systemName: string;
@@ -828,7 +827,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Title Header */}
       <PageHeader
         icon={<SectionIcon id="overview" />}
-        title={getTranslation(systemLanguage, LEGACY_WIDGET_DASHBOARD ? "header.title.dashboard" : "sidebar.dashboard")}
+        title={getTranslation(systemLanguage, "header.title.dashboard")}
         subtitle={t("Finance, sales, projects, team and support for the selected period", "Financie, obchod, projekty, tím a podpora za zvolené obdobie", "Pénzügyek, értékesítés, projektek, csapat és támogatás a kiválasztott időszakra")}
         actions={<>
           {/* Period switch and date picker */}

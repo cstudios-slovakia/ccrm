@@ -20,6 +20,7 @@
  *   CCRM_PROBE_WEB_CONTAINER, CCRM_PROBE_DB_CONTAINER, CCRM_PROBE_DB_ROOT_PASSWORD,
  *   CCRM_PROBE_DEV_DB (database to clone, default ccrm), CCRM_PROBE_URL (default http://127.0.0.1:8085).
  */
+import { DISABLE_OUTBOUND_MAIL_SQL } from '../lib/probe-no-mail.mjs';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -112,6 +113,7 @@ function setup() {
   sql(`DROP DATABASE IF EXISTS ${SCRATCH_DB}; CREATE DATABASE ${SCRATCH_DB} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL ON ${SCRATCH_DB}.* TO 'ccrm_user'@'%';`, 'mysql');
   const dump = run('docker', ['exec', DB, 'mysqldump', '-uroot', `-p${ROOT_PW}`, '--single-transaction', '--no-tablespaces', DEV_DB]);
   run('docker', ['exec', '-i', DB, 'mysql', '-uroot', `-p${ROOT_PW}`, SCRATCH_DB], dump);
+  sql(DISABLE_OUTBOUND_MAIL_SQL); // the clone's live SMTP profile must never mail the *@probe.test users
 
   docker('exec', WEB, 'sh', '-c', `rm -rf ${SCRATCH_DIR} && mkdir -p ${SCRATCH_DIR}/api`);
   docker('cp', apiDir + '.', `${WEB}:${SCRATCH_DIR}/api`);
@@ -282,8 +284,15 @@ async function employeeTimeEntryChecks() {
   check('Employee update_time_entry sets name and work description of their own entry', r.success === true && r.entry?.title === 'Probe day work' && r.entry?.note === 'Wrote the probe for employee time entries' && !r.notice, JSON.stringify(r).slice(0, 300));
   const stored = rows("SELECT description, note, duration_sec FROM time_entries WHERE id = 'te-emp-own'")[0];
   check('the name and note are stored, the duration is untouched', stored?.[0] === 'Probe day work' && stored?.[1] === 'Wrote the probe for employee time entries' && stored?.[2] === '1800', JSON.stringify(stored));
-  r = await call(tok.emp, 'update_time_entry', { id: 'te-emp-linked', description: 'Ignored name', note: 'Linked work details' });
-  check('a task-linked entry keeps the task title, stores the note and says the name was ignored', r.success === true && r.entry?.title === 'Probe emp linked task' && r.entry?.note === 'Linked work details' && /linked to a task/.test(r.notice || ''), JSON.stringify(r).slice(0, 300));
+  r = await call(tok.emp, 'update_time_entry', { id: 'te-emp-linked', description: 'Debugged OAuth redirect', note: 'Found the wrong callback URL' });
+  check('a task-linked entry keeps the task title and puts a different name at the start of the note', r.success === true && r.entry?.title === 'Probe emp linked task' && r.entry?.note === 'Debugged OAuth redirect - Found the wrong callback URL' && /linked to a task/.test(r.notice || ''), JSON.stringify(r).slice(0, 300));
+  r = await call(tok.emp, 'update_time_entry', { id: 'te-emp-linked', description: 'Debugged OAuth redirect' });
+  check('sending the same name again does not prefix the note twice', r.success === true && r.entry?.note === 'Debugged OAuth redirect - Found the wrong callback URL' && !r.notice, JSON.stringify(r).slice(0, 300));
+  r = await call(tok.emp, 'update_time_entry', { id: 'te-emp-linked', description: 'probe emp linked task', note: 'Only the work' });
+  check('a name equal to the task title (any case) leaves the note as sent', r.success === true && r.entry?.note === 'Only the work' && !r.notice, JSON.stringify(r).slice(0, 300));
+  r = await call(tok.emp, 'log_time_entry', { duration_minutes: 20, task_id: task.id, description: 'Code review' });
+  check('log_time_entry on a task with a name and no note stores the name as the note', r.success === true && r.entry?.title === 'Probe emp linked task' && r.entry?.note === 'Code review' && /start of note/.test(r.notice || ''), JSON.stringify(r).slice(0, 300));
+  if (r.entry?.id) sql(`DELETE FROM time_entries WHERE id = ${sq(r.entry.id)}`);
   r = await call(tok.emp, 'update_time_entry', { id: 'te-emp-other', description: 'Hijack', note: 'x' });
   check('Employee update of another user\'s entry is refused', isErr(r, /time_tracking_team/) && cell("SELECT description FROM time_entries WHERE id = 'te-emp-other'") === 'Admin work', JSON.stringify(r));
 
@@ -1830,6 +1839,9 @@ async function wpExpansionChecks() {
 
   // Agency tools (enable temporarily in settings for probe)
   const prevAg = rows(`SELECT \`value\` FROM system_settings WHERE \`key\` = 'AGENCY_SETTINGS'`)[0]?.[0];
+  // The module switch is INTEGRATIONS_CONFIG.disabledModules (ccrm_agency_is_module_enabled): no row means disabled.
+  const prevInt = rows(`SELECT \`value\` FROM system_settings WHERE \`key\` = 'INTEGRATIONS_CONFIG'`)[0]?.[0];
+  sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('INTEGRATIONS_CONFIG', '{"disabledModules":[]}')`);
   sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('AGENCY_SETTINGS', '{"enabled":true,"stages":[{"id":"sourced","label":"Sourced"}],"checklistItems":[{"key":"id_doc","label":"ID"}]}')`);
   const agW = await call(A, 'create_agency_worker', { fullName: 'WP Agency Worker', workerStatus: 'candidate' });
   const agChk = agW?.id ? await call(A, 'update_agency_checklist', { workerId: agW.id, items: [{ itemKey: 'id_doc', label: 'ID Doc', status: 'submitted' }] }) : null;
@@ -1837,6 +1849,8 @@ async function wpExpansionChecks() {
   const agPayPaid = agW?.id ? await call(A, 'record_agency_payment', { workerId: agW.id, periodYm: '2026-11', basePay: 1000, status: 'paid' }) : null;
   check('WP4 agency worker + checklist + payment draft allowed & paid blocked (D2)', !!agW?.id && agChk?.checklist?.[0]?.status === 'submitted' && agPayDraft?.payment?.status === 'draft' && isErr(agPayPaid, /status|draft|approved/i), JSON.stringify([agChk, agPayDraft, agPayPaid]).slice(0, 300));
   if (prevAg !== undefined) sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('AGENCY_SETTINGS', ${sq(prevAg)})`);
+  if (prevInt !== undefined) sql(`REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('INTEGRATIONS_CONFIG', ${sq(prevInt)})`);
+  else sql(`DELETE FROM system_settings WHERE \`key\` = 'INTEGRATIONS_CONFIG'`);
 
   // ---- WP5: Newsletter Option A, Comms, Admin-Only Diagnostics
   const nl = await call(A, 'create_newsletter_campaign', { name: 'WP Probe Campaign', subject: 'Hello WP' });

@@ -23,6 +23,7 @@ import {
     isLinkedById,
     resolveLinkedClient,
 } from "../utils/leadClient";
+import { LeadClientLabel, useLeadClientLabels } from "./LeadClientLabel";
 import { isOutgoingMail, mergeLeadTimeline, withTimelineEvent } from "../utils/mailTimeline";
 import { hasAiConfigured } from "../utils/aiConfig";
 import { FiledMailBody, MailAccountBadge } from "./FiledMail";
@@ -1197,6 +1198,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
       "today" from going stale in a tab left open across midnight — any edit to any
       lead re-reads the clock.
     */
+    const clientLabelById = useLeadClientLabels(leads);
     const breachedSlaById = useMemo(() => {
         const out: Record<string, LeadSlaStatus> = {};
         if (!Object.keys(leadStateSla).length) return out;
@@ -9519,6 +9521,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     <span className="line-clamp-1 border-b border-transparent hover:border-blue-400/50 transition-all text-body font-bold text-slate-900 leading-tight">
                                         {lead.name}
                                     </span>
+                                    <LeadClientLabel name={clientLabelById.get(lead.id)} />
                                     {!compactMode && (
                                         <div className="scale-90 origin-left mt-0.5">
                                             {renderStars(
@@ -11357,8 +11360,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                 size="xs"
                                                                                                 systemLanguage={systemLanguage}
                                                                                             />
-                                                                                            <span className="font-bold text-slate-900 text-body leading-snug break-words">
-                                                                                                {lead.name}
+                                                                                            <span className="min-w-0 font-bold text-slate-900 text-body leading-snug break-words">
+                                                                                                {lead.name}<LeadClientLabel name={clientLabelById.get(lead.id)} />
                                                                                             </span>
                                                                                             {!compactMode && lead.rating ? (
                                                                                                 <div
@@ -12140,10 +12143,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         {/* Row 2: Lead Name & Dots Rating Stack */}
                                                                         <div className="flex flex-col">
                                                                             <h4 className="text-ui font-semibold text-gray-900 leading-snug group-hover:text-entity-text transition-colors">
-                                                                                {
-                                                                                    lead.name
-                                                                                }
+                                                                                {lead.name}
                                                                             </h4>
+                                                                            <LeadClientLabel name={clientLabelById.get(lead.id)} />
                                                                             {!compactMode && (
                                                                                 <div className="scale-85 origin-left mt-1">
                                                                                     {renderStars(

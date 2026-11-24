@@ -142,7 +142,7 @@ import { updatePwaManifest } from "./utils/pwaManifest";
 import { PRODUCT_NAME, normalizeSystemTitleOverride, resolveSystemTitle, resolveTitleWithProduct, setSystemTitle } from "./utils/brand";
 import { HoldToConfirmButton } from "./components/ui/HoldToConfirm";
 import { clearErrorLogsWithUndo } from "./utils/errorLogs";
-import { DASHBOARD_SECTION_ALIASES, LEGACY_WIDGET_DASHBOARD } from "./utils/dashboardSection";
+import { DASHBOARD_SECTION_ALIASES, DASHBOARD_SECTION_LABEL_KEY, LEGACY_WIDGET_DASHBOARD } from "./utils/dashboardSection";
 
 /**
  * Routes whose whole purpose depends on OpenAI. Visiting one without a
@@ -1202,7 +1202,7 @@ ${log.payload || ''}
           viewName = getTranslation(userLanguage, "sidebar.tickets");
           break;
         case "dashboard":
-          viewName = getTranslation(userLanguage, "sidebar.dashboard");
+          viewName = getTranslation(userLanguage, DASHBOARD_SECTION_LABEL_KEY);
           break;
         default:
           viewName = getTranslation(userLanguage, "sidebar.tasks");

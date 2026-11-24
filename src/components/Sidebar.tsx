@@ -46,7 +46,7 @@ import { DragGhostLayer } from "./menuEdit/dragGhost";
 import { isInsideMenuEditLayer } from "./menuEdit/primitives";
 import { menuEditStrings } from "./menuEdit/menuEditStrings";
 import { SidebarEditPanel } from "./menuEdit/SidebarEditPanel";
-import { isRetiredSectionId } from "../utils/dashboardSection";
+import { DASHBOARD_SECTION_LABEL_KEY, isRetiredSectionId } from "../utils/dashboardSection";
 
 /**
  * `dashboard` used to BE the task panel — the tasks section was split out of it
@@ -478,7 +478,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const allPossibleItems = useMemo(() => {
     return [
-      { id: "dashboard", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: LayoutDashboard, color: "var(--color-indigo-600)" },
+      { id: "dashboard", label: getTranslation(systemLanguage, DASHBOARD_SECTION_LABEL_KEY), icon: LayoutDashboard, color: "var(--color-indigo-600)" },
       { id: "tasks", label: getTranslation(systemLanguage, "sidebar.tasks"), icon: ListTodo, color: "#ff5d00" },
       { id: "time-tracking", label: systemLanguage === "sk" ? "Evidencia času" : systemLanguage === "hu" ? "Időkövetés" : "Time tracking", icon: Icons.Timer || ListTodo, color: "#0d9488" },
       { id: "whatsapp", label: "WhatsApp", icon: Icons.MessageCircle || Mail, color: "#16a34a" },

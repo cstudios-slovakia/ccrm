@@ -21,3 +21,14 @@ export const isRetiredSectionId = (id: string): boolean => !LEGACY_WIDGET_DASHBO
 
 /** Hash aliases that send old Analytics links to the Dashboard section. */
 export const DASHBOARD_SECTION_ALIASES: Record<string, string> = LEGACY_WIDGET_DASHBOARD ? {} : { overview: "dashboard" };
+
+/**
+ * The Dashboard section's name and look. While the Performance Dashboard holds it, the section is
+ * "Overview" with the original Analytics icon and colour; the page inside keeps its own title
+ * ("Performance Dashboard") and tabs.
+ */
+export const DASHBOARD_SECTION_LABEL_KEY = LEGACY_WIDGET_DASHBOARD ? "sidebar.dashboard" : "sidebar.overview";
+
+/** The section-visual id (icon and colours) a route id is drawn with. */
+export const sectionVisualIdFor = (id: string): string =>
+  !LEGACY_WIDGET_DASHBOARD && id === "dashboard" ? "overview" : id;

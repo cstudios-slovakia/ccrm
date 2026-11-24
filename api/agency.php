@@ -669,8 +669,12 @@ try {
                 $existing = $st->fetch(PDO::FETCH_ASSOC);
                 if (!$existing) $isNew = true;
             }
-            $status = in_array($pl['status'] ?? 'active', ['planned', 'active', 'completed', 'terminated'], true)
-                ? (string)$pl['status']
+            $rawStatus = trim((string)($pl['status'] ?? 'active'));
+            if ($rawStatus === 'ended') {
+                $rawStatus = 'completed';
+            }
+            $status = in_array($rawStatus, ['planned', 'active', 'completed', 'terminated'], true)
+                ? $rawStatus
                 : 'active';
             $endDate = !empty($pl['endDate']) ? substr((string)$pl['endDate'], 0, 10) : null;
 
@@ -680,8 +684,10 @@ try {
             $billRate = $canPayments
                 ? floatval($pl['billRate'] ?? ($existing['bill_rate'] ?? 0))
                 : floatval($existing['bill_rate'] ?? 0);
-            $payRateType = in_array($pl['payRateType'] ?? 'hourly', ['hourly', 'monthly'], true) ? (string)$pl['payRateType'] : 'hourly';
-            $billRateType = in_array($pl['billRateType'] ?? 'hourly', ['hourly', 'monthly'], true) ? (string)$pl['billRateType'] : 'hourly';
+            $rawPayRateType = trim((string)($pl['payRateType'] ?? 'hourly'));
+            $rawBillRateType = trim((string)($pl['billRateType'] ?? 'hourly'));
+            $payRateType = in_array($rawPayRateType, ['hourly', 'monthly'], true) ? $rawPayRateType : 'hourly';
+            $billRateType = in_array($rawBillRateType, ['hourly', 'monthly'], true) ? $rawBillRateType : 'hourly';
             $currency = trim((string)($pl['currency'] ?? 'EUR')) ?: 'EUR';
             $jobRole = trim((string)($pl['jobRole'] ?? ''));
 

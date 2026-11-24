@@ -148,6 +148,7 @@ function ccrm_pwreset_password_ok(string $password): bool {
 
 /** Minimal raw-SMTP sender (mirrors mail_broker.php::send_smtp_email). */
 function ccrm_pwreset_send_smtp_email(array $settings, string $to, string $subject, string $html): void {
+    ccrm_mail_refuse_reserved($to);
     $host = $settings['smtpHost'] ?? '';
     $port = intval($settings['smtpPort'] ?? 0);
 

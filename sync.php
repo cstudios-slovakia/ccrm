@@ -806,12 +806,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 $event['fileName'] = $te['file_name'];
                 $event['fileSize'] = $te['file_size'];
                 $event['fileType'] = $te['file_type'];
-                $attachments = (isset($te['attachments_json']) && $te['attachments_json'] !== '' && $te['attachments_json'] !== null)
-                    ? json_decode($te['attachments_json'], true)
-                    : null;
-                if (is_array($attachments) && $attachments) {
-                    $event['attachments'] = $attachments;
-                }
+            }
+            // Any entry may carry files, e.g. a web-form inquiry's note (api/pipeline.php).
+            $attachments = !empty($te['attachments_json']) ? json_decode($te['attachments_json'], true) : null;
+            if (is_array($attachments) && $attachments) {
+                $event['attachments'] = $attachments;
             }
             if ($te['type'] === 'appointment') {
                 $event['extraTime'] = $te['extra_time'];
