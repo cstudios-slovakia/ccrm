@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, NotebookPen, Pencil, Plus, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDownUp, Check, LayoutGrid, List, NotebookPen, Pencil, Plus, Trash2, X } from "lucide-react";
+import { useUserPref } from "../../utils/userPrefs";
 import type { Note, NoteEntityType } from "../../types";
 import type { Language } from "../../utils/translations";
 import { createNote, deleteNote, listNotes, updateNote } from "../../utils/notesApi";
@@ -28,6 +29,10 @@ const LABELS = {
   deleteFailed: { en: "The note could not be deleted.", sk: "Poznámku sa nepodarilo zmazať.", hu: "A jegyzetet nem sikerült törölni." },
   edited: { en: "edited", sk: "upravené", hu: "módosítva" },
   hint: { en: "Ctrl+Enter to add", sk: "Ctrl+Enter pridá", hu: "Ctrl+Enter a hozzáadáshoz" },
+  grid: { en: "Grid", sk: "Mriežka", hu: "Rács" },
+  list: { en: "List", sk: "Zoznam", hu: "Lista" },
+  oldest: { en: "Oldest first", sk: "Od najstaršej", hu: "Legrégebbi elöl" },
+  newest: { en: "Newest first", sk: "Od najnovšej", hu: "Legújabb elöl" },
 } as const;
 
 const pick = (key: keyof typeof LABELS, language: Language): string => LABELS[key][language] ?? LABELS[key].en;
@@ -68,6 +73,12 @@ export const EntityNotes = ({
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
+  const [view, setView] = useUserPref("notesView");
+  const [sort, setSort] = useUserPref("notesSort");
+  const shown = useMemo(
+    () => [...notes].sort((a, b) => (sort === "newest" ? -1 : 1) * a.createdAt.localeCompare(b.createdAt)),
+    [notes, sort],
+  );
   const current = useRef({ entityType, entityId });
   current.current = { entityType, entityId };
 
@@ -212,8 +223,36 @@ export const EntityNotes = ({
         <EmptyState icon={<NotebookPen />} title={pick("empty", language)} body={pick("emptyBody", language)} />
       )}
 
-      <ul className="flex flex-col gap-3">
-        {notes.map((note) => {
+      {notes.length > 0 && (
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setSort(sort === "newest" ? "oldest" : "newest")}
+            className="flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 text-caption font-semibold text-gray-600 hover:bg-gray-50"
+          >
+            <ArrowDownUp className="h-3.5 w-3.5" />
+            {pick(sort === "newest" ? "newest" : "oldest", language)}
+          </button>
+          <div className="flex rounded-md border border-gray-200 bg-white p-0.5" role="group">
+            {(["grid", "list"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={view === v}
+                title={pick(v, language)}
+                aria-label={pick(v, language)}
+                onClick={() => setView(v)}
+                className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded ${view === v ? "bg-yellow-100 text-yellow-900" : "text-gray-400 hover:text-gray-700"}`}
+              >
+                {v === "grid" ? <LayoutGrid className="h-4 w-4" /> : <List className="h-4 w-4" />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <ul className={view === "list" ? "flex flex-col gap-3" : "grid grid-cols-1 items-start gap-3 ws-md:grid-cols-2 ws-xl:grid-cols-3"}>
+        {shown.map((note) => {
           const editing = editingId === note.id;
           const wasEdited = note.updatedAt !== note.createdAt;
           return (

@@ -11,7 +11,6 @@ interface Props extends ThHTMLAttributes<HTMLTableCellElement> {
   colKey: string;
 }
 
-const POSITIONED = /(^|\s)(sticky|relative|absolute|fixed)(\s|$)/;
 const setW = (el: HTMLElement, w: number | string) => {
   const v = typeof w === "number" ? `${w}px` : w;
   el.style.width = el.style.minWidth = el.style.maxWidth = v;
@@ -27,6 +26,14 @@ export function ResizableTh({ listKey, colKey, className, style, children, ...re
   const ref = useRef<HTMLTableCellElement>(null);
   const { getWidth, setWidth, seedWidths, resetWidth, hasWidths } = useColumnWidths(listKey);
   const width = getWidth(colKey);
+
+  // The handle needs a positioned cell. A sticky header (`.table-page-sticky-head th`) already is one, and
+  // a `relative` class there would override its `position: sticky`: the head stops sticking and the sticky
+  // head mirror covers it. So `relative` is set only on a cell that would otherwise be static.
+  useLayoutEffect(() => {
+    const th = ref.current;
+    if (th && getComputedStyle(th).position === "static") th.style.position = "relative";
+  }, []);
 
   useLayoutEffect(() => {
     const table = ref.current?.closest("table");
@@ -57,7 +64,7 @@ export function ResizableTh({ listKey, colKey, className, style, children, ...re
       {...rest}
       ref={ref}
       data-col-key={colKey}
-      className={`${className ?? ""}${className && POSITIONED.test(className) ? "" : " relative"}`}
+      className={className}
       style={width ? { ...style, width, minWidth: width, maxWidth: width } : style}
     >
       {children}

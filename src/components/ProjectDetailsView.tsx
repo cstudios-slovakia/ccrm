@@ -3338,8 +3338,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <div>
                     <label className="block type-overline text-slate-400 mb-1">
                       {t("Event Title", "Názov udalosti", "Esemény címe")}
-                      {!newTeTitle.trim() && !newTeContent.trim() && <span className="text-rose-500"> *</span>}
-                    </label>
+                                          </label>
                     <input
                       value={newTeTitle}
                       onChange={e => { setNewTeTitle(e.target.value); setTeIssue(null); }}
@@ -3372,8 +3371,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <div>
                     <label className="block type-overline text-slate-400 mb-1">
                       {t("Content details...", "Podrobnosti", "Részletek")}
-                      {!newTeTitle.trim() && !newTeContent.trim() && <span className="text-rose-500"> *</span>}
-                    </label>
+                                          </label>
                     <textarea
                       value={newTeContent}
                       onChange={e => { setNewTeContent(e.target.value); setTeIssue(null); }}

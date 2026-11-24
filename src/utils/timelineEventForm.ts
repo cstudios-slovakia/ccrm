@@ -13,20 +13,22 @@ export function timelineEventTypeOptions(types: TimelineEventType[] | undefined,
 }
 
 /**
- * The title an event is saved with: the typed one, else the selected type's label when there are
- * details to log. Empty string = nothing to save (neither a title nor details).
+ * The title an event is saved with. Nothing on the form is required, so it falls back in order: the typed
+ * name, the selected event type's name, then the first line of the details.
  */
 export function resolveTimelineEventTitle(title: string, content: string, typeLabel: string): string {
   const typed = title.trim();
   if (typed) return typed;
-  return content.trim() ? typeLabel.trim() : "";
+  if (typeLabel.trim()) return typeLabel.trim();
+  const firstLine = content.trim().split(/\r?\n/, 1)[0].trim();
+  return firstLine.length > 80 ? `${firstLine.slice(0, 79).trimEnd()}…` : firstLine;
 }
 
 export type TimelineEventIssue = { field: string; message: string };
 
 /**
- * What stops "Add event": nothing to log, or a required attribute of the type left empty.
- * `field` is "title" or the attribute id, so the form can show the message under that field.
+ * What stops "Add event": only a required attribute of a custom event type left empty (an admin marked it
+ * required in the project type). Name and details are optional; see resolveTimelineEventTitle.
  */
 export function findTimelineEventIssue(
   input: {
@@ -37,9 +39,6 @@ export function findTimelineEventIssue(
   },
   t: Tr,
 ): TimelineEventIssue | null {
-  if (!input.title.trim() && !input.content.trim()) {
-    return { field: "title", message: t("Enter a title or details for the event.", "Zadajte názov alebo podrobnosti udalosti.", "Adjon meg címet vagy részleteket az eseményhez.") };
-  }
   for (const attr of input.attributes) {
     if (attr.required && input.isEmpty(attr.id)) {
       return { field: attr.id, message: `"${attr.name}" ${t("is required.", "je povinné.", "megadása kötelező.")}` };

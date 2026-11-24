@@ -214,6 +214,9 @@ export interface UserPrefs {
   projectDefaultTab: string | null;
   /** Lead detail view: the tab it opens on ("timeline" | "tasks"). `null` = timeline. */
   leadDefaultTab: string | null;
+  /** Notes tab (leads, projects …): note blocks as a grid or a list, and oldest or newest first. */
+  notesView: "grid" | "list";
+  notesSort: "oldest" | "newest";
   /** Pinned/favorited entities across projects, clients, leads, and custom entries. */
   favorites: FavoriteItem[];
   /**
@@ -317,6 +320,8 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   defaultPage: null,
   projectDefaultTab: null,
   leadDefaultTab: null,
+  notesView: "grid",
+  notesSort: "oldest",
   favorites: [],
   recentClientIds: [],
   moduleWizardPending: false,

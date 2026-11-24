@@ -12,13 +12,17 @@ test("details alone fall back to the type label", () => {
   assert.equal(resolveTimelineEventTitle("", " ? ", "Phone Call"), "Phone Call");
 });
 
-test("no title and no details leaves nothing to save", () => {
-  assert.equal(resolveTimelineEventTitle(" ", "  ", "Phone Call"), "");
+test("an empty form is saved under the event type's name", () => {
+  assert.equal(resolveTimelineEventTitle(" ", "  ", "Phone Call"), "Phone Call");
 });
 
-test("an empty form is an issue on the title field", () => {
-  const issue = findTimelineEventIssue({ title: "", content: "", attributes: [], isEmpty: () => false }, t);
-  assert.equal(issue?.field, "title");
+test("without a type name the first line of the details is the title", () => {
+  assert.equal(resolveTimelineEventTitle("", "Site visit\nmore text", ""), "Site visit");
+  assert.equal(resolveTimelineEventTitle("", "x".repeat(100), "").length, 80);
+});
+
+test("nothing on the form is required", () => {
+  assert.equal(findTimelineEventIssue({ title: "", content: "", attributes: [], isEmpty: () => true }, t), null);
 });
 
 test("details without a title are fine", () => {

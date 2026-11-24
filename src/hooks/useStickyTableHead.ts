@@ -79,6 +79,25 @@ export function useStickyTableHead(): [(el: HTMLElement | null) => void, HTMLEle
       schedule();
     };
 
+    // A column resize handle in the copy (ui/ColumnResizeHandle) hands the gesture to the real one: the
+    // pointerdown is re-dispatched there, the real handle captures the pointer and receives the moves.
+    const forwardResize = (event: PointerEvent | MouseEvent) => {
+      const src = source();
+      const handle = event.target instanceof Element ? event.target.closest('[role="separator"]') : null;
+      if (!copy || !src || !handle) return;
+      const real = counterpart(handle, copy, src.table);
+      if (!real) return;
+      event.preventDefault();
+      event.stopPropagation();
+      real.dispatchEvent(
+        event instanceof PointerEvent
+          ? new PointerEvent(event.type, event)
+          : new MouseEvent(event.type, event),
+      );
+      stale = true;
+      schedule();
+    };
+
     // Sideways wheel over the copy (which hides its own overflow) pans the table.
     const forwardWheel = (event: WheelEvent) => {
       const dx = event.shiftKey && !event.deltaX ? event.deltaY : event.deltaX;
@@ -109,6 +128,8 @@ export function useStickyTableHead(): [(el: HTMLElement | null) => void, HTMLEle
         mirror.className = "table-page-head-mirror";
         mirror.setAttribute("aria-hidden", "true");
         mirror.addEventListener("click", replayClick);
+        mirror.addEventListener("pointerdown", forwardResize);
+        mirror.addEventListener("dblclick", forwardResize);
         mirror.addEventListener("wheel", forwardWheel, { passive: true });
         mirror.append(document.createElement("div"));
       }
