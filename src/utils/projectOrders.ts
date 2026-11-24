@@ -39,19 +39,23 @@ export const projectCustomerIds = (project: ProjectLike, leads: readonly LeadLik
 };
 
 /**
- * Orders that could be linked to the project: not linked to any project yet and
- * attached to the project's customer. A project with no customer offers every
- * unlinked order.
+ * Orders that could be linked to the project: every order not linked to any project yet, split
+ * into those of the project's customer (`mine`) and the rest (`others`), each newest first. A
+ * project with no customer has everything in `others`.
  */
 export const linkableOrders = <T extends OrderLike>(
   orders: readonly T[],
   project: ProjectLike,
   leads: readonly LeadLike[],
-): T[] => {
+): { mine: T[]; others: T[] } => {
   const customers = projectCustomerIds(project, leads);
-  return orders
-    .filter((o) => !o.projectId && (customers.size === 0 || (!!o.clientId && customers.has(o.clientId))))
-    .sort(compareOrdersNewestFirst);
+  const mine: T[] = [];
+  const others: T[] = [];
+  for (const o of orders) {
+    if (o.projectId) continue;
+    (o.clientId && customers.has(o.clientId) ? mine : others).push(o);
+  }
+  return { mine: mine.sort(compareOrdersNewestFirst), others: others.sort(compareOrdersNewestFirst) };
 };
 
 /** Projects split for an order's picker: those of the order's customer first, then the rest. */

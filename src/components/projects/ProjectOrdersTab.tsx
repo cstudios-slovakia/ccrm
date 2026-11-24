@@ -43,6 +43,16 @@ export const ProjectOrdersTab: React.FC<ProjectOrdersTabProps> = ({ project, lin
   const linked = useMemo(() => ordersOfProject(orders, project.id), [orders, project.id]);
   const linkable = useMemo(() => linkableOrders(orders, project, leads), [orders, project, leads]);
   const money = (o: Order) => formatMoney(o.totalGrossAmount || 0, o.currency || currency || "EUR", language);
+  const linkOption = (group: string) => (o: Order) => ({
+    value: o.id,
+    label: `${o.orderNumber} · ${formatDateLocalized(o.orderDate, language)} · ${money(o)}`,
+    searchText: `${o.orderNumber} ${o.orderDate}`,
+    group,
+  });
+  const linkGroups = [
+    { id: "mine", label: t("This customer's orders", "Objednávky tohto zákazníka", "Az ügyfél rendelései") },
+    { id: "others", label: t("Other unlinked orders", "Ostatné neprepojené objednávky", "Egyéb csatolatlan rendelések") },
+  ];
 
   const openOrder = (o: Order) => {
     window.location.hash = `orders/${encodeURIComponent(o.id)}?from=${encodeURIComponent(backRoute(project.id))}`;
@@ -82,14 +92,11 @@ export const ProjectOrdersTab: React.FC<ProjectOrdersTabProps> = ({ project, lin
             <CustomSelect
               value=""
               onChange={id => id && setLink(id, project.id)}
-              placeholder={linkable.length ? t("Link existing order", "Prepojiť existujúcu objednávku", "Meglévő rendelés csatolása") : t("No unlinked orders", "Žiadne neprepojené objednávky", "Nincs csatolatlan rendelés")}
-              disabled={linkable.length === 0}
+              placeholder={t("Link existing order", "Prepojiť existujúcu objednávku", "Meglévő rendelés csatolása")}
+              searchable
               searchPlaceholder={t("Search orders...", "Hľadať objednávky...", "Rendelések keresése...")}
-              options={linkable.map(o => ({
-                value: o.id,
-                label: `${o.orderNumber} · ${formatDateLocalized(o.orderDate, language)} · ${money(o)}`,
-                searchText: `${o.orderNumber} ${o.orderDate}`,
-              }))}
+              groups={linkGroups}
+              options={[...linkable.mine.map(linkOption("mine")), ...linkable.others.map(linkOption("others"))]}
             />
             <button
               type="button"

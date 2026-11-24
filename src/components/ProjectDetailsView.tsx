@@ -2001,7 +2001,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   const mainView = (
-    <div className={isSidebar ? "relative w-full max-w-2xl ws-lg:max-w-3xl bg-gray-50 flex flex-col h-full shadow-2xl border-l border-gray-200 transition-transform duration-200 ease-out transform " + (isClosing ? "translate-x-full" : "translate-x-0") : "w-full flex flex-col h-auto ws-lg:h-[calc(100vh-11rem)] animate-fade-in text-left"}>
+    <div className={isSidebar ? "relative w-full max-w-2xl ws-lg:max-w-3xl bg-gray-50 flex flex-col h-full shadow-2xl border-l border-gray-200 transition-transform duration-200 ease-out transform " + (isClosing ? "translate-x-full" : "translate-x-0") : "w-full flex flex-col animate-fade-in text-left"}>
 
       {/* Entity header / Sidebar header */}
       {isSidebar ? (
@@ -2180,7 +2180,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       )}
 
       {/* Workspace Body */}
-      <div className={isSidebar ? "flex-1 overflow-y-auto p-4 ws-sm:p-6 space-y-4 scrollbar-thin text-left" : "flex-1 ws-lg:overflow-hidden grid grid-cols-1 ws-lg:grid-cols-12 gap-6 pt-6 min-h-0"}>
+      <div className={isSidebar ? "flex-1 overflow-y-auto p-4 ws-sm:p-6 space-y-4 scrollbar-thin text-left" : "grid grid-cols-1 ws-lg:grid-cols-12 gap-6 pt-6 items-start"}>
         
         {/* LEFT COLUMN: the project's own card, its custom attributes, then
             the paired client at the bottom. The project card is edited in
@@ -3193,7 +3193,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         </ProjectLeftColumn>
 
         {/* RIGHT COLUMN: Timeline & Gantt Tabs */}
-        <div className={isSidebar ? "space-y-4 text-left" : "ws-lg:col-span-8 flex flex-col h-auto ws-lg:h-full ws-lg:overflow-hidden bg-white border border-gray-200 rounded-lg p-4 ws-sm:p-5 shadow-xs text-left"}>
+        <div className={isSidebar ? "space-y-4 text-left" : "ws-lg:col-span-8 flex flex-col bg-white border border-gray-200 rounded-lg p-4 ws-sm:p-5 shadow-xs text-left"}>
           {/* Tab bar: icon, label, optional badge; scrolls sideways rather than wrapping. */}
           {!isSidebar && (
             <Tabs<RightTab>

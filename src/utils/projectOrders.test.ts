@@ -56,20 +56,29 @@ test("projectCustomerIds covers the client, the paired lead and the client's oth
   assert.equal(projectCustomerIds({ clientId: null, leadId: null }, leads).size, 0);
 });
 
-test("linkableOrders offers the customer's unlinked orders only", () => {
+test("linkableOrders lists the customer's unlinked orders first, then every other unlinked order", () => {
   const orders = [
     order("a", { clientId: "client-1" }),
     order("b", { clientId: "lead-2", orderDate: "2026-06-01" }),
     order("c", { clientId: "client-1", projectId: "p9" }),
-    order("d", { clientId: "client-2" }),
+    order("d", { clientId: "client-2", orderDate: "2026-03-01" }),
+    order("e", { orderDate: "2026-04-01" }),
   ];
-  const project = { clientId: "client-1", leadId: null };
-  assert.deepEqual(linkableOrders(orders, project, leads).map((o) => o.id), ["b", "a"]);
+  const { mine, others } = linkableOrders(orders, { clientId: "client-1", leadId: null }, leads);
+  assert.deepEqual(mine.map((o) => o.id), ["b", "a"]);
+  assert.deepEqual(others.map((o) => o.id), ["e", "d"]);
 });
 
-test("linkableOrders on a project with no customer offers every unlinked order", () => {
+test("linkableOrders never offers an order that already belongs to a project", () => {
+  const orders = [order("a", { projectId: "p1", clientId: "client-1" }), order("b", { projectId: "p2" })];
+  assert.deepEqual(linkableOrders(orders, { clientId: "client-1", leadId: null }, leads), { mine: [], others: [] });
+});
+
+test("linkableOrders on a project with no customer offers every unlinked order under others", () => {
   const orders = [order("a", { clientId: "client-1" }), order("b", { projectId: "p1" }), order("c")];
-  assert.deepEqual(linkableOrders(orders, { clientId: null, leadId: null }, leads).map((o) => o.id).sort(), ["a", "c"]);
+  const { mine, others } = linkableOrders(orders, { clientId: null, leadId: null }, leads);
+  assert.deepEqual(mine, []);
+  assert.deepEqual(others.map((o) => o.id).sort(), ["a", "c"]);
 });
 
 test("partitionProjectsForOrder puts the order's customer's projects first", () => {
