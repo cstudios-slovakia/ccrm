@@ -64,6 +64,7 @@ import { CustomSelect } from "./ui/CustomSelect";
 import { useListFilter } from "../hooks/useListFilter";
 import { PRODUCT_NAME, getSystemTitle } from "../utils/brand";
 
+import { ResizableTh } from "./ui/ResizableTh";
 export interface OrdersViewProps {
   orders: Order[];
   setOrders: React.Dispatch<React.SetStateAction<Order[]>>;
@@ -838,13 +839,13 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
           <table className="w-full text-left text-ui border-collapse min-w-220">
             <thead className="table-page-sticky-head">
               <tr className="bg-gray-50 text-gray-500 type-overline border-b border-gray-200">
-                <th className="p-4">{t("Order no.", "Číslo objednávky", "Rendelésszám")}</th>
-                <th className="p-4">{t("Customer", "Zákazník", "Ügyfél")}</th>
-                <th className="p-4">{t("Delivery & Tracking", "Doprava a trasovanie", "Szállítás és nyomon követés")}</th>
-                <th className="p-4">{t("Items", "Položky", "Tételek")}</th>
-                <th className="p-4">{t("Payment", "Platba", "Fizetés")}</th>
-                <th className="p-4 text-right">{t("Total gross", "Celkom s DPH", "Összesen")}</th>
-                <th className="p-4 text-center">{t("Status", "Stav", "Állapot")}</th>
+                <ResizableTh listKey="orders" colKey="order-no." className="p-4">{t("Order no.", "Číslo objednávky", "Rendelésszám")}</ResizableTh>
+                <ResizableTh listKey="orders" colKey="customer" className="p-4">{t("Customer", "Zákazník", "Ügyfél")}</ResizableTh>
+                <ResizableTh listKey="orders" colKey="delivery-tracking" className="p-4">{t("Delivery & Tracking", "Doprava a trasovanie", "Szállítás és nyomon követés")}</ResizableTh>
+                <ResizableTh listKey="orders" colKey="items" className="p-4">{t("Items", "Položky", "Tételek")}</ResizableTh>
+                <ResizableTh listKey="orders" colKey="payment" className="p-4">{t("Payment", "Platba", "Fizetés")}</ResizableTh>
+                <ResizableTh listKey="orders" colKey="total-gross" className="p-4 text-right">{t("Total gross", "Celkom s DPH", "Összesen")}</ResizableTh>
+                <ResizableTh listKey="orders" colKey="status" className="p-4 text-center">{t("Status", "Stav", "Állapot")}</ResizableTh>
                 <th className="p-4 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
               </tr>
             </thead>

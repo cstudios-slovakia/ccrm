@@ -2428,3 +2428,7 @@ progress.loading-spinner:indeterminate {
   }
 }
 
+
+/* Resizable list columns: once a width is stored the table is fixed-layout and cells truncate. */
+table[data-col-resized] { table-layout: fixed; }
+table[data-col-resized] td { overflow: hidden; text-overflow: ellipsis; }

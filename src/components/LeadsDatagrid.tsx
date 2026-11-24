@@ -289,6 +289,7 @@ import { typePx, useViewSize } from "../utils/viewSize";
 import { WhatsAppChip, OpenInChatLink } from "./WhatsAppChip";
 import { EntityHeader, PageHeader, Tabs } from "./layout";
 
+import { ResizableTh } from "./ui/ResizableTh";
 // "1 deň / 2-4 dni / 5+ dní" — Slovak counts differently above four, and a badge
 // reading "3 dní" is the kind of thing an operator never stops noticing.
 const slaDays = (n: number, lang: Language): string =>
@@ -10465,64 +10466,64 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         switch (col.key) {
                                             case "client":
                                                 return (
-                                                    <th key={col.key} className="sticky bg-white z-10 py-4 px-6 border-b-2 border-slate-100">
+                                                    <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-6 border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.client")}
-                                                    </th>
+                                                    </ResizableTh>
                                                 );
                                             case "created":
                                                 return (
-                                                    <th key={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                    <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {systemLanguage === "sk" ? "Dátum vytvorenia" : systemLanguage === "hu" ? "Létrehozás dátuma" : "Date Created"}
-                                                    </th>
+                                                    </ResizableTh>
                                                 );
                                             case "city":
                                                 return (
-                                                    <th key={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                    <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.city")}
-                                                    </th>
+                                                    </ResizableTh>
                                                 );
                                             case "type":
                                                 return (
-                                                    <th key={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                    <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.type")}
-                                                    </th>
+                                                    </ResizableTh>
                                                 );
                                             case "source":
                                                 return (
-                                                    <th key={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                    <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.source")}
-                                                    </th>
+                                                    </ResizableTh>
                                                 );
                                             case "pm":
                                                 return (
-                                                    <th key={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                    <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.pm")}
-                                                    </th>
+                                                    </ResizableTh>
                                                 );
                                             case "division":
                                                 return (
-                                                    <th key={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                    <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {t("Division", "Divízia", "Divízió")}
-                                                    </th>
+                                                    </ResizableTh>
                                                 );
                                             case "value":
                                                 return (
-                                                    <th key={col.key} className="sticky bg-white z-10 py-4 px-4 text-right border-b-2 border-slate-100">
+                                                    <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 text-right border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.value")}
-                                                    </th>
+                                                    </ResizableTh>
                                                 );
                                             case "state":
                                                 return (
-                                                    <th key={col.key} className="sticky bg-white z-10 py-4 px-4 text-center border-b-2 border-slate-100">
+                                                    <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 text-center border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.state")}
-                                                    </th>
+                                                    </ResizableTh>
                                                 );
                                             default:
                                                 if (col.attribute) {
                                                     return (
-                                                        <th key={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100 whitespace-nowrap">
+                                                        <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100 whitespace-nowrap">
                                                             {col.attribute.name}
-                                                        </th>
+                                                        </ResizableTh>
                                                     );
                                                 }
                                                 return null;

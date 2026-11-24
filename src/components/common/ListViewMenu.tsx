@@ -3,6 +3,7 @@ import { ArrowDownNarrowWide, ArrowDownWideNarrow, ChevronDown, GripVertical, Lo
 import { CustomSelect } from "../ui/CustomSelect";
 import { cn } from "../../utils/cn";
 import { useDragReorder } from "../../hooks/useDragReorder";
+import { useColumnWidths } from "../../hooks/useColumnWidths";
 import type { DropPosition } from "../../utils/reorder";
 
 /* The sort select portals its option panel to <body>; a click in it must not
@@ -67,6 +68,8 @@ export interface ListViewMenuProps<K extends string, C extends ListViewColumn> {
   onReset: () => void;
   /** Colour of the active sort direction, drop lines, checkboxes and hovers. Defaults to indigo. */
   accent?: ListViewMenuAccent;
+  /** The list's key for stored column widths; adds a "Reset column widths" action. */
+  widthsListKey?: string;
 }
 
 /**
@@ -90,8 +93,10 @@ export function ListViewMenu<K extends string, C extends ListViewColumn>({
   columnsScope,
   onReset,
   accent = "indigo",
+  widthsListKey = "",
 }: ListViewMenuProps<K, C>) {
   const tone = ACCENTS[accent];
+  const colWidths = useColumnWidths(widthsListKey);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const [panelPos, setPanelPos] = useState<{ left: number; maxHeight: number } | null>(null);
@@ -302,6 +307,15 @@ export function ListViewMenu<K extends string, C extends ListViewColumn>({
             >
               {t("Use default settings", "Použiť predvolené nastavenia", "Alapértelmezett beállítások")}
             </button>
+            {widthsListKey && colWidths.hasWidths && (
+              <button
+                type="button"
+                onClick={colWidths.resetAll}
+                className={cn("text-ui font-semibold text-gray-600 transition-colors duration-150 cursor-pointer hover:text-entity-text", tone.resetHover)}
+              >
+                {t("Reset column widths", "Obnoviť šírky stĺpcov", "Oszlopszélességek visszaállítása")}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setOpen(false)}

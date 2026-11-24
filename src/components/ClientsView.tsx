@@ -96,6 +96,7 @@ import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { useListFilter } from "../hooks/useListFilter";
 import { PRODUCT_NAME } from "../utils/brand";
 
+import { ResizableTh } from "./ui/ResizableTh";
 export type ClientSortKey = "name" | "phone" | "email" | "city" | "clientType" | "owner" | "leadsCount" | "totalValue";
 export type ClientSortDirection = "asc" | "desc";
 
@@ -6250,7 +6251,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           <table className="w-full border-collapse text-left block ws-lg:table">
             <thead className="hidden ws-lg:table-header-group table-page-sticky-head">
               <tr className="bg-gray-50/90 text-gray-500 type-overline select-none">
-                <th
+                <ResizableTh listKey="clients" colKey="name"
                   className={`sticky bg-gray-50/95 z-10 py-3 px-6 border-b border-gray-200 transition-colors ${sortConfig?.key === "name" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "name" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
@@ -6264,8 +6265,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <span>{getTranslation(systemLanguage, "leads.table.client")}</span>
                     {renderSortIcon("name")}
                   </button>
-                </th>
-                <th
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="phone"
                   className={`sticky bg-gray-50/95 z-10 py-3 px-4 border-b border-gray-200 transition-colors ${sortConfig?.key === "phone" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "phone" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
@@ -6279,8 +6280,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <span>{t("Contact Phone", "Kontaktný telefón", "Kapcsolattartó telefon")}</span>
                     {renderSortIcon("phone")}
                   </button>
-                </th>
-                <th
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="email"
                   className={`sticky bg-gray-50/95 z-10 py-3 px-4 border-b border-gray-200 transition-colors ${sortConfig?.key === "email" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "email" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
@@ -6294,8 +6295,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <span>{getTranslation(systemLanguage, "login.email")}</span>
                     {renderSortIcon("email")}
                   </button>
-                </th>
-                <th
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="city"
                   className={`sticky bg-gray-50/95 z-10 py-3 px-4 border-b border-gray-200 transition-colors ${sortConfig?.key === "city" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "city" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
@@ -6309,8 +6310,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <span>{getTranslation(systemLanguage, "leads.table.city")}</span>
                     {renderSortIcon("city")}
                   </button>
-                </th>
-                <th
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="clientType"
                   className={`sticky bg-gray-50/95 z-10 py-3 px-4 border-b border-gray-200 transition-colors ${sortConfig?.key === "clientType" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "clientType" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
@@ -6324,8 +6325,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <span>{getTranslation(systemLanguage, "leads.table.type")}</span>
                     {renderSortIcon("clientType")}
                   </button>
-                </th>
-                <th
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="owner"
                   className={`sticky bg-gray-50/95 z-10 py-3 px-4 border-b border-gray-200 transition-colors ${sortConfig?.key === "owner" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "owner" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
@@ -6339,8 +6340,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <span>{getTranslation(systemLanguage, "leads.table.pm")}</span>
                     {renderSortIcon("owner")}
                   </button>
-                </th>
-                <th
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="leadsCount"
                   className={`sticky bg-gray-50/95 z-10 py-3 px-4 text-center border-b border-gray-200 transition-colors ${sortConfig?.key === "leadsCount" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "leadsCount" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
@@ -6354,8 +6355,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <span>{getTranslation(systemLanguage, "clients.card.leads_count")}</span>
                     {renderSortIcon("leadsCount")}
                   </button>
-                </th>
-                <th
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="totalValue"
                   className={`sticky bg-gray-50/95 z-10 py-3 px-6 text-right border-b border-gray-200 transition-colors ${sortConfig?.key === "totalValue" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "totalValue" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
@@ -6369,7 +6370,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <span>{getTranslation(systemLanguage, "clients.card.total_value")}</span>
                     {renderSortIcon("totalValue")}
                   </button>
-                </th>
+                </ResizableTh>
                 <th className="sticky right-0 bg-gray-50/95 z-20 py-3 px-4 border-b border-l border-gray-200 w-12">
                   <span className="sr-only">{t("Actions", "Akcie", "Műveletek")}</span>
                 </th>

@@ -1,0 +1,2 @@
+- **Resizable list columns**: drag the right edge of a column header to set its width (double-click resets it, arrow keys adjust it). Widths are saved per user and per list on leads, projects, clients, orders, price offers, employees, files, warehouse items, finance movements and recurring templates; "Reset column widths" is in the View menu of leads, projects and price offers.
+- **Tests**: `columnWidths.test.ts` (clamping and merge helpers).

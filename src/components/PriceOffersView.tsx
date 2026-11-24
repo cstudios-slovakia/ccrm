@@ -62,6 +62,7 @@ import {
 } from "../utils/offerColumns";
 import { DEFAULT_OFFER_SORT, normalizeOfferSort, sortOffers, type OfferSort, type OfferSortKey } from "../utils/offerSort";
 
+import { ResizableTh } from "./ui/ResizableTh";
 interface PriceOffersViewProps {
   /**
    * The whole shared document list. Invoices and proformas live in the same
@@ -944,6 +945,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
             sortOptions={sortOptions}
             onSortChange={setStoredSort}
             directionlessKeys={["default"]}
+            widthsListKey="offers"
             columns={allColumns}
             onColumnsChange={next => setStoredColumns(toStoredOfferColumns(next))}
             columnLabel={col => t(...OFFER_COLUMN_LABELS[col.key])}
@@ -967,8 +969,8 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
             <thead className="table-page-sticky-head">
               <tr className="bg-gray-50 text-gray-500 type-overline border-b border-gray-200">
                 {columns.map(col => (
-                  <th
-                    key={col.key}
+                  <ResizableTh listKey="offers"
+                    colKey={col.key}
                     className={cn(
                       "sticky z-10 bg-gray-50 p-4",
                       col.key === "amount" && "text-right",
@@ -976,7 +978,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
                     )}
                   >
                     {t(...OFFER_COLUMN_LABELS[col.key])}
-                  </th>
+                  </ResizableTh>
                 ))}
                 <th className="sticky right-0 z-30 bg-gray-50 p-4 text-right border-l border-gray-200">{t("Actions", "Akcie", "Műveletek")}</th>
               </tr>

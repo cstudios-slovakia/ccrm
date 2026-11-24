@@ -36,6 +36,7 @@ import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { useListFilter } from "../hooks/useListFilter";
 import { PRODUCT_NAME } from "../utils/brand";
 
+import { ResizableTh } from "./ui/ResizableTh";
 interface QueuedFile {
   id: string;
   file: File;
@@ -735,13 +736,13 @@ export const FilesView: React.FC<FilesViewProps> = ({
           <table className="w-full border-collapse text-left min-w-195">
             <thead className="table-page-sticky-head">
               <tr className="bg-gray-50 text-gray-500 type-overline">
-                <th className="sticky bg-gray-50 z-10 py-3.5 px-6 border-b border-gray-200">{getTranslation(systemLanguage, "files.th_filename")}</th>
-                <th className="sticky bg-gray-50 z-10 py-3.5 px-4 border-b border-gray-200">{getTranslation(systemLanguage, "files.th_type")}</th>
-                <th className="sticky bg-gray-50 z-10 py-3.5 px-4 border-b border-gray-200">{getTranslation(systemLanguage, "files.th_client")}</th>
-                <th className="sticky bg-gray-50 z-10 py-3.5 px-4 border-b border-gray-200">{getTranslation(systemLanguage, "files.th_project")}</th>
-                <th className="sticky bg-gray-50 z-10 py-3.5 px-4 border-b border-gray-200">{getTranslation(systemLanguage, "files.th_date")}</th>
-                <th className="sticky bg-gray-50 z-10 py-3.5 px-4 border-b border-gray-200">{getTranslation(systemLanguage, "files.th_size")}</th>
-                <th className="sticky bg-gray-50 z-10 py-3.5 px-4 border-b border-gray-200">{getTranslation(systemLanguage, "files.th_value")}</th>
+                <ResizableTh listKey="files" colKey="files.th-filename" className="sticky bg-gray-50 z-10 py-3.5 px-6 border-b border-gray-200">{getTranslation(systemLanguage, "files.th_filename")}</ResizableTh>
+                <ResizableTh listKey="files" colKey="files.th-type" className="sticky bg-gray-50 z-10 py-3.5 px-4 border-b border-gray-200">{getTranslation(systemLanguage, "files.th_type")}</ResizableTh>
+                <ResizableTh listKey="files" colKey="files.th-client" className="sticky bg-gray-50 z-10 py-3.5 px-4 border-b border-gray-200">{getTranslation(systemLanguage, "files.th_client")}</ResizableTh>
+                <ResizableTh listKey="files" colKey="files.th-project" className="sticky bg-gray-50 z-10 py-3.5 px-4 border-b border-gray-200">{getTranslation(systemLanguage, "files.th_project")}</ResizableTh>
+                <ResizableTh listKey="files" colKey="files.th-date" className="sticky bg-gray-50 z-10 py-3.5 px-4 border-b border-gray-200">{getTranslation(systemLanguage, "files.th_date")}</ResizableTh>
+                <ResizableTh listKey="files" colKey="files.th-size" className="sticky bg-gray-50 z-10 py-3.5 px-4 border-b border-gray-200">{getTranslation(systemLanguage, "files.th_size")}</ResizableTh>
+                <ResizableTh listKey="files" colKey="files.th-value" className="sticky bg-gray-50 z-10 py-3.5 px-4 border-b border-gray-200">{getTranslation(systemLanguage, "files.th_value")}</ResizableTh>
                 <th className="sticky bg-gray-50 z-10 py-3.5 px-6 text-right border-b border-gray-200">{getTranslation(systemLanguage, "files.th_actions")}</th>
               </tr>
             </thead>

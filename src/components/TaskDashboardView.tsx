@@ -102,6 +102,7 @@ import { EntityBadge } from "./tremor/EntityBadge";
 import { entityAccentStyle } from "../utils/entityAccent";
 import { blockNotesToPlainText } from "../utils/blockNotes";
 
+import { ResizableTh } from "./ui/ResizableTh";
 // Format a Date as a LOCAL calendar date (YYYY-MM-DD). Task deadlines are stored
 // as plain local date strings, so we must NOT go through toISOString() (which
 // converts to UTC and, in timezones ahead of UTC, shifts the day back by one —
@@ -5327,12 +5328,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             <table className="w-full text-left border-collapse">
                                 <thead>
                                     <tr className="border-b border-slate-200 text-slate-400 type-overline">
-                                        <th className="py-3 px-3">{t("Task", "Úloha", "Feladat")}</th>
-                                        <th className="py-3 px-3">{t("Schedule", "Plán", "Ütemezés")}</th>
-                                        <th className="py-3 px-3">{t("Next Due", "Ďalší termín", "Következő határidő")}</th>
-                                        <th className="py-3 px-3">{t("Current Task", "Aktuálna úloha", "Jelenlegi feladat")}</th>
-                                        <th className="py-3 px-3">{t("Assignee", "Zodpovedný", "Felelős")}</th>
-                                        <th className="py-3 px-3">{t("Status", "Stav", "Állapot")}</th>
+                                        <ResizableTh listKey="task-recurring" colKey="task" className="py-3 px-3">{t("Task", "Úloha", "Feladat")}</ResizableTh>
+                                        <ResizableTh listKey="task-recurring" colKey="schedule" className="py-3 px-3">{t("Schedule", "Plán", "Ütemezés")}</ResizableTh>
+                                        <ResizableTh listKey="task-recurring" colKey="next-due" className="py-3 px-3">{t("Next Due", "Ďalší termín", "Következő határidő")}</ResizableTh>
+                                        <ResizableTh listKey="task-recurring" colKey="current-task" className="py-3 px-3">{t("Current Task", "Aktuálna úloha", "Jelenlegi feladat")}</ResizableTh>
+                                        <ResizableTh listKey="task-recurring" colKey="assignee" className="py-3 px-3">{t("Assignee", "Zodpovedný", "Felelős")}</ResizableTh>
+                                        <ResizableTh listKey="task-recurring" colKey="status" className="py-3 px-3">{t("Status", "Stav", "Állapot")}</ResizableTh>
                                         <th className="py-3 px-3 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                                     </tr>
                                 </thead>

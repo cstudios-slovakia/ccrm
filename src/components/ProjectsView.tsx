@@ -72,6 +72,7 @@ import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { archiveRecordsWithUndo, deleteRecordsWithUndo } from "../utils/recordActions";
 import { useListFilter } from "../hooks/useListFilter";
 
+import { ResizableTh } from "./ui/ResizableTh";
 /*
   The summary strip's chips. Each tone is written out in full because Tailwind
   only ships the class names it can literally see — a class assembled at runtime
@@ -1978,17 +1979,17 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                         // The structure is never sorted, so its headers are plain labels.
                         if (isStructure) {
                           return (
-                            <th
-                              key={col.key}
+                            <ResizableTh listKey="projects"
+                              colKey={col.key}
                               className="bg-gray-50 px-4 py-3 type-overline text-gray-500 whitespace-nowrap border-b border-gray-200"
                             >
                               {columnLabel(col)}
-                            </th>
+                            </ResizableTh>
                           );
                         }
                         return (
-                          <th
-                            key={col.key}
+                          <ResizableTh listKey="projects"
+                            colKey={col.key}
                             aria-sort={active ? (effectiveSort.direction === "asc" ? "ascending" : "descending") : "none"}
                             className="bg-gray-50 px-4 py-3 type-overline text-gray-500 whitespace-nowrap border-b border-gray-200"
                           >
@@ -2006,7 +2007,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                 }`}
                               />
                             </button>
-                          </th>
+                          </ResizableTh>
                         );
                       })}
                       <th className="sticky right-0 bg-gray-50 z-30 px-4 py-3 w-28 text-right shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-b border-gray-200" />

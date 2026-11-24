@@ -34,6 +34,7 @@ export const ProjectListViewMenu: React.FC<ProjectListViewMenuProps> = props => 
   <ListViewMenu<ProjectSortKey, ResolvedProjectColumn>
     {...props}
     directionlessKeys={DIRECTIONLESS}
+    widthsListKey="projects"
     lockedColumnKey={LOCKED_PROJECT_COLUMN}
     lockedTitle={props.t("The project name always leads the row.", "Názov projektu je vždy prvý v riadku.", "A projekt neve mindig a sor élén áll.")}
     moveColumn={moveProjectColumn}
