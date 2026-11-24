@@ -4090,6 +4090,7 @@ ${log.payload || ''}
             employees={employeeRights.view ? employees : undefined}
             employeeSalaries={employeeRights.salaries ? employeeSalaries : undefined}
             employeeRights={employeeRights}
+            orderLinks={ordersModuleEnabled ? { orders, setOrders: updateOrdersAndSync, canEdit: access.canEdit("orders") } : undefined}
           />
         );
       }
@@ -4219,7 +4220,7 @@ ${log.payload || ''}
         // `orders/new?customer=<leads row id>&from=<page to return to>` opens a prefilled draft.
         const subOrderId = subOrder === "new" ? undefined : subOrder;
         const newOrderRequest = subOrder === "new"
-          ? { customerId: routeParams.get("customer"), from: routeParams.get("from"), key: activeTab }
+          ? { customerId: routeParams.get("customer"), projectId: routeParams.get("project"), from: routeParams.get("from"), key: activeTab }
           : undefined;
         return (
           <OrdersView
@@ -4256,6 +4257,7 @@ ${log.payload || ''}
             companyBillingSettings={companyBillingSettings}
             initialSelectedOrderId={subOrderId}
             newOrderRequest={newOrderRequest}
+            projects={projects}
             onOpenSettings={() => {
               window.location.hash = "settings/orders";
               setActiveTab("settings/orders");
@@ -4778,6 +4780,7 @@ ${log.payload || ''}
   const timeEnabled = !!currentUser?.id && access.can("time_tracking") && !(integrationsConfig?.disabledModules || []).includes("time-tracking");
   const whatsappEnabled = !!currentUser?.id && access.can("whatsapp") && !(integrationsConfig?.disabledModules || []).includes("whatsapp");
   const newsletterEnabled = !!currentUser?.id && access.can("newsletter") && !(integrationsConfig?.disabledModules || []).includes("newsletter");
+  const ordersModuleEnabled = !!currentUser?.id && access.can("orders") && !(integrationsConfig?.disabledModules || []).includes("orders");
   const whatsappRoute = parseAppHash(activeTab);
   const whatsappActive = whatsappRoute.route.split("/")[0].toLowerCase() === "whatsapp";
   const whatsappHost = whatsappEnabled && currentUser && (whatsappOpened || whatsappActive) ? (

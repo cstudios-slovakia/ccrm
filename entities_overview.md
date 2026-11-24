@@ -715,6 +715,13 @@ Price offers, proformas and invoices in one table (`type`), with their line item
 
 The `OFFER_STATUSES` setting (in `system_settings`) is a JSON list of `{key, label?, color, group, legacy?}`, normalized by `ccrm_normalize_offer_statuses()` (PHP) and `normalizeOfferStatusDefs()` (`src/utils/offerStatuses.ts`). Unset means the six built-ins; `invoiced` is built in as a `legacy` status (won, kept for offers that carry it, not offered in a picker).
 
+### `orders`
+Sales and purchase orders, with their lines in `order_items`. Only the columns that carry rules are listed here; see `api/schema.php` for the rest.
+* `id` VARCHAR(50) [PK]
+* `client_id` VARCHAR(50) [NULLable] (References `leads.id`; a client or a lead)
+* `supplier_id` VARCHAR(50) [NULLable] (References `suppliers.id` for purchase orders)
+* `project_id` VARCHAR(50) [NULLable, indexed `idx_orders_project`] (References `projects.id`: the project the order belongs to, NULL = none. Not a foreign key: a project's Orders tab lists every order with its id, newest `order_date` first, and no order is marked as current. Deleting a project leaves the id behind; the app treats an id with no project as unlinked)
+
 ---
 
 ## 10. Human Resources & Employees

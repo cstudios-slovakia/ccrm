@@ -29,6 +29,7 @@ import {
 import type {
   Order,
   Lead,
+  Project,
   WarehouseItem,
   Warehouse,
   WarehouseMovement,
@@ -63,6 +64,7 @@ import { PageHeader, StatGrid, StatTile, Tabs, EmptyState } from "./layout";
 import { CustomSelect } from "./ui/CustomSelect";
 import { useListFilter } from "../hooks/useListFilter";
 import { PRODUCT_NAME, getSystemTitle } from "../utils/brand";
+import { OrderProjectBadge } from "./orders/OrderProjectLink";
 
 import { ResizableTh } from "./ui/ResizableTh";
 export interface OrdersViewProps {
@@ -95,12 +97,14 @@ export interface OrdersViewProps {
    * Open the editor on a new draft for a customer (`#orders/new?customer=…&from=…`).
    * `key` identifies the request so the draft is built once, not on every sync poll.
    */
-  newOrderRequest?: { customerId: string | null; from: string | null; key: string };
+  newOrderRequest?: { customerId: string | null; projectId?: string | null; from: string | null; key: string };
+  /** Offers the order editor's "Project" field and shows an order's project in the list. */
+  projects?: Project[];
 }
 
 /** Where a new order may send the user back to: a client or lead page, nothing else. */
 const safeReturnRoute = (from: string | null | undefined): string | null =>
-  from && /^(clients\/|client-|leads\/|lead-)/.test(from) ? from : null;
+  from && /^(clients\/|client-|leads\/|lead-|projects\/|project-)/.test(from) ? from : null;
 
 export const OrdersView: React.FC<OrdersViewProps> = ({
   orders,
@@ -126,7 +130,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   onOpenSettings,
   companyBillingSettings,
   initialSelectedOrderId,
-  newOrderRequest
+  newOrderRequest,
+  projects
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
@@ -155,7 +160,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   // then would wipe what the user has typed.
   useEffect(() => {
     if (!newOrderRequest || !canEdit || handledNewOrderKeyRef.current === newOrderRequest.key) return;
-    const { customerId, from, key } = newOrderRequest;
+    const { customerId, projectId, from, key } = newOrderRequest;
     const origin = customerId ? leads.find(l => l.id === customerId) ?? null : null;
     // The record may simply not have loaded yet; only give up on it once leads exist.
     if (customerId && !origin && leads.length === 0) return;
@@ -177,7 +182,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     });
     newOrderOriginRef.current = { orderId: draft.id, originId: origin?.id ?? null };
     setReturnRoute(safeReturnRoute(from));
-    setEditingOrder(draft);
+    setEditingOrder(projectId ? { ...draft, projectId } : draft);
   }, [newOrderRequest, canEdit, leads, orders, orderStatuses, companyBillingSettings, systemCurrency]);
 
   // Auto-open order if requested via deep link / initialSelectedOrderId
@@ -187,6 +192,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         o => o.id === initialSelectedOrderId || o.orderNumber === initialSelectedOrderId
       );
       if (match) {
+        // `#orders/<id>?from=<page>`: closing the order goes back to that page (a project's Orders tab).
+        setReturnRoute(safeReturnRoute(new URLSearchParams(window.location.hash.split("?")[1] || "").get("from")));
         setEditingOrder(JSON.parse(JSON.stringify(match)));
       }
     }
@@ -677,9 +684,12 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         canDelete={canDelete}
         onOpenClient={onOpenClient}
         companyBillingSettings={companyBillingSettings}
+        projects={projects}
         backLabel={returnRoute
           ? returnRoute.startsWith("lead")
             ? t("Back to lead", "Späť na lead", "Vissza a leadhez")
+            : returnRoute.startsWith("project")
+            ? t("Back to project", "Späť na projekt", "Vissza a projekthez")
             : t("Back to client", "Späť na klienta", "Vissza az ügyfélhez")
           : undefined}
       />
@@ -899,6 +909,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                             </span>
                           )}
                         </div>
+                        <OrderProjectBadge order={order} projects={projects} leads={leads} language={userLanguage} />
                         <div className="flex items-center gap-1.5 mt-1">
                           {order.customerType === "client" ? (
                             <EntityBadge

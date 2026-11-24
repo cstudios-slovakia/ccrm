@@ -2177,6 +2177,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'customerType' => $row['customer_type'] ?? 'client',
                     'clientId' => $row['client_id'],
                     'supplierId' => $row['supplier_id'],
+                    'projectId' => $row['project_id'] ?? null,
                     'guest' => [
                         'name' => $row['guest_name'],
                         'email' => $row['guest_email'],
@@ -3296,6 +3297,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if (!ccrm_index_exists($pdo, 'leads', 'idx_lead_company_client')) {
                 try { $pdo->exec("ALTER TABLE `leads` ADD INDEX `idx_lead_company_client` (`company_client_id`)"); } catch (\Throwable $e) {}
+            }
+        }
+
+        if (isset($payload['orders']) && is_array($payload['orders']) && !$ccrm_skip_writes('orders', 'orders') && ccrm_table_exists($pdo, 'orders')) {
+            if (!ccrm_column_exists($pdo, 'orders', 'project_id')) {
+                $pdo->exec("ALTER TABLE `orders` ADD COLUMN `project_id` VARCHAR(50) NULL COMMENT 'References projects.id: the project this order belongs to' AFTER `supplier_id`");
+            }
+            if (!ccrm_index_exists($pdo, 'orders', 'idx_orders_project')) {
+                try { $pdo->exec("ALTER TABLE `orders` ADD INDEX `idx_orders_project` (`project_id`)"); } catch (\Throwable $e) {}
             }
         }
 
@@ -7021,7 +7031,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $insOrder = $pdo->prepare("
                 INSERT INTO `orders` (
-                    `id`, `order_number`, `type`, `status`, `customer_type`, `client_id`, `supplier_id`,
+                    `id`, `order_number`, `type`, `status`, `customer_type`, `client_id`, `supplier_id`, `project_id`,
                     `guest_name`, `guest_email`, `guest_phone`, `guest_company`, `guest_ico`, `guest_dic`, `guest_ic_dph`,
                     `delivery_recipient`, `delivery_street`, `delivery_city`, `delivery_zip`, `delivery_country`, `delivery_phone`, `delivery_notes`,
                     `shipping_method`, `shipping_pickup_point_id`, `shipping_tracking_number`,
@@ -7030,7 +7040,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     `currency`, `items_net_amount`, `services_net_amount`, `total_net_amount`, `total_tax_amount`, `total_gross_amount`,
                     `order_date`, `requested_delivery_date`, `confirmed_delivery_date`, `warehouse_id`, `notes`, `customer_note`, `created_by`
                 ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?,
@@ -7046,6 +7056,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     `customer_type` = VALUES(`customer_type`),
                     `client_id` = VALUES(`client_id`),
                     `supplier_id` = VALUES(`supplier_id`),
+                    `project_id` = VALUES(`project_id`),
                     `guest_name` = VALUES(`guest_name`),
                     `guest_email` = VALUES(`guest_email`),
                     `guest_phone` = VALUES(`guest_phone`),
@@ -7111,6 +7122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $ord['customerType'] ?? 'client',
                     $ord['clientId'] ?? null,
                     $ord['supplierId'] ?? null,
+                    $ord['projectId'] ?? null,
                     $guest['name'] ?? null,
                     $guest['email'] ?? null,
                     $guest['phone'] ?? null,

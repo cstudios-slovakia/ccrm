@@ -3264,6 +3264,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           }}
           backLabel={t("Back to Client", "Späť na klienta", "Vissza az ügyfélhez")}
           companyBillingSettings={companyBillingSettings}
+          projects={projects}
         />
       );
     }

@@ -37,11 +37,13 @@ import type {
   Lead,
   WarehouseItem,
   Warehouse,
-  CompanyBillingSettings
+  CompanyBillingSettings,
+  Project
 } from "../types";
 import type { Language } from "../utils/translations";
 import { EntityHeader } from "./layout";
 import { CustomSelect } from "./ui/CustomSelect";
+import { OrderProjectPicker } from "./orders/OrderProjectLink";
 import {
   orderStatusLabel,
   orderStatusColor,
@@ -80,6 +82,8 @@ export interface OrderDetailViewProps {
   companyBillingSettings?: CompanyBillingSettings | null;
   /** The configured price levels: a product is priced on the customer's level. */
   priceLevels?: PriceLevel[];
+  /** Offers the "Project" field. Left out, the order keeps whatever project it has and the field is not shown. */
+  projects?: Project[];
   backLabel?: string;
 }
 
@@ -102,6 +106,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
   onOpenClient,
   companyBillingSettings,
   priceLevels = [],
+  projects,
   backLabel
 }) => {
   const t = (en: string, sk: string, hu: string) =>
@@ -1397,6 +1402,20 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                   className="w-full px-3 py-2 bg-white border border-gray-200 rounded-md text-ui text-gray-900 font-medium shadow-2xs focus:outline-none focus:ring-2 focus:ring-entity-ring focus:border-entity"
                 />
               </div>
+
+              {projects && (
+                <div className="ws-sm:col-span-2">
+                  <OrderProjectPicker
+                    projectId={formData.projectId}
+                    clientId={formData.clientId}
+                    projects={projects}
+                    leads={leads}
+                    language={userLanguage}
+                    disabled={!canEdit}
+                    onChange={projectId => setFormData({ ...formData, projectId })}
+                  />
+                </div>
+              )}
 
               {warehouses.length > 0 && (
                 <div className="ws-sm:col-span-2 space-y-1">

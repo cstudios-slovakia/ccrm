@@ -1163,6 +1163,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `customer_type` ENUM('client', 'guest') NOT NULL DEFAULT 'client' COMMENT 'client = registrovaný lead/klient, guest = nákup bez registrácie',
               `client_id` VARCHAR(50) NULL COMMENT 'References leads.id for registered sales clients',
               `supplier_id` VARCHAR(50) NULL COMMENT 'References suppliers.id for purchase orders',
+              `project_id` VARCHAR(50) NULL COMMENT 'References projects.id: the project this order belongs to',
               `guest_name` VARCHAR(255) NULL,
               `guest_email` VARCHAR(255) NULL,
               `guest_phone` VARCHAR(50) NULL,
@@ -1214,6 +1215,7 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX idx_orders_customer_type (`customer_type`),
               INDEX idx_orders_client (`client_id`),
               INDEX idx_orders_supplier (`supplier_id`),
+              INDEX idx_orders_project (`project_id`),
               INDEX idx_orders_date (`order_date`),
               INDEX idx_orders_payment_status (`payment_status`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
@@ -2038,6 +2040,12 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'leads', 'ai_summary')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `ai_summary` TEXT NULL AFTER `country`");
+        }
+        if (!ccrm_column_exists($pdo, 'orders', 'project_id')) {
+            $pdo->exec("ALTER TABLE `orders` ADD COLUMN `project_id` VARCHAR(50) NULL COMMENT 'References projects.id: the project this order belongs to' AFTER `supplier_id`");
+        }
+        if (!ccrm_index_exists($pdo, 'orders', 'idx_orders_project')) {
+            try { $pdo->exec("ALTER TABLE `orders` ADD INDEX `idx_orders_project` (`project_id`)"); } catch (\Throwable $e) {}
         }
         if (!ccrm_column_exists($pdo, 'orders', 'invoice_id')) {
             $pdo->exec("ALTER TABLE `orders` ADD COLUMN `invoice_id` VARCHAR(50) NULL AFTER `payment_reference`");

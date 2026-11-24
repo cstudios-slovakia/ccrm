@@ -53,6 +53,7 @@ import type { ProjectSort, ProjectSortKey } from "../utils/projectSort";
 import { ratingValue } from "../utils/rating";
 import { useProjectFacets } from "./projects/useProjectFacets";
 import { ProjectFacetSelect } from "./projects/ProjectFacetSelect";
+import type { ProjectOrderLinks } from "./projects/ProjectOrdersTab";
 import { PinnedFilterChips } from "./ui/PinnedFilterChips";
 import {
   BUILTIN_COLUMN_LABELS,
@@ -174,6 +175,8 @@ interface ProjectsViewProps {
   employees?: Employee[];
   employeeSalaries?: EmployeeSalary[];
   employeeRights?: EmployeeRights;
+  /** The workspace orders, when the user may see them: the project card then has an Orders tab. */
+  orderLinks?: ProjectOrderLinks;
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
@@ -216,6 +219,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   employees,
   employeeSalaries,
   employeeRights,
+  orderLinks,
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const projectStatuses = useProjectStatuses();
@@ -1590,6 +1594,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         ticketSettings={ticketSettings}
         supportContracts={supportContracts}
         setSupportContracts={setSupportContracts}
+        orderLinks={orderLinks}
         onClose={() => {
           setEditingProject(null);
           setEditingProjectType(null);

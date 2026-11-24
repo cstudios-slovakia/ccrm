@@ -302,6 +302,7 @@ function mcp_get_module_tool_definitions(): array {
                     'payment_status' => ['type' => 'string', 'description' => 'Payment status: unpaid, partially_paid, paid, refunded'],
                     'client_id' => ['type' => 'string', 'description' => 'Filter by client ID'],
                     'supplier_id' => ['type' => 'string', 'description' => 'Filter by supplier ID (from list_suppliers)'],
+                    'project_id' => ['type' => 'string', 'description' => 'Filter by the project the order belongs to'],
                     'from' => ['type' => 'string', 'description' => 'Order date from YYYY-MM-DD'],
                     'to' => ['type' => 'string', 'description' => 'Order date to YYYY-MM-DD'],
                     'search' => ['type' => 'string', 'description' => 'Search order number, guest name/company, billing name, or notes'],
@@ -332,6 +333,7 @@ function mcp_get_module_tool_definitions(): array {
                     'order_date' => ['type' => 'string', 'description' => 'Order date YYYY-MM-DD (default today)'],
                     'client_id' => ['type' => 'string', 'description' => 'Linked client/lead ID'],
                     'supplier_id' => ['type' => 'string', 'description' => 'Linked supplier ID from suppliers (for purchase orders)'],
+                    'project_id' => ['type' => 'string', 'description' => 'Project this order belongs to (from list_projects)'],
                     'warehouse_id' => ['type' => 'string', 'description' => 'Fulfillment / receiving warehouse ID'],
                     'guest_name' => ['type' => 'string', 'description' => 'Customer name when not linked to a CRM client'],
                     'guest_email' => ['type' => 'string', 'description' => 'Customer email'],
@@ -397,6 +399,7 @@ function mcp_get_module_tool_definitions(): array {
                     'paid_at' => ['type' => 'string', 'description' => 'Payment timestamp/date YYYY-MM-DD'],
                     'payment_reference' => ['type' => 'string', 'description' => 'Payment reference / VS'],
                     'warehouse_id' => ['type' => 'string', 'description' => 'Fulfillment warehouse ID'],
+                    'project_id' => ['type' => 'string', 'description' => 'Project this order belongs to (empty string unlinks it)'],
                     'shipping_method' => ['type' => 'string', 'description' => 'Shipping carrier/method'],
                     'shipping_tracking_number' => ['type' => 'string', 'description' => 'Shipment tracking number'],
                     'confirmed_delivery_date' => ['type' => 'string', 'description' => 'Confirmed delivery date YYYY-MM-DD'],
@@ -1348,6 +1351,7 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             if (!empty($args['payment_status'])) { $where[] = 'o.payment_status = ?'; $params[] = trim((string)$args['payment_status']); }
             if (!empty($args['client_id'])) { $where[] = 'o.client_id = ?'; $params[] = trim((string)$args['client_id']); }
             if (!empty($args['supplier_id'])) { $where[] = 'o.supplier_id = ?'; $params[] = trim((string)$args['supplier_id']); }
+            if (!empty($args['project_id'])) { $where[] = 'o.project_id = ?'; $params[] = trim((string)$args['project_id']); }
             if ($from = mcp_optional_date($args, 'from')) { $where[] = 'o.order_date >= ?'; $params[] = $from; }
             if ($to = mcp_optional_date($args, 'to')) { $where[] = 'o.order_date <= ?'; $params[] = $to; }
             if (!empty($args['search'])) {
@@ -1363,7 +1367,7 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             $where = array_merge($where, $win['where']);
             $params = array_merge($params, $win['params']);
             $stmt = $pdo->prepare(
-                "SELECT o.id, o.order_number, o.type, o.status, o.payment_status, o.client_id, o.supplier_id,
+                "SELECT o.id, o.order_number, o.type, o.status, o.payment_status, o.client_id, o.supplier_id, o.project_id,
                         COALESCE(l.name, o.billing_name, o.guest_company, o.guest_name) AS customer_name,
                         o.currency, o.total_net_amount, o.total_tax_amount, o.total_gross_amount,
                         o.order_date, o.requested_delivery_date, o.confirmed_delivery_date,
@@ -1401,6 +1405,8 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             $clientId = !empty($args['client_id']) ? (string)$args['client_id'] : null;
             $supplierId = !empty($args['supplier_id']) ? (string)$args['supplier_id'] : null;
             $warehouseId = !empty($args['warehouse_id']) ? (string)$args['warehouse_id'] : null;
+            $projectId = !empty($args['project_id']) ? (string)$args['project_id'] : null;
+            if ($projectId !== null) mcp_row_exists($pdo, 'projects', $projectId, 'Project');
             if ($clientId !== null) mcp_row_exists($pdo, 'leads', $clientId, 'Client');
             if ($supplierId !== null) mcp_mod_row_exists($pdo, 'suppliers', $supplierId, 'Supplier');
             if ($warehouseId !== null) mcp_mod_row_exists($pdo, 'warehouses', $warehouseId, 'Warehouse');
@@ -1437,7 +1443,7 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
 
             $orderId = mcp_new_id('ord_');
             $year = (int)substr($orderDate, 0, 4);
-            $docNum = mcp_with_lock($pdo, 'ccrm_order_number', function () use ($pdo, $args, $type, $year, $orderId, $status, $clientId, $supplierId, $warehouseId, $payStatus, $currency, $itemsNet, $servicesNet, $totalNet, $taxTotal, $totalGross, $orderDate, $reqDelivery, $user, $lines) {
+            $docNum = mcp_with_lock($pdo, 'ccrm_order_number', function () use ($pdo, $args, $type, $year, $orderId, $status, $clientId, $supplierId, $projectId, $warehouseId, $payStatus, $currency, $itemsNet, $servicesNet, $totalNet, $taxTotal, $totalGross, $orderDate, $reqDelivery, $user, $lines) {
                 if (!empty($args['order_number'])) {
                     $num = trim((string)$args['order_number']);
                     $dup = $pdo->prepare("SELECT 1 FROM orders WHERE order_number = ? LIMIT 1");
@@ -1457,15 +1463,15 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
                 }
 
                 $pdo->prepare(
-                    "INSERT INTO orders (id, order_number, type, status, customer_type, client_id, supplier_id, warehouse_id,
+                    "INSERT INTO orders (id, order_number, type, status, customer_type, client_id, supplier_id, project_id, warehouse_id,
                                          guest_name, guest_email, guest_phone, guest_company, guest_ico, guest_dic, guest_ic_dph,
                                          billing_name, billing_street, billing_city, billing_zip, billing_country, billing_ico, billing_dic, billing_ic_dph,
                                          delivery_recipient, delivery_street, delivery_city, delivery_zip, delivery_country, delivery_phone, delivery_notes,
                                          payment_method, payment_status, currency, items_net_amount, services_net_amount, total_net_amount, total_tax_amount, total_gross_amount,
                                          order_date, requested_delivery_date, shipping_method, customer_note, notes, created_by)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 )->execute([
-                    $orderId, $num, $type, $status, $clientId ? 'client' : 'guest', $clientId, $supplierId, $warehouseId,
+                    $orderId, $num, $type, $status, $clientId ? 'client' : 'guest', $clientId, $supplierId, $projectId, $warehouseId,
                     $args['guest_name'] ?? null, $args['guest_email'] ?? null, $args['guest_phone'] ?? null,
                     $args['guest_company'] ?? null, $args['guest_ico'] ?? null, $args['guest_dic'] ?? null, $args['guest_ic_dph'] ?? null,
                     $args['billing_name'] ?? null, $args['billing_street'] ?? null, $args['billing_city'] ?? null, $args['billing_zip'] ?? null, (!empty($args['billing_country']) ? trim((string)$args['billing_country']) : 'SK'),
@@ -1509,6 +1515,11 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
                 $wh = trim((string)$args['warehouse_id']);
                 if ($wh !== '') mcp_mod_row_exists($pdo, 'warehouses', $wh, 'Warehouse');
                 $sets[] = 'warehouse_id = ?'; $params[] = $wh === '' ? null : $wh;
+            }
+            if (array_key_exists('project_id', $args)) {
+                $pj = trim((string)$args['project_id']);
+                if ($pj !== '') mcp_row_exists($pdo, 'projects', $pj, 'Project');
+                $sets[] = 'project_id = ?'; $params[] = $pj === '' ? null : $pj;
             }
             if (array_key_exists('confirmed_delivery_date', $args)) {
                 $sets[] = 'confirmed_delivery_date = ?';

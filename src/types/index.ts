@@ -1630,6 +1630,7 @@ export interface Order {
   customerType: CustomerType;
   clientId?: string | null;   // References Lead.id for registered sales clients
   supplierId?: string | null; // References Supplier.id for purchase orders
+  projectId?: string | null;  // References Project.id: the project this order belongs to
   guest?: GuestCustomer;
 
   // Delivery & Billing

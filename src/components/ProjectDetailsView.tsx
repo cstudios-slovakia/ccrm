@@ -66,12 +66,14 @@ import { findTimelineEventIssue, resolveTimelineEventTitle, timelineEventTypeOpt
 import { ProjectContactEmail } from "./projects/ProjectContactEmail";
 import { ProjectEmployeesField } from "./projects/ProjectEmployeesField";
 import { ProjectLeftColumn } from "./projects/ProjectLeftColumn";
+import { ProjectOrdersTab, type ProjectOrderLinks } from "./projects/ProjectOrdersTab";
+import { ordersOfProject } from "../utils/projectOrders";
 import { fillEmptyContactFromLead } from "../utils/leadToProject";
 
 /** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
-type RightTab = "timeline" | "criteria" | "tasks" | "time" | "gantt" | "finances" | "files" | "tickets";
+type RightTab = "timeline" | "criteria" | "tasks" | "time" | "gantt" | "finances" | "files" | "tickets" | "orders";
 const isRightTab = (value: string | null): value is RightTab =>
-  value === "timeline" || value === "criteria" || value === "tasks" || value === "time" || value === "gantt" || value === "finances" || value === "files" || value === "tickets";
+  value === "timeline" || value === "criteria" || value === "tasks" || value === "time" || value === "gantt" || value === "finances" || value === "files" || value === "tickets" || value === "orders";
 
 interface ProjectDetailsViewProps {
   project: Project | null;
@@ -133,6 +135,8 @@ interface ProjectDetailsViewProps {
   currentUser?: UserProfile;
   /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
   mailConfigured?: boolean;
+  /** The orders of the workspace, when the user may see them (Orders tab). Absent: no Orders tab. */
+  orderLinks?: ProjectOrderLinks;
   divisions?: string[];
   divisionColors?: Record<string, string>;
   /**
@@ -179,6 +183,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   taskAccess = FULL_TASK_ACCESS,
   currentUser,
   mailConfigured,
+  orderLinks,
   divisions = [],
   divisionColors = {},
   layoutMode = "full",
@@ -408,6 +413,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     if (tab === "timeline") return projectType.hasTimeline;
     if (tab === "gantt") return projectType.hasGantt;
     if (tab === "tasks") return !!(setTasks && taskAccess.view);
+    if (tab === "orders") return !!orderLinks && !isNew;
     return true;
   };
 
@@ -3223,6 +3229,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <span className="px-1.5 rounded-full text-micro font-semibold tabular-nums bg-rose-500/20 text-rose-600">{missingFileCount}</span>
                   ) : undefined,
                 },
+                { key: "orders", hidden: !orderLinks || isNew, icon: <Icons.ShoppingCart />, label: t("Orders", "Objednávky", "Rendelések"), count: orderLinks ? ordersOfProject(orderLinks.orders, project.id).length || undefined : undefined },
                 {
                   key: "tickets",
                   hidden: !(projectType.hasTickets || project.ticketWidgetEnabled),
@@ -3238,6 +3245,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 },
               ]}
             />
+          )}
+
+          {activeRightTab === "orders" && orderLinks && !isNew && (
+            <ProjectOrdersTab project={project} links={orderLinks} leads={leads} language={userLanguage} currency={currencyCode || "EUR"} />
           )}
 
           {/* TAB CONTENT: Tickets & Floating Widget */}
