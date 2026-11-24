@@ -51,7 +51,6 @@ import { projectAttributeSortValue } from "../utils/projectColumns";
 import {
     buildProjectDataFromLead,
     isLeadAttributeMissing,
-    leadMatchesCustomFieldQuery,
 } from "../utils/leadAttributes";
 import { CustomAttributesGrid, renderCustomAttributeCell } from "./common/CustomAttributeControls";
 import { clampDeadline, todayStr } from "../utils/taskDeadline";
@@ -140,7 +139,9 @@ import {
   projectStatusLabel,
 } from "../utils/projects";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
-import { parseAppHash } from "../utils/hash";
+import { useLeadFacets } from "./leads/useLeadFacets";
+import { LeadFacetSelect } from "./leads/LeadFacetSelect";
+import { PinnedFilterChips } from "./ui/PinnedFilterChips";
 import { evaluateLeadSla, type LeadSlaStatus, type LeadStateSla, isClosedLeadState } from "../utils/leadSla";
 import { orderLeadStates } from "../utils/leadStates";
 import { StatusValueEquationStats, type StatusStatItem, type StatusStatDetailRow } from "./StatusValueEquationStats";
@@ -150,15 +151,6 @@ import { isSystemMailConfigured } from "../utils/taskReminders";
 // Named preset deadline times offered in the gate quick-add picker, mirroring the
 // task dashboard's Add-task drawer. A "Custom" option reveals a free time input so
 // any specific time can be entered instead of the fixed presets.
-/** Pipeline stage from `#leads?status=`, or "all" on any other route. */
-function leadStatusFromHash(): string {
-    if (typeof window === "undefined") return "all";
-    const { route, params } = parseAppHash(window.location.hash);
-    if (route !== "leads") return "all";
-    const status = (params.get("status") || "").trim().toLowerCase();
-    return status || "all";
-}
-
 const GATE_DEADLINE_TIME_PRESETS = [
     "09:00",
     "10:00",
@@ -281,7 +273,6 @@ const InlineDeadlineTimePicker: React.FC<{
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { StarRating } from "./ui/StarRating";
-import { matchesRatingFilter, ratingFilterOptions } from "../utils/rating";
 import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
 import { TimelineCollapsible } from "./TimelineCollapsible";
 import { BlockEditor } from "./BlockEditor";
@@ -1879,52 +1870,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     // Filters and Search
     const [searchQuery, setSearchQuery] = useState("");
-    // The filters below are remembered per user (see useListFilter): opening a
-    // lead and coming back finds the list as it was left.
-    //
-    // `#leads?status=new` (the dashboard phase donut) opens the list already
-    // filtered to that pipeline stage, and wins over the remembered stage.
-    const [storedState, persistState] = useListFilter("leads.state", "all");
-    const [selectedState, setSelectedState] = useState(() => {
-        const fromHash = leadStatusFromHash();
-        return fromHash !== "all" ? fromHash : storedState;
-    });
-    useEffect(() => {
-        // Mirror only: a change to the stored value from elsewhere is picked up on
-        // the next mount.
-        persistState(selectedState);
-    }, [selectedState, persistState]);
-    // Keep the stage filter and the hash in step: a donut click lands here
-    // already filtered and the dropdown (and Clear) rewrite `?status=`. A hash
-    // with no `status` says nothing about the stage — closing a lead lands on
-    // plain `#leads` — so it leaves the filter alone.
-    useEffect(() => {
-        const apply = () => {
-            const { route, params } = parseAppHash(window.location.hash);
-            const status = (params.get("status") || "").trim().toLowerCase();
-            if (route === "leads" && status) setSelectedState(status);
-        };
-        window.addEventListener("hashchange", apply);
-        return () => window.removeEventListener("hashchange", apply);
-    }, []);
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        const { route, params } = parseAppHash(window.location.hash);
-        if (route !== "leads") return;
-        const current = (params.get("status") || "").trim().toLowerCase();
-        const next = selectedState !== "all" ? selectedState.trim().toLowerCase() : "";
-        if (current === next) return;
-        if (next) params.set("status", next);
-        else params.delete("status");
-        const qs = params.toString();
-        // replaceState: the filter is not a navigation, so it adds no Back entry
-        // (which would otherwise bounce back to the stage-less hash and re-apply).
-        window.history.replaceState(null, "", `#${qs ? `leads?${qs}` : "leads"}`);
-    }, [selectedState]);
-    const [selectedSource, setSelectedSource] = useListFilter("leads.source", "all");
-    const [selectedDivision, setSelectedDivision] = useListFilter("leads.division", "all");
-    const [selectedType, setSelectedType] = useListFilter("leads.type", "all");
-
     // Offer date filter states
     const [filterOfferStartDate, setFilterOfferStartDate] = useListDateFilter("leads.offerStart");
     const [filterOfferEndDate, setFilterOfferEndDate] = useListDateFilter("leads.offerEnd");
@@ -1940,11 +1885,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         if (!next) setIsOfferDatePickerOpen(false);
         setStoredShowFilters(next);
     };
-    const [selectedOwner, setSelectedOwner] = useListFilter("leads.owner", "all");
-    const [selectedCity, setSelectedCity] = useListFilter("leads.city", "all");
-    // Client importance filter. "all" = off, "none" = leads nobody rated yet,
-    // "5".."1" = that exact star count, "min4"/"min3" = that many stars and up.
-    const [selectedRating, setSelectedRating] = useListFilter("leads.rating", "all");
     const [selectedArchiveFilter, setSelectedArchiveFilter] = useListFilter<"active" | "archived" | "all">("leads.archive", "active");
     // Favorites state & hook
     const { isFavorite } = useFavorites();
@@ -1953,6 +1893,45 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // display choice, not a filter, so it persists and "Clear" leaves it alone.
     const [storedFavoritesFirst, setFavoritesFirst] = useUserPref("leadsFavoritesFirst");
     const favoritesFirst = storedFavoritesFirst ?? false;
+
+    // The grid's own universe. A `client-*` id is a client-register record (a won
+    // client, or a contact pulled in from invoicing) and `unassigned-docs` is a
+    // synthetic bucket -- neither is a pipeline lead. The header counters have to
+    // start from the same set the list renders, or an install whose leads table is
+    // all imported clients reports "434 active" above an empty pipeline.
+    const pipelineLeads = useMemo(
+        () =>
+            leads.filter(
+                (lead) =>
+                    lead.id !== "unassigned-docs" &&
+                    !(lead.id || "").startsWith("client-"),
+            ),
+        [leads],
+    );
+
+    // Stage, manager, type, division, source, city and rating: multi-select and faceted
+    // (each one's counts follow the others), remembered per user. See leads/useLeadFacets.ts.
+    const facets = useLeadFacets({
+        leads: pipelineLeads,
+        leadStates,
+        leadStateParents,
+        stateColor: getSafeStateColor,
+        leadSources,
+        divisions,
+        projectManagers,
+        leadAttributes,
+        resolveContactName,
+        searchQuery,
+        favoritesOnly: filterFavoritesOnly,
+        isFavorite,
+        archive: selectedArchiveFilter,
+        offerPreset: offerPresetName,
+        offerStart: filterOfferStartDate,
+        offerEnd: filterOfferEndDate,
+        t,
+        systemLanguage,
+    });
+    const { processedLeads, resolvedVisibleStates } = facets;
 
     // Multi-selection & Bulk action toolbar state
     const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
@@ -1975,15 +1954,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     }, [activeBulkMenu]);
 
 
-    // Category visibility toggle (local storage support)
-    const majorStates = useMemo(() => {
-        return leadStates
-            .filter((s) => !leadStateParents[s.toLowerCase()])
-            .map((s) => s.toLowerCase());
-    }, [leadStates, leadStateParents]);
-
-
-
     const [collapsedGroups, setCollapsedGroups] = useState<
         Record<string, boolean>
     >({});
@@ -1995,46 +1965,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         }));
     };
 
-    const resolvedVisibleStates = useMemo(() => {
-        if (selectedState !== "all") {
-            const lower = selectedState.toLowerCase();
-            const parent = leadStateParents[lower];
-            return parent ? [parent.toLowerCase(), lower] : [lower];
-        }
-        return majorStates;
-    }, [selectedState, majorStates, leadStateParents]);
-
-
-    // Extract unique cities dynamically from database
-    const uniqueCities = useMemo(() => {
-        const cities = leads.map((l) => (l.city || "").trim()).filter(Boolean);
-        return Array.from(new Set(cities));
-    }, [leads]);
-
     // Check if any filters are active
-    const hasActiveFilters = useMemo(() => {
-        return (
-            selectedOwner !== "all" ||
-            selectedCity !== "all" ||
-            selectedSource !== "all" ||
-            selectedDivision !== "all" ||
-            selectedType !== "all" ||
-            selectedState !== "all" ||
-            selectedRating !== "all" ||
-            selectedArchiveFilter !== "active" ||
-            offerPresetName !== "All Time"
-        );
-    }, [
-        selectedOwner,
-        selectedCity,
-        selectedSource,
-        selectedDivision,
-        selectedType,
-        selectedState,
-        selectedRating,
-        selectedArchiveFilter,
-        offerPresetName,
-    ]);
+    const hasActiveFilters = facets.anyActive || selectedArchiveFilter !== "active" || offerPresetName !== "All Time";
 
     // How many of LEAD_OVERFLOW_FILTERS fit on the first row after search, stage, PM and the view controls.
     const [inlineFilterCount, setInlineFilterCount] = useState<number>(LEAD_OVERFLOW_FILTERS.length);
@@ -2094,17 +2026,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             case "time":
                 return offerPresetName !== "All Time";
             case "type":
-                return selectedType !== "all";
             case "division":
-                return selectedDivision !== "all";
             case "rating":
-                return selectedRating !== "all";
+            case "city":
+            case "source":
+                return facets.isActive(key);
             case "archive":
                 return selectedArchiveFilter !== "active";
-            case "city":
-                return selectedCity !== "all";
-            case "source":
-                return selectedSource !== "all";
             case "favoritesFirst":
                 // A display choice, not a filter: no "filters are active" dot.
                 return false;
@@ -2116,13 +2044,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const hasExpandedFilters = overflowLeadFilters.some(leadFilterIsActive);
 
     const clearLeadFilters = () => {
-        setSelectedOwner("all");
-        setSelectedCity("all");
-        setSelectedSource("all");
-        setSelectedDivision("all");
-        setSelectedType("all");
-        setSelectedState("all");
-        setSelectedRating("all");
+        facets.clearFacets();
         setSelectedArchiveFilter("active");
         setFilterOfferStartDate(null);
         setFilterOfferEndDate(null);
@@ -4459,177 +4381,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setClientMode("none");
         setSelectedExistingClient("");
     };
-
-    // The grid's own universe. A `client-*` id is a client-register record (a won
-    // client, or a contact pulled in from invoicing) and `unassigned-docs` is a
-    // synthetic bucket -- neither is a pipeline lead. The header counters have to
-    // start from the same set the list renders, or an install whose leads table is
-    // all imported clients reports "434 active" above an empty pipeline.
-    const pipelineLeads = useMemo(
-        () =>
-            leads.filter(
-                (lead) =>
-                    lead.id !== "unassigned-docs" &&
-                    !(lead.id || "").startsWith("client-"),
-            ),
-        [leads],
-    );
-
-    // Filter and Sort leads
-    const processedLeads = useMemo(() => {
-        return pipelineLeads
-            .filter((lead) => {
-                // Email and phone are searchable too: leads that share a client name are
-                // otherwise indistinguishable in the list, and the contact details are the
-                // only thing that tells them apart.
-                const query = searchQuery.toLowerCase();
-                const matchesSearch =
-                    (lead.name || "").toLowerCase().includes(query) ||
-                    (lead.city || "").toLowerCase().includes(query) ||
-                    (lead.owner || "").toLowerCase().includes(query) ||
-                    (lead.email || "").toLowerCase().includes(query) ||
-                    (lead.phone || "").toLowerCase().includes(query) ||
-                    leadMatchesCustomFieldQuery(
-                        lead,
-                        leadAttributes,
-                        query,
-                        (id) => resolveContactName(id) || "",
-                    );
-                const matchesState =
-                    selectedState === "all" ||
-                    (lead.status || "").toLowerCase() ===
-                        selectedState.toLowerCase() ||
-                    leadStateParents[(lead.status || "").toLowerCase()] ===
-                        selectedState.toLowerCase();
-                const matchesSource =
-                    selectedSource === "all" ||
-                    (lead.source || "").toLowerCase() ===
-                        selectedSource.toLowerCase();
-                const matchesDivision =
-                    selectedDivision === "all" ||
-                    (selectedDivision === "none" && !lead.division) ||
-                    (lead.division || "").toLowerCase() ===
-                        selectedDivision.toLowerCase();
-                const matchesType =
-                    selectedType === "all" ||
-                    (lead.clientType || "").toLowerCase() ===
-                        selectedType.toLowerCase();
-
-                const matchesOwner =
-                    selectedOwner === "all" ||
-                    (lead.owner || "").toLowerCase() ===
-                        selectedOwner.toLowerCase();
-                const matchesCity =
-                    selectedCity === "all" ||
-                    (lead.city || "").toLowerCase() ===
-                        selectedCity.toLowerCase();
-
-                if (filterFavoritesOnly && !isFavorite(lead.id)) {
-                    return false;
-                }
-
-                // Rating is optional on a lead, so an unrated one counts as 0
-                // and only matches the explicit "not rated" option. The rules
-                // live in utils/rating.ts — the projects list offers the same
-                // dropdown and has to mean the same thing by it.
-                const matchesRating = matchesRatingFilter(
-                    lead.rating,
-                    selectedRating,
-                );
-
-                let matchesOfferDate = true;
-                if (
-                    offerPresetName !== "All Time" &&
-                    (filterOfferStartDate || filterOfferEndDate)
-                ) {
-                    const timeline = lead.timeline || [];
-                    const offerEvents = timeline.filter(
-                        (e) => e.type === "offer" && e.timestamp,
-                    );
-                    if (offerEvents.length === 0) {
-                        matchesOfferDate = false;
-                    } else {
-                        const latestOffer = offerEvents.reduce(
-                            (latest, current) => {
-                                if (!latest) return current;
-                                return new Date(current.timestamp) >
-                                    new Date(latest.timestamp)
-                                    ? current
-                                    : latest;
-                            },
-                            offerEvents[0],
-                        );
-
-                        const offerDate = new Date(latestOffer.timestamp);
-                        const startLimit = filterOfferStartDate
-                            ? new Date(
-                                  filterOfferStartDate.getFullYear(),
-                                  filterOfferStartDate.getMonth(),
-                                  filterOfferStartDate.getDate(),
-                                  0,
-                                  0,
-                                  0,
-                              )
-                            : null;
-                        const endLimit = filterOfferEndDate
-                            ? new Date(
-                                  filterOfferEndDate.getFullYear(),
-                                  filterOfferEndDate.getMonth(),
-                                  filterOfferEndDate.getDate(),
-                                  23,
-                                  59,
-                                  59,
-                                  999,
-                              )
-                            : null;
-
-                        if (startLimit && offerDate < startLimit) {
-                            matchesOfferDate = false;
-                        }
-                        if (endLimit && offerDate > endLimit) {
-                            matchesOfferDate = false;
-                        }
-                    }
-                }
-
-                const matchesArchive =
-                    selectedArchiveFilter === "all"
-                        ? true
-                        : selectedArchiveFilter === "archived"
-                        ? !!lead.archived
-                        : !lead.archived;
-
-                return (
-                    matchesArchive &&
-                    matchesSearch &&
-                    matchesState &&
-                    matchesSource &&
-                    matchesDivision &&
-                    matchesType &&
-                    matchesOwner &&
-                    matchesCity &&
-                    matchesRating &&
-                    matchesOfferDate
-                );
-            })
-            .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    }, [
-        pipelineLeads,
-        searchQuery,
-        selectedState,
-        selectedSource,
-        selectedDivision,
-        selectedType,
-        selectedOwner,
-        selectedCity,
-        selectedRating,
-        filterOfferStartDate,
-        filterOfferEndDate,
-        offerPresetName,
-        selectedArchiveFilter,
-        leadAttributes,
-        resolveContactName,
-    ]);
 
     // Bulk selection and action handlers
     const handleToggleSelectLead = useCallback((leadId: string, e?: React.MouseEvent) => {
@@ -9898,137 +9649,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const renderLeadFilter = (key: LeadOverflowFilter, interactive: boolean) => {
         switch (key) {
             case "city":
-                return (
-                        <div className="shrink-0 w-max">
-                            <CustomSelect
-                                fitLabel
-                                className="h-10"
-                                icon={<MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
-                                value={selectedCity}
-                                onChange={(v) => setSelectedCity(v)}
-                                options={[
-                                        {
-                                            value: "all",
-                                            label: getTranslation(
-                                                systemLanguage,
-                                                "clients.filter.city",
-                                            ),
-                                        },
-                                        ...uniqueCities.map((city) => ({
-                                            value: city.toLowerCase(),
-                                            label: city,
-                                        })),
-                                    ]}
-                                />
-                        </div>
-
-                );
             case "source":
-                return (
-                        <div className="shrink-0 w-max">
-                            <CustomSelect
-                                fitLabel
-                                className="h-10"
-                                icon={<Share2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
-                                value={selectedSource}
-                                onChange={(v) => setSelectedSource(v)}
-                                options={[
-                                        {
-                                            value: "all",
-                                            label: getTranslation(
-                                                systemLanguage,
-                                                "leads.filter.source",
-                                            ),
-                                        },
-                                        ...leadSources.map((src) => ({
-                                            value: src.toLowerCase(),
-                                            label: src,
-                                        })),
-                                    ]}
-                                />
-                        </div>
-
-                );
             case "division":
-                return (
-                        <div className="shrink-0 w-max">
-                            <CustomSelect
-                                fitLabel
-                                className="h-10"
-                                icon={<Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
-                                value={selectedDivision}
-                                onChange={(v) => setSelectedDivision(v)}
-                                options={[
-                                        {
-                                            value: "all",
-                                            label: getTranslation(
-                                                systemLanguage,
-                                                "filters.all_divisions",
-                                            ),
-                                        },
-                                        {
-                                            value: "none",
-                                            label: getTranslation(
-                                                systemLanguage,
-                                                "filters.no_division",
-                                            ),
-                                        },
-                                        ...divisions.map((d) => ({
-                                            value: d.toLowerCase(),
-                                            label: d,
-                                        })),
-                                    ]}
-                                />
-                        </div>
-
-                );
             case "type":
+            case "rating":
                 return (
-                        <div className="shrink-0 w-max">
-                            <CustomSelect
-                                fitLabel
-                                className="h-10"
-                                value={selectedType}
-                                onChange={(v) => setSelectedType(v as any)}
-                                options={[
-                                        {
-                                            value: "all",
-                                            label: getTranslation(
-                                                systemLanguage,
-                                                "leads.filter.type",
-                                            ),
-                                        },
-                                        {
-                                            value: "person",
-                                            label:
-                                                systemLanguage === "sk"
-                                                    ? "Súkromná osoba"
-                                                    : systemLanguage === "hu"
-                                                      ? "Magánszemély"
-                                                      : "Private Person",
-                                        },
-                                        {
-                                            value: "business",
-                                            label:
-                                                systemLanguage === "sk"
-                                                    ? "Firma / Podnikanie"
-                                                    : systemLanguage === "hu"
-                                                      ? "Cég / Vállalkozás"
-                                                      : "Company / Business",
-                                        },
-                                        {
-                                            value: "partner",
-                                            label:
-                                                systemLanguage === "sk"
-                                                    ? "Obchodný partner"
-                                                    : systemLanguage === "hu"
-                                                      ? "Kereskedő partner"
-                                                      : "Dealer Partner",
-                                        },
-                                    ]}
-                                />
-                        </div>
-
+                    <div className="shrink-0 w-max">
+                        <LeadFacetSelect facets={facets} id={key} />
+                    </div>
                 );
             case "time":
                 return (
@@ -10564,20 +10192,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         </div>
 
                 );
-            case "rating":
-                return (
-                        <div className="shrink-0 w-max">
-                            <CustomSelect
-                                fitLabel
-                                className="h-10"
-                                icon={<Star className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
-                                value={selectedRating}
-                                onChange={(v) => setSelectedRating(v)}
-                                options={ratingFilterOptions(t)}
-                            />
-                        </div>
-
-                );
             case "archive":
                 return (
                         <div className="shrink-0 w-max">
@@ -10745,57 +10359,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     </div>
 
                     <div ref={filterStageRef} className="max-w-full shrink-0">
-                        <CustomSelect
-                            fitLabel
-                            className="h-10"
-                            icon={
-                                <span
-                                    className="h-2.5 w-2.5 rounded-full shrink-0"
-                                    style={{
-                                        backgroundColor: selectedState === "all" ? "#2563eb" : getSafeStateColor(selectedState),
-                                    }}
-                                />
-                            }
-                            value={selectedState}
-                            onChange={(v) => setSelectedState(v)}
-                            options={[
-                                {
-                                    value: "all",
-                                    label: `${t("All Stages", "Všetky fázy", "Minden fázis")} (${pipelineLeads.length})`,
-                                },
-                                ...leadStates.map((s) => {
-                                    const count = pipelineLeads.filter(
-                                        (l) =>
-                                            (l.status || "").toLowerCase() === s.toLowerCase() ||
-                                            leadStateParents[(l.status || "").toLowerCase()] === s.toLowerCase(),
-                                    ).length;
-                                    return {
-                                        value: s.toLowerCase(),
-                                        label: `${s} (${count})`,
-                                    };
-                                }),
-                            ]}
-                        />
+                        <LeadFacetSelect facets={facets} id="state" />
                     </div>
 
                     <div ref={filterPmRef} className="max-w-full shrink-0">
-                        <CustomSelect
-                            fitLabel
-                            className="h-10"
-                            icon={<Users className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
-                            value={selectedOwner}
-                            onChange={(v) => setSelectedOwner(v)}
-                            options={[
-                                {
-                                    value: "all",
-                                    label: getTranslation(systemLanguage, "leads.filter.manager"),
-                                },
-                                ...projectManagers.map((pm) => ({
-                                    value: pm.toLowerCase(),
-                                    label: pm,
-                                })),
-                            ]}
-                        />
+                        <LeadFacetSelect facets={facets} id="owner" />
                     </div>
 
                     {inlineLeadFilters.map((key) => (
@@ -10844,6 +10412,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 )}
 
             </div>
+
+            <PinnedFilterChips
+                options={facets.options.state}
+                pinned={facets.pinnedStates}
+                selected={facets.selection.state}
+                onChange={(next) => facets.setSelection("state", next)}
+            />
 
             <div className="p-5 rounded-lg border border-gray-200 bg-white shadow-xs overflow-clip space-y-4">
 

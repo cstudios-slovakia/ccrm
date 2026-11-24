@@ -1,5 +1,6 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useUserPrefs } from "../utils/userPrefs";
+import { toSelectionArray } from "../utils/facetedFilters";
 
 /**
  * Drop-in replacement for `useState` on a list screen's filter: the value is kept
@@ -52,4 +53,41 @@ export function useListDateFilter(key: string): [Date | null, (value: Date | nul
   const value = parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
   const set = useCallback((next: Date | null) => setIso(next ? next.toISOString() : null), [setIso]);
   return [value, set];
+}
+
+/**
+ * useListFilter for a multi-select filter: a list of selected values, empty = no filter.
+ * A value stored before the filter became multi-select ("all" or one string) reads as
+ * the equivalent list, so nobody's remembered filter is lost.
+ */
+export function useListMultiFilter(key: string): [string[], (value: string[] | ((prev: string[]) => string[])) => void] {
+  const [raw, setRaw] = useListFilter<unknown>(key, []);
+  const stored = toSelectionArray(raw);
+  const joined = stored.join("\u0000");
+  // Stable identity while the contents are unchanged, so it can sit in dependency lists.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const value = useMemo(() => stored, [joined]);
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const set = useCallback((next: string[] | ((prev: string[]) => string[])) => {
+    setRaw(typeof next === "function" ? next(valueRef.current) : next);
+  }, [setRaw]);
+  return [value, set];
+}
+
+const NO_PINS: string[] = [];
+
+/** The options the user pinned for one filter (see UserPrefs.pinnedFilterOptions), and a toggle for one. */
+export function usePinnedFilterOptions(key: string): [string[], (value: string) => void] {
+  const { prefs, setPref } = useUserPrefs();
+  const all = prefs.pinnedFilterOptions ?? {};
+  const pinned = all[key] ?? NO_PINS;
+  const toggle = useCallback((value: string) => {
+    const next = pinned.includes(value) ? pinned.filter((v) => v !== value) : [...pinned, value];
+    const map = { ...all };
+    if (next.length) map[key] = next;
+    else delete map[key];
+    setPref("pinnedFilterOptions", map);
+  }, [all, key, pinned, setPref]);
+  return [pinned, toggle];
 }

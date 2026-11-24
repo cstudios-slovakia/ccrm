@@ -258,6 +258,8 @@ export interface UserPrefs {
    */
   settingsRecents: string[];
   listFilters: Record<string, unknown>;
+  /** Statuses (and other filter options) pinned as one-click chips above a list, keyed "<screen>.<filter>" like `listFilters`. */
+  pinnedFilterOptions: Record<string, string[]>;
   /** Pinned calendar lenses shown next to Tasks in the #tasks calendar switcher. */
   taskCalendarFavorites: string[];
   /** Last selected calendar lens in #tasks ("tasks", "work", "payments", ..., or "custom:<id>"). */
@@ -320,6 +322,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   settingsLayout: "tiles",
   settingsRecents: [],
   listFilters: {},
+  pinnedFilterOptions: {},
   taskCalendarFavorites: ["work", "payments"],
   taskCalendarActiveLens: "tasks",
   taskCalendarExpanded: false,
