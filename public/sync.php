@@ -3593,6 +3593,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $insSet->execute([$k, $v]);
             }
+            // A new company language can flip the name order (surname first in Hungarian): stored contact names follow.
+            if (isset($settingsAllowed['SYSTEM_LANGUAGE']) && $settingsList['SYSTEM_LANGUAGE'] !== null && (string)($storedSettingsForSkip['SYSTEM_LANGUAGE'] ?? '') !== (string)$settingsList['SYSTEM_LANGUAGE']) {
+                ccrm_reorder_contact_names($pdo);
+            }
             ccrm_audit_log($pdo, $sessionUser, 'settings.update', 'System settings / integrations updated');
         }
 
@@ -4610,7 +4614,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
 
-                // Contact first / last name and the full name composed from them (C18, contact_name.php).
+                // Contact first / last name and the full name composed from them (C18, contact_name.php),
+                // in the company language's order.
+                ccrm_contact_surname_first($pdo);
                 $contactName = ccrm_contact_name_for_sync($l, $dbLeads[$leadId] ?? null);
                 if ($contactName !== null) $l['contactPerson'] = $contactName[2];
 

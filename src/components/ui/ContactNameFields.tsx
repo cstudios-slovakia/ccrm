@@ -1,5 +1,6 @@
 import React from "react";
 import type { ContactNameParts } from "../../utils/contactName";
+import { isSurnameFirstLanguage } from "../../utils/nameOrder";
 
 /**
  * The contact person of a lead or client as two fields, first and last name (docs/NEWSLETTER.md C18).
@@ -43,30 +44,36 @@ export const ContactNameFields: React.FC<ContactNameFieldsProps> = ({
   forPerson = false,
 }) => {
   const copy = lang === "sk" ? LABELS.sk : lang === "hu" ? LABELS.hu : LABELS.en;
+  const firstField = (
+    <div className="space-y-1">
+      <label className={labelClassName}>{copy.first}</label>
+      <input
+        type="text"
+        autoComplete="off"
+        disabled={disabled}
+        value={value.firstName}
+        onChange={(e) => onChange({ ...value, firstName: e.target.value })}
+        className={inputClassName}
+      />
+    </div>
+  );
+  const lastField = (
+    <div className="space-y-1">
+      <label className={labelClassName}>{copy.last}</label>
+      <input
+        type="text"
+        autoComplete="off"
+        disabled={disabled}
+        value={value.lastName}
+        onChange={(e) => onChange({ ...value, lastName: e.target.value })}
+        className={inputClassName}
+      />
+    </div>
+  );
+  // Surname first where the language writes it first (Hungarian), the same order the name is composed in.
   const fields = (
     <div className={className}>
-      <div className="space-y-1">
-        <label className={labelClassName}>{copy.first}</label>
-        <input
-          type="text"
-          autoComplete="off"
-          disabled={disabled}
-          value={value.firstName}
-          onChange={(e) => onChange({ ...value, firstName: e.target.value })}
-          className={inputClassName}
-        />
-      </div>
-      <div className="space-y-1">
-        <label className={labelClassName}>{copy.last}</label>
-        <input
-          type="text"
-          autoComplete="off"
-          disabled={disabled}
-          value={value.lastName}
-          onChange={(e) => onChange({ ...value, lastName: e.target.value })}
-          className={inputClassName}
-        />
-      </div>
+      {isSurnameFirstLanguage(lang) ? <>{lastField}{firstField}</> : <>{firstField}{lastField}</>}
     </div>
   );
   if (!forPerson) return fields;

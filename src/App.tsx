@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense, type ComponentType, type MouseEvent as ReactMouseEvent } from "react";
+import { setNameOrderLanguage } from "./utils/nameOrder";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
@@ -643,6 +644,8 @@ function App() {
   const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">(
     () => readCachedSystemLanguage() ?? DEFAULT_LANGUAGE
   );
+  // Contact names follow the company language's order (surname first in Hungarian); set before any child renders.
+  setNameOrderLanguage(systemLanguage);
   // The language on screen. Only the first paint reads the mirror; the effect
   // below owns it from then on (see utils/languagePrefs.ts for the rules).
   const [userLanguage, setUserLanguage] = useState<"en" | "sk" | "hu">(() => {
