@@ -329,6 +329,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }, [projects, users]);
 
+  const employeeOptions = useMemo(() => {
+    const names = new Set<string>();
+    projects.forEach(p => (p.employees || []).forEach(m => { if (m) names.add(m); }));
+    (employees || []).forEach(e => { if (e.name) names.add(e.name); });
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [projects, employees]);
+
   /* Status, type, division, manager and rating: multi-select and faceted (each one's
      counts follow the others). See projects/useProjectFacets.ts. */
   const facets = useProjectFacets({
@@ -338,6 +345,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     projectStatuses,
     divisions,
     managerNames: managerOptions,
+    employeeNames: employeeOptions,
     searchQuery,
     overdueOnly,
     overdueIds,
@@ -1834,7 +1842,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
             {/* Filter Dropdowns — side scrollable on mobile (< sm), inline flex on desktop (sm:) */}
             <div className="w-full ws-sm:w-auto flex items-center gap-2 overflow-x-auto scrollbar-none flex-nowrap ws-sm:flex-wrap pb-0.5 ws-sm:pb-0">
-              {(["status", "type", "division", "manager", "rating"] as const).map((id) => (
+              {(["status", "type", "division", "manager", "employee", "rating"] as const).map((id) => (
                 <div key={id} className="shrink-0">
                   <ProjectFacetSelect facets={facets} id={id} />
                 </div>

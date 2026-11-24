@@ -49,12 +49,14 @@ import {
   type OfferStatusDef,
 } from "../utils/offerStatuses";
 import { useListFilter } from "../hooks/useListFilter";
+import { useOfferFacets } from "./priceOffers/useOfferFacets";
+import { FacetedMultiSelect } from "./ui/FacetedMultiSelect";
+import { PinnedFilterChips } from "./ui/PinnedFilterChips";
 import { PRODUCT_NAME, getSystemTitle } from "../utils/brand";
 import { ListViewMenu } from "./common/ListViewMenu";
-import { flattenOfferCategories, offerCategoryColor, offerCategoryPath } from "../utils/offerCategories";
+import { offerCategoryColor, offerCategoryPath } from "../utils/offerCategories";
 import {
-  OFFER_CATEGORY_ALL, OFFER_CATEGORY_NONE, isValidOfferCategoryFilter,
-  matchesOfferCategoryFilter, offerCategoryPathLabel,
+  offerCategoryPathLabel,
 } from "../utils/offerCategoryFilter";
 import {
   LOCKED_OFFER_COLUMN, OFFER_COLUMN_LABELS, moveOfferColumn, resolveOfferColumns, toStoredOfferColumns,
@@ -185,14 +187,6 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
 
   // ---------------------------------------------------------------- list state
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useListFilter<string>("priceOffers.status", "all");
-  const [modeFilter, setModeFilter] = useListFilter<string>("priceOffers.mode", "all");
-  // A stored category that has since been deleted reads as "all" rather than an empty list.
-  const [categoryFilter, setCategoryFilter] = useListFilter<string>(
-    "priceOffers.category",
-    OFFER_CATEGORY_ALL,
-    value => isValidOfferCategoryFilter(value, offerCategories)
-  );
   // The View menu: sort and column layout, kept per user in their preferences (like the filters).
   const [storedSort, setStoredSort] = useListFilter<OfferSort>("priceOffers.sort", DEFAULT_OFFER_SORT);
   const [storedColumns, setStoredColumns] = useListFilter<StoredOfferColumn[] | null>("priceOffers.columns", null);
@@ -247,23 +241,8 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
   }, [editorKey, showSettings]);
 
   // ------------------------------------------------------------ list selectors
-  const filteredOffers = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return invoicesOffers.filter(io => {
-      const matchesSearch =
-        !q ||
-        (io.clientName || "").toLowerCase().includes(q) ||
-        (io.documentNumber || "").toLowerCase().includes(q) ||
-        (io.title || "").toLowerCase().includes(q) ||
-        (io.subject || "").toLowerCase().includes(q);
-      return (
-        matchesSearch &&
-        (statusFilter === "all" || io.status === statusFilter) &&
-        (modeFilter === "all" || io.mode === modeFilter) &&
-        matchesOfferCategoryFilter(io.categoryId, categoryFilter, offerCategories)
-      );
-    });
-  }, [invoicesOffers, searchQuery, statusFilter, modeFilter, categoryFilter, offerCategories]);
+  const facets = useOfferFacets({ offers: invoicesOffers, offerStatuses, offerCategories, searchQuery, t });
+  const filteredOffers = facets.filteredOffers;
 
   const statusRank = useMemo(() => new Map(offerStatuses.map((s, i) => [s.key, i])), [offerStatuses]);
   const sortedOffers = useMemo(
@@ -277,24 +256,6 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
         validUntil: o.validUntil || null,
       })),
     [filteredOffers, sort, statusRank, offerStatuses.length, offerCategories]
-  );
-
-  const categoryOptions = useMemo(
-    () => [
-      { value: OFFER_CATEGORY_ALL, label: t("All categories", "Všetky kategórie", "Minden kategória") },
-      { value: OFFER_CATEGORY_NONE, label: t("Without category", "Bez kategórie", "Kategória nélkül") },
-      ...flattenOfferCategories(offerCategories).map(({ category, depth }) => {
-        const color = offerCategoryColor(offerCategories, category.id);
-        return {
-          value: category.id,
-          searchText: category.name,
-          icon: color ? <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: color }} /> : undefined,
-          label: <span style={{ paddingLeft: `${(depth - 1) * 0.75}rem` }}><ListIcon kind="offerCategories" itemKey={category.id} className="mr-1" />{category.name}</span>,
-        };
-      }),
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [offerCategories, lang]
   );
 
   const metrics = useMemo(() => {
@@ -331,7 +292,6 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
             ? "SuperFaktúra"
             : t("External", "Externé", "Külső");
 
-  const filterStatusOptions = offerStatusOptions(t, offerStatuses);
 
   /** The picker's options, plus this very offer's own status when it is legacy or no longer in the list. */
   const statusOptionsFor = (status: string) => offerStatusOptions(t, offerStatuses, status);
@@ -909,35 +869,18 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
 
         <div className="flex flex-col ws-sm:flex-row ws-sm:items-center gap-2 w-full ws-xl:w-auto">
          <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-2 flex-1 ws-xl:flex-none">
-          <CustomSelect
-            size="sm"
-            value={modeFilter}
-            onChange={setModeFilter}
-            className="w-full"
-            options={[
-              { value: "all", label: t("All formats", "Všetky formáty", "Minden formátum") },
-              { value: "default", label: t("Standard template", "Štandardná šablóna", "Alap sablon") },
-              { value: "custom", label: t("AI template", "AI šablóna", "AI sablon") },
-              { value: "external", label: "SuperFaktúra / iDoklad" }
-            ]}
-          />
-          <CustomSelect
-            size="sm"
-            value={statusFilter}
-            onChange={setStatusFilter}
-            className="w-full"
-            options={[
-              { value: "all", label: t("All statuses", "Všetky stavy", "Minden állapot") },
-              ...filterStatusOptions
-            ]}
-          />
-          <CustomSelect
-            size="sm"
-            value={categoryFilter}
-            onChange={setCategoryFilter}
-            className="w-full"
-            options={categoryOptions}
-          />
+          {(["mode", "status", "category"] as const).map(id => (
+            <FacetedMultiSelect
+              key={id}
+              className="h-10 w-full"
+              options={facets.options[id]}
+              selected={facets.selection[id]}
+              onChange={next => facets.setSelection(id, next)}
+              allLabel={facets.allLabels[id]}
+              pinned={id === "status" ? facets.pinnedStatuses : undefined}
+              onTogglePin={id === "status" ? facets.togglePinnedStatus : undefined}
+            />
+          ))}
          </div>
           <ListViewMenu<OfferSortKey, ResolvedOfferColumn>
             t={t}
@@ -961,6 +904,14 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
           />
         </div>
       </div>
+
+      {/* Pinned statuses (star in the status dropdown) as one-click chips. */}
+      <PinnedFilterChips
+        options={facets.options.status}
+        pinned={facets.pinnedStatuses}
+        selected={facets.selection.status}
+        onChange={next => facets.setSelection("status", next)}
+      />
 
       {/* 5. DOCUMENTS TABLE */}
       <div className="bg-white rounded-lg border border-gray-200 shadow-xs overflow-clip">

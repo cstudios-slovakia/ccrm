@@ -6,6 +6,7 @@ import type { ProjectFacetId, useProjectFacets } from "./useProjectFacets";
 const ICONS: Partial<Record<ProjectFacetId, React.ReactNode>> = {
   division: <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />,
   manager: <Users className="h-3.5 w-3.5 shrink-0 text-slate-400" />,
+  employee: <Users className="h-3.5 w-3.5 shrink-0 text-slate-400" />,
   rating: <Star className="h-3.5 w-3.5 shrink-0 text-amber-500" />,
 };
 

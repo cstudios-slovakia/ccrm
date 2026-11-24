@@ -14,7 +14,7 @@ import { ratingFacetValues, ratingFilterOptions } from "../../utils/rating";
 import { getTranslation } from "../../utils/translations";
 import { useUserPref } from "../../utils/userPrefs";
 
-export type ProjectFacetId = "status" | "type" | "division" | "manager" | "rating";
+export type ProjectFacetId = "status" | "type" | "division" | "manager" | "employee" | "rating";
 
 /** The manager facet's value for a project nobody manages. */
 export const UNASSIGNED_MANAGER = "__unassigned__";
@@ -29,6 +29,8 @@ interface Input {
   divisions: string[];
   /** Everyone a project can be filtered to by manager name. */
   managerNames: string[];
+  /** Everyone a project can be filtered to by assigned employee name. */
+  employeeNames?: string[];
   searchQuery: string;
   overdueOnly: boolean;
   overdueIds: Set<string>;
@@ -49,6 +51,7 @@ export function useProjectFacets(input: Input) {
   const [type, setType] = useListMultiFilter("projects.type");
   const [division, setDivision] = useListMultiFilter("projects.division");
   const [manager, setManager] = useListMultiFilter("projects.manager");
+  const [employee, setEmployee] = useListMultiFilter("projects.employee");
   const [rating, setRating] = useListMultiFilter("projects.rating");
   const [pinnedStatuses, togglePinnedStatus] = usePinnedFilterOptions("projects.status");
 
@@ -57,9 +60,9 @@ export function useProjectFacets(input: Input) {
     () => (storedStatuses === null ? openProjectStatuses(projectStatuses) : storedStatuses.filter((s) => allStatuses.includes(s))),
     [storedStatuses, projectStatuses, allStatuses],
   );
-  const selection: Record<ProjectFacetId, string[]> = { status, type, division, manager, rating };
+  const selection: Record<ProjectFacetId, string[]> = { status, type, division, manager, employee, rating };
   const setters: Record<ProjectFacetId, (v: string[]) => void> = {
-    status: setStoredStatuses, type: setType, division: setDivision, manager: setManager, rating: setRating,
+    status: setStoredStatuses, type: setType, division: setDivision, manager: setManager, employee: setEmployee, rating: setRating,
   };
 
   const base = useCallback(
@@ -94,10 +97,11 @@ export function useProjectFacets(input: Input) {
       one("type", (p) => (p.projectTypeId ? [p.projectTypeId] : [])),
       one("division", (p) => [(p.division || "").toLowerCase() || "none"]),
       one("manager", (p) => (p.managers && p.managers.length > 0 ? p.managers : [UNASSIGNED_MANAGER])),
+      one("employee", (p) => (p.employees && p.employees.length > 0 ? p.employees : [UNASSIGNED_MANAGER])),
       one("rating", (p) => ratingFacetValues(p.rating)),
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, type, division, manager, rating, projectStatuses]);
+  }, [status, type, division, manager, employee, rating, projectStatuses]);
 
   const result = useMemo(() => applyFacets(projects, defs, base), [projects, defs, base]);
 
@@ -121,11 +125,15 @@ export function useProjectFacets(input: Input) {
         [...named(input.managerNames), { value: UNASSIGNED_MANAGER, label: t("Unassigned", "Bez manažéra", "Nincs menedzser") }],
         c.manager,
       ),
+      employee: withCounts(
+        [...named(input.employeeNames ?? []), { value: UNASSIGNED_MANAGER, label: t("Unassigned", "Bez zamestnanca", "Nincs munkatárs") }],
+        c.employee,
+      ),
       rating: withCounts(ratingFilterOptions(t).filter((o) => o.value !== "all"), c.rating),
     };
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result, projectStatuses, projectTypes, input.divisions, input.managerNames]);
+  }, [result, projectStatuses, projectTypes, input.divisions, input.managerNames, input.employeeNames]);
 
   return {
     selection,
@@ -142,6 +150,7 @@ export function useProjectFacets(input: Input) {
       type: t("All Types", "Všetky typy", "Minden típus"),
       division: getTranslation(input.userLanguage, "filters.all_divisions"),
       manager: t("All managers", "Všetci manažéri", "Minden menedzser"),
+      employee: t("All employees", "Všetci zamestnanci", "Minden munkatárs"),
       rating: t("All ratings", "Všetky hodnotenia", "Minden értékelés"),
     } as Record<ProjectFacetId, string>,
   };

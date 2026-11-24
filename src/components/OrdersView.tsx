@@ -60,9 +60,11 @@ import { formatMoney } from "../utils/currency";
 import { formatDateLocalized, todayLocal, todayLocalPlusDays, nowLocalStamp } from "../utils/localTime";
 import { markInvoiceMovementPaid } from "../utils/invoiceFinanceBridge";
 import { nextDocumentNumber } from "../utils/documentNumbering";
-import { PageHeader, StatGrid, StatTile, Tabs, EmptyState } from "./layout";
+import { PageHeader, StatGrid, StatTile, EmptyState } from "./layout";
 import { CustomSelect } from "./ui/CustomSelect";
-import { useListFilter } from "../hooks/useListFilter";
+import { useOrderFacets } from "./orders/useOrderFacets";
+import { FacetedMultiSelect } from "./ui/FacetedMultiSelect";
+import { PinnedFilterChips } from "./ui/PinnedFilterChips";
 import { PRODUCT_NAME, getSystemTitle } from "../utils/brand";
 import { OrderProjectBadge } from "./orders/OrderProjectLink";
 
@@ -141,9 +143,6 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const canDelete = canEdit && getPermission("orders.delete") === "edit";
 
   const [tableWrapRef, tableWrapEl] = useStickyTableHead();
-  const [activeGroupFilter, setActiveGroupFilter] = useListFilter<string>("orders.group", "all");
-  const [customerTypeFilter, setCustomerTypeFilter] = useListFilter<string>("orders.customerType", "all");
-  const [paymentStatusFilter, setPaymentStatusFilter] = useListFilter<string>("orders.paymentStatus", "all");
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedTrackingId, setCopiedTrackingId] = useState<string | null>(null);
 
@@ -496,40 +495,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     setOrders(prev => prev.map(o => o.id === order.id ? updated : o));
   };
 
-  // Filtered orders list
-  const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
-      // Group filter
-      if (activeGroupFilter !== "all") {
-        const def = orderStatuses.find(s => s.key === order.status);
-        if (!def || def.group !== activeGroupFilter) return false;
-      }
-
-      // Customer filter
-      if (customerTypeFilter === "client" && order.customerType !== "client") return false;
-      if (customerTypeFilter === "guest" && order.customerType !== "guest") return false;
-
-      // Payment filter
-      if (paymentStatusFilter === "paid" && order.paymentStatus !== "paid") return false;
-      if (paymentStatusFilter === "unpaid" && order.paymentStatus === "paid") return false;
-
-      // Search query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const num = (order.orderNumber || "").toLowerCase();
-        const clientName = (order.billing?.name || order.guest?.name || order.guest?.company || "").toLowerCase();
-        const email = (order.guest?.email || "").toLowerCase();
-        const phone = (order.guest?.phone || order.delivery?.phone || "").toLowerCase();
-        const tracking = (order.shippingTrackingNumber || "").toLowerCase();
-        const city = (order.delivery?.city || "").toLowerCase();
-
-        const fullStr = `${num} ${clientName} ${email} ${phone} ${tracking} ${city}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        if (!fullStr.includes(q)) return false;
-      }
-
-      return true;
-    });
-  }, [orders, activeGroupFilter, customerTypeFilter, paymentStatusFilter, searchQuery, orderStatuses]);
+  // Status, customer, payment and project: multi-select and faceted (see orders/useOrderFacets.ts).
+  const facets = useOrderFacets({ orders, orderStatuses, projects, searchQuery, t, productName: PRODUCT_NAME });
+  const filteredOrders = facets.filteredOrders;
 
   // Key metrics
   const stats = useMemo(() => {
@@ -781,18 +749,12 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         />
       </StatGrid>
 
-      {/* 3. LIFECYCLE TABS */}
-      <Tabs
-        value={activeGroupFilter}
-        onChange={setActiveGroupFilter}
-        items={[
-          { key: "all", label: t("All orders", "Všetky objednávky", "Minden rendelés"), count: orders.length },
-          { key: "new", label: t("New", "Nové", "Új"), count: stats.newCount },
-          { key: "processing", label: t("Processing", "Príprava", "Feldolgozás"), count: stats.processingCount },
-          { key: "shipped", label: t("Shipped", "V preprave", "Úton"), count: stats.shippedCount },
-          { key: "delivered", label: t("Delivered", "Doručené", "Kézbesítve"), count: stats.deliveredCount },
-          { key: "cancelled", label: t("Cancelled", "Storno", "Törölve"), count: stats.cancelledCount }
-        ]}
+      {/* 3. PINNED STATUSES (star in the status dropdown) as one-click chips */}
+      <PinnedFilterChips
+        options={facets.options.status}
+        pinned={facets.pinnedStatuses}
+        selected={facets.selection.status}
+        onChange={next => facets.setSelection("status", next)}
       />
 
       {/* 4. SEARCH & FILTERS BAR */}
@@ -817,29 +779,19 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
           )}
         </div>
 
-        <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-2 w-full ws-xl:w-auto">
-          <CustomSelect
-            size="sm"
-            value={customerTypeFilter}
-            onChange={setCustomerTypeFilter}
-            className="w-full"
-            options={[
-              { value: "all", label: t("All customers", "Všetci zákazníci", "Minden vevő") },
-              { value: "client", label: t("Registered clients only", `Iba klienti ${PRODUCT_NAME}`, `Csak ${PRODUCT_NAME} ügyfelek`) },
-              { value: "guest", label: t("Guests only (E-shop)", "Iba hostia (E-shop)", "Csak vendég vásárlók") }
-            ]}
-          />
-          <CustomSelect
-            size="sm"
-            value={paymentStatusFilter}
-            onChange={setPaymentStatusFilter}
-            className="w-full"
-            options={[
-              { value: "all", label: t("All payments", "Všetky platby", "Minden fizetés") },
-              { value: "paid", label: t("Paid only", "Iba zaplatené", "Csak fizetett") },
-              { value: "unpaid", label: t("Unpaid only", "Iba nezaplatené", "Csak kifizetetlen") }
-            ]}
-          />
+        <div className="grid grid-cols-1 ws-sm:grid-cols-4 gap-2 w-full ws-xl:w-auto">
+          {(["status", "customerType", "payment", "project"] as const).map(id => (
+            <FacetedMultiSelect
+              key={id}
+              className="h-10 w-full"
+              options={facets.options[id]}
+              selected={facets.selection[id]}
+              onChange={next => facets.setSelection(id, next)}
+              allLabel={facets.allLabels[id]}
+              pinned={id === "status" ? facets.pinnedStatuses : undefined}
+              onTogglePin={id === "status" ? facets.togglePinnedStatus : undefined}
+            />
+          ))}
         </div>
       </div>
 
