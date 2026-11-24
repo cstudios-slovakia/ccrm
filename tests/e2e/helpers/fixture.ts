@@ -1095,6 +1095,8 @@ export async function installBackendMocks(
    * choice would come straight back as the seed.
    */
   let pushedIntegrationsConfig: unknown;
+  /** The project status list as the app last pushed it (Settings -> Project settings): a reload must not bring the built-ins back. */
+  let pushedProjectStatuses: unknown;
   /** task id -> the title the app last pushed: time tracking joins a linked entry's title from it. */
   const pushedTaskTitles = new Map<string, string>();
   const pushedTicketTitles = new Map<string, string>();
@@ -1123,8 +1125,8 @@ export async function installBackendMocks(
           users: [...payload.users, ...(options.extraUsers ?? [])]
             .map((u) => (u.email === signedIn.email ? signedIn : u))
             .map((u) => (pushedUserMeta.has(u.email) ? { ...u, metadata_json: pushedUserMeta.get(u.email) } : u)),
-          settings:
-            pushedIntegrationsConfig !== undefined
+          settings: {
+            ...(pushedIntegrationsConfig !== undefined
               ? { ...payload.settings, integrationsConfig: pushedIntegrationsConfig }
               : options.disabledModules
                 ? {
@@ -1134,7 +1136,9 @@ export async function installBackendMocks(
                       disabledModules: options.disabledModules,
                     },
                   }
-                : payload.settings,
+                : payload.settings),
+            ...(pushedProjectStatuses !== undefined ? { projectStatuses: pushedProjectStatuses } : {}),
+          },
           ...(options.tickets ? { tickets: options.tickets } : {}),
           projectTypes: payload.projectTypes.map((pt) =>
             pushedListColumns.has(pt.id) ? { ...pt, listColumns: pushedListColumns.get(pt.id) } : pt,
@@ -1150,7 +1154,7 @@ export async function installBackendMocks(
         projectTypes?: { id?: string; listColumns?: unknown }[];
         customDashboards?: { id?: string }[];
         warehouseItems?: unknown[];
-        settings?: { integrationsConfig?: unknown };
+        settings?: { integrationsConfig?: unknown; projectStatuses?: unknown };
         tasks?: { id?: string; title?: string; status?: string; priority?: string; deadline?: string }[];
         tickets?: { id?: string; title?: string; subject?: string }[];
       };
@@ -1184,6 +1188,9 @@ export async function installBackendMocks(
       }
       if (body?.settings?.integrationsConfig !== undefined) {
         pushedIntegrationsConfig = body.settings.integrationsConfig;
+      }
+      if (body?.settings?.projectStatuses !== undefined) {
+        pushedProjectStatuses = body.settings.projectStatuses;
       }
       for (const u of body?.users ?? []) {
         if (u?.email && u.metadata_json !== undefined) pushedUserMeta.set(u.email, u.metadata_json);

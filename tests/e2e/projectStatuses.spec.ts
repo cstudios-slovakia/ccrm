@@ -115,12 +115,15 @@ test.describe('Project value paid in full', () => {
     await gotoView(page, '#projects/project-1?tab=finances');
 
     // 18 400 € value, 2 500 € already paid: 15 900 € left.
-    const settle = page.getByRole('button', { name: /Označiť zvyšok ako uhradený/ });
+    // The shortcut covers only the not-invoiced part and opens the editor for confirmation (no browser dialog): Save books the row.
+    const settle = page.getByRole('button', { name: /Označiť nevyfakturovaný zvyšok ako uhradený/ });
     await expect(settle).toBeVisible();
     await expect(settle).toContainText(/15\s?900/);
     await settle.click();
+    await expect(page.getByText(/Do financií sa pridá uhradený príjem/)).toContainText(/15\s?900/);
+    await page.getByRole('button', { name: 'Uložiť', exact: true }).click();
 
-    await expect(page.getByText('Plne vyfakturované')).toBeVisible();
+    await expect(page.getByText('Plne uhradené')).toBeVisible();
     await expect(settle).toHaveCount(0);
 
     await expect
