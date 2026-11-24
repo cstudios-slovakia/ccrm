@@ -95,7 +95,7 @@ In `docs/TIME-TRACKING-DESIGN-PARITY.md`, part "Pass 2" (in a worktree, with a c
 - New features, restyling, anything the owner declined (see the Owner answers table).
 - The 5,000-entry limit of the report endpoint: known, not a defect.
 - The defects handled by `docs/prompts/time-tracking-parity-2-defects.md` (entry drawer label and width,
-  the two `projectStatuses` tests). If that session has already merged, just test on top of it.
+  the two `projectStatuses` tests). **Already merged (2026-11-24)**: just test on top of it.
 - Build, version bump, deploy, push, porting to another branch.
 - Real phone and the real Chrome extension popup: you cannot check these. List them for the owner as
   manual checks, with what to look at.
@@ -112,9 +112,10 @@ In `docs/TIME-TRACKING-DESIGN-PARITY.md`, part "Pass 2" (in a worktree, with a c
 
 ## Pre-existing failures
 Do not fix these here.
-- `projectStatuses.spec.ts` › "statuses are added, renamed and removed in settings, and the projects list
-  follows" and › "one click settles the rest of the value as a paid income row": both in
-  `scripts/qa/known-failing.json`, known to fail on `95b760dc`.
+- ~~`projectStatuses.spec.ts` › "statuses are added, renamed and removed in settings, and the projects list
+  follows" and › "one click settles the rest of the value as a paid income row"~~: **fixed 2026-11-24
+  (`a69e3b01`, out-of-date tests) and removed from `scripts/qa/known-failing.json`. They should pass; if one
+  fails now, it is a new regression.**
 - The other entries of `scripts/qa/known-failing.json`.
 - The probe noise listed in Scope 3.
 

@@ -1,5 +1,12 @@
 # Time tracking design parity, pass 2: fix the known defects
 
+> **DONE (2026-11-24), merged into `1.14-orange`; do not run this prompt again.** Defect 1 was a real defect and
+> is fixed (`c0bebc20`, `7cc50ec6`). Defect 2 predates the pass (since phase 1) and is fixed (`c0bebc20`).
+> Defect 3: both `projectStatuses` tests were out-of-date tests, not app bugs; fixed in the test and the QA mock
+> (`a69e3b01`) and removed from `scripts/qa/known-failing.json`. Root causes and details:
+> `docs/TIME-TRACKING-DESIGN-PARITY.md`, "Defects left after pass 2: resolved". The text below is the original
+> task, kept as a record.
+
 ## Goal
 Three defects were noted at the end of design-parity pass 2 and left unfixed. When this task is done,
 each one is either fixed and covered by a test, or shown with evidence not to be a defect.

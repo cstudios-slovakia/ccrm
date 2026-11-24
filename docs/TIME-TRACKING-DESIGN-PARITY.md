@@ -335,7 +335,9 @@ Commits on `css-main` (the same changes were cherry-picked to `1.13-nectarine`).
     darkened the project colour with an inline style the dark palette cannot remap. Fix: it now uses the
     theme's accent-lift mix (`f6f77498`); the test passes.
   - **`projectStatuses.spec.ts`**, two tests: pre-existing. They fail the same way on `ec7f25df`, before any
-    parity change to a project file, and both are in `scripts/qa/known-failing.json`.
+    parity change to a project file, and both were in `scripts/qa/known-failing.json`.
+    **Resolved 2026-11-24 (`a69e3b01`): out-of-date tests, not app bugs; they pass and are no longer in the
+    register. See "Defects left after pass 2: resolved" below.**
 - Screenshots: `test-results/tt-design-parity/before/` and `after/` (local only).
 
 
@@ -775,7 +777,8 @@ Run by a separate testing session. Nothing was fixed in the app.
   92 passed, 3 failed, 5 skipped, 52 did not run. The harness helper `tests/e2e/helpers/timeTrackingMock.ts` was left
   out of the file list because it makes `run-qa.mjs` refuse the run as a full suite; its direct importers
   (`timeTracking*.spec.ts`) were added instead.
-  - `projectStatuses.spec.ts` (2 tests): the two known failures, as listed in `scripts/qa/known-failing.json`.
+  - `projectStatuses.spec.ts` (2 tests): the two known failures, as listed in `scripts/qa/known-failing.json` at
+    the time. **Fixed afterwards (`a69e3b01`, out-of-date tests); they pass and are no longer registered.**
   - `dashboardStageDonut.spec.ts` "a stage on the donut opens leads filtered to that status": **not caused by this
     pass.** `22ca7cb5` made `#dashboard` show the Performance Dashboard; the "Leads by stage" widget board is behind
     `LEGACY_WIDGET_DASHBOARD`. The other two widget-board specs skip themselves on that flag (that is the 5 skipped);
@@ -795,12 +798,36 @@ Run by a separate testing session. Nothing was fixed in the app.
   `timeTrackingPresence`, `timeTrackingWorked`, all of `viewSize`, `viewMenuOverTableHead`, `whatsappDemo`,
   `whatsappNativeModule`. **114 passed, 0 failed, 0 skipped**, in 12.2 min.
 - **Coverage:** every spec the changed files select has now run on `1.14-orange`. Open failures are the three above that
-  are not caused by this pass (`dashboardStageDonut`, the two `projectStatuses`) and the `timeTracking` rate test
-  broken by `0e2bd0a7`. Run 1 and run 2 ran on different commits, and the app changed between them
-  (`c0bebc20`, `7cc50ec6`, `0e2bd0a7`); no single run covers one commit end to end.
+  are not caused by this pass (`dashboardStageDonut`, the two `projectStatuses` tests, which were fixed afterwards,
+  see below) and the `timeTracking` rate test broken by `0e2bd0a7`. Run 1 and run 2 ran on different commits, and
+  the app changed between them (`c0bebc20`, `7cc50ec6`, `0e2bd0a7`); no single run covers one commit end to end.
 - Nothing in this pass was checked on a real phone or in the real extension popup; the popup was changed and
   type-checked and built, never opened in Chrome.
 - Screenshots: `test-results/tt-design-parity-2/canvas/`, `before/`, `after/` (local only).
+
+## Defects left after pass 2: resolved (2026-11-24)
+
+Handled by `docs/prompts/time-tracking-parity-2-defects.md`; all merged into `1.14-orange`, not pushed. The two
+`projectStatuses` tests are **no longer failing and no longer in `scripts/qa/known-failing.json`**: do not skip
+them and do not "fix" them again.
+
+- **Task field said "optional" while a task was required** (`c0bebc20`, `7cc50ec6`). A real defect, not a capture
+  artefact: a page whose settings were stale (an admin switched "Require a task" on elsewhere) kept saying
+  "optional". Now the field reads `Task *` plus "or a ticket" where the server enforces the rule (a new, linked
+  or running entry; not an old unlinked entry, not a read-only drawer), and a `task_required` refusal reaches the
+  drawer directly and also reloads the settings. Covered by `timeTracking.spec.ts`.
+- **Duration ran past the entry drawer's right edge** (`c0bebc20`). **Older than the pass** (the four-column row
+  dates from phase 1, `04cc18b6`): the inputs kept their natural width and the row had no room for the date. Fixed
+  for every View size and width, new and existing entry. Covered by 9 width tests in `timeTracking.spec.ts`
+  (8 of them fail on the old layout).
+- **`projectStatuses.spec.ts`, two tests** (`a69e3b01`). Both were **out-of-date tests, not app bugs**:
+  - "statuses are added, renamed and removed...": `gotoView` is a full page load and the QA backend mock did not
+    keep the pushed `settings.projectStatuses`, so the list showed the five built-ins again. The mock in
+    `tests/e2e/helpers/fixture.ts` now keeps it, as it already did for `integrationsConfig`. The real server
+    persists it (`public/sync.php`).
+  - "one click settles the rest...": the flow was changed on purpose in v1.11.140 (`f34868b3`): the button is
+    "Označiť nevyfakturovaný zvyšok ako uhradený", it covers only the not-invoiced part, opens a confirmation
+    editor and Save books the paid income row; the card then reads "Plne uhradené". The spec follows that flow.
 
 ## Review page
 

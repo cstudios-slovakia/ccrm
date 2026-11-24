@@ -233,7 +233,8 @@ Settings navigation; a build, a version bump, deploy, push.
 ## Pre-existing failures
 
 Known, in `scripts/qa/known-failing.json`; do not fix them: `projectStatuses.spec.ts` (two tests: statuses
-in settings; "mark rest as paid"), `draftExits.spec.ts` (WAAI section). `timeTracking.spec.ts` › "the timer
+in settings; "mark rest as paid"; **both fixed since 2026-11-24 and no longer registered, so they should
+pass**), `draftExits.spec.ts` (WAAI section). `timeTracking.spec.ts` › "the timer
 bar takes a Description before Start…" was registered too; the Description moves behind a button in this
 pass, so update that test with the timer bar and report whether it passes. List any other failure with
 evidence.

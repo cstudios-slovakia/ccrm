@@ -37,7 +37,7 @@ Verified on CI with throwaway PRs. Do **not** treat these as regressions and do 
 - `whatsappDemo` "Tasks: nine tasks across the four chats..." (expected 8, received 4; fails on base).
 - `navigation` "every sidebar nav button opens a working view": lazy views render about 18 characters, a different set each run (flaky).
 - `holdToConfirm`: 3-5 of about 17 tests fail per run, different ones each time, on base and on the PR code alike (the hold counts animation frames; CI is slow).
-- `projectStatuses` x2 and `projectRating` sort: failed locally and in CI. The CRM agent said `projectStatuses` is in `known-failing.json` (that file exists on 1.12, **not on 1.13**) and `projectRating` passed on re-run. Re-check on base if it matters.
+- `projectStatuses` x2 and `projectRating` sort: failed locally and in CI. The CRM agent said `projectStatuses` is in `known-failing.json` (that file exists on 1.12, **not on 1.13**) and `projectRating` passed on re-run. Re-check on base if it matters. (On `1.14-orange` the two `projectStatuses` tests were fixed on 2026-11-24, `a69e3b01`: out-of-date tests, not app bugs; a branch without that commit still fails them.)
 
 List them in the PR description as pre-existing. Fixing them is optional and separate from this PR (ask the user first). `projectFiles` was fixed here only because it was a trivial stale selector.
 
