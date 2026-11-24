@@ -540,6 +540,15 @@ async function maybeDownloadMediaForMessage(rawMsg, item) {
   if (Date.now() - (item.tsMs || 0) > 14 * 86400 * 1000) return;
 
   const safeId = String(item.id).replace(/[^a-zA-Z0-9_-]/g, "_");
+  const SAFE_DOC_EXTS = new Set([
+    "pdf", "xlsx", "xls", "csv", "doc", "docx", "ppt", "pptx",
+    "txt", "rtf", "odt", "ods", "zip", "rar", "7z",
+    "png", "jpg", "jpeg", "webp", "gif", "mp3", "mp4", "ogg", "wav", "xml", "json",
+  ]);
+  const rawDocExt =
+    item.mediaType === "document" && typeof item.fileName === "string"
+      ? (item.fileName.split(".").pop() || "").toLowerCase().replace(/[^a-z0-9]/g, "")
+      : "";
   const ext =
     item.mediaType === "image"
       ? "jpg"
@@ -547,7 +556,9 @@ async function maybeDownloadMediaForMessage(rawMsg, item) {
         ? "mp4"
         : item.mediaType === "audio"
           ? "ogg"
-          : "bin";
+          : SAFE_DOC_EXTS.has(rawDocExt)
+            ? rawDocExt
+            : "bin";
   const filePath = path.join(mediaDir, `${safeId}.${ext}`);
   const publicUrl = `/uploads/.waai/accounts/${accountId}/media/${safeId}.${ext}`;
 
