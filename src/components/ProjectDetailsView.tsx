@@ -72,6 +72,8 @@ import { fillEmptyContactFromLead } from "../utils/leadToProject";
 import { ProjectNotesSection } from "./notes/ProjectNotesSection";
 import { isNoteActivity } from "../utils/noteActivity";
 import { NoteActivityRow } from "./notes/NoteActivityRow";
+import { isLeadHistoryItem, leadHistoryItems, mergeLeadHistory } from "../utils/leadHistoryTimeline";
+import { LeadHistoryTimelineItem, LeadHistoryToggle } from "./projects/LeadHistoryTimeline";
 
 /** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
 type RightTab = "timeline" | "notes" | "criteria" | "tasks" | "time" | "gantt" | "finances" | "files" | "tickets" | "orders";
@@ -439,7 +441,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // GitHub pushes of a paired project: read-only items woven into the timeline (not part of the saved project).
   const showsTimeline = layoutMode === "sidebar" || activeRightTab === "timeline";
   const projectPushes = useProjectPushes(project?.id ?? "", showsTimeline && !isNew && !!project?.githubRepo && !!projectType?.hasTimeline);
-  const timelineEntries = useMemo(() => mergePushesIntoTimeline(timeline, projectPushes.pushes), [timeline, projectPushes.pushes]);
+  // The paired lead's history, read-only and live (never copied into the project); a switch hides it.
+  const [showLeadHistory, setShowLeadHistory] = useState(true);
+  const leadHistory = useMemo(() => leadHistoryItems(leads.find(l => l.id === associatedLeadId)?.timeline), [leads, associatedLeadId]);
+  const timelineEntries = useMemo(() => mergeLeadHistory(mergePushesIntoTimeline(timeline, projectPushes.pushes), showLeadHistory ? leadHistory : []), [timeline, projectPushes.pushes, showLeadHistory, leadHistory]);
 
   const handleRightTabChange = (tab: RightTab) => {
     setActiveRightTab(tab);
@@ -3593,12 +3598,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
               {/* Timeline Events List */}
               <div className="flex-1 ws-lg:overflow-y-auto space-y-3.5 ws-lg:pr-1 scrollbar-thin">
+                {leadHistory.length > 0 && <LeadHistoryToggle count={leadHistory.length} shown={showLeadHistory} onChange={setShowLeadHistory} language={userLanguage} />}
                 {timelineEntries.length === 0 ? (
                   <div className="h-full min-h-50 flex items-center justify-center border border-dashed border-gray-200 rounded-lg p-6 text-gray-400 text-ui">
                     {t("No events logged for this project yet.", "Zatiaľ neboli zaznamenané žiadne udalosti.", "Még nincsenek események rögzítve.")}
                   </div>
                 ) : (
-                  timelineEntries.map(event => isPushItem(event) ? <ProjectPushTimelineItem key={event.id} item={event} language={userLanguage} /> : isNoteActivity(event) ? <NoteActivityRow key={event.id} title={event.title} content={event.content} timestamp={event.timestamp} language={userLanguage} /> : (
+                  timelineEntries.map(event => isLeadHistoryItem(event) ? <LeadHistoryTimelineItem key={event.id} item={event} leadName={pairedLead?.name} language={userLanguage} /> : isPushItem(event) ? <ProjectPushTimelineItem key={event.id} item={event} language={userLanguage} /> : isNoteActivity(event) ? <NoteActivityRow key={event.id} title={event.title} content={event.content} timestamp={event.timestamp} language={userLanguage} /> : (
                     <div key={event.id} className="p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-2xs text-ui font-medium relative group flex gap-3.5 animate-fade-in">
                       <div className="p-2 rounded-md bg-white border border-gray-200 shrink-0 self-start shadow-2xs">
                         {getTimelineIcon(event.type, event.eventType)}
