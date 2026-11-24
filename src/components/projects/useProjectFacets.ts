@@ -1,3 +1,4 @@
+import { projectStatusParent } from "../../utils/projectStatusTree";
 import { useCallback, useMemo } from "react";
 import type { Lead, Project, ProjectType } from "../../types";
 import { useListMultiFilter, usePinnedFilterOptions } from "../../hooks/useListFilter";
@@ -84,7 +85,12 @@ export function useProjectFacets(input: Input) {
   const defs = useMemo(() => {
     const one = (id: ProjectFacetId, valuesOf: (p: Project) => string[]) => ({ id, valuesOf, selected: selection[id] });
     return [
-      one("status", (p) => [p.status || defaultProjectStatus(projectStatuses)]),
+      // A sub-status also counts as its parent: picking the parent shows (and counts) its sub-statuses too.
+      one("status", (p) => {
+        const key = p.status || defaultProjectStatus(projectStatuses);
+        const parent = projectStatusParent(key, projectStatuses);
+        return parent ? [key, parent.key] : [key];
+      }),
       one("type", (p) => (p.projectTypeId ? [p.projectTypeId] : [])),
       one("division", (p) => [(p.division || "").toLowerCase() || "none"]),
       one("manager", (p) => (p.managers && p.managers.length > 0 ? p.managers : [UNASSIGNED_MANAGER])),

@@ -904,8 +904,21 @@ if (!function_exists('ccrm_send_cors')) {
             if ($label !== '') $def['label'] = $label;
             $def['color'] = $color;
             $def['group'] = $group;
+            $parent = trim((string)($item['parent'] ?? ''));
+            if ($parent !== '' && $parent !== $key) $def['parent'] = $parent;
             $out[] = $def;
         }
+        // Sub-statuses (utils/projectStatusTree.ts): one level only, a missing parent or a parent that is itself
+        // a sub-status is dropped, and a sub-status takes its parent's group.
+        $byKey = [];
+        foreach ($out as $d) $byKey[$d['key']] = $d;
+        foreach ($out as $i => $d) {
+            $p = $d['parent'] ?? null;
+            if ($p === null) continue;
+            if (!isset($byKey[$p]) || isset($byKey[$p]['parent'])) { unset($out[$i]['parent']); continue; }
+            $out[$i]['group'] = $byKey[$p]['group'];
+        }
+        $out = array_values($out);
         $hasOpen = false;
         foreach ($out as $d) {
             if ($d['group'] === 'new' || $d['group'] === 'in_progress') { $hasOpen = true; break; }
@@ -916,7 +929,11 @@ if (!function_exists('ccrm_send_cors')) {
         $ordered = [];
         foreach ($groups as $g) {
             foreach ($out as $d) {
-                if ($d['group'] === $g) $ordered[] = $d;
+                if ($d['group'] !== $g || isset($d['parent'])) continue;
+                $ordered[] = $d;
+                foreach ($out as $c) {
+                    if (($c['parent'] ?? null) === $d['key']) $ordered[] = $c;
+                }
             }
         }
         return $ordered;

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { SectionCard } from "./settings/SectionCard";
-import { GripVertical, Lock, Plus, X } from "lucide-react";
+import { CornerDownRight, GripVertical, Lock, Plus, X } from "lucide-react";
+import { arrangeProjectStatuses, projectStatusChildren, projectStatusDepth } from "../utils/projectStatusTree";
 import type { Project } from "../types";
 import type { Language } from "../utils/translations";
 import {
@@ -128,7 +129,11 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
     let group: ProjectStatusGroup = "new";
     items.forEach((r) => {
       if (r.type === "divider") group = r.group;
-      else next.push({ ...r.def, group });
+      else if (r.def.parent && r.def.key === key && r.def.group !== group) {
+        // A sub-status dragged into another group leaves its parent there; it becomes a top-level status.
+        const { parent: _dropped, ...rest } = r.def;
+        next.push({ ...rest, group });
+      } else next.push({ ...r.def, group });
     });
     if (!next.some((d) => isOpenGroup(d.group))) {
       toast(t(
@@ -138,7 +143,23 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
       ));
       return;
     }
-    setStatuses(PROJECT_STATUS_GROUPS.flatMap((g) => next.filter((d) => d.group === g)));
+    // Sub-statuses follow their parent's group and sit right under it.
+    setStatuses(arrangeProjectStatuses(next, PROJECT_STATUS_GROUPS));
+  };
+
+  /** Puts a status under `parent` (a top-level status of any group; the sub-status takes its group), or back on top with "". */
+  const handleParent = (key: string, parent: string) => {
+    if (!canEdit) return;
+    setStatuses((prev) =>
+      arrangeProjectStatuses(
+        prev.map((d) => {
+          if (d.key !== key) return d;
+          const { parent: _old, ...rest } = d;
+          return parent ? { ...rest, parent } : rest;
+        }),
+        PROJECT_STATUS_GROUPS,
+      ),
+    );
   };
 
   const handleRename = (key: string, raw: string) => {
@@ -315,7 +336,8 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
                     </div>
                   </td>
 
-                  <td className="py-3 px-4 align-middle">
+                  <td className={`py-3 px-4 align-middle ${projectStatusDepth(def.key, statuses) ? "pl-10" : ""}`}>
+                    {projectStatusDepth(def.key, statuses) > 0 && <CornerDownRight className="h-3.5 w-3.5 text-gray-300 inline-block mr-1.5 -mt-0.5" aria-hidden />}
                     <InlineRenameName
                       value={label}
                       canEdit={canEdit}
@@ -335,6 +357,22 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
                     <span className={`px-2.5 py-0.5 rounded-full type-overline border ${info.chip}`}>
                       {info.name}
                     </span>
+                    {/* Sub-status of: a top-level status that is not this one; a status with sub-statuses stays on top. */}
+                    {canEdit && projectStatusChildren(def.key, statuses).length === 0 && (
+                      <div className="mt-1.5 max-w-48" data-testid={`project-status-parent-${def.key}`}>
+                        <CustomSelect
+                          value={projectStatusDepth(def.key, statuses) ? def.parent ?? "" : ""}
+                          onChange={(v) => handleParent(def.key, v)}
+                          size="sm"
+                          options={[
+                            { value: "", label: t("Main status", "Hlavný stav", "Fő állapot") },
+                            ...statuses
+                              .filter((d) => d.key !== def.key && projectStatusDepth(d.key, statuses) === 0)
+                              .map((d) => ({ value: d.key, label: `${t("Under", "Pod", "Alatta:")} ${labelOf(d.key)}`, color: d.color })),
+                          ]}
+                        />
+                      </div>
+                    )}
                   </td>
 
                   <td className="py-3 px-4 text-center align-middle select-none">

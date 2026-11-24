@@ -16,6 +16,8 @@ export interface DropdownOption {
    */
   color?: string;
   disabled?: boolean;
+  /** Nesting level — a sub-status or sub-stage sits indented under its parent. */
+  indent?: number;
   /** Text the search box matches against — needed when `label` is not a plain string. */
   searchText?: string;
   /** Section this option belongs to — an id from the `groups` prop. Left out, it sits above every section. */
@@ -547,6 +549,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                         role="option"
                         aria-selected={opt.value === value}
                         disabled={opt.disabled}
+                        style={opt.indent ? { paddingLeft: `${0.875 + opt.indent * 1.25}rem` } : undefined}
                         onMouseEnter={() => setHighlighted(i)}
                         onClick={(e) => {
                           e.stopPropagation();
