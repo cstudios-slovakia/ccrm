@@ -54,10 +54,17 @@ const ratingBlock = (page: Page) => page.getByText('Priorita a hodnotenie').loca
  */
 const ratingHeader = (page: Page) => page.locator('thead').getByRole('button', { name: /Hodnotenie/ });
 
-/** The rating dropdown in the filter bar, found by whatever it currently reads. */
-async function setRatingFilter(page: Page, current: string | RegExp, option: string) {
+/**
+ * The rating dropdown in the filter bar (a faceted multi-select), found by whatever it currently reads:
+ * clears the selection, then ticks `option` alone (null = back to every rating) and closes the panel.
+ * An option's name ends with its count badge, so it is matched by how it starts.
+ */
+async function setRatingFilter(page: Page, current: string | RegExp, option: string | null) {
   await page.getByRole('button', { name: current }).first().click();
-  await page.getByRole('option', { name: option, exact: true }).click();
+  const clear = page.getByRole('button', { name: 'Zrušiť výber' });
+  if (await clear.isEnabled()) await clear.click(); // disabled while nothing is ticked
+  if (option) await page.getByRole('option', { name: new RegExp(`^${option}`) }).click();
+  await page.locator('[aria-haspopup="listbox"][aria-expanded="true"]').click();
 }
 
 test.describe('Project rating', () => {
@@ -110,7 +117,7 @@ test.describe('Project rating', () => {
     await expect(row(page, RATED_TWO)).toHaveCount(0);
 
     // And back to everything.
-    await setRatingFilter(page, /Bez hodnotenia/, 'Všetky hodnotenia');
+    await setRatingFilter(page, /Bez hodnotenia/, null);
     await expect(row(page, RATED_FIVE)).toHaveCount(1);
     await expect(row(page, RATED_TWO)).toHaveCount(1);
     await expect(row(page, UNRATED)).toHaveCount(1);

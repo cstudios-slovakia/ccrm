@@ -10476,62 +10476,62 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         switch (col.key) {
                                             case "client":
                                                 return (
-                                                    <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-6 border-b-2 border-slate-100">
+                                                    <ResizableTh key={col.key} listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-6 border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.client")}
                                                     </ResizableTh>
                                                 );
                                             case "created":
                                                 return (
-                                                    <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                    <ResizableTh key={col.key} listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {systemLanguage === "sk" ? "Dátum vytvorenia" : systemLanguage === "hu" ? "Létrehozás dátuma" : "Date Created"}
                                                     </ResizableTh>
                                                 );
                                             case "city":
                                                 return (
-                                                    <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                    <ResizableTh key={col.key} listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.city")}
                                                     </ResizableTh>
                                                 );
                                             case "type":
                                                 return (
-                                                    <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                    <ResizableTh key={col.key} listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.type")}
                                                     </ResizableTh>
                                                 );
                                             case "source":
                                                 return (
-                                                    <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                    <ResizableTh key={col.key} listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.source")}
                                                     </ResizableTh>
                                                 );
                                             case "pm":
                                                 return (
-                                                    <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                    <ResizableTh key={col.key} listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.pm")}
                                                     </ResizableTh>
                                                 );
                                             case "division":
                                                 return (
-                                                    <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                    <ResizableTh key={col.key} listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {t("Division", "Divízia", "Divízió")}
                                                     </ResizableTh>
                                                 );
                                             case "value":
                                                 return (
-                                                    <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 text-right border-b-2 border-slate-100">
+                                                    <ResizableTh key={col.key} listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 text-right border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.value")}
                                                     </ResizableTh>
                                                 );
                                             case "state":
                                                 return (
-                                                    <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 text-center border-b-2 border-slate-100">
+                                                    <ResizableTh key={col.key} listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 text-center border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.state")}
                                                     </ResizableTh>
                                                 );
                                             default:
                                                 if (col.attribute) {
                                                     return (
-                                                        <ResizableTh listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100 whitespace-nowrap">
+                                                        <ResizableTh key={col.key} listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100 whitespace-nowrap">
                                                             {col.attribute.name}
                                                         </ResizableTh>
                                                     );

@@ -1,0 +1,1 @@
+- **List headers keep their React keys** (`ProjectsView.tsx`, `LeadsDatagrid.tsx`, `PriceOffersView.tsx`): the resizable column headers lost their `key`, which logged a React warning on the projects list. The projects rating spec follows the new multi-select rating filter.

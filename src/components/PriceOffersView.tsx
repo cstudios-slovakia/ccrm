@@ -969,7 +969,7 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
             <thead className="table-page-sticky-head">
               <tr className="bg-gray-50 text-gray-500 type-overline border-b border-gray-200">
                 {columns.map(col => (
-                  <ResizableTh listKey="offers"
+                  <ResizableTh key={col.key} listKey="offers"
                     colKey={col.key}
                     className={cn(
                       "sticky z-10 bg-gray-50 p-4",

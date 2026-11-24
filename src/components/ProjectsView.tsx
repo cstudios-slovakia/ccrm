@@ -1984,7 +1984,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                         // The structure is never sorted, so its headers are plain labels.
                         if (isStructure) {
                           return (
-                            <ResizableTh listKey="projects"
+                            <ResizableTh key={col.key} listKey="projects"
                               colKey={col.key}
                               className="bg-gray-50 px-4 py-3 type-overline text-gray-500 whitespace-nowrap border-b border-gray-200"
                             >
@@ -1993,7 +1993,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           );
                         }
                         return (
-                          <ResizableTh listKey="projects"
+                          <ResizableTh key={col.key} listKey="projects"
                             colKey={col.key}
                             aria-sort={active ? (effectiveSort.direction === "asc" ? "ascending" : "descending") : "none"}
                             className="bg-gray-50 px-4 py-3 type-overline text-gray-500 whitespace-nowrap border-b border-gray-200"
