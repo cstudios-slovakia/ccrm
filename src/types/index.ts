@@ -798,6 +798,11 @@ export interface Project {
    */
   rating?: number;
   managers: string[]; // employee ids or names
+  /**
+   * Employees assigned to the project besides its managers (one PM, many employees). Same id kind as
+   * `managers`; stored in `project_employees`. Absent from a sync payload means "unchanged".
+   */
+  employees?: string[];
   data: Record<string, any>; // keyed by attribute.id
   /**
    * Invoice date as "YYYY-MM-DD", or null when none is set ("Termín fakturácie").
@@ -855,6 +860,8 @@ export interface Project {
    * Absent on save means "unchanged", so an older client cannot wipe it.
    */
   contactPhone?: string | null;
+  /** E-mail of the project's contact, as typed; copied from the lead on conversion. Absent on save means "unchanged". */
+  contactEmail?: string | null;
   /**
    * Acceptance criteria of the project; a removed one stays in the list (soft removal, `removedAt`).
    * Stored whole in `projects.acceptance_criteria_json`; absent from a payload means "unchanged".

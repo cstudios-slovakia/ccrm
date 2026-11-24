@@ -353,7 +353,7 @@ function ccrm_decode_attr_value($stored) {
 }
 
 function ccrm_compute_data_version($pdo) {
-    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'tags', 'task_tags', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'client_categories', 'offer_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates', 'employees', 'employee_salaries', 'employee_vacations', 'orders', 'order_items', 'support_contracts', 'tickets', 'ticket_messages', 'ticket_task_links', 'ticket_time_entries', 'whatsapp_links', 'whatsapp_numbers'];
+    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'tags', 'task_tags', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'project_employees', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'client_categories', 'offer_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates', 'employees', 'employee_salaries', 'employee_vacations', 'orders', 'order_items', 'support_contracts', 'tickets', 'ticket_messages', 'ticket_task_links', 'ticket_time_entries', 'whatsapp_links', 'whatsapp_numbers'];
     try {
         $existing = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
         $existingSet = array_flip($existing);
@@ -1502,6 +1502,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             while ($mgr = $mgrStmt->fetch(PDO::FETCH_ASSOC)) {
                 $managersByProject[$mgr['project_id']][] = $mgr['user_id'];
             }
+            // Fetch assigned employees (same shape as managers; the table may not exist yet on an old install)
+            $employeesByProject = [];
+            if ($pdo->query("SHOW TABLES LIKE 'project_employees'")->rowCount() > 0) {
+                $empStmt = $pdo->query("SELECT `project_id`, `user_id` FROM `project_employees`");
+                while ($emp = $empStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $employeesByProject[$emp['project_id']][] = $emp['user_id'];
+                }
+            }
 
             $projStmt = $pdo->query("SELECT * FROM `projects` ORDER BY `created_at` DESC, `id` DESC");
             while ($pRow = $projStmt->fetch(PDO::FETCH_ASSOC)) {
@@ -1533,6 +1541,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'billableRate' => isset($pRow['billable_rate']) ? (float)$pRow['billable_rate'] : null,
                     'isInternal' => isset($pRow['is_internal']) && (int)$pRow['is_internal'] === 1,
                     'contactPhone' => $pRow['contact_phone'] ?? null,
+                    'contactEmail' => $pRow['contact_email'] ?? null,
                     'acceptanceCriteria' => ccrm_scope_criteria_decode($pRow['acceptance_criteria_json'] ?? null),
                     'scopeApprovedAt' => ccrm_scope_ts_from_db($pRow['scope_approved_at'] ?? null),
                     'scopeApprovedBy' => $pRow['scope_approved_by'] ?? null,
@@ -1549,6 +1558,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'ticketRetainer' => $canTickets && isset($decodedWidgetCfg['retainer']) && is_array($decodedWidgetCfg['retainer']) ? $decodedWidgetCfg['retainer'] : null,
                     'archived' => isset($pRow['archived']) && (int)$pRow['archived'] === 1,
                     'managers' => $managersByProject[$projId] ?? [],
+                    'employees' => $employeesByProject[$projId] ?? [],
                     'data' => [],
                     'timeline' => [],
                     'gantt' => []
@@ -3098,6 +3108,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!ccrm_column_exists($pdo, 'projects', 'github_branch')) {
                 $pdo->exec("ALTER TABLE `projects` ADD COLUMN `github_branch` VARCHAR(200) NULL COMMENT 'Server branch whose pushes count; NULL = the repository default branch'");
             }
+            if (!ccrm_column_exists($pdo, 'projects', 'contact_email')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `contact_email` VARCHAR(190) NULL COMMENT 'E-mail of the project contact; copied from the lead on conversion'");
+            }
+            // Assigned employees: same shape as project_managers (healed here, never inside the transaction).
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `project_employees` (
+              `project_id` VARCHAR(50) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              PRIMARY KEY (`project_id`, `user_id`),
+              FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         }
         if (isset($payload['tasks']) && is_array($payload['tasks']) && !$ccrm_skip_writes('tasks', 'tasks')) {
             if (!ccrm_column_exists($pdo, 'tasks', 'original_deadline')) {
@@ -4093,7 +4113,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `invoice_date`, `completion_deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `value`, `custom_files_json`, `ticket_widget_enabled`, `ticket_allowed_domains`, `ticket_allowed_emails`, `ticket_public_hash`, `ticket_widget_config_json`, `archived`, `hours_budget`, `billable_rate`, `is_internal`, `contact_phone`, `acceptance_criteria_json`, `github_repo`, `github_branch`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `invoice_date`=VALUES(`invoice_date`), `completion_deadline`=VALUES(`completion_deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `value`=VALUES(`value`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `ticket_widget_enabled`=VALUES(`ticket_widget_enabled`), `ticket_allowed_domains`=COALESCE(VALUES(`ticket_allowed_domains`), `ticket_allowed_domains`), `ticket_allowed_emails`=COALESCE(VALUES(`ticket_allowed_emails`), `ticket_allowed_emails`), `ticket_public_hash`=COALESCE(VALUES(`ticket_public_hash`), `ticket_public_hash`), `ticket_widget_config_json`=COALESCE(VALUES(`ticket_widget_config_json`), `ticket_widget_config_json`), `archived`=VALUES(`archived`), `hours_budget`=IF(? = 1, VALUES(`hours_budget`), `hours_budget`), `billable_rate`=IF(? = 1, VALUES(`billable_rate`), `billable_rate`), `is_internal`=IF(? = 1, VALUES(`is_internal`), `is_internal`), `contact_phone`=IF(? = 1, VALUES(`contact_phone`), `contact_phone`), `acceptance_criteria_json`=IF(? = 1, VALUES(`acceptance_criteria_json`), `acceptance_criteria_json`), `github_repo`=IF(? = 1, VALUES(`github_repo`), `github_repo`), `github_branch`=IF(? = 1, VALUES(`github_branch`), `github_branch`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `invoice_date`, `completion_deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `value`, `custom_files_json`, `ticket_widget_enabled`, `ticket_allowed_domains`, `ticket_allowed_emails`, `ticket_public_hash`, `ticket_widget_config_json`, `archived`, `hours_budget`, `billable_rate`, `is_internal`, `contact_phone`, `contact_email`, `acceptance_criteria_json`, `github_repo`, `github_branch`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `invoice_date`=VALUES(`invoice_date`), `completion_deadline`=VALUES(`completion_deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `value`=VALUES(`value`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `ticket_widget_enabled`=VALUES(`ticket_widget_enabled`), `ticket_allowed_domains`=COALESCE(VALUES(`ticket_allowed_domains`), `ticket_allowed_domains`), `ticket_allowed_emails`=COALESCE(VALUES(`ticket_allowed_emails`), `ticket_allowed_emails`), `ticket_public_hash`=COALESCE(VALUES(`ticket_public_hash`), `ticket_public_hash`), `ticket_widget_config_json`=COALESCE(VALUES(`ticket_widget_config_json`), `ticket_widget_config_json`), `archived`=VALUES(`archived`), `hours_budget`=IF(? = 1, VALUES(`hours_budget`), `hours_budget`), `billable_rate`=IF(? = 1, VALUES(`billable_rate`), `billable_rate`), `is_internal`=IF(? = 1, VALUES(`is_internal`), `is_internal`), `contact_phone`=IF(? = 1, VALUES(`contact_phone`), `contact_phone`), `contact_email`=IF(? = 1, VALUES(`contact_email`), `contact_email`), `acceptance_criteria_json`=IF(? = 1, VALUES(`acceptance_criteria_json`), `acceptance_criteria_json`), `github_repo`=IF(? = 1, VALUES(`github_repo`), `github_repo`), `github_branch`=IF(? = 1, VALUES(`github_branch`), `github_branch`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -4104,6 +4124,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // reproducible before this change.
             $delMgr = $pdo->prepare("DELETE FROM `project_managers` WHERE `project_id` = ?");
             $insMgr = $pdo->prepare("INSERT IGNORE INTO `project_managers` (`project_id`, `user_id`) VALUES (?, ?)");
+            $delEmp = $pdo->prepare("DELETE FROM `project_employees` WHERE `project_id` = ?");
+            $insEmp = $pdo->prepare("INSERT IGNORE INTO `project_employees` (`project_id`, `user_id`) VALUES (?, ?)");
 
             foreach ($payload['projects'] as $p) {
                 if (!isset($p['id']) || !isset($p['projectTypeId'])) continue;
@@ -4225,6 +4247,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projContactPhone = $projContactPhone === '' ? null : mb_substr($projContactPhone, 0, 50);
                 }
 
+                // The contact's e-mail, same rules as the phone: key omitted = unchanged, "" clears.
+                $contactEmailSent = array_key_exists('contactEmail', $p) ? 1 : 0;
+                $projContactEmail = null;
+                if ($contactEmailSent) {
+                    $projContactEmail = trim((string)preg_replace('/[\x00-\x1F\x7F]/u', '', (string)$p['contactEmail']));
+                    $projContactEmail = $projContactEmail === '' ? null : mb_substr($projContactEmail, 0, 190);
+                }
+
                 // Acceptance criteria: merged into the stored list, stamped by the server (api/project_scope.php).
                 // A key the client omits leaves the stored list alone. The scope approval never rides on a save:
                 // `scopeApprovedAt` / `scopeApprovedBy` in the payload are ignored (api/project_scope_action.php).
@@ -4264,6 +4294,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projBillableRate,
                     $projInternal,
                     $projContactPhone,
+                    $projContactEmail,
                     $scope['criteria'],
                     $projGithubRepo,
                     $projGithubBranch,
@@ -4271,6 +4302,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $rateSent,
                     $internalSent,
                     $contactPhoneSent,
+                    $contactEmailSent,
                     $scope['criteriaSent'],
                     $githubRepoSent,
                     $githubBranchSent,
@@ -4285,6 +4317,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $insMgr->execute([$projId, $uid]);
                     }
                     ccrm_child_bump($pdo, 'managers', $projId, $mgrBefore); // only on a real change
+                }
+                // Assigned employees: same rule, an omitted `employees` key means "unchanged".
+                if (array_key_exists('employees', $p) && is_array($p['employees'])) {
+                    $empBefore = ccrm_child_snapshot($pdo, 'employees', $projId);
+                    $delEmp->execute([$projId]);
+                    foreach ($p['employees'] as $uid) {
+                        $insEmp->execute([$projId, (string)$uid]);
+                    }
+                    ccrm_child_bump($pdo, 'employees', $projId, $empBefore);
                 }
 
                 $processedProjIds[] = $projId;

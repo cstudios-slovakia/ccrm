@@ -336,6 +336,7 @@ Individual instances of active project lifecycles.
 * `ticket_public_hash` VARCHAR(64) [UNIQUE] (Random token for public `#public-tickets/<hash>` status page)
 * `ticket_widget_config_json` TEXT [NULLable] (JSON config for floating widget color, position, greeting, language)
 * `contact_phone` VARCHAR(50) [NULLable] (phone of the project contact as typed; WAAI pairs WhatsApp chats to the project by it; written by the app's save only when the payload carries `contactPhone`)
+* `contact_email` VARCHAR(190) [NULLable] (e-mail of the project contact as typed; copied from the lead when the lead is converted to a project; written by the app's save only when the payload carries `contactEmail`, `""` clears it; returned by the sync GET as `contactEmail`)
 * `acceptance_criteria_json` TEXT [NULLable] (the project's acceptance criteria as JSON `[{"id","title","done","createdAt","createdBy","removedAt","removedBy"}]`, `createdAt` / `removedAt` UTC ISO 8601 with `Z`; a removed criterion stays in the array with `removedAt` set (soft removal); `NULL` = none. Written by the app's save only when the payload carries `acceptanceCriteria` (a client that omits the key leaves the stored list alone) and merged into the stored list by the server (`ccrm_scope_merge_criteria()` in `api/project_scope.php`): a new id gets the server's time and the session user as `createdAt` / `createdBy`, a stored criterion keeps its stamps, a removal is stamped by the server and cannot be undone, and a stored criterion missing from the client's list is kept. Returned by the sync GET as `acceptanceCriteria`. Criteria created after `scope_approved_at` are scope creep, read by the dashboard's "Scope creep" widget)
 * `scope_approved_at` DATETIME [NULLable] (when the scope was approved, stored in UTC; `NULL` = not approved. Never written by the sync upsert: a `scopeApprovedAt` / `scopeApprovedBy` in a project payload is ignored (a stale tab would clear or restore it). Written only by the one-shot action `POST /api/project_scope_action.php { projectId, action: "approve" | "withdraw" }` through `ccrm_scope_apply_action()` in `api/project_scope.php`: approve (only when not approved) stamps the server's time and the session user, withdraw clears both and is a reset (a later approval stamps a new instant, so criteria added in between become original scope); returned by the sync GET as `scopeApprovedAt`, a UTC ISO string with `Z`)
 * `scope_approved_by` VARCHAR(100) [NULLable] (name of the user who approved the scope, taken from the session by the approval action; written together with `scope_approved_at`, returned as `scopeApprovedBy`)
@@ -347,6 +348,12 @@ Individual instances of active project lifecycles.
 ### `project_managers`
 Junction table mapping project managers to projects.
 * `project_id` VARCHAR(50)
+* `user_id` VARCHAR(50)
+* Primary Key: (`project_id`, `user_id`)
+
+### `project_employees`
+Junction table mapping the employees assigned to a project (besides its managers; one PM, many employees). Same shape as `project_managers`; `user_id` is the same id kind as there. Rewritten per project by the app's save only when the payload carries `employees` (an omitted key means unchanged); a real change moves `projects.updated_at` (`api/sync_child_bumps.php`, kind `employees`). Healed in `sync.php` before the transaction. Returned by the sync GET as `employees`.
+* `project_id` VARCHAR(50) [FK `projects.id`, ON DELETE CASCADE]
 * `user_id` VARCHAR(50)
 * Primary Key: (`project_id`, `user_id`)
 

@@ -48,10 +48,8 @@ import {
     type LeadSortKey,
 } from "../utils/leadColumns";
 import { projectAttributeSortValue } from "../utils/projectColumns";
-import {
-    buildProjectDataFromLead,
-    isLeadAttributeMissing,
-} from "../utils/leadAttributes";
+import { isLeadAttributeMissing } from "../utils/leadAttributes";
+import { buildProjectFromLead, fillEmptyContactFromLead } from "../utils/leadToProject";
 import { CustomAttributesGrid, renderCustomAttributeCell } from "./common/CustomAttributeControls";
 import { clampDeadline, todayStr } from "../utils/taskDeadline";
 import {
@@ -2192,26 +2190,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
         setIsConvertDropdownOpen(false);
 
-        // Copy matching Lead custom fields (by name + type) plus built-in contact heuristics.
-        const dynamicData = buildProjectDataFromLead(
-            activeLead,
-            leadAttributes,
-            type.attributes || [],
-            defaultCurrency,
-        );
-
-        const newProj: Project = {
+        // Named after the lead; its phone and e-mail become the project's contact; matching custom fields are copied.
+        const newProj = buildProjectFromLead(activeLead, type, leadAttributes, {
             id: "proj-" + Date.now(),
-            projectTypeId: type.id,
-            leadId: activeLead.id,
-            clientId: activeLead.id,
             status: defaultProjectStatus(projectStatuses),
-            managers: activeLead.owner ? [activeLead.owner] : [],
-            data: dynamicData,
-            timeline: [],
-            gantt: [],
-            archived: false,
-        };
+            defaultCurrency,
+        });
 
         setProjects((prev) => [newProj, ...prev]);
 
@@ -2248,7 +2232,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setProjects((prev) =>
             prev.map((p) =>
                 p.id === projectId
-                    ? { ...p, leadId: activeLead.id, clientId: activeLead.id }
+                    ? { ...fillEmptyContactFromLead(p, activeLead), leadId: activeLead.id, clientId: activeLead.id }
                     : p,
             ),
         );

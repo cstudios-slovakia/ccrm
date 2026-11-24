@@ -807,6 +807,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         client: leads.find(l => l.id === p.leadId)?.name || "",
         type: pType?.name || "",
         managers: (p.managers || []).join(", "),
+        employees: (p.employees || []).join(", "),
         // Unrated travels as null, not 0 — see ProjectSortValues.rating.
         rating: ratingValue(p.rating) || null,
         deadline: evaluateProjectDeadline(p, pType, today, projectStatuses)?.deadline ?? null,
@@ -1154,6 +1155,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     { value: "client", label: t("Client", "Klient", "Ügyfél") },
     { value: "type", label: t("Type", "Typ", "Típus") },
     { value: "managers", label: t("Managers", "Manažéri", "Menedzserek") },
+    { value: "employees", label: t("Employees", "Zamestnanci", "Munkatársak") },
     { value: "rating", label: t("Rating", "Hodnotenie", "Értékelés") },
     { value: "invoiceDate", label: t("Invoice date", "Termín fakturácie", "Számlázási határidő") },
     { value: "deadline", label: t("Deadline", "Termín dokončenia", "Határidő") },
@@ -1406,6 +1408,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           ? (
             <span className="block truncate max-w-[14rem] text-ui font-semibold text-slate-500" title={p.managers.join(", ")}>
               {p.managers.join(", ")}
+            </span>
+          )
+          : emptyCell;
+      case "employees":
+        return p.employees && p.employees.length > 0
+          ? (
+            <span className="block truncate max-w-[14rem] text-ui font-semibold text-slate-500" title={p.employees.join(", ")}>
+              {p.employees.join(", ")}
             </span>
           )
           : emptyCell;

@@ -451,6 +451,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `billable_rate` DECIMAL(10,2) NULL COMMENT 'Default billable hourly rate for time entries',
               `is_internal` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Internal work: excluded from client billing',
               `contact_phone` VARCHAR(50) NULL COMMENT 'Phone of the project contact; WhatsApp chats are paired to the project by it',
+              `contact_email` VARCHAR(190) NULL COMMENT 'E-mail of the project contact; copied from the lead on conversion',
               `acceptance_criteria_json` TEXT NULL COMMENT 'Acceptance criteria, JSON [{id,title,done,createdAt,createdBy,removedAt,removedBy}]; a removed one stays (soft removal); NULL = none',
               `scope_approved_at` DATETIME NULL COMMENT 'When the scope was approved (UTC); criteria created after it are scope creep; NULL = not approved',
               `scope_approved_by` VARCHAR(100) NULL COMMENT 'Name of the user who approved the scope',
@@ -463,6 +464,14 @@ if (!function_exists('ccrm_schema_statements')) {
 
             // Project Managers (Junction table)
             "CREATE TABLE IF NOT EXISTS `project_managers` (
+              `project_id` VARCHAR(50) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              PRIMARY KEY (`project_id`, `user_id`),
+              FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Project employees (Junction table): the people working on a project besides its managers.
+            "CREATE TABLE IF NOT EXISTS `project_employees` (
               `project_id` VARCHAR(50) NOT NULL,
               `user_id` VARCHAR(50) NOT NULL,
               PRIMARY KEY (`project_id`, `user_id`),
@@ -2443,6 +2452,7 @@ if (!function_exists('ccrm_schema_statements')) {
             'scope_approved_by' => "VARCHAR(100) NULL COMMENT 'Name of the user who approved the scope'",
             'github_repo' => "VARCHAR(200) NULL COMMENT 'Paired GitHub repository, owner/name; pushes to it are stored in project_pushes'",
             'github_branch' => "VARCHAR(200) NULL COMMENT 'Server branch whose pushes count; NULL = the repository default branch'",
+            'contact_email' => "VARCHAR(190) NULL COMMENT 'E-mail of the project contact; copied from the lead on conversion'",
         ] as $scopeCol => $scopeDef) {
             if (ccrm_table_exists($pdo, 'projects') && !ccrm_column_exists($pdo, 'projects', $scopeCol)) {
                 $pdo->exec("ALTER TABLE `projects` ADD COLUMN `{$scopeCol}` {$scopeDef}");

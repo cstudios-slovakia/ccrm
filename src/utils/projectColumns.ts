@@ -13,6 +13,7 @@ export type BuiltinProjectColumnKey =
   | "type"
   | "client"
   | "managers"
+  | "employees"
   | "rating"
   | "invoiceDate"
   | "deadline"
@@ -32,6 +33,7 @@ export const BUILTIN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = [
   "type",
   "client",
   "managers",
+  "employees",
   "rating",
   "invoiceDate",
   "deadline",
@@ -47,7 +49,7 @@ export const BUILTIN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = [
  * Built-ins that are offered but start switched off, like an attribute: they
  * widen the table, so they appear only when someone asks for them.
  */
-export const DEFAULT_HIDDEN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = ["value", "invoicable", "stillToBePaid", "division"];
+export const DEFAULT_HIDDEN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = ["employees", "value", "invoicable", "stillToBePaid", "division"];
 
 /**
  * The project's own name is what identifies the row and opens it, so it is the
@@ -66,6 +68,7 @@ export const BUILTIN_COLUMN_LABELS: Record<BuiltinProjectColumnKey, [string, str
   type: ["Type", "Typ", "Típus"],
   client: ["Client", "Klient", "Ügyfél"],
   managers: ["Managers", "Manažéri", "Menedzserek"],
+  employees: ["Employees", "Zamestnanci", "Munkatársak"],
   rating: ["Rating", "Hodnotenie", "Értékelés"],
   invoiceDate: ["Invoice date", "Termín fakturácie", "Számlázási határidő"],
   deadline: ["Deadline", "Termín dokončenia", "Határidő"],

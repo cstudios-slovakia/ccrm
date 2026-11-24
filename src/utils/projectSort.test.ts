@@ -57,6 +57,7 @@ const values = (r: Row): ProjectSortValues => ({
   client: "",
   type: "",
   managers: "",
+  employees: "",
   rating: r.rating ?? null,
   deadline: r.deadline ?? null,
   invoiceDate: r.invoiceDate ?? null,

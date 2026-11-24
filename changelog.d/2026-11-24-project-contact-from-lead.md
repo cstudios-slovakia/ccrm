@@ -1,0 +1,2 @@
+- **A project keeps the lead's contact details** (`utils/leadToProject.ts`, `LeadsDatagrid.tsx`, `ProjectDetailsView.tsx`, `projects/ProjectContactEmail.tsx`): projects get a contact e-mail next to the contact phone (new `projects.contact_email`, also settable through the MCP `create_project` / `update_project`). Converting a lead to a project names the project after the lead and copies its phone and e-mail; pairing an existing project with a lead fills an empty phone / e-mail from the lead and never overwrites one that is already typed.
+- **Tests**: `leadToProject.test.ts`.

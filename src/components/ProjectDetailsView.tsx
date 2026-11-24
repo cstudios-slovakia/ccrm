@@ -62,6 +62,11 @@ import { runUndoable } from "../utils/undoable";
 import { reinsertAt, removeByIds } from "../utils/undoableList";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { WhatsAppChip } from "./WhatsAppChip";
+import { findTimelineEventIssue, resolveTimelineEventTitle, timelineEventTypeOptions, type TimelineEventIssue } from "../utils/timelineEventForm";
+import { ProjectContactEmail } from "./projects/ProjectContactEmail";
+import { ProjectEmployeesField } from "./projects/ProjectEmployeesField";
+import { ProjectLeftColumn } from "./projects/ProjectLeftColumn";
+import { fillEmptyContactFromLead } from "../utils/leadToProject";
 
 /** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
 type RightTab = "timeline" | "criteria" | "tasks" | "time" | "gantt" | "finances" | "files" | "tickets";
@@ -349,6 +354,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [division, setDivision] = useState("");
   /* Phone of the project's contact. WAAI pairs WhatsApp chats to the project by it. */
   const [contactPhone, setContactPhone] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
   /* GitHub pairing: repository ("owner/name") and server branch; pushes to it are stored by the webhook. */
   const [githubRepo, setGithubRepo] = useState("");
   const [githubBranch, setGithubBranch] = useState("");
@@ -358,6 +364,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [associatedLeadId, setAssociatedLeadId] = useState("");
   const [associatedClientId, setAssociatedClientId] = useState("");
   const [selectedManagers, setSelectedManagers] = useState<string[]>([]);
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   // The paired lead is shown as the same green client card the lead view has;
   // the picker only comes back while re-pairing.
   const [pickingClient, setPickingClient] = useState(false);
@@ -489,6 +496,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // Timeline Event Form
   const [newTeTitle, setNewTeTitle] = useState("");
   const [newTeType, setNewTeType] = useState("note");
+  /* Why "Add event" did nothing: shown under the field it concerns (id "title" or an attribute id). */
+  const [teIssue, setTeIssue] = useState<TimelineEventIssue | null>(null);
   const [newTeContent, setNewTeContent] = useState("");
   const [newTeTime, setNewTeTime] = useState("");
   const [timelineEventData, setTimelineEventData] = useState<Record<string, any>>({});
@@ -547,12 +556,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     status: p.status || "active",
     division: p.division || "",
     contactPhone: p.contactPhone || "",
+    contactEmail: p.contactEmail || "",
     githubRepo: p.githubRepo || "",
     githubBranch: p.githubBranch || "",
     rating: ratingValue(p.rating),
     leadId: p.leadId || "",
     clientId: p.clientId || "",
     managers: p.managers || [],
+    employees: p.employees || [],
     data: p.data || {},
     customFileFields: Array.isArray(p.customFileFields) ? p.customFileFields : [],
     timeline: p.timeline || [],
@@ -580,12 +591,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       status,
       division: division || null,
       contactPhone: contactPhone.trim() || null,
+      contactEmail: contactEmail.trim() || null,
       githubRepo: githubRepo || null,
       githubBranch: githubBranch || null,
       rating,
       leadId: associatedLeadId || null,
       clientId: associatedClientId || null,
       managers: selectedManagers,
+      employees: selectedEmployees,
       data: dynamicData,
       customFileFields,
       timeline,
@@ -668,12 +681,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     setStatus(s.status);
     setDivision(s.division);
     setContactPhone(s.contactPhone);
+    setContactEmail(s.contactEmail);
     setGithubRepo(s.githubRepo);
     setGithubBranch(s.githubBranch);
     setRating(s.rating);
     setAssociatedLeadId(s.leadId);
     setAssociatedClientId(s.clientId);
     setSelectedManagers(s.managers);
+    setSelectedEmployees(s.employees);
     setDynamicData(s.data);
     setCustomFileFields(s.customFileFields);
     setTimeline(s.timeline);
@@ -695,12 +710,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     status,
     division,
     contactPhone,
+    contactEmail,
     githubRepo,
     githubBranch,
     rating,
     leadId: associatedLeadId,
     clientId: associatedClientId,
     managers: selectedManagers,
+    employees: selectedEmployees,
     data: dynamicData,
     customFileFields,
     timeline,
@@ -1518,23 +1535,26 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // Timeline Handlers
   const handleAddTimelineEvent = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canEdit || !newTeTitle.trim()) return;
+    if (!canEdit) return;
 
-    // Validate required timeline attributes
+    // Nothing to log, or a required attribute left empty: say so under the field, never silently.
     const selectedTeType = projectType.timelineEventTypes?.find(t => t.id === newTeType);
     const activeTimelineAttributes = selectedTeType ? selectedTeType.attributes : [];
-    for (const attr of activeTimelineAttributes) {
-      if (attr.required) {
-        const val = timelineEventData[attr.id];
-        const missing = attr.type === "money"
+    const issue = findTimelineEventIssue({
+      title: newTeTitle,
+      content: newTeContent,
+      attributes: activeTimelineAttributes,
+      isEmpty: id => {
+        const val = timelineEventData[id];
+        return activeTimelineAttributes.find(a => a.id === id)?.type === "money"
           ? isMoneyValueEmpty(val, defaultCurrency)
           : (val === undefined || val === null || val === "" || (Array.isArray(val) && val.length === 0));
-        if (missing) {
-          alert(`"${attr.name}" ${t("is required.", "je povinné.", "megadása kötelező.")}`);
-          return;
-        }
-      }
-    }
+      },
+    }, t);
+    setTeIssue(issue);
+    if (issue) return;
+    // Details without a title are logged under the selected event type's name.
+    const teTypeLabel = timelineEventTypeOptions(projectType.timelineEventTypes, t).find(o => o.value === newTeType)?.label ?? "";
 
     const isCustom = projectType.timelineEventTypes && projectType.timelineEventTypes.length > 0;
     const newEvent: ProjectTimelineEvent = {
@@ -1542,7 +1562,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       type: isCustom ? "custom" : newTeType,
       eventType: isCustom ? newTeType : undefined,
       timestamp: newTeTime || nowLocalStamp(),
-      title: newTeTitle.trim(),
+      title: resolveTimelineEventTitle(newTeTitle, newTeContent, teTypeLabel),
       content: newTeContent.trim(),
       data: timelineEventData
     };
@@ -2152,8 +2172,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             the paired client at the bottom. The project card is edited in
             place and every change saves itself; the attributes card keeps an
             Edit mode of its own. */}
-        <div className={isSidebar ? "space-y-4 text-left" : "ws-lg:col-span-4 flex flex-col h-auto ws-lg:h-full min-h-0 ws-lg:overflow-y-auto gap-4 ws-lg:pr-1 scrollbar-thin text-left"}>
-
+        <ProjectLeftColumn isSidebar={isSidebar}>
 
           {/* PROJECT CARD DETAILS */}
           <div className="shrink-0 bg-white border border-gray-200 rounded-lg p-5 shadow-xs">
@@ -2278,6 +2297,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </p>
               )}
             </div>
+
+            <ProjectContactEmail userLanguage={userLanguage} value={contactEmail} canEdit={canEdit} onChange={setContactEmail} />
 
             <ProjectGithubFields userLanguage={userLanguage} repo={githubRepo} branch={githubBranch} canEdit={canEdit} onRepoChange={setGithubRepo} onBranchChange={setGithubBranch} />
 
@@ -2578,6 +2599,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </p>
               )}
             </div>
+
+            <ProjectEmployeesField userLanguage={userLanguage} users={users} value={selectedEmployees} managers={selectedManagers} canEdit={canEdit} onChange={setSelectedEmployees} />
 
           </div>
           </div>
@@ -2947,10 +2970,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               // Pairing a lead names the project after it, but only while it
               // has no name yet — re-pairing never overwrites what somebody
               // deliberately typed.
-              if (!projectName.trim()) {
-                const paired = leads.find(l => l.id === id);
-                if (paired?.name) setProjectName(paired.name);
-              }
+              const paired = leads.find(l => l.id === id);
+              if (!projectName.trim() && paired?.name) setProjectName(paired.name);
+              // Likewise the contact: an empty phone / e-mail is filled from the lead, a typed one stays.
+              const contact = fillEmptyContactFromLead({ contactPhone, contactEmail }, paired);
+              setContactPhone(contact.contactPhone);
+              setContactEmail(contact.contactEmail);
             };
 
             if (!pairedLead || pickingClient) {
@@ -3151,7 +3176,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               </div>
             );
           })()}
-        </div>
+        </ProjectLeftColumn>
 
         {/* RIGHT COLUMN: Timeline & Gantt Tabs */}
         <div className={isSidebar ? "space-y-4 text-left" : "ws-lg:col-span-8 flex flex-col h-auto ws-lg:h-full ws-lg:overflow-hidden bg-white border border-gray-200 rounded-lg p-4 ws-sm:p-5 shadow-xs text-left"}>
@@ -3291,30 +3316,26 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 
                 <form onSubmit={handleAddTimelineEvent} className="space-y-3.5 text-ui font-semibold">
                   <div>
-                    <label className="block type-overline text-slate-400 mb-1">{t("Event Title", "Názov udalosti", "Esemény címe")}</label>
+                    <label className="block type-overline text-slate-400 mb-1">
+                      {t("Event Title", "Názov udalosti", "Esemény címe")}
+                      {!newTeTitle.trim() && !newTeContent.trim() && <span className="text-rose-500"> *</span>}
+                    </label>
                     <input
                       value={newTeTitle}
-                      onChange={e => setNewTeTitle(e.target.value)}
+                      onChange={e => { setNewTeTitle(e.target.value); setTeIssue(null); }}
+                      aria-invalid={teIssue?.field === "title"}
                       placeholder={t("e.g. Site survey completed", "napr. Zameranie dokončené", "pl. Helyszíni felmérés kész")}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white aria-[invalid=true]:border-rose-400"
                     />
+                    {teIssue?.field === "title" && <p role="alert" className="mt-1 text-caption font-semibold text-rose-600">{teIssue.message}</p>}
                   </div>
 
                   <div>
                     <label className="block type-overline text-slate-400 mb-1">{t("Event Type", "Typ", "Típus")}</label>
                     <CustomSelect
                       value={newTeType}
-                      onChange={v => setNewTeType(v)}
-                      options={
-                        projectType.timelineEventTypes && projectType.timelineEventTypes.length > 0
-                          ? projectType.timelineEventTypes.map(et => ({ value: et.id, label: et.name }))
-                          : [
-                              { value: "note", label: t("Internal Note", "Interná poznámka", "Belső jegyzet") },
-                              { value: "phone", label: t("Phone Call", "Telefonát", "Telefonhívás") },
-                              { value: "email", label: t("Email Dispatch", "Odoslaný e-mail", "E-mail") },
-                              { value: "appointment", label: t("Meeting / Appointment", "Stretnutie", "Találkozó") },
-                            ]
-                      }
+                      onChange={v => { setNewTeType(v); setTeIssue(null); }}
+                      options={timelineEventTypeOptions(projectType.timelineEventTypes, t)}
                     />
                   </div>
 
@@ -3329,10 +3350,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block type-overline text-slate-400 mb-1">{t("Content details...", "Podrobnosti", "Részletek")}</label>
+                    <label className="block type-overline text-slate-400 mb-1">
+                      {t("Content details...", "Podrobnosti", "Részletek")}
+                      {!newTeTitle.trim() && !newTeContent.trim() && <span className="text-rose-500"> *</span>}
+                    </label>
                     <textarea
                       value={newTeContent}
-                      onChange={e => setNewTeContent(e.target.value)}
+                      onChange={e => { setNewTeContent(e.target.value); setTeIssue(null); }}
                       rows={3}
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white resize-none"
                     />
@@ -3346,6 +3370,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       const val = timelineEventData[attr.id] ?? "";
                       const updateVal = (newVal: any) => {
                         setTimelineEventData(prev => ({ ...prev, [attr.id]: newVal }));
+                        setTeIssue(null);
                       };
 
                       return (
@@ -3534,6 +3559,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                               </div>
                             </div>
                           )}
+                          {teIssue?.field === attr.id && <p role="alert" className="mt-1 text-caption font-semibold text-rose-600">{teIssue.message}</p>}
                         </div>
                       );
                     });

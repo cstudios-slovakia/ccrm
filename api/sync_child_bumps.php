@@ -38,6 +38,8 @@ if (!function_exists('ccrm_child_set')) {
         switch ($kind) {
             case 'managers':
                 return ['parent' => 'projects', 'table' => 'project_managers', 'key' => 'project_id', 'cols' => ['user_id'], 'fold' => true, 'precision' => 0];
+            case 'employees':
+                return ['parent' => 'projects', 'table' => 'project_employees', 'key' => 'project_id', 'cols' => ['user_id'], 'fold' => true, 'precision' => 0];
             case 'gantt':
                 return ['parent' => 'projects', 'table' => (string)$table, 'key' => 'project_id', 'cols' => ['title', 'contact_id', 'start_date', 'end_date', 'progress'], 'fold' => false, 'precision' => 0];
             case 'invoice_items':

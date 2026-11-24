@@ -1,0 +1,2 @@
+- **"Add event" on a project's timeline no longer does nothing** (`ProjectDetailsView.tsx`, `utils/timelineEventForm.ts`): an event with details but no title is logged under the selected event type's name; with neither a title nor details the form says so under the title field (and under a required attribute) instead of staying silent or showing a browser alert. Title and details carry a red star while both are empty.
+- **Tests**: `timelineEventForm.test.ts`.
