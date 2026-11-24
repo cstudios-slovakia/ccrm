@@ -69,11 +69,14 @@ import { ProjectLeftColumn } from "./projects/ProjectLeftColumn";
 import { ProjectOrdersTab, type ProjectOrderLinks } from "./projects/ProjectOrdersTab";
 import { ordersOfProject } from "../utils/projectOrders";
 import { fillEmptyContactFromLead } from "../utils/leadToProject";
+import { ProjectNotesSection } from "./notes/ProjectNotesSection";
+import { isNoteActivity } from "../utils/noteActivity";
+import { NoteActivityRow } from "./notes/NoteActivityRow";
 
 /** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
-type RightTab = "timeline" | "criteria" | "tasks" | "time" | "gantt" | "finances" | "files" | "tickets" | "orders";
+type RightTab = "timeline" | "notes" | "criteria" | "tasks" | "time" | "gantt" | "finances" | "files" | "tickets" | "orders";
 const isRightTab = (value: string | null): value is RightTab =>
-  value === "timeline" || value === "criteria" || value === "tasks" || value === "time" || value === "gantt" || value === "finances" || value === "files" || value === "tickets" || value === "orders";
+  value === "timeline" || value === "notes" || value === "criteria" || value === "tasks" || value === "time" || value === "gantt" || value === "finances" || value === "files" || value === "tickets" || value === "orders";
 
 interface ProjectDetailsViewProps {
   project: Project | null;
@@ -501,7 +504,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   // Timeline Event Form
   const [newTeTitle, setNewTeTitle] = useState("");
-  const [newTeType, setNewTeType] = useState("note");
+  const [newTeType, setNewTeType] = useState("phone");
   /* Why "Add event" did nothing: shown under the field it concerns (id "title" or an attribute id). */
   const [teIssue, setTeIssue] = useState<TimelineEventIssue | null>(null);
   const [newTeContent, setNewTeContent] = useState("");
@@ -3200,6 +3203,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               }}
               items={[
                 { key: "timeline", hidden: !projectType.hasTimeline, icon: <Icons.Clock />, label: t("Timeline", "Časová os", "Idővonal") },
+                { key: "notes", hidden: isNew, icon: <Icons.NotebookPen />, label: t("Notes", "Poznámky", "Jegyzetek") },
                 { key: "criteria", icon: <Icons.ClipboardCheck />, label: t("Acceptance criteria", "Akceptačné kritériá", "Elfogadási kritériumok") },
                 {
                   key: "tasks",
@@ -3594,7 +3598,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     {t("No events logged for this project yet.", "Zatiaľ neboli zaznamenané žiadne udalosti.", "Még nincsenek események rögzítve.")}
                   </div>
                 ) : (
-                  timelineEntries.map(event => isPushItem(event) ? <ProjectPushTimelineItem key={event.id} item={event} language={userLanguage} /> : (
+                  timelineEntries.map(event => isPushItem(event) ? <ProjectPushTimelineItem key={event.id} item={event} language={userLanguage} /> : isNoteActivity(event) ? <NoteActivityRow key={event.id} title={event.title} content={event.content} timestamp={event.timestamp} language={userLanguage} /> : (
                     <div key={event.id} className="p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-2xs text-ui font-medium relative group flex gap-3.5 animate-fade-in">
                       <div className="p-2 rounded-md bg-white border border-gray-200 shrink-0 self-start shadow-2xs">
                         {getTimelineIcon(event.type, event.eventType)}
@@ -4140,6 +4144,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               </div>
             </div>
           )}
+
+          {(isSidebar || activeRightTab === "notes") && !isNew && wrapSection("notes", <Icons.NotebookPen className="h-4 w-4 text-yellow-600" />, t("Notes", "Poznámky", "Jegyzetek"), null,
+            <ProjectNotesSection projectId={project.id} language={userLanguage} author={currentUser?.name} canEdit={canEdit} canDelete={canDelete} onActivity={trace => setTimeline(prev => [trace, ...prev])} />)}
 
           {/* TAB CONTENT: Files — the type's default files, then this project's own */}
           {(isSidebar || activeRightTab === "files") && wrapSection(

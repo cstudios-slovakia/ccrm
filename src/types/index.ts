@@ -32,10 +32,31 @@ export type LeadEventType =
   // date/time stay editable afterwards.
   | "status_change"
   | "whatsapp"
+  // The trace a note leaves ("Note added / edited / deleted" + a snippet). Notes themselves are their
+  // own entity (see Note); this entry is read-only on the timeline. Built by utils/noteActivity.ts.
+  | "note_activity"
   // Written when a proforma is issued from Invoicing. It is not a hand-loggable
   // document type, so it is not in DOCUMENT_EVENT_TYPES.
   | "proforma_invoice"
   | DocumentEventType;
+
+/** The kinds of record a note can be attached to. A new module adds its kind here and in api/notes.php. */
+export type NoteEntityType = "lead" | "project";
+
+/** A free-text note on one record: its own entity, managed only from the record's Notes tab. */
+export interface Note {
+  id: string;
+  entityType: NoteEntityType;
+  entityId: string;
+  content: string;
+  /** The user who wrote it; null for a note migrated from an entry nobody signed. */
+  author: string | null;
+  /** Voice recording of a note migrated from the old lead timeline; new notes never have one. */
+  audioFile: string | null;
+  /** Local wall-clock "YYYY-MM-DD HH:MM:SS", like timeline timestamps. */
+  createdAt: string;
+  updatedAt: string;
+}
 
 // One file attached to a timeline event. Events can carry several (e.g. a batch
 // of advance invoices logged in one go).

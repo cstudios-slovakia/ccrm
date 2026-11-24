@@ -2,11 +2,10 @@ import type { TimelineEventType } from "../types";
 
 type Tr = (en: string, sk: string, hu: string) => string;
 
-/** The event types of the project type, or the four built-in ones when it defines none. */
+/** The event types of the project type, or the built-in ones when it defines none. Notes are not one: they have their own tab. */
 export function timelineEventTypeOptions(types: TimelineEventType[] | undefined, t: Tr): { value: string; label: string }[] {
   if (types && types.length > 0) return types.map(et => ({ value: et.id, label: et.name }));
   return [
-    { value: "note", label: t("Internal Note", "Interná poznámka", "Belső jegyzet") },
     { value: "phone", label: t("Phone Call", "Telefonát", "Telefonhívás") },
     { value: "email", label: t("Email Dispatch", "Odoslaný e-mail", "E-mail") },
     { value: "appointment", label: t("Meeting / Appointment", "Stretnutie", "Találkozó") },

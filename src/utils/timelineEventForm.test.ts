@@ -37,6 +37,6 @@ test("a missing required attribute is reported on that attribute", () => {
 });
 
 test("the built-in types are used when the project type defines none", () => {
-  assert.deepEqual(timelineEventTypeOptions(undefined, t).map(o => o.value), ["note", "phone", "email", "appointment"]);
+  assert.deepEqual(timelineEventTypeOptions(undefined, t).map(o => o.value), ["phone", "email", "appointment"]); // notes have their own tab
   assert.deepEqual(timelineEventTypeOptions([{ id: "x", name: "Visit", color: "", icon: "", attributes: [] }], t), [{ value: "x", label: "Visit" }]);
 });

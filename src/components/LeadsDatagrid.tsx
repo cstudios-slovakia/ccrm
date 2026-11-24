@@ -49,10 +49,14 @@ import {
 } from "../utils/leadColumns";
 import { projectAttributeSortValue } from "../utils/projectColumns";
 import { isLeadAttributeMissing } from "../utils/leadAttributes";
+import { EntityNotes } from "./notes/EntityNotes";
+import { NoteActivityRow } from "./notes/NoteActivityRow";
+import { isNoteActivity } from "../utils/noteActivity";
 import { buildProjectFromLead, fillEmptyContactFromLead } from "../utils/leadToProject";
 import { CustomAttributesGrid, renderCustomAttributeCell } from "./common/CustomAttributeControls";
 import { clampDeadline, todayStr } from "../utils/taskDeadline";
 import {
+    NotebookPen,
     Users,
     MapPin,
     Plus,
@@ -2301,9 +2305,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     );
 
     const [leadDefaultTab, setLeadDefaultTab] = useUserPref("leadDefaultTab");
-    const pinnedDetailTab: "timeline" | "tasks" | "documents" =
-        leadDefaultTab === "tasks" || leadDefaultTab === "documents" ? leadDefaultTab : "timeline";
-    const [activeDetailTab, setActiveDetailTab] = useState<"timeline" | "tasks" | "documents">(pinnedDetailTab);
+    const pinnedDetailTab: "timeline" | "notes" | "tasks" | "documents" =
+        leadDefaultTab === "tasks" || leadDefaultTab === "documents" || leadDefaultTab === "notes" ? leadDefaultTab : "timeline";
+    const [activeDetailTab, setActiveDetailTab] = useState<"timeline" | "notes" | "tasks" | "documents">(pinnedDetailTab);
     // A different lead opens on the pinned tab, not on whichever the last one was left on.
     useEffect(() => {
         setActiveDetailTab(pinnedDetailTab);
@@ -7240,6 +7244,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                               items={[
                                 { key: "timeline", icon: <Clock className="h-4 w-4" />, label: <>{" "}
                                     {getTranslation(systemLanguage, "common.history_timeline")}</> },
+                                { key: "notes", icon: <NotebookPen className="h-4 w-4" />, label: <>{" "}{t("Notes", "Poznámky", "Jegyzetek")}</> },
                                 { key: "tasks", icon: <CheckSquare className="h-4 w-4" />, label: <>{" "}
                                     {t("Tasks", "Úlohy", "Feladatok")} ({activeLeadOpenTasksCount})</> },
                                 { key: "documents", icon: <ReceiptText className="h-4 w-4" />, label: <>{" "}
@@ -7280,12 +7285,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         <div className="space-y-1.5 bg-gray-100 p-1 rounded-md border border-gray-200">
                                             {/* Communication events */}
                                             {activeDetailTab === "timeline" && (
-                                            <div className="grid grid-cols-3 ws-sm:grid-cols-5 gap-1.5">
+                                            <div className="grid grid-cols-2 ws-sm:grid-cols-4 gap-1.5">
                                                 {(
                                                     [
                                                         "phone",
                                                         "email",
-                                                        "note",
                                                         "offer",
                                                         "appointment",
                                                     ] as const
@@ -8315,6 +8319,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                         {/* PAST EVENTS */}
                                         {shownPastEvents.map((event) => {
+                                            if (isNoteActivity(event)) return <div key={event.id} className="ws-md:ml-33"><NoteActivityRow title={event.title} content={event.content} timestamp={event.timestamp} author={event.author} language={systemLanguage} /></div>;
                                             const colors = getEventColors(
                                                 event.type,
                                             );
@@ -8809,6 +8814,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 )}
                             </div>
                                 </>
+                            )}
+
+                            {activeDetailTab === "notes" && (
+                                <EntityNotes entityType="lead" entityId={activeLead.id} language={systemLanguage} author={currentUser?.name} canEdit={canEdit} canDelete={canDelete}
+                                    onActivity={(trace) => setLeads((prev) => prev.map((l) => (l.id === activeLead.id ? { ...l, timeline: [trace, ...(l.timeline || [])] } : l)))} />
                             )}
 
                             {activeDetailTab === "tasks" && (

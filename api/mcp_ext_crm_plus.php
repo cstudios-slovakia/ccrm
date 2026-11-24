@@ -115,7 +115,7 @@ function mcp_ext_crm_plus_tool_definitions(): array {
         ],
         [
             'name' => 'log_project_timeline_note',
-            'description' => 'Append a note or activity entry to a project internal timeline (proj_timeline_*) and bump project updated_at.',
+            'description' => 'Add a note to a project (type note, the default: it appears in the Notes tab of the project and leaves a "Note added" entry on the timeline), or append another activity entry (any other type) to the project internal timeline (proj_timeline_*). Bumps project updated_at.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -643,10 +643,24 @@ function mcp_crm_plus_log_project_timeline(\PDO $pdo, array $user, array $args):
         throw new \Exception("Timeline table does not exist for project type '{$typeId}'.");
     }
     $id = 'ptl_' . bin2hex(random_bytes(8));
+    $entryType = trim((string)($args['type'] ?? 'note')) ?: 'note';
+    $loggedTitle = $title;
+    $when = mcp_now_local();
+    if ($entryType === 'note') {
+        // A note is its own entity (table `notes`); the timeline only keeps a trace of it.
+        require_once __DIR__ . '/notes_migration.php';
+        ccrm_notes_ensure_table($pdo);
+        $noteText = ccrm_notes_project_content($title, isset($args['content']) ? (string)$args['content'] : null);
+        $pdo->prepare("INSERT INTO `notes` (`id`, `entity_type`, `entity_id`, `content`, `author`, `created_at`, `updated_at`) VALUES (?, 'project', ?, ?, ?, ?, ?)")
+            ->execute(['note-' . $id, $projectId, $noteText, $user['name'], $when, $when]);
+        $entryType = 'note_activity';
+        $title = ccrm_notes_activity_title('added', 'en');
+        $args['content'] = ccrm_notes_snippet($noteText);
+    }
     $pdo->prepare("INSERT INTO `{$table}` (`id`, `project_id`, `type`, `timestamp`, `title`, `content`, `author`) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        ->execute([$id, $projectId, trim((string)($args['type'] ?? 'note')) ?: 'note', mcp_now_local(), $title, $args['content'] ?? null, $user['name']]);
+        ->execute([$id, $projectId, $entryType, $when, $title, $args['content'] ?? null, $user['name']]);
     $pdo->prepare("UPDATE `projects` SET `updated_at` = CURRENT_TIMESTAMP WHERE `id` = ?")->execute([$projectId]);
-    mcp_audit($pdo, $user, 'project_timeline_log', "Logged note '$title' on project $projectId");
+    mcp_audit($pdo, $user, 'project_timeline_log', "Logged note '$loggedTitle' on project $projectId");
     return ['success' => true, 'id' => $id, 'project_id' => $projectId];
 }
 

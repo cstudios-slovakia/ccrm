@@ -4870,7 +4870,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // client sends it flagged `hidden`, and the row stays behind as
                     // a tombstone — deleting it would let the next mailbox read
                     // file the message again.
-                    $allowedEventTypes = ['phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change', 'whatsapp'];
+                    $allowedEventTypes = ['phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change', 'whatsapp', 'note_activity'];
                     foreach ($l['timeline'] as $te) {
                         $teId = $te['id'] ?? ('ev-' . uniqid());
                         if (strpos($teId, 'email-') === 0) {
