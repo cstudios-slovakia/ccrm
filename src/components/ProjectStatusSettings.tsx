@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from "react";
 import { SectionCard } from "./settings/SectionCard";
-import { CornerDownRight, GripVertical, Lock, Plus, X } from "lucide-react";
-import { arrangeProjectStatuses, projectStatusChildren, projectStatusDepth } from "../utils/projectStatusTree";
+import { GripVertical, Lock, Plus, X } from "lucide-react";
+import { projectStatusDepth } from "../utils/projectStatusTree";
+import { arrangeTree, buildRows, canOutdent, indentItem, indentParent, moveItem, outdentItem, parentOptions, type TreeRow } from "../utils/subStatusTree";
+import { SubStatusIndentButtons, SubStatusMarker, SubStatusParentSelect, subStatusNoParentToast } from "./settings/SubStatusControls";
 import type { Project } from "../types";
 import type { Language } from "../utils/translations";
 import {
@@ -45,7 +47,7 @@ interface ProjectStatusSettingsProps {
   canEdit: boolean;
 }
 
-type Row = { type: "divider"; group: ProjectStatusGroup } | { type: "status"; def: ProjectStatusDef };
+type Row = TreeRow<ProjectStatusDef>;
 
 const isOpenGroup = (g: ProjectStatusGroup) => g === "new" || g === "in_progress";
 
@@ -65,6 +67,7 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [newName, setNewName] = useState("");
   const [newGroup, setNewGroup] = useState<ProjectStatusGroup>("in_progress");
+  const [newParent, setNewParent] = useState("");
 
   const groupInfo = (g: ProjectStatusGroup): { name: string; desc: string; chip: string } => {
     switch (g) {
@@ -104,10 +107,7 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
   }, [projects]);
 
   // The table exactly as rendered: each group's divider followed by its statuses.
-  const rows: Row[] = PROJECT_STATUS_GROUPS.flatMap((group) => [
-    { type: "divider" as const, group },
-    ...statuses.filter((d) => d.group === group).map((def) => ({ type: "status" as const, def })),
-  ]);
+  const rows: Row[] = buildRows(statuses, PROJECT_STATUS_GROUPS);
 
   const nameTaken = (name: string, exceptKey?: string) =>
     statuses.some((d) => d.key !== exceptKey && labelOf(d.key).toLowerCase() === name.toLowerCase());
@@ -117,24 +117,10 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
   /** Drops `key` at row `targetIdx`; the divider above it decides its group. */
   const handleMoveToIndex = (key: string, targetIdx: number) => {
     if (!canEdit) return;
-    const items = [...rows];
-    const from = items.findIndex((r) => r.type === "status" && r.def.key === key);
-    if (from === -1) return;
-    // Same walk as the lead stages: out of the list, back in at the target
-    // index — below the target when dragged down, above it when dragged up.
-    const [dragged] = items.splice(from, 1);
-    items.splice(targetIdx, 0, dragged);
-
-    const next: ProjectStatusDef[] = [];
-    let group: ProjectStatusGroup = "new";
-    items.forEach((r) => {
-      if (r.type === "divider") group = r.group;
-      else if (r.def.parent && r.def.key === key && r.def.group !== group) {
-        // A sub-status dragged into another group leaves its parent there; it becomes a top-level status.
-        const { parent: _dropped, ...rest } = r.def;
-        next.push({ ...rest, group });
-      } else next.push({ ...r.def, group });
-    });
+    // Shared rule (same as the lead states): a main status takes its sub-statuses along, a sub-status
+    // dropped under another main status of its group is re-parented, into another group it is detached.
+    const next = moveItem(statuses, PROJECT_STATUS_GROUPS, key, targetIdx);
+    if (!next) return;
     if (!next.some((d) => isOpenGroup(d.group))) {
       toast(t(
         "At least one status must stay open (New or In progress) — that is where projects start.",
@@ -143,23 +129,18 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
       ));
       return;
     }
-    // Sub-statuses follow their parent's group and sit right under it.
-    setStatuses(arrangeProjectStatuses(next, PROJECT_STATUS_GROUPS));
+    setStatuses(next);
   };
 
-  /** Puts a status under `parent` (a top-level status of any group; the sub-status takes its group), or back on top with "". */
-  const handleParent = (key: string, parent: string) => {
+  const handleIndent = (key: string) => {
     if (!canEdit) return;
-    setStatuses((prev) =>
-      arrangeProjectStatuses(
-        prev.map((d) => {
-          if (d.key !== key) return d;
-          const { parent: _old, ...rest } = d;
-          return parent ? { ...rest, parent } : rest;
-        }),
-        PROJECT_STATUS_GROUPS,
-      ),
-    );
+    const next = indentItem(statuses, PROJECT_STATUS_GROUPS, key);
+    if (next) setStatuses(next);
+    else toast(subStatusNoParentToast(userLanguage));
+  };
+
+  const handleOutdent = (key: string) => {
+    if (canEdit) setStatuses(outdentItem(statuses, PROJECT_STATUS_GROUPS, key));
   };
 
   const handleRename = (key: string, raw: string) => {
@@ -190,9 +171,11 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
     // Keys still sitting on projects count as taken too, so a new status never
     // silently inherits the projects of one deleted earlier.
     const taken = [...statuses.map((d) => d.key), ...Object.keys(usage)];
-    const def: ProjectStatusDef = { key: projectStatusKeyFor(label, taken), label, color: NEW_PROJECT_STATUS_COLOR, group: newGroup };
-    setStatuses((prev) => PROJECT_STATUS_GROUPS.flatMap((g) => [...prev, def].filter((d) => d.group === g)));
+    const def: ProjectStatusDef = { key: projectStatusKeyFor(label, taken), label, color: NEW_PROJECT_STATUS_COLOR, group: newGroup, ...(newParent ? { parent: newParent } : {}) };
+    // A sub-status takes its main status's group (arrangeTree).
+    setStatuses((prev) => arrangeTree([...prev, def], PROJECT_STATUS_GROUPS));
     setNewName("");
+    setNewParent("");
   };
 
   const handleRemove = (def: ProjectStatusDef) => {
@@ -244,7 +227,7 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200/60 select-none">
-              <th className="py-3 px-4 type-overline text-gray-500 w-12 text-center">{t("Drag", "Ťahať", "Húzás")}</th>
+              <th className="py-3 px-4 type-overline text-gray-500 w-24 text-center">{t("Drag", "Ťahať", "Húzás")}</th>
               <th className="py-3 px-4 type-overline text-gray-500 w-44">{t("Colour", "Farba", "Szín")}</th>
               <th className="py-3 px-4 type-overline text-gray-500">{t("Status name", "Názov stavu", "Állapot neve")}</th>
               <th className="py-3 px-4 type-overline text-gray-500 w-36">{t("Group", "Skupina", "Csoport")}</th>
@@ -257,7 +240,7 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
               const isDragOver = dragOverIndex === idx;
               const onDragOver = (e: React.DragEvent) => {
                 e.preventDefault();
-                if (canEdit && draggedKey && (row.type === "divider" || row.def.key !== draggedKey)) setDragOverIndex(idx);
+                if (canEdit && draggedKey && (row.type === "divider" || row.item.key !== draggedKey)) setDragOverIndex(idx);
               };
               const onDrop = (e: React.DragEvent) => {
                 e.preventDefault();
@@ -269,7 +252,7 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
               };
 
               if (row.type === "divider") {
-                const info = groupInfo(row.group);
+                const info = groupInfo(row.group as ProjectStatusGroup);
                 return (
                   <tr
                     key={`div-${row.group}`}
@@ -291,7 +274,8 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
                 );
               }
 
-              const { def } = row;
+              const def = row.item;
+              const isSub = projectStatusDepth(def.key, statuses) > 0;
               const label = labelOf(def.key);
               const info = groupInfo(def.group);
               const count = usage[def.key] || 0;
@@ -313,11 +297,22 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
                   }`}
                 >
                   <td className="py-3 px-4 text-center align-middle">
-                    {canEdit ? (
-                      <GripVertical className="h-4 w-4 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing inline-block" />
-                    ) : (
-                      <Lock className="h-3 w-3 text-gray-300 inline-block" />
-                    )}
+                    <div className="flex items-center justify-center gap-2">
+                      {canEdit ? (
+                        <>
+                          <GripVertical className="h-4 w-4 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing inline-block" />
+                          <SubStatusIndentButtons
+                            lang={userLanguage}
+                            canIndent={indentParent(statuses, PROJECT_STATUS_GROUPS, def.key) !== null}
+                            canOutdent={canOutdent(statuses, def.key)}
+                            onIndent={() => handleIndent(def.key)}
+                            onOutdent={() => handleOutdent(def.key)}
+                          />
+                        </>
+                      ) : (
+                        <Lock className="h-3 w-3 text-gray-300 inline-block" />
+                      )}
+                    </div>
                   </td>
 
                   <td className="py-3 px-4 align-middle">
@@ -336,43 +331,29 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
                     </div>
                   </td>
 
-                  <td className={`py-3 px-4 align-middle ${projectStatusDepth(def.key, statuses) ? "pl-10" : ""}`}>
-                    {projectStatusDepth(def.key, statuses) > 0 && <CornerDownRight className="h-3.5 w-3.5 text-gray-300 inline-block mr-1.5 -mt-0.5" aria-hidden />}
-                    <InlineRenameName
-                      value={label}
-                      canEdit={canEdit}
-                      onCommit={(next) => handleRename(def.key, next)}
-                      renameTitle={t("Rename", "Premenovať", "Átnevezés")}
-                    >
-                      <span
-                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-ui font-bold border"
-                        style={{ backgroundColor: `${def.color}12`, color: def.color, borderColor: `${def.color}35` }}
+                  <td className={`py-3 px-4 align-middle ${isSub ? "pl-10" : ""}`}>
+                    <div className="flex items-center gap-1.5">
+                      {isSub && <SubStatusMarker />}
+                      <InlineRenameName
+                        value={label}
+                        canEdit={canEdit}
+                        onCommit={(next) => handleRename(def.key, next)}
+                        renameTitle={t("Rename", "Premenovať", "Átnevezés")}
                       >
-                        {label}
-                      </span>
-                    </InlineRenameName>
+                        <span
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-ui font-bold border"
+                          style={{ backgroundColor: `${def.color}12`, color: def.color, borderColor: `${def.color}35` }}
+                        >
+                          {label}
+                        </span>
+                      </InlineRenameName>
+                    </div>
                   </td>
 
                   <td className="py-3 px-4 align-middle select-none">
                     <span className={`px-2.5 py-0.5 rounded-full type-overline border ${info.chip}`}>
                       {info.name}
                     </span>
-                    {/* Sub-status of: a top-level status that is not this one; a status with sub-statuses stays on top. */}
-                    {canEdit && projectStatusChildren(def.key, statuses).length === 0 && (
-                      <div className="mt-1.5 max-w-48" data-testid={`project-status-parent-${def.key}`}>
-                        <CustomSelect
-                          value={projectStatusDepth(def.key, statuses) ? def.parent ?? "" : ""}
-                          onChange={(v) => handleParent(def.key, v)}
-                          size="sm"
-                          options={[
-                            { value: "", label: t("Main status", "Hlavný stav", "Fő állapot") },
-                            ...statuses
-                              .filter((d) => d.key !== def.key && projectStatusDepth(d.key, statuses) === 0)
-                              .map((d) => ({ value: d.key, label: `${t("Under", "Pod", "Alatta:")} ${labelOf(d.key)}`, color: d.color })),
-                          ]}
-                        />
-                      </div>
-                    )}
                   </td>
 
                   <td className="py-3 px-4 text-center align-middle select-none">
@@ -415,11 +396,20 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
           />
           <div className="w-40">
             <CustomSelect
-              value={newGroup}
-              onChange={(v) => setNewGroup(v as ProjectStatusGroup)}
+              value={newParent ? statuses.find((d) => d.key === newParent)?.group ?? newGroup : newGroup}
+              onChange={(v) => {
+                setNewGroup(v as ProjectStatusGroup);
+                setNewParent("");
+              }}
               options={PROJECT_STATUS_GROUPS.map((g) => ({ value: g, label: groupInfo(g).name }))}
             />
           </div>
+          <SubStatusParentSelect
+            lang={userLanguage}
+            value={newParent}
+            onChange={setNewParent}
+            options={parentOptions(statuses).map((d) => ({ value: d.key, label: labelOf(d.key), color: d.color }))}
+          />
           <button
             type="submit"
             className="px-4 py-2.5 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md text-ui font-bold transition-all shadow-xs flex items-center gap-1 shrink-0 cursor-pointer active:scale-95"
