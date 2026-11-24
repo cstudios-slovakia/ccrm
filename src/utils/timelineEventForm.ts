@@ -14,14 +14,14 @@ export function timelineEventTypeOptions(types: TimelineEventType[] | undefined,
 
 /**
  * The title an event is saved with. Nothing on the form is required, so it falls back in order: the typed
- * name, the selected event type's name, then the first line of the details.
+ * name, then the first line of the details, then the selected event type's name.
  */
 export function resolveTimelineEventTitle(title: string, content: string, typeLabel: string): string {
   const typed = title.trim();
   if (typed) return typed;
-  if (typeLabel.trim()) return typeLabel.trim();
   const firstLine = content.trim().split(/\r?\n/, 1)[0].trim();
-  return firstLine.length > 80 ? `${firstLine.slice(0, 79).trimEnd()}…` : firstLine;
+  if (firstLine) return firstLine.length > 80 ? `${firstLine.slice(0, 79).trimEnd()}…` : firstLine;
+  return typeLabel.trim();
 }
 
 export type TimelineEventIssue = { field: string; message: string };

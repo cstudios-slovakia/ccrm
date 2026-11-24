@@ -1,8 +1,5 @@
 import type { Employee } from "../types";
 import type { CompanyDetails } from "./companyRegistry";
-import { composeKeyedPersonName, splitNameOrdered, splitPersonName } from "./nameOrder.ts";
-
-export { splitPersonName };
 
 /**
  * Who a staff record is: a person on the payroll, an outside supplier, or a payroll-only line
@@ -52,8 +49,6 @@ export function contractorTypeOf(emp?: Pick<Employee, "kind" | "contractorType">
  * "András") is the first name and the surname is left to fill in.
  */
 function legacyPersonName(name: string | undefined): { firstName: string; lastName: string } {
-  const ordered = splitNameOrdered(name ?? "");
-  if (ordered) return ordered;
   const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
   if (parts.length < 2) return { firstName: parts[0] ?? "", lastName: "" };
   return { firstName: parts.slice(0, -1).join(" "), lastName: parts[parts.length - 1] };
@@ -95,17 +90,11 @@ export const isSupplier = (kind: EmployeeKind): boolean => kind === "contractor"
 /** Kinds that carry a person's name: an employee, a freelancer person, or the contact person of a business supplier. */
 export const hasPersonName = (kind: EmployeeKind): boolean => kind !== "ledger";
 
-/**
- * The display name for an identity, the same rule the server applies when it saves. A person's name is
- * composed in the system language's order for a new record; a stored one keeps its own order (the name
- * is the key other records point at, see composeKeyedPersonName in nameOrder.ts), so `previous` is the
- * record as stored.
- */
+/** The display name for an identity, the same rule the server applies when it saves. */
 export function composeName(
-  i: Pick<EmployeeIdentity, "kind" | "firstName" | "lastName" | "name"> & { contractorType?: ContractorType | null },
-  previous?: Pick<Employee, "name" | "firstName" | "lastName"> | null
+  i: Pick<EmployeeIdentity, "kind" | "firstName" | "lastName" | "name"> & { contractorType?: ContractorType | null }
 ): string {
-  if (usesPersonFullName(i)) return composeKeyedPersonName(i.firstName, i.lastName, previous);
+  if (usesPersonFullName(i)) return `${i.firstName.trim()} ${i.lastName.trim()}`.trim();
   return i.name.trim();
 }
 
@@ -116,14 +105,13 @@ export function identityComplete(i: EmployeeIdentity): boolean {
 
 /** The fields to merge into an Employee when saving. Empty position / department / register numbers are cleared. */
 export function identityFields(
-  i: EmployeeIdentity,
-  previous?: Pick<Employee, "name" | "firstName" | "lastName"> | null
+  i: EmployeeIdentity
 ): Pick<Employee, "name" | "firstName" | "lastName" | "kind" | "contractorType" | "companyId" | "taxId" | "vatId" | "position" | "department"> {
   const named = hasPersonName(i.kind);
   const supplier = isSupplier(i.kind);
   const businessSupplier = hasCompanyRegistryFields(i);
   return {
-    name: composeName(i, previous),
+    name: composeName(i),
     firstName: named ? i.firstName.trim() || null : null,
     lastName: named ? i.lastName.trim() || null : null,
     kind: i.kind,
@@ -134,6 +122,23 @@ export function identityFields(
     position: i.position.trim() || null,
     department: i.department.trim() || null,
   };
+}
+
+/**
+ * Splits a register's contact person ("Ing. Michal Kováč") into first and last name; titles stay
+ * with the first name. Null when a guess would be wrong (one word, a comma suffix, a trailing
+ * title). Mirrors ccrm_split_person_name() in public/api/employee_name.php.
+ */
+export function splitPersonName(name: string): { firstName: string; lastName: string } | null {
+  const clean = name.replace(/\s+/g, " ").trim();
+  if (!clean || clean.includes(",")) return null;
+  const parts = clean.split(" ");
+  if (parts.length < 2) return null;
+  const lastName = parts[parts.length - 1];
+  if (lastName.endsWith(".")) return null;
+  const given = parts.slice(0, -1);
+  if (!given.some((p) => !p.endsWith("."))) return null;
+  return { firstName: given.join(" "), lastName };
 }
 
 /**
@@ -152,7 +157,7 @@ export function identityFromCompany(
     vatId: details.vatId || current.vatId,
   };
   if (!current.firstName.trim() && !current.lastName.trim()) {
-    const person = splitNameOrdered(details.contactPerson || "");
+    const person = splitPersonName(details.contactPerson || "");
     if (person) Object.assign(patch, person);
   }
   return patch;

@@ -27,6 +27,7 @@ import { periodPresetFromName, presetNameOf, presetRange } from "../utils/perfor
 import { useUserPref } from "../utils/userPrefs";
 import { PageHeader, Tabs } from "./layout";
 import { PRODUCT_NAME } from "../utils/brand";
+import { displayContactPerson } from "../utils/nameOrder";
 
 interface DashboardProps {
   systemName: string;
@@ -324,7 +325,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         return {
           id: l.id,
           name: l.name || `Lead #${l.id}`,
-          clientName: l.contactPerson || l.name,
+          clientName: displayContactPerson(l) || l.name,
           manager: l.owner,
           division: l.division,
           date: l.createdAt ? new Date(l.createdAt).toLocaleDateString() : undefined,

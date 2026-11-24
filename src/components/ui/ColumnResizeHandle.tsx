@@ -8,6 +8,15 @@ const label = () => {
   return l === "sk" ? "Zmeniť šírku stĺpca" : l === "hu" ? "Oszlopszélesség módosítása" : "Resize column";
 };
 
+const hint = () => {
+  const l = getStoredLanguage();
+  return l === "sk"
+    ? "Potiahnutím zmeníte šírku, dvojklikom vrátite pôvodnú"
+    : l === "hu"
+      ? "Húzással átméretezheti, dupla kattintással visszaállítja"
+      : "Drag to resize, double-click to reset";
+};
+
 interface Props {
   /** Current rendered width of the header cell. */
   getWidth: () => number;
@@ -20,7 +29,11 @@ interface Props {
   onReset: () => void;
 }
 
-/** Thin drag handle on the right edge of a <th>. Must sit inside a positioned header cell. */
+/**
+ * Thin drag handle on the right edge of a <th>, drawn as a faint short line so people can see it is
+ * there (darker on hover). Double-clicking it gives the column its automatic width back.
+ * Must sit inside a positioned header cell.
+ */
 export function ColumnResizeHandle({ getWidth, onStart, onLive, onCommit, onReset }: Props) {
   const drag = useRef<{ x: number; w: number; last: number } | null>(null);
 
@@ -59,6 +72,7 @@ export function ColumnResizeHandle({ getWidth, onStart, onLive, onCommit, onRese
       role="separator"
       aria-orientation="vertical"
       aria-label={label()}
+      title={hint()}
       tabIndex={0}
       onPointerDown={down}
       onPointerMove={move}
@@ -70,9 +84,9 @@ export function ColumnResizeHandle({ getWidth, onStart, onLive, onCommit, onRese
         e.stopPropagation();
         onReset();
       }}
-      className="group/resize absolute inset-y-0 right-0 z-30 flex w-2 cursor-col-resize touch-none select-none items-stretch justify-center outline-none"
+      className="group/resize absolute inset-y-0 right-0 z-30 flex w-2 cursor-col-resize touch-none select-none items-stretch justify-center py-2.5 outline-none"
     >
-      <span className="w-px bg-transparent transition-colors duration-150 group-hover/resize:bg-slate-400 group-focus-visible/resize:bg-indigo-500 group-active/resize:bg-indigo-500" />
+      <span className="w-px rounded-full bg-slate-300/60 transition-colors duration-150 group-hover/resize:bg-slate-400 group-focus-visible/resize:bg-indigo-500 group-active/resize:bg-indigo-500" />
     </span>
   );
 }

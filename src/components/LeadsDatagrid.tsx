@@ -294,6 +294,7 @@ import { WhatsAppChip, OpenInChatLink } from "./WhatsAppChip";
 import { EntityHeader, PageHeader, Tabs } from "./layout";
 
 import { ResizableTh } from "./ui/ResizableTh";
+import { displayContactPerson } from "../utils/nameOrder";
 // "1 deň / 2-4 dni / 5+ dní" — Slovak counts differently above four, and a badge
 // reading "3 dní" is the kind of thing an operator never stops noticing.
 const slaDays = (n: number, lang: Language): string =>
@@ -4682,7 +4683,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 return {
                     id: l.id,
                     name: l.name || `Lead #${l.id}`,
-                    clientName: l.contactPerson || l.name,
+                    clientName: displayContactPerson(l) || l.name,
                     manager: l.owner,
                     division: l.division,
                     date: l.createdAt ? new Date(l.createdAt).toLocaleDateString() : undefined,

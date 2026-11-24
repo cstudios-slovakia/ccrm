@@ -8,17 +8,13 @@ test("a typed title wins over the type label", () => {
   assert.equal(resolveTimelineEventTitle("  Survey  ", "x", "Internal Note"), "Survey");
 });
 
-test("details alone fall back to the type label", () => {
-  assert.equal(resolveTimelineEventTitle("", " ? ", "Phone Call"), "Phone Call");
+test("without a name the first line of the details wins over the type label", () => {
+  assert.equal(resolveTimelineEventTitle("", "Site visit\nmore text", "Phone Call"), "Site visit");
+  assert.equal(resolveTimelineEventTitle("", "x".repeat(100), "Phone Call").length, 80);
 });
 
 test("an empty form is saved under the event type's name", () => {
   assert.equal(resolveTimelineEventTitle(" ", "  ", "Phone Call"), "Phone Call");
-});
-
-test("without a type name the first line of the details is the title", () => {
-  assert.equal(resolveTimelineEventTitle("", "Site visit\nmore text", ""), "Site visit");
-  assert.equal(resolveTimelineEventTitle("", "x".repeat(100), "").length, 80);
 });
 
 test("nothing on the form is required", () => {

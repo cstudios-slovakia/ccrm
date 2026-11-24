@@ -1,5 +1,4 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, lazy, Suspense, type ComponentType, type MouseEvent as ReactMouseEvent } from "react";
-import { setNameOrderLanguage } from "./utils/nameOrder";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
@@ -143,6 +142,7 @@ import { updatePwaManifest } from "./utils/pwaManifest";
 import { PRODUCT_NAME, normalizeSystemTitleOverride, resolveSystemTitle, resolveTitleWithProduct, setSystemTitle } from "./utils/brand";
 import { HoldToConfirmButton } from "./components/ui/HoldToConfirm";
 import { clearErrorLogsWithUndo } from "./utils/errorLogs";
+import { setNameOrderEmployees, setNameOrderLanguage } from "./utils/nameOrder";
 import { DASHBOARD_SECTION_ALIASES, DASHBOARD_SECTION_LABEL_KEY, LEGACY_WIDGET_DASHBOARD } from "./utils/dashboardSection";
 
 /**
@@ -644,8 +644,6 @@ function App() {
   const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">(
     () => readCachedSystemLanguage() ?? DEFAULT_LANGUAGE
   );
-  // Contact names follow the company language's order (surname first in Hungarian); set before any child renders.
-  setNameOrderLanguage(systemLanguage);
   // The language on screen. Only the first paint reads the mirror; the effect
   // below owns it from then on (see utils/languagePrefs.ts for the rules).
   const [userLanguage, setUserLanguage] = useState<"en" | "sk" | "hu">(() => {
@@ -731,6 +729,9 @@ function App() {
   const [companyBillingSettings, setCompanyBillingSettings] = useState<CompanyBillingSettings | null>(null);
   const [invoicingIntegrations, setInvoicingIntegrations] = useState<ExternalInvoicingConfig | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  // Display-only name order (surname first in Hungarian), by the language on screen; see utils/nameOrder.ts.
+  setNameOrderLanguage(userLanguage);
+  useMemo(() => setNameOrderEmployees(employees), [employees]);
   const [employeeSalaries, setEmployeeSalaries] = useState<EmployeeSalary[]>([]);
   const [employeeVacations, setEmployeeVacations] = useState<EmployeeVacation[]>([]);
   const [employeeSettings, setEmployeeSettings] = useState<EmployeeSettings | null>(null);

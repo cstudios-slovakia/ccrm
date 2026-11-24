@@ -3603,10 +3603,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $insSet->execute([$k, $v]);
             }
-            // A new company language can flip the name order (surname first in Hungarian): stored contact names follow.
-            if (isset($settingsAllowed['SYSTEM_LANGUAGE']) && $settingsList['SYSTEM_LANGUAGE'] !== null && (string)($storedSettingsForSkip['SYSTEM_LANGUAGE'] ?? '') !== (string)$settingsList['SYSTEM_LANGUAGE']) {
-                ccrm_reorder_contact_names($pdo);
-            }
             ccrm_audit_log($pdo, $sessionUser, 'settings.update', 'System settings / integrations updated');
         }
 
@@ -4624,9 +4620,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
 
-                // Contact first / last name and the full name composed from them (C18, contact_name.php),
-                // in the company language's order.
-                ccrm_contact_surname_first($pdo);
+                // Contact first / last name and the full name composed from them (C18, contact_name.php).
                 $contactName = ccrm_contact_name_for_sync($l, $dbLeads[$leadId] ?? null);
                 if ($contactName !== null) $l['contactPerson'] = $contactName[2];
 
@@ -6552,7 +6546,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $processedEmpIds = [];
             $empRights = ccrm_employee_group_rights($scope);
             $canLinkEmpUsers = ccrm_can_link_employee_user($scope) && ccrm_column_exists($pdo, 'employees', 'user_id');
-            ccrm_contact_surname_first($pdo); // the company language's name order, for a new person
 
             $insEmp = $pdo->prepare("INSERT INTO `employees` (
                 `id`, `name`, `first_name`, `last_name`, `kind`, `contractor_type`, `company_id`, `tax_id`, `vat_id`, `position`, `department`, `pin`, `email`, `phone`, `address_street`, `address_city`,
@@ -6612,9 +6605,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $companyId = $hasCompanyIds ? $idField('companyId', 'company_id') : null;
                 $taxId = $hasCompanyIds ? $idField('taxId', 'tax_id') : null;
                 $vatId = $hasCompanyIds ? $idField('vatId', 'vat_id') : null;
-                // The name is the key task owners, project managers and time tracking match, so a stored one keeps its
-                // order (ccrm_compose_keyed_person_name); only a new record gets the company language's order.
-                $displayName = ccrm_compose_employee_name_ordered($kind, $firstName, $lastName, (string)($emp['name'] ?? $keep('name', 'Unnamed Employee')), $contractorType, $stored);
+                $displayName = ccrm_compose_employee_name($kind, $firstName, $lastName, (string)($emp['name'] ?? $keep('name', 'Unnamed Employee')), $contractorType);
                 $insEmp->execute([
                     $empId,
                     $displayName !== '' ? $displayName : 'Unnamed Employee',

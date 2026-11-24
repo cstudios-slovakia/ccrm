@@ -1,4 +1,5 @@
 import { StatGrid } from "../layout";
+import { displayEmployeeName } from "../../utils/nameOrder";
 import { SectionIcon } from "../icons/SectionIcon";
 import { SECTION_VISUALS } from "../../utils/sectionVisuals";
 import React, { useState, useMemo, useRef, useEffect } from "react";
@@ -718,7 +719,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                               }}
                               className="font-heading font-bold text-gray-900 block group-hover:text-[#c29b62] transition truncate text-body"
                             >
-                              {emp.name}
+                              {displayEmployeeName(emp.name)}
                             </a>
                             <div className="flex items-center gap-2 mt-0.5">
                               {employeeKind(emp) !== "employee" && (
@@ -911,7 +912,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                           }}
                           className="font-heading font-bold text-body text-gray-900 group-hover:text-[#c29b62] transition truncate block"
                         >
-                          {emp.name}
+                          {displayEmployeeName(emp.name)}
                         </a>
                         {emp.position || emp.department ? (
                           <span className="text-caption font-medium text-gray-500 truncate block">

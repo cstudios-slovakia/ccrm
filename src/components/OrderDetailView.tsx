@@ -60,6 +60,7 @@ import { isClientRecord } from "../utils/clientRecord";
 import { PRODUCT_NAME } from "../utils/brand";
 import { EntityBadge } from "./tremor/EntityBadge";
 import { entityAccentStyle } from "../utils/entityAccent";
+import { displayContactPerson } from "../utils/nameOrder";
 
 export interface OrderDetailViewProps {
   order: Order;
@@ -760,7 +761,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                                 )}
                               </p>
                               <p className="text-micro text-gray-500 truncate">
-                                {c.contactPerson && `${c.contactPerson} • `}
+                                {displayContactPerson(c) && `${displayContactPerson(c)} • `}
                                 {c.city && `${c.city} • `}
                                 {c.companyId && `IČO: ${c.companyId}`}
                               </p>
@@ -824,9 +825,9 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                         <h4 className="text-body font-semibold text-gray-900 truncate">
                           {selectedClient.name}
                         </h4>
-                        {selectedClient.contactPerson && (
+                        {displayContactPerson(selectedClient) && (
                           <p className="text-micro font-medium text-entity-text">
-                            {selectedClient.contactPerson}
+                            {displayContactPerson(selectedClient)}
                           </p>
                         )}
                       </div>

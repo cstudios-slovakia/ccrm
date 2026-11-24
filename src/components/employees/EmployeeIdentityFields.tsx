@@ -21,11 +21,11 @@ import {
   hasPersonName,
   identityFromCompany,
   isSupplier,
+  splitPersonName,
   type ContractorType,
   type EmployeeIdentity,
   type EmployeeKind,
 } from "../../utils/employeeIdentity";
-import { isSurnameFirst, splitNameOrdered } from "../../utils/nameOrder";
 
 /** The registered address a lookup found, for the address card the parent form owns. */
 export interface RegistryAddress {
@@ -109,42 +109,6 @@ export const EmployeeIdentityFields: React.FC<Props> = ({
     : "w-full px-4 py-2.5 text-body bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm font-medium";
   const wide = compact ? "col-span-2" : "ws-sm:col-span-2";
   const personName = hasPersonName(value.kind);
-  const firstField = (
-    <div>
-      <label className={label} htmlFor={`${uid}-first`}>
-        {businessSupplier ? t("Contact person: first name", "Kontaktná osoba: meno", "Kapcsolattartó: keresztnév") : t("First name", "Meno", "Keresztnév")}
-        {!businessSupplier && " *"}
-      </label>
-      <input
-        id={`${uid}-first`}
-        type="text"
-        required={!businessSupplier}
-        value={value.firstName}
-        onChange={(e) => onChange({ firstName: e.target.value })}
-        placeholder="Peter"
-        autoComplete="off"
-        className={input}
-      />
-    </div>
-  );
-  const lastField = (
-    <div>
-      <label className={label} htmlFor={`${uid}-last`}>
-        {businessSupplier ? t("Contact person: last name", "Kontaktná osoba: priezvisko", "Kapcsolattartó: vezetéknév") : t("Last name", "Priezvisko", "Vezetéknév")}
-        {!businessSupplier && " *"}
-      </label>
-      <input
-        id={`${uid}-last`}
-        type="text"
-        required={!businessSupplier}
-        value={value.lastName}
-        onChange={(e) => onChange({ lastName: e.target.value })}
-        placeholder="Varga"
-        autoComplete="off"
-        className={input}
-      />
-    </div>
-  );
 
   const toast = (message: string, tone?: "error") => {
     if (typeof (window as any).showToast === "function") (window as any).showToast(message, tone);
@@ -296,7 +260,7 @@ export const EmployeeIdentityFields: React.FC<Props> = ({
                   onClick={() => {
                     const patch: Partial<EmployeeIdentity> = { contractorType: ct };
                     if (ct === "person" && !value.firstName.trim() && !value.lastName.trim() && value.name.trim()) {
-                      const split = splitNameOrdered(value.name);
+                      const split = splitPersonName(value.name);
                       if (split) Object.assign(patch, split);
                     }
                     setLookupError(null);
@@ -362,8 +326,38 @@ export const EmployeeIdentityFields: React.FC<Props> = ({
 
       {personName ? (
         <>
-          {/* Surname first where the company language writes it first (Hungarian), the order the name is composed in. */}
-          {isSurnameFirst() ? <>{lastField}{firstField}</> : <>{firstField}{lastField}</>}
+          <div>
+            <label className={label} htmlFor={`${uid}-first`}>
+              {businessSupplier ? t("Contact person: first name", "Kontaktná osoba: meno", "Kapcsolattartó: keresztnév") : t("First name", "Meno", "Keresztnév")}
+              {!businessSupplier && " *"}
+            </label>
+            <input
+              id={`${uid}-first`}
+              type="text"
+              required={!businessSupplier}
+              value={value.firstName}
+              onChange={(e) => onChange({ firstName: e.target.value })}
+              placeholder="Peter"
+              autoComplete="off"
+              className={input}
+            />
+          </div>
+          <div>
+            <label className={label} htmlFor={`${uid}-last`}>
+              {businessSupplier ? t("Contact person: last name", "Kontaktná osoba: priezvisko", "Kapcsolattartó: vezetéknév") : t("Last name", "Priezvisko", "Vezetéknév")}
+              {!businessSupplier && " *"}
+            </label>
+            <input
+              id={`${uid}-last`}
+              type="text"
+              required={!businessSupplier}
+              value={value.lastName}
+              onChange={(e) => onChange({ lastName: e.target.value })}
+              placeholder="Varga"
+              autoComplete="off"
+              className={input}
+            />
+          </div>
         </>
       ) : (
         <div className={wide}>

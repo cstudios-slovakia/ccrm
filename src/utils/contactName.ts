@@ -1,4 +1,4 @@
-import { joinNameParts, splitNameOrdered } from "./nameOrder.ts";
+import { splitPersonName } from "./employeeIdentity.ts";
 
 /**
  * The contact person of a lead or client, typed as first and last name (docs/NEWSLETTER.md C18, B1.7).
@@ -6,8 +6,8 @@ import { joinNameParts, splitNameOrdered } from "./nameOrder.ts";
  * `Lead.contactPerson` stays the full name everything else reads (search, offers, orders, tickets).
  * The two parts feed the newsletter's `{{first_name}}`. The rule is the same as
  * ccrm_compose_contact_name() in public/api/contact_name.php: when either part is filled,
- * contactPerson = the two parts in the system language's order (src/utils/nameOrder.ts: surname first in
- * Hungarian, given name first otherwise); when both are empty the current full name is kept.
+ * contactPerson = first + " " + last (given name first, no order by language); when both are empty
+ * the current full name is kept.
  *
  * A record of type `person` is different: the parts are the person's OWN first and last name ("Name for
  * greetings"). `name` is never recomposed (client grouping depends on it) and `contactPerson` is left
@@ -32,7 +32,8 @@ export interface ContactNameRecord {
  */
 export function composeContactName(first: string, last: string, fallback = "", isPerson = false): string {
   if (isPerson) return fallback.trim();
-  return joinNameParts(first, last) || fallback.trim();
+  const full = `${first.trim()} ${last.trim()}`.trim();
+  return full || fallback.trim();
 }
 
 const NONE: ContactNameParts = { firstName: "", lastName: "" };
@@ -57,10 +58,10 @@ function seedOf(record: ContactNameRecord | null | undefined, asPerson: boolean)
   if (stored && storedAsPerson === asPerson) return { parts: stored, suggested: false };
   if (stored && asPerson && composeContactName(first, last) !== contact) return { parts: stored, suggested: false };
   if (asPerson) {
-    return { parts: splitNameOrdered((record?.name ?? "").trim()) ?? NONE, suggested: true };
+    return { parts: splitPersonName((record?.name ?? "").trim()) ?? NONE, suggested: true };
   }
   if (!contact) return { parts: NONE, suggested: true };
-  return { parts: splitNameOrdered(contact) ?? { firstName: contact, lastName: "" }, suggested: true };
+  return { parts: splitPersonName(contact) ?? { firstName: contact, lastName: "" }, suggested: true };
 }
 
 /** What the form shows for a record; see seedOf. `asPerson` defaults to the record's own type. */
@@ -73,7 +74,7 @@ export function contactNameFieldsOf(record?: ContactNameRecord | null, asPerson 
  * (a suggestion, never saved on its own). Empty when the name cannot be split safely.
  */
 export function contactNameSuggestion(name?: string): ContactNameParts {
-  return splitNameOrdered((name ?? "").trim()) ?? NONE;
+  return splitPersonName((name ?? "").trim()) ?? NONE;
 }
 
 /**
@@ -86,7 +87,7 @@ export function contactNameShown(typed: ContactNameParts, name: string | undefin
 
 /** The first and last name a register lookup's contact person is split into (null when unsure). */
 export function contactNameFromRegistry(person?: string): ContactNameParts | null {
-  return splitNameOrdered(person ?? "");
+  return splitPersonName(person ?? "");
 }
 
 /**
@@ -135,6 +136,6 @@ export function contactNamePatch(
 
 /** Parts for a record that was given only a full name (a guest order): both empty when unsure. */
 export function contactPartsOfPerson(person?: string | null): { contactFirstName: string; contactLastName: string } {
-  const parts = splitNameOrdered(person ?? "");
+  const parts = splitPersonName(person ?? "");
   return { contactFirstName: parts?.firstName ?? "", contactLastName: parts?.lastName ?? "" };
 }

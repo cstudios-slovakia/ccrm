@@ -1,4 +1,5 @@
 import { projectStatusParent } from "../../utils/projectStatusTree";
+import { displayEmployeeName } from "../../utils/nameOrder";
 import { useCallback, useMemo } from "react";
 import type { Lead, Project, ProjectType } from "../../types";
 import { useListMultiFilter, usePinnedFilterOptions } from "../../hooks/useListFilter";
@@ -113,7 +114,7 @@ export function useProjectFacets(input: Input) {
 
   const options = useMemo(() => {
     const c = result.counts;
-    const named = (names: string[]) => Array.from(new Set(names.filter(Boolean))).map((n) => ({ value: n, label: n }));
+    const named = (names: string[]) => Array.from(new Set(names.filter(Boolean))).map((n) => ({ value: n, label: displayEmployeeName(n) }));
     const out: Record<ProjectFacetId, FacetOption[]> = {
       status: withCounts(projectStatusOptions(t, projectStatuses), c.status),
       type: withCounts(projectTypes.map((pt) => ({ value: pt.id, label: pt.name })), c.type),

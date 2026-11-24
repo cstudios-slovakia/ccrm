@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { displayEmployeeName } from "../utils/nameOrder";
+import { projectEmployeeCandidates } from "../utils/projectEmployees";
 import { SectionIcon } from "./icons/SectionIcon";
 import { EntityBadge } from "./tremor/EntityBadge";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
@@ -329,12 +331,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }, [projects, users]);
 
-  const employeeOptions = useMemo(() => {
-    const names = new Set<string>();
-    projects.forEach(p => (p.employees || []).forEach(m => { if (m) names.add(m); }));
-    (employees || []).forEach(e => { if (e.name) names.add(e.name); });
-    return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [projects, employees]);
+  // The Employees filter lists Employees-module records of type Employee only (no contractors, payroll
+  // lines or logins that are not employees); see projectEmployeeCandidates().
+  const employeeOptions = useMemo(
+    () => projectEmployeeCandidates(employees).map(e => e.name).sort((a, b) => a.localeCompare(b)),
+    [employees]
+  );
 
   /* Status, type, division, manager and rating: multi-select and faceted (each one's
      counts follow the others). See projects/useProjectFacets.ts. */
@@ -1419,16 +1421,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       case "managers":
         return p.managers && p.managers.length > 0
           ? (
-            <span className="block truncate max-w-[14rem] text-ui font-semibold text-slate-500" title={p.managers.join(", ")}>
-              {p.managers.join(", ")}
+            <span className="block truncate max-w-[14rem] text-ui font-semibold text-slate-500" title={p.managers.map(n => displayEmployeeName(n)).join(", ")}>
+              {p.managers.map(n => displayEmployeeName(n)).join(", ")}
             </span>
           )
           : emptyCell;
       case "employees":
         return p.employees && p.employees.length > 0
           ? (
-            <span className="block truncate max-w-[14rem] text-ui font-semibold text-slate-500" title={p.employees.join(", ")}>
-              {p.employees.join(", ")}
+            <span className="block truncate max-w-[14rem] text-ui font-semibold text-slate-500" title={p.employees.map(n => displayEmployeeName(n)).join(", ")}>
+              {p.employees.map(n => displayEmployeeName(n)).join(", ")}
             </span>
           )
           : emptyCell;
@@ -1576,6 +1578,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         leads={leads}
         setLeads={setLeads}
         users={users}
+        employees={employees}
         userLanguage={userLanguage}
         financialRecords={financialRecords}
         setFinancialRecords={setFinancialRecords}
@@ -2720,6 +2723,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           leads={leads}
           setLeads={setLeads}
           users={users}
+          employees={employees}
           userLanguage={userLanguage}
           financialRecords={financialRecords}
           setFinancialRecords={setFinancialRecords}

@@ -105,6 +105,7 @@ import { AddWidgetDrawer } from "./dashboard/AddWidgetDrawer";
 import { WidgetSettingsDrawer } from "./dashboard/WidgetSettingsDrawer";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { Chart as BundledChart } from "../utils/chartRuntime";
+import { displayContactPerson } from "../utils/nameOrder";
 
 interface DynamicDashboardViewProps {
   dashboard: CustomDashboard;
@@ -649,7 +650,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         return {
           id: l.id,
           name: l.name || `Lead #${l.id}`,
-          clientName: l.contactPerson || l.name,
+          clientName: displayContactPerson(l) || l.name,
           manager: l.owner,
           division: l.division,
           date: l.createdAt ? new Date(l.createdAt).toLocaleDateString() : undefined,

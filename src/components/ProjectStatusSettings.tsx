@@ -171,8 +171,9 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
     // Keys still sitting on projects count as taken too, so a new status never
     // silently inherits the projects of one deleted earlier.
     const taken = [...statuses.map((d) => d.key), ...Object.keys(usage)];
-    const def: ProjectStatusDef = { key: projectStatusKeyFor(label, taken), label, color: NEW_PROJECT_STATUS_COLOR, group: newGroup, ...(newParent ? { parent: newParent } : {}) };
-    // A sub-status takes its main status's group (arrangeTree).
+    const parentColor = newParent ? statuses.find((d) => d.key === newParent)?.color : undefined;
+    const def: ProjectStatusDef = { key: projectStatusKeyFor(label, taken), label, color: parentColor || NEW_PROJECT_STATUS_COLOR, group: newGroup, ...(newParent ? { parent: newParent } : {}) };
+    // A sub-status takes its main status's group (arrangeTree) and starts in its colour (still editable).
     setStatuses((prev) => arrangeTree([...prev, def], PROJECT_STATUS_GROUPS));
     setNewName("");
     setNewParent("");

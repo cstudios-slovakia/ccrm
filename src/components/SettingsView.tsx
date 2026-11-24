@@ -2452,7 +2452,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setLeadStates([...leadStates, val]);
     setLeadStateColors(prev => ({
       ...prev,
-      [val]: "#6366f1" // default modern indigo
+      [val]: (newStateParent && prev[newStateParent]) || "#6366f1" // a sub-state starts in its main state's colour; else indigo
     }));
     setLeadStageGroups(prev => ({
       ...prev,
@@ -5323,7 +5323,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             lang={userLanguage}
                             value={newStateParent}
                             onChange={setNewStateParent}
-                            options={parentOptions(leadTree()).map(i => ({ value: i.key, label: i.name.toUpperCase() }))}
+                            options={parentOptions(leadTree()).map(i => ({ value: i.key, label: i.name.toUpperCase(), color: leadStateColors[i.key] }))}
                           />
                           <button
                             type="submit"

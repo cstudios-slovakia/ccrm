@@ -6,8 +6,8 @@
  * the vector index). `contact_first_name` / `contact_last_name` are the typed parts, the way
  * employees keep `first_name` / `last_name` (employee_name.php); the newsletter reads the first name.
  * Rule, the same as composeContactName() in src/utils/contactName.ts: when either part is filled,
- * contact_person = the two parts in the system language's order (surname first in Hungarian, given
- * name first otherwise; ccrm_contact_surname_first()); when both are empty, contact_person is kept as it is.
+ * contact_person = trim(first + ' ' + last), given name first (no order by language); when both are
+ * empty, contact_person is kept as it is.
  *
  * Person records (decision B1.7): for `client_type = 'person'` the parts are the person's OWN first and
  * last name ("Name for greetings"). `name` is never recomposed (client grouping depends on it) and the
@@ -27,138 +27,6 @@ require_once __DIR__ . '/employee_name.php';
 
 if (!function_exists('ccrm_compose_contact_name')) {
 
-    /**
-     * True when the system language writes the surname first (Hungarian). Mirrors src/utils/nameOrder.ts.
-     * Read once per request; pass $pdo the first time (sync.php and the writers below do), later calls
-     * reuse the answer. Without a connection it falls back to the global one, then to given name first.
-     */
-    function ccrm_contact_surname_first(?PDO $pdo = null, bool $reset = false): bool {
-        static $cached = null;
-        if ($reset) {
-            $cached = null;
-        }
-        if ($cached !== null) {
-            return $cached;
-        }
-        $db = $pdo ?? (($GLOBALS['pdo'] ?? null) instanceof PDO ? $GLOBALS['pdo'] : null);
-        if ($db === null) {
-            return false; // Not cached: a later call with a connection decides.
-        }
-        try {
-            $v = $db->query("SELECT `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'")->fetchColumn();
-            $cached = strtolower(trim((string)$v, "\" \t\r\n")) === 'hu';
-        } catch (\Throwable $e) {
-            $cached = false;
-        }
-        return $cached;
-    }
-
-    /** The full name of two parts in the system's order. */
-    function ccrm_join_name_parts(?string $first, ?string $last, ?bool $surnameFirst = null): string {
-        $a = trim((string)$first);
-        $b = trim((string)$last);
-        $sf = $surnameFirst ?? ccrm_contact_surname_first();
-        return trim($sf ? $b . ' ' . $a : $a . ' ' . $b);
-    }
-
-    /**
-     * ccrm_split_person_name() in the system's order: surname first takes leading titles plus the first
-     * word as the surname ("Dr. Kovács János" → ["János", "Dr. Kovács"]). Returns [first, last] or null.
-     *
-     * @return array{0:string,1:string}|null
-     */
-    function ccrm_split_person_name_ordered(string $name, ?bool $surnameFirst = null): ?array {
-        if (!($surnameFirst ?? ccrm_contact_surname_first())) {
-            return ccrm_split_person_name($name);
-        }
-        $name = trim((string)preg_replace('/\s+/u', ' ', $name));
-        if ($name === '' || strpos($name, ',') !== false) return null;
-        $parts = explode(' ', $name);
-        if (count($parts) < 2 || substr($parts[count($parts) - 1], -1) === '.') return null;
-        $end = null;
-        foreach ($parts as $i => $p) {
-            if (substr($p, -1) !== '.') { $end = $i; break; }
-        }
-        if ($end === null || $end >= count($parts) - 1) return null;
-        return [implode(' ', array_slice($parts, $end + 1)), implode(' ', array_slice($parts, 0, $end + 1))];
-    }
-
-    /**
-     * The full name of a person record whose name other records point at (an employee: task owners,
-     * project managers and time tracking match `employees.name`, and nothing renames those references).
-     * A new record ($stored null) gets the system's order. A stored one keeps its name while its two parts
-     * are unchanged (in either order), and when a part is edited the name is rewritten in the order it was
-     * written in before, so a change of the company language never renames anybody by itself. When the
-     * stored name matches neither order of the stored parts, the system's order is used.
-     * Mirrors composeKeyedPersonName() in src/utils/nameOrder.ts.
-     *
-     * @param array|null $stored the stored row (name, first_name, last_name), null for a new record
-     */
-    function ccrm_compose_keyed_person_name(?string $first, ?string $last, ?array $stored = null, ?bool $surnameFirst = null): string {
-        $sf = $surnameFirst ?? ccrm_contact_surname_first();
-        $prevName = trim((string)($stored['name'] ?? ''));
-        if ($prevName === '') {
-            return ccrm_join_name_parts($first, $last, $sf);
-        }
-        $given = ccrm_join_name_parts($first, $last, false);
-        $surname = ccrm_join_name_parts($first, $last, true);
-        if ($prevName === $given || $prevName === $surname) {
-            return $prevName;
-        }
-        $prevGiven = ccrm_join_name_parts($stored['first_name'] ?? null, $stored['last_name'] ?? null, false);
-        $prevSurname = ccrm_join_name_parts($stored['first_name'] ?? null, $stored['last_name'] ?? null, true);
-        if ($prevGiven !== $prevSurname) {
-            if ($prevName === $prevSurname) return $surname;
-            if ($prevName === $prevGiven) return $given;
-        }
-        return ccrm_join_name_parts($first, $last, $sf);
-    }
-
-    /**
-     * ccrm_compose_employee_name() for the sync and the MCP tools: a person's name in the order
-     * ccrm_compose_keyed_person_name() decides, anything else (a company, a ledger line) as given.
-     *
-     * @param array|null $stored the stored employees row, null for a new record
-     */
-    function ccrm_compose_employee_name_ordered(string $kind, ?string $first, ?string $last, string $name, ?string $contractorType = null, ?array $stored = null): string {
-        if ($kind === 'employee' || ($kind === 'contractor' && $contractorType === 'person')) {
-            $full = ccrm_compose_keyed_person_name($first, $last, $stored);
-            if ($full !== '') return $full;
-        }
-        return trim($name);
-    }
-
-    /**
-     * Rewrites stored business contact names to the system's current order: only rows whose two parts
-     * are both filled and whose contact_person is exactly those parts in the OTHER order, so anything
-     * typed differently is left alone. Run by the schema migration and when the system language changes.
-     *
-     * @return int rows rewritten
-     */
-    function ccrm_reorder_contact_names(PDO $pdo): int {
-        try {
-            $sf = ccrm_contact_surname_first($pdo, true);
-            $rows = $pdo->query(
-                "SELECT `id`, `contact_person`, `contact_first_name`, `contact_last_name` FROM `leads`
-                 WHERE `client_type` <> 'person' AND `contact_first_name` <> '' AND `contact_last_name` <> ''"
-            )->fetchAll(PDO::FETCH_ASSOC) ?: [];
-            $upd = $pdo->prepare("UPDATE `leads` SET `contact_person` = ?, `updated_at` = `updated_at` WHERE `id` = ?");
-            $done = 0;
-            foreach ($rows as $r) {
-                $want = ccrm_join_name_parts($r['contact_first_name'], $r['contact_last_name'], $sf);
-                $other = ccrm_join_name_parts($r['contact_first_name'], $r['contact_last_name'], !$sf);
-                if ($want !== $other && trim((string)$r['contact_person']) === $other) {
-                    $upd->execute([$want, $r['id']]);
-                    $done += $upd->rowCount();
-                }
-            }
-            return $done;
-        } catch (\Throwable $e) {
-            error_log('[ccrm] contact name reorder skipped: ' . $e->getMessage());
-            return 0;
-        }
-    }
-
     /** True for a private person (`leads.client_type`); a business and a partner are not. */
     function ccrm_is_person_type(?string $clientType): bool {
         return trim((string)$clientType) === 'person';
@@ -172,7 +40,7 @@ if (!function_exists('ccrm_compose_contact_name')) {
         if ($isPerson) {
             return trim((string)$person);
         }
-        $full = ccrm_join_name_parts($first, $last);
+        $full = trim(trim((string)$first) . ' ' . trim((string)$last));
         return $full !== '' ? $full : trim((string)$person);
     }
 
@@ -183,7 +51,7 @@ if (!function_exists('ccrm_compose_contact_name')) {
      * @return array{0:?string,1:?string}
      */
     function ccrm_contact_parts_from_person(?string $person): array {
-        $split = ccrm_split_person_name_ordered((string)$person);
+        $split = ccrm_split_person_name((string)$person);
         return $split === null ? [null, null] : [$split[0], $split[1]];
     }
 
@@ -193,7 +61,7 @@ if (!function_exists('ccrm_compose_contact_name')) {
      * for the name "Kovács Péter") do not compose to the name and are kept.
      */
     function ccrm_person_parts_follow_name(?string $first, ?string $last, string $oldName): bool {
-        $full = ccrm_join_name_parts($first, $last);
+        $full = trim(trim((string)$first) . ' ' . trim((string)$last));
         return $full === '' || $full === trim($oldName);
     }
 
@@ -253,7 +121,6 @@ if (!function_exists('ccrm_compose_contact_name')) {
      * parts that still compose to it are split again and typed ones are kept.
      */
     function ccrm_set_contact_parts_from_person(PDO $pdo, string $leadId, ?string $previousName = null): void {
-        ccrm_contact_surname_first($pdo);
         try {
             $stmt = $pdo->prepare("SELECT `name`, `client_type`, `contact_person`, `contact_first_name`, `contact_last_name` FROM `leads` WHERE `id` = ?");
             $stmt->execute([$leadId]);

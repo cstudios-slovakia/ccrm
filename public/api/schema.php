@@ -2261,10 +2261,8 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'leads', 'contact_last_name')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_last_name` VARCHAR(100) NULL AFTER `contact_first_name`");
         }
-        ccrm_contact_surname_first($pdo, true); // split and compose in the company language's order
         ccrm_backfill_contact_names($pdo);
         ccrm_backfill_person_names($pdo);
-        ccrm_reorder_contact_names($pdo);
         // 1.9.26: where the visitor came from before they filled in the form
         // (facebook, instagram, google, direct...). Written by api/pipeline.php
         // only; the app shows it and never edits it.
