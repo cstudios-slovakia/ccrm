@@ -52,7 +52,9 @@ import { RecurringOccurrenceDeleteDialog } from "./RecurringOccurrenceDeleteDial
 import type { Language } from "../utils/translations";
 import { CalendarPane } from "./Dashboard";
 import { CustomSelect } from "./ui/CustomSelect";
-import { ClientSelect } from "./ui/ClientSelect";
+import { FacetedMultiSelect } from "./ui/FacetedMultiSelect";
+import { PinnedFilterChips } from "./ui/PinnedFilterChips";
+import { taskFacetOptions, useTaskFacetSelection, type TaskFacetId } from "./tasks/useTaskFacets";
 import { TaskEditDrawer } from "./TaskEditDrawer";
 import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
 import { needsConclusionToFinish } from "../utils/taskConclusion";
@@ -645,39 +647,27 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // Task-attribute filters shared by My Tasks, Global Tasks and Done & Archived.
     // Each one is fired by clicking that attribute on a task (client / lead
     // badge excepted — that is a link) or by the matching dropdown, and each
-    // shows as a removable chip in every section. "" / null shows everything;
-    // the assignee uses "all" because the Global Tasks select always has.
-    const [clientFilter, setClientFilter] = useListFilter("tasks.client", "");
-    const [projectFilter, setProjectFilter] = useListFilter("tasks.project", "");
-    const [assigneeFilter, setAssigneeFilter] = useListFilter("tasks.assignee", "all");
-    const [assignerFilter, setAssignerFilter] = useListFilter("tasks.assigner", "all");
+    // shows as a removable chip in every section. They are multi-select; an
+    // empty list (null for the tag) shows everything.
+    const facets = useTaskFacetSelection();
+    const { client: clientSel, project: projectSel, assignee: assigneeSel, assigner: assignerSel, priority: prioritySel, state: stateSel } = facets.selection;
     const [tagFilter, setTagFilter] = useListFilter<string | null>("tasks.tag", null);
     // My Tasks only: Global Tasks and Done & Archived have a date-range picker
     // for this. A due-date click there fills the picker instead.
     const [myDayFilter, setMyDayFilter] = useState("");
 
-    const matchesClientFilter = (task: Task) =>
-        !clientFilter || String(task.relatedLeadId ?? "") === clientFilter;
-    const matchesTaskFilters = (task: Task) => {
-        if (!matchesClientFilter(task)) return false;
-        if (projectFilter && String(task.relatedProjectId ?? "") !== projectFilter)
-            return false;
-        if (assigneeFilter !== "all" && !task.assignedUsers?.includes(assigneeFilter))
-            return false;
-        if (assignerFilter !== "all" && (task.createdBy || "") !== assignerFilter)
-            return false;
-        if (tagFilter) {
-            const target = tagFilter.toLowerCase();
-            const taskTags = [
-                ...(task.tags || []),
-                ...extractTagsFromText(task.title || ""),
-                ...extractTagsFromText(blockNotesToPlainText(task.description || "")),
-                ...extractTagsFromText(task.conclusion || ""),
-            ].map((tg) => tg.toLowerCase());
-            if (!taskTags.includes(target)) return false;
-        }
-        return true;
+    const matchesTag = (task: Task) => {
+        if (!tagFilter) return true;
+        const target = tagFilter.toLowerCase();
+        const taskTags = [
+            ...(task.tags || []),
+            ...extractTagsFromText(task.title || ""),
+            ...extractTagsFromText(blockNotesToPlainText(task.description || "")),
+            ...extractTagsFromText(task.conclusion || ""),
+        ].map((tg) => tg.toLowerCase());
+        return taskTags.includes(target);
     };
+    const matchesTaskFilters = (task: Task) => facets.matchesShared(task) && matchesTag(task);
     const myTasks = tasks
         .filter(isMyTask)
         .filter((task) => !task.archived)
@@ -998,11 +988,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     }, [activeBulkMenu]);
 
     // Global view filters & user list memo
-    const [globalPriorityFilter, setGlobalPriorityFilter] = useListFilter("tasks.globalPriority", "all");
-    const [globalStateFilter, setGlobalStateFilter] = useListFilter("tasks.globalState", "all");
-    // The assignee filter (`assigneeFilter`, above): "all" keeps the whole-team
-    // board; any other value narrows both halves of the split view to that one
-    // project manager.
+    // The assignee filter (`assigneeSel`, above): empty keeps the whole-team
+    // board; otherwise it narrows both halves of the split view to those
+    // project managers.
     const allUsersList = useMemo(() => {
         const list = users.map((u) => u.name);
         tasks.forEach((t) => {
@@ -1027,10 +1015,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // last task reassigned). Fall back to the team-wide board instead of
     // leaving the filter pinned to a name that matches nothing.
     React.useEffect(() => {
-        if (assigneeFilter !== "all" && !allUsersList.includes(assigneeFilter)) {
-            setAssigneeFilter("all");
-        }
-    }, [allUsersList, assigneeFilter]);
+        const known = assigneeSel.filter((n) => allUsersList.includes(n));
+        if (known.length !== assigneeSel.length) facets.set("assignee", known);
+    }, [allUsersList, assigneeSel]);
 
     // All distinct tags collected from stored task.tags plus hashtags in titles/descriptions
     const allExistingTags = useMemo(() => {
@@ -1102,12 +1089,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     }, []);
     // Same click-again-to-clear behaviour for the project and assignee badges.
-    const handleProjectClick = (projectId: string) =>
-        setProjectFilter((prev) => (prev === projectId ? "" : projectId));
-    const handleAssigneeClick = (name: string) =>
-        setAssigneeFilter((prev) => (prev === name ? "all" : name));
-    const handleAssignerClick = (name: string) =>
-        setAssignerFilter((prev) => (prev === name ? "all" : name));
+    const handleProjectClick = (projectId: string) => facets.toggle("project", projectId);
+    const handleAssigneeClick = (name: string) => facets.toggle("assignee", name);
+    const handleAssignerClick = (name: string) => facets.toggle("assigner", name);
     // A due-date click filters to that one day, wherever the section keeps its
     // date filter: the range picker on Global Tasks and Done & Archived, a
     // plain day chip on My Tasks. Clicking the active day clears it.
@@ -1401,9 +1385,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         archiveDateStart,
         archiveDateEnd,
         unknownCompletedBy,
-        clientFilter,
-        projectFilter,
-        assigneeFilter,
+        clientSel,
+        projectSel,
+        assigneeSel,
+        assignerSel,
         tagFilter,
     ]);
 
@@ -1498,9 +1483,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         unknownCompletedBy,
         archiveDateStart,
         archiveDateEnd,
-        clientFilter,
-        projectFilter,
-        assigneeFilter,
+        clientSel,
+        projectSel,
+        assigneeSel,
+        assignerSel,
         tagFilter,
     ]);
 
@@ -1572,24 +1558,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     // --- Bulk Selection & Operations ---
-    const isSingleUserView = canSeeAllTasks && assigneeFilter !== "all";
+    const isSingleUserView = canSeeAllTasks && assigneeSel.length > 0;
 
     const matchesGlobalFilters = React.useCallback(
         (task: Task) => {
-            if (
-                globalPriorityFilter !== "all" &&
-                task.priority !== globalPriorityFilter
-            )
-                return false;
-            if (globalStateFilter !== "all" && task.status !== globalStateFilter)
-                return false;
             if (!dateInRange(task.deadline, globalDateStart, globalDateEnd))
                 return false;
-            // Client, project, assignee and tag — the filters every section shares.
-            if (!matchesTaskFilters(task)) return false;
-            return true;
+            // Client, project, assignee, assigner, priority, state and tag.
+            return facets.matchesGlobal(task) && matchesTag(task);
         },
-        [globalPriorityFilter, globalStateFilter, globalDateStart, globalDateEnd, clientFilter, projectFilter, assigneeFilter, tagFilter]
+        [clientSel, projectSel, assigneeSel, assignerSel, prioritySel, stateSel, globalDateStart, globalDateEnd, tagFilter]
     );
 
     const filteredGlobalTasks = useMemo(() => {
@@ -2895,7 +2873,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const name = projectNameFor(task);
         if (!name || !task.relatedProjectId) return null;
         const id = String(task.relatedProjectId);
-        const active = projectFilter === id;
+        const active = projectSel.includes(id);
         return (
             <button
                 type="button"
@@ -2918,7 +2896,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // One chip per assignee, so a task with several can be narrowed to any one.
     const renderAssigneeChips = (task: Task, className: string) =>
         (task.assignedUsers || []).filter(Boolean).map((name) => {
-            const active = assigneeFilter === name;
+            const active = assigneeSel.includes(name);
             return (
                 <button
                     key={name}
@@ -3264,7 +3242,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     `Megbízó: ${task.createdBy}. Kattintson a szűréshez.`
                                 )}
                                 className={`font-bold text-micro px-1.5 py-0.5 rounded border cursor-pointer shrink-0 transition-colors flex items-center gap-1 ${
-                                    assignerFilter === task.createdBy
+                                    assignerSel.includes(task.createdBy || "")
                                         ? "bg-amber-100 text-amber-800 border-amber-300 ring-1 ring-amber-400"
                                         : "bg-amber-50/80 text-amber-700 border-amber-200/80 hover:bg-amber-100"
                                 }`}
@@ -3864,7 +3842,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const columnUsers = !canSeeAllTasks
             ? [myName]
             : isSingleUserView
-              ? [assigneeFilter]
+              ? assigneeSel
               : allUsersList;
 
         const filteredTasks = filteredGlobalTasks;
@@ -4014,6 +3992,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
         return (
             <div className="flex-1 min-h-0 flex flex-col gap-6 animate-in fade-in slide-in-from-top-4 duration-300">
+                <PinnedFilterChips
+                    options={taskFacetOptions(facetScope(), facets.selection, facetCtx()).state}
+                    pinned={facets.pinnedStates}
+                    selected={stateSel}
+                    onChange={(next) => facets.set("state", next)}
+                />
                 {/* FILTERS */}
                 <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-lg border border-gray-200 shadow-xs shrink-0">
                     <div className="flex items-center gap-2">
@@ -4027,89 +4011,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </div>
 
                     <div className="flex items-center gap-4 flex-wrap">
-                        {/* Priority Filter */}
-                        <div className="flex items-center gap-1.5 text-ui font-bold">
-                            <span className="text-slate-500">
-                                {t("Priority:", "Priorita:", "Prioritás:")}
-                            </span>
-                            <CustomSelect
-                                value={globalPriorityFilter}
-                                onChange={(v) => setGlobalPriorityFilter(v)}
-                                size="sm"
-                                options={[
-                                    {
-                                        value: "all",
-                                        label: t(
-                                            "All Priorities",
-                                            "Všetky priority",
-                                            "Minden prioritás",
-                                        ),
-                                    },
-                                    { value: "high", label: t("High", "Vysoká", "Magas") },
-                                    { value: "medium", label: t("Medium", "Stredná", "Közepes") },
-                                    { value: "low", label: t("Low", "Nízka", "Alacsony") },
-                                ]}
-                            />
-                        </div>
+                        {renderFacet("state", t("Status:", "Stav:", "Státusz:"), "", { pin: true })}
+                        {renderFacet("priority", t("Priority:", "Priorita:", "Prioritás:"))}
 
-                        {/* State Filter */}
-                        <div className="flex items-center gap-1.5 text-ui font-bold">
-                            <span className="text-slate-500">
-                                {t("Status:", "Stav:", "Státusz:")}
-                            </span>
-                            <CustomSelect
-                                value={globalStateFilter}
-                                onChange={(v) => setGlobalStateFilter(v)}
-                                size="sm"
-                                options={[
-                                    {
-                                        value: "all",
-                                        label: t(
-                                            "All Statuses",
-                                            "Všetky stavy",
-                                            "Minden státusz",
-                                        ),
-                                    },
-                                    ...taskStates
-                                        .filter((st) => !isDoneState(st))
-                                        .map((st) => ({ value: st, label: stateLabel(st) })),
-                                ]}
-                            />
-                        </div>
+                        {renderFacet("client", t("Client / Lead:", "Klient / Lead:", "Ügyfél / Lead:"), "min-w-[16rem]")}
 
-                        {renderClientFilter("min-w-[16rem]")}
+                        {renderFacet("project", t("Project:", "Projekt:", "Projekt:"))}
 
-                        {renderProjectFilter()}
-
-                        {/* Project Manager Filter — only meaningful on the
-                            team-wide board; a restricted role already sees
-                            nothing but its own work. */}
-                        {canSeeAllTasks && (
-                            <div className="flex items-center gap-1.5 text-ui font-bold">
-                                <span className="text-slate-500">
-                                    {t(
-                                        "Project Manager:",
-                                        "Projektový manažér:",
-                                        "Projektmenedzser:",
-                                    )}
-                                </span>
-                                <CustomSelect
-                                    value={assigneeFilter}
-                                    onChange={(v) => setAssigneeFilter(v)}
-                                    size="sm"
-                                    options={[
-                                        {
-                                            value: "all",
-                                            label: t("All", "Všetci", "Mindenki"),
-                                        },
-                                        ...allUsersList.map((uName) => ({
-                                            value: uName,
-                                            label: uName,
-                                        })),
-                                    ]}
-                                />
-                            </div>
-                        )}
+                        {/* Project manager: only meaningful on the team-wide board; a
+                            restricted role already sees nothing but its own work. */}
+                        {canSeeAllTasks && renderFacet("assignee", t("Project Manager:", "Projektový manažér:", "Projektmenedzser:"))}
 
                         {/* Date Filter (item 9) */}
                         <div className="flex items-center gap-1.5 text-ui font-bold">
@@ -4390,113 +4301,58 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const filterControlClass = (stacked: boolean, inlineWidth: string) =>
         `min-w-0 ${stacked ? "w-full" : inlineWidth}`;
 
-    const renderClientFilter = (className = "", stacked = false) => {
-        const withTasks = new Set(
-            tasks.map((task) => String(task.relatedLeadId ?? "")).filter(Boolean),
-        );
-        if (clientFilter) withTasks.add(clientFilter);
-        const idsWithoutTasks = leads
-            .filter((l) => !withTasks.has(String(l.id)))
-            .map((l) => l.id);
-        if (withTasks.size === 0) return null;
-        return (
-            <div className={filterFieldClass(stacked, className)} data-testid="task-client-filter">
-                <span className="text-slate-500 shrink-0">
-                    {t("Client / Lead:", "Klient / Lead:", "Ügyfél / Lead:")}
-                </span>
-                <div className="min-w-0 flex-1">
-                    <ClientSelect
-                        leads={leads}
-                        value={clientFilter}
-                        onChange={setClientFilter}
-                        excludeIds={idsWithoutTasks}
-                        showCity={false}
-                        showKind
-                        allowAdd={false}
-                        size="sm"
-                        noneLabel={t("All clients & leads", "Všetci klienti a leady", "Minden ügyfél és lead")}
-                    />
-                </div>
-            </div>
-        );
+    // The tasks the open section lists before any facet filter, so each option's count is
+    // what picking it would leave with the other facets (and the tag, date range) applied.
+    const facetScope = () => {
+        if (viewMode === "global")
+            return (canSeeAllTasks ? tasks : tasks.filter(isMyTask)).filter(
+                (task) =>
+                    (isActiveTask(task, isDoneState) || (showClosedTasks && isClosedRecentTask(task))) &&
+                    dateInRange(task.deadline, globalDateStart, globalDateEnd) &&
+                    matchesTag(task),
+            );
+        if (viewMode === "archive")
+            return tasks.filter((task) => (archiveTab === "done" ? isDoneState(task.status) && !task.archived : task.archived) && matchesTag(task));
+        return tasks.filter((task) => isMyTask(task) && !task.archived && matchesTag(task));
     };
-
-    // Same idea as the client filter: only projects that have a task are offered.
-    const renderProjectFilter = (className = "", stacked = false) => {
-        const withTasks = new Set(
-            tasks.map((task) => String(task.relatedProjectId ?? "")).filter(Boolean),
-        );
-        if (projectFilter) withTasks.add(projectFilter);
-        const options = projects
-            .filter((p) => withTasks.has(String(p.id)))
-            .map((p) => ({
-                value: String(p.id),
-                label: projectDisplayName(p, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt")),
-            }))
-            .sort((a, b) => a.label.localeCompare(b.label));
-        if (options.length === 0) return null;
-        return (
-            <div className={filterFieldClass(stacked, className)} data-testid="task-project-filter">
-                <span className="text-slate-500 shrink-0">
-                    {t("Project:", "Projekt:", "Projekt:")}
-                </span>
-                <div className={filterControlClass(stacked, "w-56")}>
-                    <CustomSelect
-                        value={projectFilter || "all"}
-                        onChange={(v) => setProjectFilter(v === "all" ? "" : v)}
-                        size="sm"
-                        options={[
-                            { value: "all", label: t("All projects", "Všetky projekty", "Minden projekt") },
-                            ...options,
-                        ]}
-                    />
-                </div>
-            </div>
-        );
+    const facetSelectCopy: Record<TaskFacetId, string> = {
+        client: t("All clients & leads", "Všetci klienti a leady", "Minden ügyfél és lead"),
+        project: t("All projects", "Všetky projekty", "Minden projekt"),
+        assignee: t("Everyone", "Všetci", "Mindenki"),
+        assigner: t("Everyone", "Všetci", "Mindenki"),
+        priority: t("All Priorities", "Všetky priority", "Minden prioritás"),
+        state: t("All Statuses", "Všetky stavy", "Minden státusz"),
     };
-
-    // Global Tasks has its own "Project Manager" select for the same filter.
-    const renderAssigneeFilter = (className = "", stacked = false) => (
-        <div className={filterFieldClass(stacked, className)} data-testid="task-assignee-filter">
-            <span className="text-slate-500 shrink-0">
-                {t("Assignee:", "Priradené:", "Felelős:")}
-            </span>
-            <div className={filterControlClass(stacked, "w-48")}>
-                <CustomSelect
-                    value={assigneeFilter}
-                    onChange={(v) => setAssigneeFilter(v)}
-                    size="sm"
-                    options={[
-                        { value: "all", label: t("Everyone", "Všetci", "Mindenki") },
-                        ...allUsersList.map((uName) => ({ value: uName, label: uName })),
-                    ]}
-                />
-            </div>
-        </div>
-    );
-
-    const renderAssignerFilter = (className = "", stacked = false) => {
-        const creatorsInTasks = Array.from(
-            new Set(tasks.map((t) => t.createdBy).filter(Boolean) as string[])
-        );
-        const combinedAssigners = Array.from(
-            new Set([...creatorsInTasks, ...allUsersList])
-        ).sort((a, b) => a.localeCompare(b));
-
+    const facetCtx = () => ({
+        leads,
+        projects,
+        projectLabel: (p: Project) => projectDisplayName(p, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt")),
+        userNames: allUsersList,
+        stateOptions: taskStates.filter((st) => !isDoneState(st)).map((st) => ({ value: st, label: stateLabel(st) })),
+        priorityOptions: [
+            { value: "high", label: t("High", "Vysoká", "Magas") },
+            { value: "medium", label: t("Medium", "Stredná", "Közepes") },
+            { value: "low", label: t("Low", "Nízka", "Alacsony") },
+        ],
+        global: viewMode === "global",
+    });
+    // One faceted multi-select filter (the status one can pin options as chips above the board).
+    const renderFacet = (id: TaskFacetId, label: string, className = "", opts: { pin?: boolean; stacked?: boolean } = {}) => {
+        const options = taskFacetOptions(facetScope(), facets.selection, facetCtx())[id];
+        if ((id === "client" || id === "project") && options.length === 0) return null;
         return (
-            <div className={filterFieldClass(stacked, className)} data-testid="task-assigner-filter">
-                <span className="text-slate-500 shrink-0">
-                    {t("Assigner:", "Zadal:", "Megbízó:")}
-                </span>
-                <div className={filterControlClass(stacked, "w-48")}>
-                    <CustomSelect
-                        value={assignerFilter}
-                        onChange={(v) => setAssignerFilter(v)}
-                        size="sm"
-                        options={[
-                            { value: "all", label: t("Everyone", "Všetci", "Mindenki") },
-                            ...combinedAssigners.map((uName) => ({ value: uName, label: uName })),
-                        ]}
+            <div className={filterFieldClass(Boolean(opts.stacked), className)} data-testid={`task-${id}-filter`}>
+                <span className="text-slate-500 shrink-0">{label}</span>
+                <div className={filterControlClass(Boolean(opts.stacked), "")}>
+                    <FacetedMultiSelect
+                        className="h-8 !py-1"
+                        fitLabel={!opts.stacked}
+                        options={options}
+                        selected={facets.selection[id]}
+                        onChange={(next) => facets.set(id, next)}
+                        allLabel={facetSelectCopy[id]}
+                        pinned={opts.pin ? facets.pinnedStates : undefined}
+                        onTogglePin={opts.pin ? facets.togglePinnedState : undefined}
                     />
                 </div>
             </div>
@@ -4516,56 +4372,55 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         : "flex flex-wrap items-center gap-x-4 gap-y-2 min-w-0"
                 }
             >
-                {renderClientFilter(opts.clientClassName ?? (stacked ? "" : "max-w-xs"), stacked)}
-                {renderProjectFilter("", stacked)}
-                {opts.assignee && renderAssigneeFilter("", stacked)}
-                {opts.assigner && renderAssignerFilter("", stacked)}
+                {renderFacet("client", t("Client / Lead:", "Klient / Lead:", "Ügyfél / Lead:"), opts.clientClassName ?? (stacked ? "" : "max-w-xs"), { stacked })}
+                {renderFacet("project", t("Project:", "Projekt:", "Projekt:"), "", { stacked })}
+                {opts.assignee && renderFacet("assignee", t("Assignee:", "Priradené:", "Felelős:"), "", { stacked })}
+                {opts.assigner && renderFacet("assigner", t("Assigner:", "Zadal:", "Megbízó:"), "", { stacked })}
             </div>
         );
     };
 
     // How many attribute filters are set, for the badge on the Filters button.
     const attrFilterCount = (opts: { assignee: boolean; assigner: boolean }) =>
-        (clientFilter ? 1 : 0) +
-        (projectFilter ? 1 : 0) +
-        (opts.assignee && assigneeFilter !== "all" ? 1 : 0) +
-        (opts.assigner && assignerFilter !== "all" ? 1 : 0);
+        (clientSel.length ? 1 : 0) +
+        (projectSel.length ? 1 : 0) +
+        (opts.assignee && assigneeSel.length ? 1 : 0) +
+        (opts.assigner && assignerSel.length ? 1 : 0);
 
     // The filters in force, each removable — shown in all three sections so a
     // filter fired by a click in one place is never hidden from view. The date
     // is not here for Global Tasks / Done & Archived: their date picker shows it.
     const renderActiveFilterChips = (opts: { showDay?: boolean; className?: string } = {}) => {
         const chips: { key: string; label: string; tone: string; icon: React.ReactNode; onClear: () => void }[] = [];
-        if (projectFilter) {
-            const project = projects.find((p) => String(p.id) === projectFilter);
+        if (projectSel.length) {
+            const projectName = (id: string) => {
+                const project = projects.find((p) => String(p.id) === id);
+                return project ? projectDisplayName(project, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt")) : id;
+            };
             chips.push({
                 key: "project",
-                label: `${t("Project", "Projekt", "Projekt")}: ${
-                    project
-                        ? projectDisplayName(project, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt"))
-                        : projectFilter
-                }`,
+                label: `${t("Project", "Projekt", "Projekt")}: ${projectSel.map(projectName).join(", ")}`,
                 tone: "bg-purple-50 border-purple-200 text-purple-700",
                 icon: <FolderKanban className="w-3.5 h-3.5" />,
-                onClear: () => setProjectFilter(""),
+                onClear: () => facets.set("project", []),
             });
         }
-        if (assigneeFilter !== "all") {
+        if (assigneeSel.length) {
             chips.push({
                 key: "assignee",
-                label: `${t("Assignee", "Priradené", "Felelős")}: ${assigneeFilter}`,
+                label: `${t("Assignee", "Priradené", "Felelős")}: ${assigneeSel.join(", ")}`,
                 tone: "bg-entity-subtle border-entity-border text-entity-text",
                 icon: <Users className="w-3.5 h-3.5" />,
-                onClear: () => setAssigneeFilter("all"),
+                onClear: () => facets.set("assignee", []),
             });
         }
-        if (assignerFilter !== "all") {
+        if (assignerSel.length) {
             chips.push({
                 key: "assigner",
-                label: `${t("Assigner", "Zadal", "Megbízó")}: ${assignerFilter}`,
+                label: `${t("Assigner", "Zadal", "Megbízó")}: ${assignerSel.join(", ")}`,
                 tone: "bg-amber-50 border-amber-200 text-amber-700",
                 icon: <UserCheck className="w-3.5 h-3.5" />,
-                onClear: () => setAssignerFilter("all"),
+                onClear: () => facets.set("assigner", []),
             });
         }
         if (tagFilter) {
@@ -4614,9 +4469,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     <button
                         type="button"
                         onClick={() => {
-                            setProjectFilter("");
-                            setAssigneeFilter("all");
-                            setAssignerFilter("all");
+                            facets.set("project", []);
+                            facets.set("assignee", []);
+                            facets.set("assigner", []);
                             setTagFilter(null);
                             if (opts.showDay) setMyDayFilter("");
                         }}
