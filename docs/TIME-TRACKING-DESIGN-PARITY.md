@@ -788,13 +788,16 @@ Run by a separate testing session. Nothing was fixed in the app.
     `0e2bd0a7` (amounts hidden behind a toolbar eye) masks the figures in the entry cost panel (`•••••`), the test
     expects "27,04". Passed in run 1, before that commit. Needs the test to reveal amounts first, or the panel to be
     exempt: a decision for its owner.
-  - `timeTrackingMobile.spec.ts` "everything paused: the bar shows the Paused / Resume card": **cause not found.**
-    The seeded entry row "Návrh cenovej ponuky" was present but not visible and the hover waited 240 s. The same
-    helper passed in the test before it, and the file passed in the earlier run on `56dad0a8`, so this may be load
-    (the machine was out of memory) or the date change at midnight (the seed is "today"). Not re-run.
-  - **Still not run on `1.14-orange`:** the rest of `viewSize.spec.ts`, `viewMenuOverTableHead.spec.ts`,
-    `whatsappDemo.spec.ts`, `whatsappNativeModule.spec.ts`, and the rest of `timeTrackingPresence`/`Worked` if
-    they have more tests than ran.
+  - `timeTrackingMobile.spec.ts` "everything paused: the bar shows the Paused / Resume card": **flaky under load, not
+    a defect.** The seeded row was present but not visible and the hover waited 240 s while the machine was out of
+    memory. It passed on the re-run (run 3).
+- **Scoped QA, run 3 (on `1.14-orange` after run 2, 2026-11-24):** the rest of the selection: `timeTrackingMobile`,
+  `timeTrackingPresence`, `timeTrackingWorked`, all of `viewSize`, `viewMenuOverTableHead`, `whatsappDemo`,
+  `whatsappNativeModule`. **114 passed, 0 failed, 0 skipped**, in 12.2 min.
+- **Coverage:** every spec the changed files select has now run on `1.14-orange`. Open failures are the three above that
+  are not caused by this pass (`dashboardStageDonut`, the two `projectStatuses`) and the `timeTracking` rate test
+  broken by `0e2bd0a7`. Run 1 and run 2 ran on different commits, and the app changed between them
+  (`c0bebc20`, `7cc50ec6`, `0e2bd0a7`); no single run covers one commit end to end.
 - Nothing in this pass was checked on a real phone or in the real extension popup; the popup was changed and
   type-checked and built, never opened in Chrome.
 - Screenshots: `test-results/tt-design-parity-2/canvas/`, `before/`, `after/` (local only).
