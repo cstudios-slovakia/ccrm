@@ -49,7 +49,7 @@ import { ProjectPushTimelineItem, ProjectPushesFailedNote } from "./projects/Pro
 import { useProjectPushes } from "../hooks/useProjectPushes";
 import { isPushItem, mergePushesIntoTimeline } from "../utils/projectPushTimeline";
 import { displayEmployeeName } from "../utils/nameOrder";
-import type { Employee, Task, Ticket, TicketStatusDefinition, TicketSettings, SupportContract } from "../types";
+import type { Task, Ticket, TicketStatusDefinition, TicketSettings, SupportContract } from "../types";
 import { DEFAULT_TICKET_STATUSES, DEFAULT_TICKET_SETTINGS } from "../utils/tickets";
 import { isDoneTaskState } from "../utils/projectTasks";
 import { isOnPersonalDashboard, type TaskAccess } from "../utils/taskSelectors";
@@ -87,8 +87,6 @@ interface ProjectDetailsViewProps {
   leads: Lead[];
   setLeads?: (updater: Lead[] | ((prev: Lead[]) => Lead[])) => void;
   users: UserProfile[];
-  /** Employees-module records: the project's "Employees" picker offers those of type Employee. */
-  employees?: Employee[];
   userLanguage: Language;
   financialRecords?: FinancialRecord[];
   setFinancialRecords?: React.Dispatch<React.SetStateAction<FinancialRecord[]>>;
@@ -170,7 +168,6 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   leads,
   setLeads,
   users,
-  employees,
   userLanguage,
   financialRecords = [],
   setFinancialRecords,
@@ -2618,7 +2615,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               )}
             </div>
 
-            <ProjectEmployeesField userLanguage={userLanguage} users={users} employees={employees} value={selectedEmployees} managers={selectedManagers} canEdit={canEdit} onChange={setSelectedEmployees} />
+            <ProjectEmployeesField userLanguage={userLanguage} users={users} value={selectedEmployees} managers={selectedManagers} canEdit={canEdit} onChange={setSelectedEmployees} />
 
           </div>
           </div>

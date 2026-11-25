@@ -2,31 +2,28 @@ import React from "react";
 import { displayEmployeeName } from "../../utils/nameOrder";
 import { User as UserIcon, X } from "lucide-react";
 import { CustomSelect } from "../ui/CustomSelect";
-import type { Employee, UserProfile } from "../../types";
-import { projectEmployeeCandidates } from "../../utils/projectEmployees";
+import type { UserProfile } from "../../types";
+import { projectEmployeeUserNames } from "../../utils/projectEmployees";
 import type { Language } from "../../utils/translations";
 
 /**
  * "Employees" in the project detail's left card, under the project manager: the people working on the
  * project, any number of them (the manager stays the one accountable). Stored as the same kind of id
- * as `Project.managers` (the person's name). Offers Employees-module records of type Employee. The dropdown adds one at a time and the chosen ones sit
+ * as `Project.managers` (the person's name). Offers every user who is not a Project Manager. The dropdown adds one at a time and the chosen ones sit
  * above it as coloured chips with a cross; people already on the project as manager are not offered
  * again. Read-only for people who cannot edit the project.
  */
 export const ProjectEmployeesField: React.FC<{
   userLanguage: Language;
   users: UserProfile[];
-  /** Employees-module records; only those of type Employee are offered. Without any, the logins are. */
-  employees?: Employee[];
   value: string[];
   managers: string[];
   canEdit: boolean;
   onChange: (next: string[]) => void;
-}> = ({ userLanguage, users, employees, value, managers, canEdit, onChange }) => {
+}> = ({ userLanguage, users, value, managers, canEdit, onChange }) => {
   const t = (en: string, sk: string, hu: string) => (userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en);
-  const candidates = projectEmployeeCandidates(employees);
   const colorOf = (name: string) => users.find(u => u.name === name)?.color || "#64748b";
-  const pool = candidates.length > 0 ? candidates.map(e => e.name) : users.map(u => u.name);
+  const pool = projectEmployeeUserNames(users);
   const available = pool.filter(name => !value.includes(name) && !managers.includes(name));
   return (
     <div>

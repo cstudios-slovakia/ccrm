@@ -11,10 +11,10 @@ const label = () => {
 const hint = () => {
   const l = getStoredLanguage();
   return l === "sk"
-    ? "Potiahnutím zmeníte šírku, dvojklikom vrátite pôvodnú"
+    ? "Potiahnutím zmeníte šírku, dvojklikom ju prispôsobíte obsahu"
     : l === "hu"
-      ? "Húzással átméretezheti, dupla kattintással visszaállítja"
-      : "Drag to resize, double-click to reset";
+      ? "Húzással átméretezheti, dupla kattintással a tartalomhoz igazítja"
+      : "Drag to resize, double-click to fit the content";
 };
 
 interface Props {
@@ -31,7 +31,7 @@ interface Props {
 
 /**
  * Thin drag handle on the right edge of a <th>, drawn as a faint short line so people can see it is
- * there (darker on hover). Double-clicking it gives the column its automatic width back.
+ * there (darker on hover). Double-clicking it fits the column to its content.
  * Must sit inside a positioned header cell.
  */
 export function ColumnResizeHandle({ getWidth, onStart, onLive, onCommit, onReset }: Props) {

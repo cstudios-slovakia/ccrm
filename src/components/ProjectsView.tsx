@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { displayEmployeeName } from "../utils/nameOrder";
-import { projectEmployeeCandidates } from "../utils/projectEmployees";
+import { projectEmployeeUserNames, projectManagerUserNames } from "../utils/projectEmployees";
 import { SectionIcon } from "./icons/SectionIcon";
 import { EntityBadge } from "./tremor/EntityBadge";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
@@ -324,19 +324,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   /* Who the list can be narrowed to. Projects store manager NAMES, not ids (see
      ProjectDetailsView), so the options are names too: everyone who is already
      managing something, plus every user who could be given a project. */
-  const managerOptions = useMemo(() => {
-    const names = new Set<string>();
-    projects.forEach(p => (p.managers || []).forEach(m => { if (m) names.add(m); }));
-    users.forEach(u => { if (u.name) names.add(u.name); });
-    return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [projects, users]);
+  const managerOptions = useMemo(() => projectManagerUserNames(users).sort((a, b) => a.localeCompare(b)), [users]);
 
-  // The Employees filter lists Employees-module records of type Employee only (no contractors, payroll
-  // lines or logins that are not employees); see projectEmployeeCandidates().
-  const employeeOptions = useMemo(
-    () => projectEmployeeCandidates(employees).map(e => e.name).sort((a, b) => a.localeCompare(b)),
-    [employees]
-  );
+  // The Employees filter: every user who is not a Project Manager (see utils/projectEmployees.ts).
+  const employeeOptions = useMemo(() => projectEmployeeUserNames(users).sort((a, b) => a.localeCompare(b)), [users]);
 
   /* Status, type, division, manager and rating: multi-select and faceted (each one's
      counts follow the others). See projects/useProjectFacets.ts. */
@@ -1578,7 +1569,6 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         leads={leads}
         setLeads={setLeads}
         users={users}
-        employees={employees}
         userLanguage={userLanguage}
         financialRecords={financialRecords}
         setFinancialRecords={setFinancialRecords}
@@ -2723,7 +2713,6 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           leads={leads}
           setLeads={setLeads}
           users={users}
-          employees={employees}
           userLanguage={userLanguage}
           financialRecords={financialRecords}
           setFinancialRecords={setFinancialRecords}

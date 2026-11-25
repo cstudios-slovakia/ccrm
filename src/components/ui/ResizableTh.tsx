@@ -24,7 +24,7 @@ const setW = (el: HTMLElement, w: number | string) => {
  */
 export function ResizableTh({ listKey, colKey, className, style, children, ...rest }: Props) {
   const ref = useRef<HTMLTableCellElement>(null);
-  const { getWidth, setWidth, seedWidths, resetWidth, hasWidths } = useColumnWidths(listKey);
+  const { getWidth, setWidth, seedWidths, hasWidths } = useColumnWidths(listKey);
   const width = getWidth(colKey);
 
   // The handle needs a positioned cell. A sticky header (`.table-page-sticky-head th`) already is one, and
@@ -59,6 +59,31 @@ export function ResizableTh({ listKey, colKey, className, style, children, ...re
     seedWidths(seed);
   };
 
+  // Double-click: fit the column to its widest content (header and every body / totals cell), like a
+  // spreadsheet. Clearing the stored width alone did nothing visible: once one column was dragged, every
+  // sibling has a stored width and the fixed layout hands the cleared column the leftover space.
+  const autoFit = () => {
+    const th = ref.current;
+    const row = th?.parentElement as HTMLTableRowElement | null;
+    const table = th?.closest("table");
+    if (!th || !row || !table) return;
+    start();
+    const idx = th.cellIndex;
+    const cells: HTMLElement[] = [th];
+    table.querySelectorAll<HTMLTableRowElement>("tbody > tr, tfoot > tr").forEach((tr) => {
+      const cell = tr.cells.length === row.cells.length ? tr.cells[idx] : undefined;
+      if (cell && cell.colSpan === 1) cells.push(cell);
+    });
+    setW(th, "0px");
+    const saved = cells.map((c) => c.style.whiteSpace);
+    cells.forEach((c) => (c.style.whiteSpace = "nowrap"));
+    const natural = Math.max(...cells.map((c) => c.scrollWidth));
+    cells.forEach((c, i) => (c.style.whiteSpace = saved[i]));
+    const fit = clampColumnWidth(natural + 4);
+    setW(th, fit);
+    setWidth(colKey, fit);
+  };
+
   return (
     <th
       {...rest}
@@ -76,10 +101,7 @@ export function ResizableTh({ listKey, colKey, className, style, children, ...re
           if (ref.current) setW(ref.current, w);
           setWidth(colKey, w);
         }}
-        onReset={() => {
-          if (ref.current) setW(ref.current, "");
-          resetWidth(colKey);
-        }}
+        onReset={autoFit}
       />
     </th>
   );
