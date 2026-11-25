@@ -68,18 +68,36 @@ export function ResizableTh({ listKey, colKey, className, style, children, ...re
     const table = th?.closest("table");
     if (!th || !row || !table) return;
     start();
-    const idx = th.cellIndex;
+    // Match body cells by column position, not index: a header cell may span two columns.
+    const startOf = (cell: HTMLTableCellElement) => {
+      let col = 0;
+      for (let c = cell.previousElementSibling; c; c = c.previousElementSibling) col += (c as HTMLTableCellElement).colSpan || 1;
+      return col;
+    };
+    const col = startOf(th);
     const cells: HTMLElement[] = [th];
     table.querySelectorAll<HTMLTableRowElement>("tbody > tr, tfoot > tr").forEach((tr) => {
-      const cell = tr.cells.length === row.cells.length ? tr.cells[idx] : undefined;
-      if (cell && cell.colSpan === 1) cells.push(cell);
+      const cell = Array.from(tr.cells).find((c) => startOf(c) === col);
+      if (cell && cell.colSpan === (th.colSpan || 1)) cells.push(cell);
     });
-    setW(th, "0px");
-    const saved = cells.map((c) => c.style.whiteSpace);
-    cells.forEach((c) => (c.style.whiteSpace = "nowrap"));
-    const natural = Math.max(...cells.map((c) => c.scrollWidth));
-    cells.forEach((c, i) => (c.style.whiteSpace = saved[i]));
-    const fit = clampColumnWidth(natural + 4);
+    // A cell clips its content (overflow hidden, truncating spans), so its own scrollWidth lies. Measure
+    // a copy of each cell's content laid out at its natural width inside the cell (same fonts), plus the
+    // cell's padding; the resize handle itself is left out.
+    const natural = Math.max(
+      ...cells.map((cell) => {
+        const probe = document.createElement("div");
+        probe.style.cssText = "position:absolute;left:0;top:0;visibility:hidden;width:max-content;white-space:nowrap;pointer-events:none";
+        cell.childNodes.forEach((n) => {
+          if (!(n instanceof Element && n.matches('[role="separator"]'))) probe.appendChild(n.cloneNode(true));
+        });
+        cell.appendChild(probe);
+        const cs = getComputedStyle(cell);
+        const w = probe.offsetWidth + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+        probe.remove();
+        return w;
+      })
+    );
+    const fit = clampColumnWidth(natural + 2);
     setW(th, fit);
     setWidth(colKey, fit);
   };
