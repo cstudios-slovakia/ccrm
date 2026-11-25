@@ -45,6 +45,19 @@ describe("buildProjectFromLead", () => {
     assert.equal(proj.data["pa-email"], "info@acme.test");
   });
 
+  it("carries the lead's division and rating", () => {
+    const withBoth = buildProjectFromLead({ ...lead, division: " Branch Budapest ", rating: 4 } as unknown as Lead, type, leadAttributes, { id: "p", status: "new" });
+    assert.equal(withBoth.division, "Branch Budapest");
+    assert.equal(withBoth.rating, 4);
+  });
+
+  it("leaves division null and the project unrated when the lead has neither", () => {
+    const none = buildProjectFromLead({ ...lead, division: "", rating: 0 } as unknown as Lead, type, leadAttributes, { id: "p", status: "new" });
+    assert.equal(none.division, null);
+    assert.equal("rating" in none, false);
+    assert.equal("rating" in buildProjectFromLead({ ...lead, division: undefined, rating: undefined } as unknown as Lead, type, leadAttributes, { id: "p", status: "new" }), false);
+  });
+
   it("stores no contact instead of an empty string when the lead has none", () => {
     const bare = buildProjectFromLead({ ...lead, phone: "", email: undefined, owner: "" } as unknown as Lead, type, leadAttributes, { id: "p", status: "new" });
     assert.equal(bare.contactPhone, null);

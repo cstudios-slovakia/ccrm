@@ -3,7 +3,7 @@ import { buildProjectDataFromLead } from "./leadAttributes.ts";
 
 /**
  * The project a lead becomes ("Convert to project"): named after the lead, its phone and e-mail carried
- * over as the project's contact, the lead's owner as manager, and the custom fields copied by
+ * over as the project's contact, its division and rating kept, the lead's owner as manager, and the custom fields copied by
  * `buildProjectDataFromLead`. Pure: the caller supplies the id and the starting status.
  */
 export function buildProjectFromLead(
@@ -19,6 +19,9 @@ export function buildProjectFromLead(
     leadId: lead.id,
     clientId: lead.id,
     status: opts.status,
+    division: (lead.division || "").trim() || null,
+    // A lead is born at three stars, a project starts unrated: carry the lead's rating over only when it is a real 1-5 one.
+    ...(Number.isFinite(lead.rating) && (lead.rating as number) >= 1 ? { rating: Math.min(5, Math.round(lead.rating as number)) } : {}),
     managers: lead.owner ? [lead.owner] : [],
     contactPhone: (lead.phone || "").trim() || null,
     contactEmail: (lead.email || "").trim() || null,
