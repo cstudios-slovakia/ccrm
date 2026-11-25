@@ -34,7 +34,8 @@ import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { useTimeTracking } from "../hooks/useTimeTracking";
 import { ProjectTimeTab } from "./timeTracking/ProjectTimeTab";
 import { formatDuration } from "../utils/timeTracking.ts";
-import { ProjectTimeFinanceLines } from "./timeTracking/ProjectTimeFinanceLines";
+import { LabourHiddenNote, ProjectTimeFinanceLines } from "./timeTracking/ProjectTimeFinanceLines";
+import { isLabourCostWithheld } from "../utils/performance/profitability";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
@@ -780,6 +781,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   }, [projectFinancials]);
   const timeTracking = useTimeTracking();
   const labourCost = timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.cost ?? null : null;
+  // Labour is part of costs, profit and margin: without the permission to see it those are not shown at all.
+  const labourHidden = timeTracking.enabled && isLabourCostWithheld(timeTracking.totals.byProject[project?.id ?? ""]);
 
   const revenueAnalysis = useMemo(() => {
     let totalPlannedIncome = 0;
@@ -3251,7 +3254,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   label: t("Finances", "Financie", "Pénzügyek"),
                   badge: (
                     <span className={`px-1.5 rounded-full text-micro font-semibold tabular-nums ${revenueAnalysis.realProfit >= 0 ? "bg-emerald-500/15 text-emerald-700" : "bg-rose-500/15 text-rose-700"}`}>
-                      {money(revenueAnalysis.realProfit)}
+                      {labourHidden ? "—" : money(revenueAnalysis.realProfit)}
                     </span>
                   ),
                 },
@@ -4287,7 +4290,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             <Coins className="h-4 w-4 text-emerald-600" />,
             t("Finances", "Financie", "Pénzügyek"),
             <span className={`px-2 py-0.5 rounded-full text-micro font-semibold tabular-nums ${revenueAnalysis.realProfit >= 0 ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-rose-50 text-rose-700 border border-rose-200"}`}>
-              {money(revenueAnalysis.realProfit)}
+              {labourHidden ? "—" : money(revenueAnalysis.realProfit)}
             </span>,
             <div className={`flex-1 ${isSidebar ? "space-y-6" : "ws-lg:overflow-y-auto space-y-6 scrollbar-thin ws-lg:pr-1"} animate-in fade-in duration-150 text-left`}>
               {/* 0. Top Row: Project Value & Invoicable + Project Cost Budget */}
@@ -4597,7 +4600,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     ))}
                   </div>
 
-                  {!budgetAnalysis ? (
+                  {budgetAnalysis && labourHidden ? (
+                    <LabourHiddenNote language={userLanguage} className="text-caption text-slate-500" />
+                  ) : !budgetAnalysis ? (
                     <p className="text-caption text-slate-500">
                       {t(
                         "No budget set yet. Set one to see how the project's costs compare with it. (The \"Planned\" figures below are the sums of the planned amounts on invoices and expenses.)",
@@ -4658,11 +4663,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <TrendingDown className="h-4 w-4 text-rose-500" />
                   </div>
                   <div className="text-title font-bold text-slate-900 mt-1">
-                    {money(revenueAnalysis.totalRealExpenses)}
+                    {labourHidden ? "—" : money(revenueAnalysis.totalRealExpenses)}
                   </div>
                   <div className="text-caption text-slate-500 mt-0.5">
                     {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.totalPlannedExpenses)}</strong>
-                    <ProjectTimeFinanceLines language={userLanguage} money={money} labourCost={revenueAnalysis.labourCost} unpricedSeconds={timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.unpricedSeconds : undefined} billableValue={timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.billableValue : null} billableComplete={timeTracking.totals.byProject[project?.id ?? ""]?.billableComplete} />
+                    <ProjectTimeFinanceLines language={userLanguage} money={money} labourCost={revenueAnalysis.labourCost} labourHidden={labourHidden} unpricedSeconds={timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.unpricedSeconds : undefined} billableValue={timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.billableValue : null} billableComplete={timeTracking.totals.byProject[project?.id ?? ""]?.billableComplete} />
                   </div>
                 </div>
 
@@ -4673,7 +4678,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <DollarSign className="h-4 w-4 text-indigo-500" />
                   </div>
                   <div className={`text-title font-bold mt-1 ${revenueAnalysis.realProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                    {money(revenueAnalysis.realProfit)}
+                    {labourHidden ? "—" : money(revenueAnalysis.realProfit)}
                   </div>
                   <div className="text-caption text-slate-500 mt-0.5">
                     {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.plannedProfit)}</strong>
@@ -4687,7 +4692,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <Coins className="h-4 w-4 text-amber-500" />
                   </div>
                   <div className={`text-title font-bold mt-1 ${revenueAnalysis.realMarginPct >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                    {revenueAnalysis.realMarginPct.toFixed(1)}%
+                    {labourHidden ? "—" : `${revenueAnalysis.realMarginPct.toFixed(1)}%`}
                   </div>
                   <div className="text-caption text-slate-500 mt-0.5">
                     {t("Planned:", "Plán:", "Terv:")} <strong>{revenueAnalysis.plannedMarginPct.toFixed(1)}%</strong>

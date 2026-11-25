@@ -45,7 +45,7 @@ import {
   projectHasRecentExpense,
   projectInvoicedAmount,
   projectsWithRecentLabour,
-  isLabourCostHidden,
+  labourCostHiddenProjectIds,
 } from "../../../utils/performance/profitability";
 import { computeRecurringIncome } from "../../../utils/performance/recurringIncome";
 import { computeReworkCount, computeReworkRatio } from "../../../utils/performance/rework";
@@ -114,7 +114,7 @@ const EMPTY_RECURRING: RecurringIncomeData = { monthly: 0, deltaMonthly: null, y
 const EMPTY_DSO: DsoData = { averageDays: null, deltaDays: null, paymentTermDays: null, worst: [], best: [] };
 const EMPTY_PROFITABILITY: ProfitabilityData = {
   rows: [],
-  total: { projects: 0, invoiced: 0, costs: 0, profit: 0, costRatioPct: null },
+  total: { projects: 0, invoiced: 0, costs: 0, profit: 0, costRatioPct: null, costsHidden: false },
 };
 
 export const usePerformanceOverview = (input: PerformanceOverviewInput): PerformanceOverviewData => {
@@ -225,8 +225,8 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
       );
       costsByProject.set(project.id, projectExpenseCosts(own, project.id, "real") + (labourByProject?.[project.id]?.cost ?? 0));
     }
-    const data = computeProfitability({ projects, isActive, invoicedByProject, costsByProject, recentCostProjectIds, clientNameOf, nameOf });
-    return { ...data, labourCostHidden: isLabourCostHidden(data.rows.map((row) => row.projectId), labourByProject) };
+    const hiddenCostProjectIds = labourCostHiddenProjectIds(projects.map((p) => p.id), labourByProject);
+    return computeProfitability({ projects, isActive, invoicedByProject, costsByProject, recentCostProjectIds, clientNameOf, nameOf, hiddenCostProjectIds });
   }, [
     canSeeFinancials, projects, projectTypes, isActive, financialRecords, invoicesOffers, invoiceStatuses,
     defaultCurrency, leadById, clientNameOf, nameOf, labourByProject, recentLabourProjectIds, today,

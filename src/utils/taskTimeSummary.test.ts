@@ -21,15 +21,25 @@ test("someone else's hidden cost is not added into a task total", () => {
   assert.equal(figure.own, 24.58);
 });
 
-test("a missing rate is not treated as zero", () => {
-  const figure = taskCostFigure([person("erik", 3600, null)], "erik");
+test("a missing rate counts as no cost and its time is reported as unpriced", () => {
+  const mixed = taskCostFigure([person("erik", 3600, null), person("ada", 1800, 10.1)], "ada");
+  assert.equal(mixed.total, 10.1);
+  assert.equal(mixed.unpricedSeconds, 3600);
+  const alone = taskCostFigure([person("erik", 3600, null)], "erik");
+  assert.equal(alone.total, 0);
+  assert.equal(alone.own, null);
+  assert.equal(alone.ownUnrated, true);
+  assert.equal(alone.unpricedSeconds, 3600);
+});
+
+test("a hidden cost keeps the total null even next to an unrated person", () => {
+  const figure = taskCostFigure([person("erik", 3600, null), person("ada", 1800)], "erik");
   assert.equal(figure.total, null);
-  assert.equal(figure.own, null);
-  assert.equal(figure.ownUnrated, true);
+  assert.equal(figure.unpricedSeconds, 3600);
 });
 
 test("no people means no cost figure", () => {
-  assert.deepEqual(taskCostFigure([], "erik"), { total: null, own: null, ownUnrated: false });
+  assert.deepEqual(taskCostFigure([], "erik"), { total: null, unpricedSeconds: 0, own: null, ownUnrated: false });
 });
 
 test("running time is added to that person without inventing a cost", () => {

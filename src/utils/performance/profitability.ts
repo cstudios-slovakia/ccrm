@@ -36,6 +36,8 @@ export interface ProfitabilityInput {
   clientNameOf: (project: Project) => string;
   /** The project's display name; defaults to `name`, then the id. */
   nameOf?: (project: Project) => string;
+  /** Projects whose labour cost this user may not see: their costs and profit are not shown (see `labourCostHiddenProjectIds`). */
+  hiddenCostProjectIds?: ReadonlySet<string>;
 }
 
 export const computeProfitability = ({
@@ -46,6 +48,7 @@ export const computeProfitability = ({
   recentCostProjectIds,
   clientNameOf,
   nameOf = (p) => p.name?.trim() || p.id,
+  hiddenCostProjectIds,
 }: ProfitabilityInput): ProfitabilityData => {
   const recent = recentCostProjectIds instanceof Set ? recentCostProjectIds : new Set(recentCostProjectIds);
 
@@ -65,6 +68,7 @@ export const computeProfitability = ({
       costs,
       profit: invoiced - costs,
       costRatioPct: invoiced > 0 ? (costs / invoiced) * 100 : null,
+      costsHidden: !!hiddenCostProjectIds?.has(project.id),
     });
   }
 
@@ -80,6 +84,7 @@ export const computeProfitability = ({
       costs,
       profit: invoiced - costs,
       costRatioPct: invoiced > 0 ? (costs / invoiced) * 100 : null,
+      costsHidden: rows.some((r) => r.costsHidden),
     },
   };
 };
@@ -88,17 +93,19 @@ export const computeProfitability = ({
 export type LabourTotals = Readonly<Record<string, { seconds: number; cost: number | null }>>;
 
 /**
- * Is any of the listed projects' labour cost withheld from this user? True when a project has
- * tracked time and its `cost` is null (the server sends null where the user may not see costs).
- * `byProject` is null when time tracking is off: nothing is withheld then.
+ * Is this project's labour cost withheld from the user? True when it has tracked time and its
+ * `cost` is null: the server sends null only where the user may not see every entry's cost (an
+ * entry that merely has no cost rate counts as no cost and does not make it null).
  */
-export const isLabourCostHidden = (projectIds: Iterable<string>, byProject: LabourTotals | null): boolean => {
-  if (!byProject) return false;
-  for (const id of projectIds) {
-    const entry = byProject[id];
-    if (entry && entry.seconds > 0 && entry.cost === null) return true;
-  }
-  return false;
+export const isLabourCostWithheld = (entry: { seconds: number; cost: number | null } | null | undefined): boolean =>
+  !!entry && entry.seconds > 0 && entry.cost === null;
+
+/** The listed projects whose labour cost is withheld. `byProject` is null when time tracking is off: nothing is withheld then. */
+export const labourCostHiddenProjectIds = (projectIds: Iterable<string>, byProject: LabourTotals | null): Set<string> => {
+  const hidden = new Set<string>();
+  if (!byProject) return hidden;
+  for (const id of projectIds) if (isLabourCostWithheld(byProject[id])) hidden.add(id);
+  return hidden;
 };
 
 /* ------------------------------------------------------------------ input builders */

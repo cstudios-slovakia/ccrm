@@ -26,6 +26,9 @@ export const ProfitabilityCard = ({
 }) => {
   const t = makeT(language);
   const { total } = data;
+  // A figure that would leave out a cost the user may not see is not shown at all.
+  const hiddenTitle = t("Needs the time cost permission", "Vyžaduje oprávnenie k nákladom času", "Az időköltség jogosultság szükséges");
+  const hiddenDash = <span title={hiddenTitle}>—</span>;
   return (
     <Card className={className}>
       <CardTitle
@@ -43,15 +46,6 @@ export const ProfitabilityCard = ({
           </>
         }
       />
-      {data.labourCostHidden && (
-        <p className="type-meta mt-1 text-amber-700">
-          {t(
-            "Labour cost not included: time-tracking costs are not visible to you.",
-            "Bez nákladov na prácu: náklady z evidencie času nie sú pre vás viditeľné.",
-            "Munkaköltség nélkül: az időnyilvántartás költségei az Ön számára nem láthatók.",
-          )}
-        </p>
-      )}
       <div className="mt-4 overflow-x-auto">
         <div className="min-w-180 text-ui tabular-nums">
           <div className={`${COLS} ${HEAD}`}>
@@ -81,18 +75,18 @@ export const ProfitabilityCard = ({
                       <div className="type-meta truncate text-gray-500">{row.clientName}</div>
                     </div>
                     <span className="text-right text-gray-800">{money(row.invoiced, currencyCode, language)}</span>
-                    <span className="text-right text-gray-800">{money(row.costs, currencyCode, language)}</span>
-                    <span className={`text-right font-bold ${row.profit < 0 ? "text-rose-700" : "text-emerald-700"}`}>
-                      {signedMoney(row.profit, currencyCode, language)}
+                    <span className="text-right text-gray-800">{row.costsHidden ? hiddenDash : money(row.costs, currencyCode, language)}</span>
+                    <span className={`text-right font-bold ${row.costsHidden ? "text-gray-500" : row.profit < 0 ? "text-rose-700" : "text-emerald-700"}`}>
+                      {row.costsHidden ? hiddenDash : signedMoney(row.profit, currencyCode, language)}
                     </span>
                     <div className="grid grid-cols-[minmax(0,1fr)_--spacing(12)] items-center gap-x-2.5">
                       <Track
-                        pct={row.costRatioPct === null ? 0 : Math.min(100, row.costRatioPct * 0.8)}
+                        pct={row.costsHidden || row.costRatioPct === null ? 0 : Math.min(100, row.costRatioPct * 0.8)}
                         tickPct={80}
-                        fillClass={level ? FILL[level] : "bg-gray-100"}
+                        fillClass={level && !row.costsHidden ? FILL[level] : "bg-gray-100"}
                       />
-                      <span className={`text-right font-bold ${level ? TEXT[level] : "text-gray-900"}`}>
-                        {percent(row.costRatioPct, language, 0)}
+                      <span className={`text-right font-bold ${level && !row.costsHidden ? TEXT[level] : "text-gray-900"}`}>
+                        {row.costsHidden ? hiddenDash : percent(row.costRatioPct, language, 0)}
                       </span>
                     </div>
                   </div>
@@ -103,9 +97,9 @@ export const ProfitabilityCard = ({
                   {t("Total", "Spolu", "Összesen")} · {countNoun("project", total.projects, language)}
                 </span>
                 <span className="text-right">{money(total.invoiced, currencyCode, language)}</span>
-                <span className="text-right">{money(total.costs, currencyCode, language)}</span>
-                <span className={`text-right ${total.profit < 0 ? "text-rose-700" : "text-emerald-700"}`}>
-                  {signedMoney(total.profit, currencyCode, language)}
+                <span className="text-right">{total.costsHidden ? hiddenDash : money(total.costs, currencyCode, language)}</span>
+                <span className={`text-right ${total.costsHidden ? "text-gray-500" : total.profit < 0 ? "text-rose-700" : "text-emerald-700"}`}>
+                  {total.costsHidden ? hiddenDash : signedMoney(total.profit, currencyCode, language)}
                 </span>
                 <div className="grid grid-cols-[minmax(0,1fr)_--spacing(12)] items-center gap-x-2.5">
                   <TickLegend className="font-normal">
@@ -115,7 +109,7 @@ export const ProfitabilityCard = ({
                       "100 % = a számlázott összeggel egyező költség",
                     )}
                   </TickLegend>
-                  <span className="text-right">{percent(total.costRatioPct, language, 0)}</span>
+                  <span className="text-right">{total.costsHidden ? hiddenDash : percent(total.costRatioPct, language, 0)}</span>
                 </div>
               </div>
             </>

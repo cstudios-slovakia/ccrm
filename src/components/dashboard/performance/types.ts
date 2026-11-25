@@ -160,17 +160,17 @@ export interface ProfitabilityRow {
   profit: number;
   /** costs ÷ invoiced × 100; null when nothing is invoiced. */
   costRatioPct: number | null;
+  /**
+   * The project has tracked time whose cost the server withheld from this user: `costs`, `profit`
+   * and the ratio would leave labour out, so the card shows a dash instead of them.
+   */
+  costsHidden: boolean;
 }
 
 export interface ProfitabilityData {
   rows: ProfitabilityRow[];
-  /** Footer "Spolu · N projektov". */
-  total: { projects: number; invoiced: number; costs: number; profit: number; costRatioPct: number | null };
-  /**
-   * Time tracking is on and a listed project has tracked time whose cost the server withheld from
-   * this user: `costs` then holds the expenses only. The card says so.
-   */
-  labourCostHidden?: boolean;
+  /** Footer "Spolu · N projektov". `costsHidden`: some row's costs are hidden, so the cost totals are not shown. */
+  total: { projects: number; invoiced: number; costs: number; profit: number; costRatioPct: number | null; costsHidden: boolean };
 }
 
 export type DeadlineTone = "overdue" | "soon" | "later";

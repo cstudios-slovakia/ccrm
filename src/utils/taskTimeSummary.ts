@@ -5,8 +5,9 @@
  * Hours are not private (the task chip already sums every person). Cost follows
  * B8: the server sends `cost` on the viewer's own rows always, and on other
  * people's rows only with time_tracking_costs. A missing `cost` key means hidden.
- * `cost: null` means the time is visible but has no rate. A partial sum is never
- * presented as the task's labour cost.
+ * `cost: null` means the time is visible but has no rate: it counts as no cost and
+ * is reported in `unpricedSeconds`. A sum that leaves out someone's hidden cost is
+ * never presented as the task's labour cost.
  */
 
 export interface TaskPersonTime {
@@ -17,8 +18,10 @@ export interface TaskPersonTime {
 }
 
 export interface TaskCostFigure {
-  /** Sum when every person's cost is a number. Null when anyone is hidden or unrated. */
+  /** Sum of the known costs; an unrated person adds nothing. Null when anyone's cost is hidden. */
   total: number | null;
+  /** Time of people who have no rate: in their hours, not in `total`. */
+  unpricedSeconds: number;
   /** The signed-in user's own cost, when the server sent a number. */
   own: number | null;
   /** The viewer has rows on this task and at least one of them has no rate. */
@@ -29,11 +32,12 @@ export const taskCostFigure = (people: readonly TaskPersonTime[], viewerId: stri
   const ownRow = viewerId ? people.find((p) => p.userId === viewerId) : undefined;
   const own = ownRow && typeof ownRow.cost === "number" ? Math.round(ownRow.cost * 100) / 100 : null;
   const ownUnrated = !!ownRow && "cost" in ownRow && ownRow.cost === null;
-  const complete = people.length > 0 && people.every((p) => typeof p.cost === "number");
-  if (!complete) return { total: null, own, ownUnrated };
+  const unpricedSeconds = people.reduce((sum, p) => sum + (p.cost === null ? p.seconds : 0), 0);
+  const hidden = people.length === 0 || people.some((p) => p.cost === undefined);
+  if (hidden) return { total: null, unpricedSeconds, own, ownUnrated };
   let cents = 0;
-  for (const p of people) cents += Math.round((p.cost as number) * 100);
-  return { total: cents / 100, own, ownUnrated };
+  for (const p of people) cents += typeof p.cost === "number" ? Math.round(p.cost * 100) : 0;
+  return { total: cents / 100, unpricedSeconds, own, ownUnrated };
 };
 
 /**
