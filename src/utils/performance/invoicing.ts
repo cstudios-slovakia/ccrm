@@ -16,15 +16,34 @@ const GROUP_ID = { pipeline: "leads", projects: "projects" } as const;
 const buildGroup = (group: StatusStatGroup | undefined, excluded: ReadonlySet<string>): InvoicingGroup => {
   if (!group) return { rows: [], itemCount: 0, includedStatuses: 0, totalStatuses: 0, total: 0 };
 
-  const rows = group.items.map((item) => ({
-    // The full exclusion key: a lead state and a project status can share a key ("new").
-    id: `${group.id}:${item.key}`,
-    label: item.name,
-    color: item.color ?? "",
-    count: Number(item.count) || 0,
-    value: Number(item.value) || 0,
-    included: !excluded.has(`${group.id}:${item.key}`),
-  }));
+  const rows = group.items.map((item) => {
+    const items = (item.rows ?? []).map((r) => ({
+      id: r.id,
+      name: r.name,
+      clientName: r.clientName,
+      totalBudget: Number(r.totalBudget) || 0,
+      invoiced: Number(r.invoiced) || 0,
+      invoicedOpen: Number(r.invoicedOpen) || 0,
+      invoicable: Number(r.invoicable) || 0,
+      type: r.type,
+      url: r.url,
+    }));
+    const invoicedOpen =
+      item.invoicedOpen !== undefined
+        ? Number(item.invoicedOpen) || 0
+        : items.reduce((sum, r) => sum + r.invoicedOpen, 0);
+    return {
+      // The full exclusion key: a lead state and a project status can share a key ("new").
+      id: `${group.id}:${item.key}`,
+      label: item.name,
+      color: item.color ?? "",
+      count: Number(item.count) || 0,
+      value: Number(item.value) || 0,
+      invoicedOpen,
+      items,
+      included: !excluded.has(`${group.id}:${item.key}`),
+    };
+  });
   const included = rows.filter((r) => r.included);
   return {
     rows,

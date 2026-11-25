@@ -35,16 +35,18 @@ import type {
   ProjectType,
   FinancialRecord,
   InvoiceOffer,
-  ProjectStatus
+  ProjectStatus,
+  CompanyBillingSettings
 } from "../types";
 import { cn } from "../utils/cn";
 import type { Language } from "../utils/translations";
 import { isLiveInvoiceStatus, type OfferStatusDef } from "../utils/offerStatuses";
+import { effectiveDocumentAmount } from "../utils/invoiceFinanceBridge";
 import {
   formatMoney,
   currencyForRegion
 } from "../utils/currency";
-import { projectBilling, resolveProjectValue } from "../utils/projectBilling";
+import { projectBilling, resolveLeadEffectiveValue, resolveProjectValue } from "../utils/projectBilling";
 import { isClosedLeadState } from "../utils/leadSla";
 import {
   isClosedProjectStatus,
@@ -150,6 +152,7 @@ interface DynamicDashboardViewProps {
   invoiceStatuses?: OfferStatusDef[];
   leadStageGroups?: Record<string, "new" | "in_progress" | "closed">;
   leadStateParents?: Record<string, string>;
+  companyBillingSettings?: CompanyBillingSettings | null;
 }
 
 /** Where a `tabs` widget's per-tab query result is stored in the data/error maps. */
@@ -437,7 +440,9 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   invoiceStatuses,
   leadStageGroups = {},
   leadStateParents = {},
+  companyBillingSettings,
 }) => {
+  const netMode = Boolean(companyBillingSettings?.financeNetMode);
   const projectStatuses = useProjectStatuses();
   const isHome = variant === "home";
   const t: Translate = (en, sk, hu) => (systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en);
@@ -639,14 +644,14 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
       });
 
       const val = leadsInState.reduce(
-        (sum, l) => sum + (Number(l.value) || 0),
+        (sum, l) => sum + resolveLeadEffectiveValue(l, { netMode, invoicesOffers }),
         0
       );
       const col =
         leadStateColors?.[stateLower] || leadStateColors?.[state] || "#3b82f6";
 
       const rows: StatusStatDetailRow[] = leadsInState.map((l) => {
-        const lVal = Number(l.value) || 0;
+        const lVal = resolveLeadEffectiveValue(l, { netMode, invoicesOffers });
         return {
           id: l.id,
           name: l.name || `Lead #${l.id}`,
@@ -672,7 +677,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         rows,
       };
     });
-  }, [hasEquationWidget, leads, pipelineStages, leadStageGroups, leadStateParents, leadStateColors]);
+  }, [hasEquationWidget, leads, pipelineStages, leadStageGroups, leadStateParents, leadStateColors, netMode, invoicesOffers]);
 
   // Projects group items calculation
   const projectGroupItems = useMemo<StatusStatItem[]>(() => {
@@ -686,6 +691,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     return allStatuses.map((status) => {
       const projectsInStatus = projects.filter((p) => !p.archived && p.status === status);
       let statusInvoicableVal = 0;
+      let statusInvoicedOpenVal = 0;
       let statusTotalBudgetValue = 0;
       let statusTotalInvoicedValue = 0;
       const statusRows: StatusStatDetailRow[] = [];
@@ -700,25 +706,32 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
           pType,
           leads?.find((l) => l.id === p.leadId),
           defaultCurrency,
+          { siblingProjects: projects, projectTypes, netMode, invoicesOffers },
         ).value;
 
         let pInvoiced = 0;
+        let pInvoicedOpen = 0;
         let pInvoicable = 0;
         if (financialRecords && financialRecords.length > 0) {
           const billing = projectBilling(pVal, financialRecords, p.id);
           pInvoiced = billing.invoiced;
+          pInvoicedOpen = billing.invoicedOpen;
           pInvoicable = billing.notInvoiced;
         } else {
           if (invoicesOffers && invoicesOffers.length > 0) {
             const pInvoices = invoicesOffers.filter(
               (io) => p.leadId && io.leadId === p.leadId && io.type === "invoice" && isLiveInvoiceStatus(io.status, invoiceStatuses)
             );
-            pInvoiced = pInvoices.reduce((sum, io) => sum + (Number(io.totalPrice) || 0), 0);
+            pInvoiced = pInvoices.reduce((sum, io) => sum + effectiveDocumentAmount(io, netMode), 0);
+            pInvoicedOpen = pInvoices
+              .filter((io) => (io.status || "").toLowerCase() !== "paid")
+              .reduce((sum, io) => sum + effectiveDocumentAmount(io, netMode), 0);
           }
           pInvoicable = Math.max(0, pVal - pInvoiced);
         }
 
         statusInvoicableVal += pInvoicable;
+        statusInvoicedOpenVal += pInvoicedOpen;
         statusTotalBudgetValue += pVal;
         statusTotalInvoicedValue += pInvoiced;
 
@@ -737,6 +750,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
           date: p.createdAt ? new Date(p.createdAt).toLocaleDateString() : undefined,
           totalBudget: pVal,
           invoiced: pInvoiced,
+          invoicedOpen: pInvoicedOpen,
           invoicable: pInvoicable,
           type: "project",
           url: `#projects/${encodeURIComponent(p.id)}`,
@@ -752,6 +766,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         closed: isClosedProjectStatus(status, projectStatuses),
         totalBudget: statusTotalBudgetValue,
         invoiced: statusTotalInvoicedValue,
+        invoicedOpen: statusInvoicedOpenVal,
         rows: statusRows,
       };
     });
@@ -764,6 +779,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     invoicesOffers,
     invoiceStatuses,
     defaultCurrency,
+    netMode,
     projectStatuses,
     t,
   ]);

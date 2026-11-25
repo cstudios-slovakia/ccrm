@@ -1775,8 +1775,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     // An order already paid: the invoice's ledger movement is settled too, as the
     // Orders module does. Otherwise it would wait in "awaiting payment" forever.
     if (order.paymentStatus === "paid" && setFinancialRecords) {
+      const paidAmt = companyBillingSettings?.financeNetMode ? order.totalNetAmount : order.totalGrossAmount;
       setFinancialRecords(prev =>
-        markInvoiceMovementPaid(prev, newInvoiceId, order.totalGrossAmount, order.paidAt || order.orderDate || todayLocal())
+        markInvoiceMovementPaid(prev, newInvoiceId, paidAmt, order.paidAt || order.orderDate || todayLocal())
       );
     }
 

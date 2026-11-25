@@ -404,6 +404,7 @@ export interface ProjectCostItem {
   seconds: number;
   workedMs: number;
   cost: number | null;
+  unpricedSeconds?: number;
   canSeeCost: boolean;
   complete: boolean;
   excluded: boolean;

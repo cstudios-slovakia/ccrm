@@ -69,7 +69,7 @@ import {
 } from "../utils/projectColumns";
 import type { BuiltinProjectColumnKey, ResolvedProjectColumn } from "../utils/projectColumns";
 import { formatMoney, isMoneyValueEmpty, parseMoneyValue } from "../utils/currency";
-import { projectBilling, resolveProjectValue } from "../utils/projectBilling";
+import { projectBilling, resolveProjectValueWithSource } from "../utils/projectBilling";
 import { projectExpenseCosts } from "../utils/performance/profitability";
 import { useTimeTracking } from "../hooks/useTimeTracking";
 import { PageHeader } from "./layout";
@@ -643,7 +643,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
        so this list cannot disagree with it. Cancelled rows are not invoiced,
        a partly paid row counts in full, and `project.budget` (a cost ceiling)
        is never taken for revenue. */
-    const contract = resolveProjectValue(p, pType, lead, defaultCurrency);
+    const contract = resolveProjectValueWithSource(p, pType, lead, defaultCurrency, {
+      siblingProjects: projects,
+      projectTypes,
+      netMode: Boolean(companyBillingSettings?.financeNetMode),
+    });
     const billing = projectBilling(contract.value, financialRecords || [], p.id);
     const ledgerCosts = projectExpenseCosts(financialRecords || [], p.id, "all");
     const labourCost = timeTracking.enabled ? (timeTracking.totals.byProject[p.id]?.cost ?? 0) : 0;
@@ -656,8 +660,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       costs: Math.round((ledgerCosts + labourCost) * 100) / 100,
       currency: contract.currency,
       hasValue: contract.value > 0,
+      inheritedFromLead: contract.inheritedFromLead,
     };
-  }, [defaultCurrency, financialRecords, timeTracking.enabled, timeTracking.totals.byProject]);
+  }, [defaultCurrency, financialRecords, projects, projectTypes, companyBillingSettings?.financeNetMode, timeTracking.enabled, timeTracking.totals.byProject]);
 
   /* Active project status items calculation for the expandable equation statistics */
   const activeProjectStatusItems = useMemo<StatusStatItem[]>(() => {
@@ -1479,8 +1484,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         const fin = getProjectFinancials(p, pType, lead);
         return fin.hasValue
           ? (
-            <span className="text-ui font-bold text-slate-700 tabular-nums whitespace-nowrap">
+            <span
+              className="inline-flex items-center gap-1 text-ui font-bold text-slate-700 tabular-nums whitespace-nowrap"
+              title={fin.inheritedFromLead ? t("Inherited from linked lead", "Zdedené z prepojeného leadu", "A kapcsolódó leadből örökölve") : undefined}
+            >
               {formatMoney(fin.totalBudget, fin.currency, userLanguage)}
+              {fin.inheritedFromLead && (
+                <span className="px-1 py-0.5 rounded bg-amber-50 border border-amber-200/80 text-micro font-medium text-amber-700">
+                  {t("Lead", "Lead", "Lead")}
+                </span>
+              )}
             </span>
           )
           : emptyCell;

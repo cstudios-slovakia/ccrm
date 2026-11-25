@@ -528,7 +528,9 @@ if ($method === 'GET') {
                        COALESCE(SUM(te.`duration_sec`), 0) AS `sec`,
                        COALESCE(SUM(te.`worked_ms`), 0) AS `worked`,
                        SUM(te.`cost`) AS `cost`,
-                       SUM(te.`cost` IS NULL) AS `missing`
+                       COUNT(te.`cost`) AS `priced_cnt`,
+                       SUM(te.`cost` IS NULL) AS `missing`,
+                       COALESCE(SUM(CASE WHEN te.`cost` IS NULL THEN te.`duration_sec` ELSE 0 END), 0) AS `unpriced_sec`
                        {$exclSelect}
                 FROM `time_entries` te"
             . ccrm_tt_entity_joins()
@@ -554,6 +556,8 @@ if ($method === 'GET') {
                 $salType = $empCache[$uid]['salary_type'] ?? null;
             }
             $missing = (int)($r['missing'] ?? 0);
+            $pricedCnt = (int)($r['priced_cnt'] ?? 0);
+            $unpricedSec = (int)($r['unpriced_sec'] ?? 0);
             $items[] = [
                 'month' => (string)$r['entry_month'],
                 'userId' => $uid,
@@ -561,7 +565,8 @@ if ($method === 'GET') {
                 'salaryType' => $salType,
                 'seconds' => (int)$r['sec'],
                 'workedMs' => (int)$r['worked'],
-                'cost' => $canSee ? ($missing > 0 ? null : round((float)$r['cost'], 2)) : null,
+                'cost' => $canSee ? ($pricedCnt > 0 ? round((float)$r['cost'], 2) : null) : null,
+                'unpricedSeconds' => $canSee ? $unpricedSec : 0,
                 'canSeeCost' => $canSee,
                 'complete' => $canSee ? ($missing === 0) : false,
                 'excluded' => (bool)$r['excluded'],

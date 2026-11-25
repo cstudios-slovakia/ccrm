@@ -4182,7 +4182,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : null;
 
                 // Total project / contract value from which invoices are billed.
-                $projValue = (isset($p['value']) && is_numeric($p['value']) && (float)$p['value'] > 0)
+                // Explicit 0 is preserved so a project sharing a lead does not fall back to lead.value.
+                $projValue = (isset($p['value']) && is_numeric($p['value']) && (float)$p['value'] >= 0)
                     ? round(min((float)$p['value'], 999999999999.99), 2)
                     : null;
 

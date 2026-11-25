@@ -31,6 +31,8 @@ export interface StatusStatDetailRow {
   date?: string;
   totalBudget?: number;
   invoiced?: number;
+  /** Issued/planned invoices that are not paid yet (project rows). */
+  invoicedOpen?: number;
   invoicable: number;
   type: "lead" | "project";
   url?: string;
@@ -39,13 +41,15 @@ export interface StatusStatDetailRow {
 export interface StatusStatItem {
   key: string;
   name: string;
-  value: number; // Always the invoicable value!
+  value: number; // Always the invoicable (not yet invoiced) value!
   count: number;
   color?: string;
   /** Closed in the lead / project status settings (won, lost, completed, cancelled…). */
   closed?: boolean;
   totalBudget?: number;
   invoiced?: number;
+  /** Total issued/planned but unpaid invoices across projects in this status. */
+  invoicedOpen?: number;
   rows?: StatusStatDetailRow[];
 }
 

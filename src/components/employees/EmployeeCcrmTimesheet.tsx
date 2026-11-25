@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { Surface } from "../layout";
 import { listEntries } from "../../utils/timeTrackingApi.ts";
-import { formatDuration, type TimeEntry } from "../../utils/timeTracking.ts";
+import { formatDuration, projectColor, type TimeEntry } from "../../utils/timeTracking.ts";
 import { entryWorkedSeconds, liveWorkedShares } from "../../utils/timeWorked.ts";
 import { formatDateLocalized, localeCodeFor } from "../../utils/localTime";
 import type { Language } from "../../utils/translations";
@@ -17,6 +17,8 @@ interface Props {
 }
 
 interface ProjectTag {
+  key: string;
+  projectId: string | null;
   name: string;
   seconds: number;
 }
@@ -89,33 +91,96 @@ function weekRangeLabel(w: WeekGroup, language: Language): string {
   return `${prefix} · ${from} – ${to}`;
 }
 
-function sortedProjects(map: Map<string, number>): ProjectTag[] {
-  return [...map.entries()]
-    .map(([name, seconds]) => ({ name, seconds }))
-    .sort((a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name));
+function sortedProjects(map: Map<string, ProjectTag>): ProjectTag[] {
+  return [...map.values()].sort((a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name));
 }
 
-function TagPills({ projects, tags }: { projects: ProjectTag[]; tags: string[] }) {
-  if (projects.length === 0 && tags.length === 0) return null;
+function addProjectSec(map: Map<string, ProjectTag>, projectId: string | null, name: string, sec: number) {
+  const key = projectId || `__none__:${name}`;
+  const prev = map.get(key);
+  if (prev) prev.seconds += sec;
+  else map.set(key, { key, projectId, name, seconds: sec });
+}
+
+function TagPills({
+  projects,
+  tags,
+  activeTag,
+  onToggleTag,
+  t,
+}: {
+  projects: ProjectTag[];
+  tags: string[];
+  activeTag: string | null;
+  onToggleTag: (tag: string) => void;
+  t: (en: string, sk: string, hu: string) => string;
+}) {
+  if (projects.length === 0 && tags.length === 0) return <div className="flex-1 min-w-0" />;
   return (
-    <div className="flex flex-wrap items-center gap-1">
-      {projects.map((p) => (
-        <span
-          key={`p-${p.name}`}
-          title={`${p.name}: ${formatDuration(p.seconds)}`}
-          className="inline-flex items-center px-1.5 py-0.5 rounded-md text-micro font-semibold bg-entity-subtle text-entity-text border border-entity-border"
-        >
-          {p.name}
-        </span>
-      ))}
-      {tags.map((tag) => (
-        <span
-          key={`t-${tag}`}
-          className="inline-flex items-center px-1.5 py-0.5 rounded-md text-micro font-medium bg-gray-100 text-gray-600 border border-gray-200"
-        >
-          #{tag}
-        </span>
-      ))}
+    <div
+      className="flex flex-nowrap items-center gap-1.5 min-w-0 flex-1 overflow-x-auto py-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {projects.map((p) => {
+        const color = projectColor(p.projectId);
+        const pillStyle = p.projectId
+          ? { backgroundColor: `${color}14`, borderColor: `${color}45`, color }
+          : undefined;
+        const baseCls =
+          "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-micro font-semibold border shrink-0 whitespace-nowrap transition-opacity";
+        const content = (
+          <>
+            <span className="size-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+            <span>{p.name}</span>
+          </>
+        );
+        if (p.projectId) {
+          return (
+            <a
+              key={`p-${p.key}`}
+              href={`#projects/${encodeURIComponent(p.projectId)}`}
+              title={`${p.name}: ${formatDuration(p.seconds)} · ${t("Open project", "Otvoriť projekt", "Projekt megnyitása")}`}
+              style={pillStyle}
+              className={`${baseCls} hover:opacity-80 cursor-pointer`}
+            >
+              {content}
+            </a>
+          );
+        }
+        return (
+          <span
+            key={`p-${p.key}`}
+            title={`${p.name}: ${formatDuration(p.seconds)}`}
+            className={`${baseCls} bg-gray-100 text-gray-500 border-gray-200`}
+          >
+            {content}
+          </span>
+        );
+      })}
+      {tags.map((tag) => {
+        const color = projectColor(`tag:${tag}`);
+        const isActive = activeTag === tag;
+        return (
+          <button
+            key={`t-${tag}`}
+            type="button"
+            onClick={() => onToggleTag(tag)}
+            title={
+              isActive
+                ? t("Clear tag filter", "Zrušiť filter štítku", "Címkeszűrő törlése")
+                : t(`Filter by #${tag}`, `Filtrovať podľa #${tag}`, `Szűrés: #${tag}`)
+            }
+            style={
+              isActive
+                ? { backgroundColor: color, borderColor: color, color: "#ffffff" }
+                : { backgroundColor: `${color}12`, borderColor: `${color}38`, color }
+            }
+            className="inline-flex items-center px-1.5 py-0.5 rounded-md text-micro font-medium border shrink-0 whitespace-nowrap cursor-pointer hover:opacity-80 transition-opacity"
+          >
+            #{tag}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -127,7 +192,9 @@ export function EmployeeCcrmTimesheet({ employee, language = "sk", t }: Props) {
   const [error, setError] = useState(false);
   const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
   const [collapsedWeeks, setCollapsedWeeks] = useState<Record<string, boolean>>({});
+  const [activeTag, setActiveTag] = useState<string | null>(null);
   const userId = employee.userId || "";
+  const toggleTagFilter = (tag: string) => setActiveTag((prev) => (prev === tag ? null : tag));
 
   useEffect(() => {
     if (!userId) {
@@ -156,9 +223,9 @@ export function EmployeeCcrmTimesheet({ employee, language = "sk", t }: Props) {
     const live = entries.some((e) => e.running) ? liveWorkedShares(entries, nowMs) : undefined;
     const noProjectLabel = t("No project", "Bez projektu", "Projekt nélkül");
 
-    type DayAcc = { seconds: number; projects: Map<string, number>; tags: Set<string> };
-    type WeekAcc = { isoWeek: number; startDate: string; endDate: string; seconds: number; projects: Map<string, number>; tags: Set<string>; days: Map<string, DayAcc> };
-    type MonthAcc = { seconds: number; projects: Map<string, number>; tags: Set<string>; weeks: Map<string, WeekAcc> };
+    type DayAcc = { seconds: number; projects: Map<string, ProjectTag>; tags: Set<string> };
+    type WeekAcc = { isoWeek: number; startDate: string; endDate: string; seconds: number; projects: Map<string, ProjectTag>; tags: Set<string>; days: Map<string, DayAcc> };
+    type MonthAcc = { seconds: number; projects: Map<string, ProjectTag>; tags: Set<string>; weeks: Map<string, WeekAcc> };
 
     const monthMap = new Map<string, MonthAcc>();
     let grand = 0;
@@ -166,14 +233,16 @@ export function EmployeeCcrmTimesheet({ employee, language = "sk", t }: Props) {
     for (const entry of entries) {
       const date = (entry.entryDate || "").slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+      const entryTags = Array.isArray(entry.tags) ? entry.tags.filter(Boolean) : [];
+      if (activeTag && !entryTags.includes(activeTag)) continue;
       const sec = entryWorkedSeconds(entry, nowMs, live);
       grand += sec;
 
       const monthKey = date.slice(0, 7);
       const { isoWeek, weekYear, monday, sunday } = isoWeekOf(date);
       const weekKey = `${monthKey}|${weekYear}-W${String(isoWeek).padStart(2, "0")}`;
+      const projId = entry.projectId || null;
       const projName = (entry.projectName || "").trim() || noProjectLabel;
-      const entryTags = Array.isArray(entry.tags) ? entry.tags.filter(Boolean) : [];
 
       let mAcc = monthMap.get(monthKey);
       if (!mAcc) {
@@ -181,7 +250,7 @@ export function EmployeeCcrmTimesheet({ employee, language = "sk", t }: Props) {
         monthMap.set(monthKey, mAcc);
       }
       mAcc.seconds += sec;
-      mAcc.projects.set(projName, (mAcc.projects.get(projName) ?? 0) + sec);
+      addProjectSec(mAcc.projects, projId, projName, sec);
       entryTags.forEach((tg) => mAcc!.tags.add(tg));
 
       let wAcc = mAcc.weeks.get(weekKey);
@@ -190,7 +259,7 @@ export function EmployeeCcrmTimesheet({ employee, language = "sk", t }: Props) {
         mAcc.weeks.set(weekKey, wAcc);
       }
       wAcc.seconds += sec;
-      wAcc.projects.set(projName, (wAcc.projects.get(projName) ?? 0) + sec);
+      addProjectSec(wAcc.projects, projId, projName, sec);
       entryTags.forEach((tg) => wAcc!.tags.add(tg));
 
       let dAcc = wAcc.days.get(date);
@@ -199,7 +268,7 @@ export function EmployeeCcrmTimesheet({ employee, language = "sk", t }: Props) {
         wAcc.days.set(date, dAcc);
       }
       dAcc.seconds += sec;
-      dAcc.projects.set(projName, (dAcc.projects.get(projName) ?? 0) + sec);
+      addProjectSec(dAcc.projects, projId, projName, sec);
       entryTags.forEach((tg) => dAcc!.tags.add(tg));
     }
 
@@ -233,7 +302,7 @@ export function EmployeeCcrmTimesheet({ employee, language = "sk", t }: Props) {
       }));
 
     return { totalSeconds: grand, months: built };
-  }, [entries, language, t]);
+  }, [entries, activeTag, language, t]);
 
   const isMonthExpanded = (monthKey: string, index: number) =>
     monthKey in expandedMonths ? expandedMonths[monthKey] : index === 0;
@@ -264,10 +333,23 @@ export function EmployeeCcrmTimesheet({ employee, language = "sk", t }: Props) {
   return (
     <div style={entityAccentStyle("time-tracking") as React.CSSProperties}>
       <Surface className="space-y-4" data-testid="ccrm-timesheet">
-        <div className="flex items-baseline justify-between gap-3">
-          <h3 className="type-card-title text-gray-900">{t(`${brand} time tracking`, `Evidencia času ${brand}`, `${brand} időkövetés`)}</h3>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <h3 className="type-card-title text-gray-900 truncate">{t(`${brand} time tracking`, `Evidencia času ${brand}`, `${brand} időkövetés`)}</h3>
+            {activeTag && (
+              <button
+                type="button"
+                onClick={() => setActiveTag(null)}
+                style={{ backgroundColor: projectColor(`tag:${activeTag}`), color: "#ffffff" }}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-semibold cursor-pointer hover:opacity-85 shrink-0"
+              >
+                <span>#{activeTag}</span>
+                <X className="size-3" />
+              </button>
+            )}
+          </div>
           {entries !== null && !error && (
-            <span className="text-metric tabular-nums text-entity-text">{formatDuration(totalSeconds)}</span>
+            <span className="text-metric tabular-nums text-entity-text shrink-0">{formatDuration(totalSeconds)}</span>
           )}
         </div>
 
@@ -283,19 +365,22 @@ export function EmployeeCcrmTimesheet({ employee, language = "sk", t }: Props) {
               const mOpen = isMonthExpanded(m.monthKey, idx);
               return (
                 <div key={m.monthKey} className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-                  <button
-                    type="button"
+                  <div
                     onClick={() => toggleMonth(m.monthKey, idx)}
-                    aria-expanded={mOpen}
-                    className="w-full flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 bg-gray-50/80 hover:bg-gray-100/80 transition-colors cursor-pointer text-left"
+                    className="w-full flex flex-nowrap items-center gap-2.5 px-3.5 py-2.5 bg-gray-50/80 hover:bg-gray-100/80 transition-colors cursor-pointer"
                   >
-                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); toggleMonth(m.monthKey, idx); }}
+                      aria-expanded={mOpen}
+                      className="inline-flex items-center gap-2 shrink-0 whitespace-nowrap cursor-pointer text-left"
+                    >
                       {mOpen ? <ChevronDown className="h-4 w-4 text-gray-500 shrink-0" /> : <ChevronRight className="h-4 w-4 text-gray-500 shrink-0" />}
                       <span className="text-ui font-bold text-gray-900">{m.label}</span>
-                      <TagPills projects={m.projects} tags={m.tags} />
-                    </div>
-                    <span className="text-ui font-bold tabular-nums text-entity-text shrink-0">{formatDuration(m.seconds)}</span>
-                  </button>
+                    </button>
+                    <TagPills projects={m.projects} tags={m.tags} activeTag={activeTag} onToggleTag={toggleTagFilter} t={t} />
+                    <span className="text-ui font-bold tabular-nums text-entity-text shrink-0 whitespace-nowrap">{formatDuration(m.seconds)}</span>
+                  </div>
 
                   {mOpen && (
                     <div className="divide-y divide-gray-100">
@@ -303,31 +388,32 @@ export function EmployeeCcrmTimesheet({ employee, language = "sk", t }: Props) {
                         const wOpen = !collapsedWeeks[w.key];
                         return (
                           <div key={w.key}>
-                            <button
-                              type="button"
+                            <div
                               onClick={() => toggleWeek(w.key)}
-                              aria-expanded={wOpen}
-                              className="w-full flex flex-wrap items-center justify-between gap-2 pl-6 pr-3.5 py-2 bg-gray-50/40 hover:bg-gray-50 transition-colors cursor-pointer text-left"
+                              className="w-full flex flex-nowrap items-center gap-2.5 pl-6 pr-3.5 py-2 bg-gray-50/40 hover:bg-gray-50 transition-colors cursor-pointer"
                             >
-                              <div className="flex flex-wrap items-center gap-2 min-w-0">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); toggleWeek(w.key); }}
+                                aria-expanded={wOpen}
+                                className="inline-flex items-center gap-2 shrink-0 whitespace-nowrap cursor-pointer text-left"
+                              >
                                 {wOpen ? <ChevronDown className="h-3.5 w-3.5 text-gray-400 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 text-gray-400 shrink-0" />}
                                 <span className="text-caption font-semibold text-gray-700">{weekRangeLabel(w, language)}</span>
-                                <TagPills projects={w.projects} tags={w.tags} />
-                              </div>
-                              <span className="text-caption font-bold tabular-nums text-gray-800 shrink-0">{formatDuration(w.seconds)}</span>
-                            </button>
+                              </button>
+                              <TagPills projects={w.projects} tags={w.tags} activeTag={activeTag} onToggleTag={toggleTagFilter} t={t} />
+                              <span className="text-caption font-bold tabular-nums text-gray-800 shrink-0 whitespace-nowrap">{formatDuration(w.seconds)}</span>
+                            </div>
 
                             {wOpen && (
                               <ul className="divide-y divide-gray-100">
                                 {w.days.map((day) => (
-                                  <li key={day.date} className="flex flex-wrap items-center justify-between gap-2 pl-12 pr-3.5 py-2 text-ui">
-                                    <div className="flex flex-wrap items-center gap-2 min-w-0">
-                                      <span className="tabular-nums text-gray-700 whitespace-nowrap">
-                                        {formatDateLocalized(day.date, language, { weekday: "short", day: "numeric", month: "numeric", year: "numeric" })}
-                                      </span>
-                                      <TagPills projects={day.projects} tags={day.tags} />
-                                    </div>
-                                    <span className="tabular-nums font-semibold text-gray-900 shrink-0">{formatDuration(day.seconds)}</span>
+                                  <li key={day.date} className="flex flex-nowrap items-center gap-2.5 pl-12 pr-3.5 py-2 text-ui">
+                                    <span className="tabular-nums text-gray-700 shrink-0 whitespace-nowrap">
+                                      {formatDateLocalized(day.date, language, { weekday: "short", day: "numeric", month: "numeric", year: "numeric" })}
+                                    </span>
+                                    <TagPills projects={day.projects} tags={day.tags} activeTag={activeTag} onToggleTag={toggleTagFilter} t={t} />
+                                    <span className="tabular-nums font-semibold text-gray-900 shrink-0 whitespace-nowrap">{formatDuration(day.seconds)}</span>
                                   </li>
                                 ))}
                               </ul>

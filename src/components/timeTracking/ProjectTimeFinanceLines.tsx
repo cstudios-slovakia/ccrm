@@ -3,6 +3,9 @@ import { ChevronDown, ChevronRight, EyeOff, RotateCcw } from "lucide-react";
 import type { Language } from "../../utils/translations";
 import { formatDuration } from "../../utils/timeTracking.ts";
 import { getProjectCosts, setProjectCostExclusion, type ProjectCostItem } from "../../utils/timeTrackingApi";
+import { summarizeProjectLabourCosts } from "../../utils/projectTimeLabour";
+
+export { summarizeProjectLabourCosts };
 
 const pick = (language: Language, en: string, sk: string, hu: string) => (language === "sk" ? sk : language === "hu" ? hu : en);
 
@@ -65,6 +68,7 @@ export function useProjectTimeCosts({
   enabled,
   canCosts,
   totalsCost,
+  totalsUnpricedSeconds = 0,
   version,
   language,
   onChanged,
@@ -73,6 +77,7 @@ export function useProjectTimeCosts({
   enabled: boolean;
   canCosts: boolean;
   totalsCost: number | null;
+  totalsUnpricedSeconds?: number;
   version: number;
   language: Language;
   onChanged: () => void;
@@ -134,23 +139,18 @@ export function useProjectTimeCosts({
     }
   };
 
-  const labourCost = useMemo(() => {
-    if (!enabled) return null;
-    if (loaded) {
-      if (!canCosts && items.some((i) => !i.canSeeCost)) return null;
-      const active = items.filter((i) => i.canSeeCost && !i.excluded);
-      if (active.some((i) => i.cost == null && i.seconds > 0)) return null;
-      return Math.round(active.reduce((sum, i) => sum + (i.cost ?? 0), 0) * 100) / 100;
-    }
-    return totalsCost;
-  }, [enabled, canCosts, totalsCost, loaded, items]);
+  const { labourCost, unpricedSeconds } = useMemo(() => {
+    if (!enabled) return { labourCost: null, unpricedSeconds: 0 };
+    if (loaded) return summarizeProjectLabourCosts(items, canCosts);
+    return { labourCost: totalsCost, unpricedSeconds: totalsCost != null ? totalsUnpricedSeconds : 0 };
+  }, [enabled, canCosts, totalsCost, totalsUnpricedSeconds, loaded, items]);
 
   const visibleItems = useMemo(
     () => (enabled ? items.filter((i) => i.canSeeCost) : []),
     [enabled, items]
   );
 
-  return { visibleItems, labourCost, toggleExclusion };
+  return { visibleItems, labourCost, unpricedSeconds, toggleExclusion };
 }
 
 /** Employee-grouped time-tracking rows inside Direct Project Costs & Materials, expandable by month. */
@@ -191,13 +191,14 @@ export function ProjectTimeCostRows({
       const activeRows = sorted.filter((r) => !r.excluded);
       const excludedCount = sorted.length - activeRows.length;
       const allExcluded = activeRows.length === 0;
-      const missingCost = activeRows.some((r) => r.cost == null && r.seconds > 0);
-      const activeCost = missingCost
-        ? null
-        : Math.round(activeRows.reduce((s, r) => s + (r.cost ?? 0), 0) * 100) / 100;
-      const fullCost = sorted.some((r) => r.cost == null && r.seconds > 0)
-        ? null
-        : Math.round(sorted.reduce((s, r) => s + (r.cost ?? 0), 0) * 100) / 100;
+      const activeHasPriced = activeRows.some((r) => r.cost != null);
+      const activeCost = activeHasPriced
+        ? Math.round(activeRows.reduce((s, r) => s + (r.cost ?? 0), 0) * 100) / 100
+        : null;
+      const fullHasPriced = sorted.some((r) => r.cost != null);
+      const fullCost = fullHasPriced
+        ? Math.round(sorted.reduce((s, r) => s + (r.cost ?? 0), 0) * 100) / 100
+        : null;
       const newest = sorted[0]?.month ?? "";
       const oldest = sorted[sorted.length - 1]?.month ?? "";
       return {
