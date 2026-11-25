@@ -74,6 +74,37 @@ export function badgeFor(snapshot: PresenceSnapshot | null, phase: PresencePhase
   return { text: "", color: rose };
 }
 
+/** Pulsing alert badge/icon state cycled at 550ms during the 50-minute check-in window. */
+export function alertFrameBadge(frame: number, remainingMs: number | null = null): {
+  text: string;
+  color: string;
+  iconPrefix: string;
+} {
+  const f = Math.abs(Math.trunc(frame)) % 4;
+  const amber = "#f59e0b";
+  const rose = "#e11d48";
+  const minsLeft = remainingMs !== null && Number.isFinite(remainingMs) && remainingMs > 0
+    ? Math.max(1, Math.ceil(remainingMs / 60_000))
+    : null;
+  if (f === 0 || f === 1) {
+    return { text: "?", color: f === 0 ? amber : rose, iconPrefix: `alert-${f}` };
+  }
+  return {
+    text: minsLeft !== null && f === 3 ? `${minsLeft}m` : "!",
+    color: f === 2 ? rose : amber,
+    iconPrefix: `alert-${f}`,
+  };
+}
+
+export function iconSetFor(prefix: string): Record<string, string> {
+  return {
+    "16": `icons/${prefix}-16.png`,
+    "32": `icons/${prefix}-32.png`,
+    "48": `icons/${prefix}-48.png`,
+    "128": `icons/${prefix}-128.png`,
+  };
+}
+
 export function formatClock(sec: number): string {
   const s = Math.max(0, Math.floor(sec));
   const h = Math.floor(s / 3600);

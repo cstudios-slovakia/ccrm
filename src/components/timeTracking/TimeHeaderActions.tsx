@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import { EllipsisVertical, Plus, Settings as SettingsIcon } from "lucide-react";
+import { EllipsisVertical, Plus, Puzzle, Settings as SettingsIcon } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
+import type { Language } from "../../utils/translations";
+import { ChromeExtensionDialog } from "./ChromeExtensionDialog";
 import { requestNewTimeEntry } from "./timeCreateBridge";
 
 /**
- * The page header's actions: "+ Add entry manually" (opens the new-entry drawer) and a ⋯ menu.
+ * The page header's actions: "Chrome extension" (download + pair for every user),
+ * "+ Add entry manually" (opens the new-entry drawer) and a ⋯ menu.
  * The menu holds Settings; it is a menu, not a list of links, so later entries can join it.
  */
-export function TimeHeaderActions({ onNavigate }: { onNavigate: (route: string) => void }) {
+export function TimeHeaderActions({ onNavigate, language }: { onNavigate: (route: string) => void; language: Language }) {
   const { t } = useTimeTracking();
   const [open, setOpen] = useState(false);
+  const [extensionOpen, setExtensionOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -29,10 +33,15 @@ export function TimeHeaderActions({ onNavigate }: { onNavigate: (route: string) 
   const control = "inline-flex h-10 items-center justify-center gap-2 rounded-md border border-gray-200 bg-white text-ui font-semibold text-gray-700 transition-colors hover:bg-gray-50 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-entity";
   return (
     <>
+      <button type="button" onClick={() => setExtensionOpen(true)} data-testid="time-extension-button" className={`${control} px-3.5`}>
+        <Puzzle className="size-4" />
+        <span className="hidden sm:inline">{t("Chrome extension", "Rozšírenie Chrome", "Chrome-bővítmény")}</span>
+      </button>
       <button type="button" onClick={() => requestNewTimeEntry({})} data-testid="time-add-entry" className={`${control} px-4`}>
         <Plus className="size-4" />
         {t("Add entry manually", "Pridať záznam ručne", "Bejegyzés kézi hozzáadása")}
       </button>
+      <ChromeExtensionDialog open={extensionOpen} onClose={() => setExtensionOpen(false)} language={language} />
       <div ref={wrap} className="relative">
         <button
           type="button"

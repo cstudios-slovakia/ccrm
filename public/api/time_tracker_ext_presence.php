@@ -60,8 +60,13 @@ function ccrm_ttx_resume(\PDO $pdo, array $user, array $device, array $body, arr
     }
     $viewer = ccrm_ttx_viewer($scope, $userId);
     $employee = ccrm_tt_employee_for_user($pdo, $userId);
-    foreach (ccrm_tt_running_rows($pdo, $userId) as $r) {
-        ccrm_tt_price($pdo, $userId, $r['entry_date'], null, $settings, true); // the switch may stop these
+    $mode = (($body['mode'] ?? 'switch') === 'parallel') ? 'parallel' : 'switch';
+    $parallelCfg = ccrm_tt_parallel_settings($settings);
+    $canParallel = ccrm_can($scope, 'time_tracking_parallel');
+    if ($mode === 'switch') {
+        foreach (ccrm_tt_running_rows($pdo, $userId) as $r) {
+            ccrm_tt_price($pdo, $userId, $r['entry_date'], null, $settings, true); // the switch may stop these
+        }
     }
 
     $nowUtc = ccrm_tt_now_utc();
@@ -90,25 +95,34 @@ function ccrm_ttx_resume(\PDO $pdo, array $user, array $device, array $body, arr
                 ccrm_tt_clear_pause($pdo, (string)$row['id'], null);
                 $alreadyId = (string)$same['id'];
             } else {
-                $stopped = ccrm_tt_end_entries($pdo, $userId, array_column($running, 'id'), $nowUtc, 'switch', null, null, false);
-                if (ccrm_tt_clear_pause($pdo, (string)$row['id'], null)) {
-                    $newId = ccrm_tt_new_id();
-                    $pdo->prepare(
-                        "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `task_id`, `ticket_id`, `description`, `title_snapshot`, `note`, `entry_date`, `start_at`, `billable`, `tags`, `source`, `origin_type`, `origin_id`, `device_id`, `continues_id`)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'extension', ?, ?, ?, ?)"
-                    )->execute([
-                        $newId, $userId, $userId, $employee['id'] ?? null, $row['project_id'], $row['task_id'], $row['ticket_id'],
-                        $row['description'], $row['title_snapshot'], $row['note'], ccrm_tt_local_date($nowUtc), $nowUtc, (int)$row['billable'],
-                        $row['tags'] ?? '[]', $row['origin_type'], $row['origin_id'], (string)$device['id'], (string)$row['id'],
-                    ]);
+                $refusal = $mode === 'parallel' ? ccrm_tt_parallel_refusal($running, $row, $parallelCfg, $canParallel) : null;
+                if ($refusal !== null) {
+                    $fail = [$refusal['code'], 409];
+                } else {
+                    if ($mode === 'switch') {
+                        $stopped = ccrm_tt_end_entries($pdo, $userId, array_column($running, 'id'), $nowUtc, 'switch', null, null, false);
+                    }
+                    if (ccrm_tt_clear_pause($pdo, (string)$row['id'], null)) {
+                        $newId = ccrm_tt_new_id();
+                        $pdo->prepare(
+                            "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `task_id`, `ticket_id`, `description`, `title_snapshot`, `note`, `entry_date`, `start_at`, `billable`, `tags`, `source`, `origin_type`, `origin_id`, `device_id`, `continues_id`)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'extension', ?, ?, ?, ?)"
+                        )->execute([
+                            $newId, $userId, $userId, $employee['id'] ?? null, $row['project_id'], $row['task_id'], $row['ticket_id'],
+                            $row['description'], $row['title_snapshot'], $row['note'], ccrm_tt_local_date($nowUtc), $nowUtc, (int)$row['billable'],
+                            $row['tags'] ?? '[]', $row['origin_type'], $row['origin_id'], (string)$device['id'], (string)$row['id'],
+                        ]);
+                    }
+                    $touched = $stopped;
+                    if ($newId !== null) {
+                        $touched[] = ['id' => $newId, 'user_id' => $userId, 'start_at' => $nowUtc, 'end_at' => null, 'entry_date' => ccrm_tt_local_date($nowUtc)];
+                    }
+                    ccrm_tt_settle_rows($pdo, $touched);
                 }
-                $touched = $stopped;
-                if ($newId !== null) {
-                    $touched[] = ['id' => $newId, 'user_id' => $userId, 'start_at' => $nowUtc, 'end_at' => null, 'entry_date' => ccrm_tt_local_date($nowUtc)];
-                }
-                ccrm_tt_settle_rows($pdo, $touched);
             }
-            ccrm_tt_presence_touch($pdo, $userId, $nowUtc); // resume: anchor = now (C6)
+            if ($fail === null) {
+                ccrm_tt_presence_touch($pdo, $userId, $nowUtc); // resume: anchor = now (C6)
+            }
         }
         $pdo->commit();
     } catch (\Throwable $e) {

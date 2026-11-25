@@ -29,19 +29,18 @@ function crc32(buffer) {
   return ~crc >>> 0;
 }
 
-function png(size, r, g, b) {
-  const raw = Buffer.alloc((1 + size * 3) * size);
-  const cx = size / 2;
+function rgbaPng(size, pixelFn) {
+  const raw = Buffer.alloc((1 + size * 4) * size);
   for (let y = 0; y < size; y++) {
+    const rowOff = y * (1 + size * 4);
+    raw[rowOff] = 0;
     for (let x = 0; x < size; x++) {
-      const dx = x - cx + 0.5;
-      const dy = y - cx + 0.5;
-      const mark = dx * dx + dy * dy < (size * 0.18) ** 2;
-      const o = y * (1 + size * 3);
-      raw[o] = 0;
-      raw[o + 1 + x * 3] = mark ? 255 : r;
-      raw[o + 2 + x * 3] = mark ? 255 : g;
-      raw[o + 3 + x * 3] = mark ? 255 : b;
+      const [r, g, b, a] = pixelFn(x + 0.5, y + 0.5, size);
+      const o = rowOff + 1 + x * 4;
+      raw[o] = Math.max(0, Math.min(255, Math.round(r)));
+      raw[o + 1] = Math.max(0, Math.min(255, Math.round(g)));
+      raw[o + 2] = Math.max(0, Math.min(255, Math.round(b)));
+      raw[o + 3] = Math.max(0, Math.min(255, Math.round(a)));
     }
   }
   const chunk = (type, data) => {
@@ -56,13 +55,75 @@ function png(size, r, g, b) {
   ihdr.writeUInt32BE(size, 0);
   ihdr.writeUInt32BE(size, 4);
   ihdr[8] = 8;
-  ihdr[9] = 2;
+  ihdr[9] = 6; // RGBA
   return Buffer.concat([
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
     chunk("IHDR", ihdr),
     chunk("IDAT", deflateSync(raw)),
     chunk("IEND", Buffer.alloc(0)),
   ]);
+}
+
+function drawTrackerIcon(bgRgb, mode, frame = 0) {
+  return (x, y, s) => {
+    const cx = s / 2;
+    const cy = s / 2;
+    const dx = x - cx;
+    const dy = y - cy;
+    const dist = Math.hypot(dx, dy);
+    const edge = 0.75;
+
+    // Alert pulse outer halo for alert-0..3 frames
+    const maxR = s * 0.46;
+    let bodyR = maxR;
+    let haloAlpha = 0;
+    if (mode === "alert") {
+      const ratios = [0.76, 0.88, 0.98, 0.88];
+      const haloR = maxR * ratios[frame % 4];
+      bodyR = maxR * 0.74;
+      if (dist <= haloR && dist > bodyR - edge) {
+        const ringAlpha = Math.max(0, Math.min(1, haloR - dist + edge)) * (frame === 2 ? 0.85 : frame === 0 ? 0.35 : 0.65);
+        haloAlpha = ringAlpha;
+      }
+    }
+
+    const bodyAlpha = Math.max(0, Math.min(1, bodyR - dist + edge));
+    if (bodyAlpha <= 0 && haloAlpha <= 0) return [0, 0, 0, 0];
+
+    let [r, g, b] = bgRgb;
+    let alpha = bodyAlpha;
+    if (bodyAlpha <= 0 && haloAlpha > 0) {
+      return [bgRgb[0], bgRgb[1], bgRgb[2], haloAlpha * 255];
+    }
+
+    // Inner glyph
+    const nr = dist / bodyR;
+    const nx = dx / bodyR;
+    const ny = dy / bodyR;
+    let glyph = 0;
+    if (mode === "idle") {
+      // Clock ring + hands (12 o'clock and 3 o'clock)
+      if (Math.abs(nr - 0.66) < 0.1) glyph = 1;
+      else if (Math.abs(nx) < 0.09 && ny >= -0.46 && ny <= 0.05) glyph = 1;
+      else if (Math.abs(ny) < 0.09 && nx >= -0.04 && nx <= 0.38) glyph = 1;
+    } else if (mode === "running") {
+      // Clean white center dot + crisp clock ring
+      if (Math.abs(nr - 0.68) < 0.09) glyph = 0.4;
+      if (nr < 0.34) glyph = 1;
+    } else if (mode === "alert") {
+      // Exclamation mark ("!")
+      if (Math.abs(nx) < 0.14 && ny >= -0.52 && ny <= 0.14) glyph = 1;
+      else if (Math.hypot(nx, ny - 0.42) < 0.15) glyph = 1;
+    }
+
+    if (glyph > 0) {
+      r = r * (1 - glyph) + 255 * glyph;
+      g = g * (1 - glyph) + 255 * glyph;
+      b = b * (1 - glyph) + 255 * glyph;
+    }
+    if (haloAlpha > bodyAlpha) alpha = haloAlpha;
+    return [r, g, b, alpha * 255];
+  };
 }
 
 async function walk(dir) {
@@ -125,7 +186,21 @@ function zipStore(files) {
 
 const iconDir = join(extensionRoot, "public", "icons");
 await mkdir(iconDir, { recursive: true });
-await writeFile(join(iconDir, "icon128.png"), png(128, 13, 148, 136));
+const SIZES = [16, 32, 48, 128];
+for (const size of SIZES) {
+  await writeFile(join(iconDir, `icon-${size}.png`), rgbaPng(size, drawTrackerIcon([13, 148, 136], "idle")));
+  await writeFile(join(iconDir, `running-${size}.png`), rgbaPng(size, drawTrackerIcon([225, 29, 72], "running")));
+  const alertColors = [
+    [245, 158, 11],
+    [239, 108, 36],
+    [225, 29, 72],
+    [239, 108, 36],
+  ];
+  for (let frame = 0; frame < 4; frame++) {
+    await writeFile(join(iconDir, `alert-${frame}-${size}.png`), rgbaPng(size, drawTrackerIcon(alertColors[frame], "alert", frame)));
+  }
+}
+await writeFile(join(iconDir, "icon128.png"), rgbaPng(128, drawTrackerIcon([13, 148, 136], "idle")));
 
 await build({ configFile: join(extensionRoot, "vite.config.ts") });
 

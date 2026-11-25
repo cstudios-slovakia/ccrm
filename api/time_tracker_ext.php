@@ -74,7 +74,7 @@ if (preg_match('/^Bearer\s+(ttk_[a-f0-9]{64})$/i', $authHeader, $m)) {
 }
 $extVersion = (string)($_SERVER['HTTP_X_CCRM_EXTENSION_VERSION'] ?? ($body['version'] ?? ''));
 
-$deviceActions = ['pair', 'running', 'start', 'stop', 'confirm', 'resume', 'recent', 'projects', 'tasks', 'activity', 'unsortedCount', 'capture'];
+$deviceActions = ['pair', 'running', 'start', 'stop', 'pause', 'update', 'confirm', 'resume', 'recent', 'projects', 'tasks', 'myTasks', 'activity', 'unsortedCount', 'capture'];
 $rulesAsDevice = $action === 'rules' && $bearer !== '' && $method === 'GET';
 
 try {
@@ -138,9 +138,22 @@ try {
             if ($method !== 'GET') {
                 ccrm_ttx_fail('method_not_allowed', 405);
             }
+            $pCfg = ccrm_tt_parallel_settings($settings);
+            $psCfg = ccrm_tt_presence_settings($settings);
             // {entry: first running (old extensions), running: Entry[], count, workedTodaySeconds, serverNow,
-            //  presence: the D7.1 state, paused: Entry[] (+pauseExpiresAt)} (TT2 phase 10)
-            ccrm_ttx_out(ccrm_ttx_running_payload($pdo, $userId, $viewer) + ccrm_ttx_presence_payload($pdo, $userId, $settings, $viewer));
+            //  presence: the D7.1 state, paused: Entry[] (+pauseExpiresAt), capabilities}
+            ccrm_ttx_out(
+                ccrm_ttx_running_payload($pdo, $userId, $viewer)
+                + ccrm_ttx_presence_payload($pdo, $userId, $settings, $viewer)
+                + [
+                    'capabilities' => [
+                        'parallelAllowed' => !empty($pCfg['enabled']) && ccrm_can($scope, 'time_tracking_parallel'),
+                        'maxParallel' => (int)$pCfg['maxParallel'],
+                        'sameProject' => (string)$pCfg['sameProject'],
+                        'presenceMinutes' => (int)$psCfg['promptAfterMinutes'],
+                    ],
+                ]
+            );
         }
         if ($action === 'recent') {
             if ($method !== 'GET') {
@@ -165,6 +178,14 @@ try {
             }
             ccrm_ttx_out(['tasks' => ccrm_ttx_tasks($pdo, $scope, $projectId)]);
         }
+        if ($action === 'myTasks') {
+            if ($method !== 'GET') {
+                ccrm_ttx_fail('method_not_allowed', 405);
+            }
+            $q = (string)($_GET['q'] ?? '');
+            $projectId = ccrm_tt_nullable_id($_GET['projectId'] ?? null);
+            ccrm_ttx_out(['tasks' => ccrm_ttx_my_tasks($pdo, $user, $scope, $q, $projectId)]);
+        }
         if ($action === 'unsortedCount') {
             if ($method !== 'GET') {
                 ccrm_ttx_fail('method_not_allowed', 405);
@@ -179,8 +200,7 @@ try {
             if (!$result['ok']) {
                 ccrm_ttx_fail($result['code'], (int)$result['status'], isset($result['entry']) ? ['entry' => $result['entry']] : []);
             }
-            // Always a switch (TT2 D5.6): every running entry was stopped; `stopped` = the first, for old extensions.
-            ccrm_ttx_out(['entry' => $result['entry'], 'stopped' => $result['stopped'], 'stoppedAll' => $result['stoppedAll'], 'mode' => 'switch'], 201);
+            ccrm_ttx_out(['entry' => $result['entry'], 'stopped' => $result['stopped'], 'stoppedAll' => $result['stoppedAll'], 'mode' => $result['mode'] ?? 'switch'], 201);
         }
         if ($action === 'stop') {
             if ($method !== 'POST') {
@@ -190,6 +210,26 @@ try {
             if (!$result['ok']) {
                 // ambiguous (409): several timers run and no id was sent; `running` = how many.
                 ccrm_ttx_fail($result['code'], (int)$result['status'], $result['extra'] ?? []);
+            }
+            ccrm_ttx_out(['entry' => $result['entry']]);
+        }
+        if ($action === 'pause') {
+            if ($method !== 'POST') {
+                ccrm_ttx_fail('method_not_allowed', 405);
+            }
+            $result = ccrm_ttx_pause($pdo, $user, $body, $settings, $scope);
+            if (!$result['ok']) {
+                ccrm_ttx_fail($result['code'], (int)$result['status'], $result['extra'] ?? []);
+            }
+            ccrm_ttx_out(['paused' => $result['paused'], 'entry' => $result['entry'], 'presence' => ccrm_tt_presence_state($pdo, $userId, $settings, ccrm_tt_now_utc())]);
+        }
+        if ($action === 'update') {
+            if ($method !== 'POST') {
+                ccrm_ttx_fail('method_not_allowed', 405);
+            }
+            $result = ccrm_ttx_update_running($pdo, $user, $body, $scope);
+            if (!$result['ok']) {
+                ccrm_ttx_fail($result['code'], (int)$result['status']);
             }
             ccrm_ttx_out(['entry' => $result['entry']]);
         }
