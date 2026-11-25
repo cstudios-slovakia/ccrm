@@ -1,1 +1,0 @@
-- **Docs: the two `projectStatuses` specs and the three entry-drawer defects are marked resolved where older notes called them known failures** (`docs/TIME-TRACKING-DESIGN-PARITY.md`, new section "Defects left after pass 2: resolved"; the pass-2 prompts under `docs/prompts/`; `systemAudit.md`): so a later agent does not skip or "fix" tests that pass.

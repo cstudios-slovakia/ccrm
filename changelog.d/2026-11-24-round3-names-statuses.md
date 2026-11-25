@@ -1,6 +1,0 @@
-- **Names: the surname-first order (Hungarian) is now display-only and follows each user's app language.** Stored names are never composed, split or rewritten again (the two earlier name-order changes are reverted); a contact person or employee name stored as exactly its first and last name is shown turned around for Hungarian viewers, anything typed differently is shown as stored (`src/utils/nameOrder.ts`).
-- **Projects: the Employees filter and the project's Employees picker list only Employees-module records of type Employee** (no contractors, payroll lines or other logins).
-- **Timeline events: a title-less event is saved under the first line of its details, then the event type's name.**
-- **Settings: a new sub-status starts in its main status's colour** (lead states and project statuses; still editable).
-- **Lists: column resize handles are faintly visible, with a "drag to resize, double-click to reset" hint.**
-- **Roadmap: feature ideas for what assigning a PM or employees to a project could unlock.**

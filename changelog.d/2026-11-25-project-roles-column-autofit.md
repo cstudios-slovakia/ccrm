@@ -1,2 +1,0 @@
-- **Projects: the PM filter lists users with the Project Manager role, and the Employees filter and the project's Employees picker list every other user** (employee, contractor or admin alike), replacing the Employees-module type rule.
-- **Lists: double-clicking a column's resize handle now fits the column to its content** (before, it cleared the stored width, which did nothing visible once any column had been dragged).

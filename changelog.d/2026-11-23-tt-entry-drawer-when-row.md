@@ -1,2 +1,0 @@
-- **Time tracking: Date, Start, End and Duration fit inside the entry drawer** (`EntryDrawer.tsx`): the Duration field ran past the drawer's right edge (since phase 1); the row now gives the date the wider column and lets every field shrink, at all View sizes and widths, for a new and an existing entry.
-- **Tests**: `timeTracking.spec.ts` (the four fields stay inside the drawer: 3 View sizes x 3 widths).

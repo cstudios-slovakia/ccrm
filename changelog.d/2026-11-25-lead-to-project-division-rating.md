@@ -1,1 +1,0 @@
-- **Convert lead to project now also carries the lead's division and star rating** (`utils/leadToProject.ts`): until now every other field was copied but these two were left empty. A lead with no division stays unassigned, and a lead without a real 1-5 rating leaves the project unrated. Covered by `leadToProject.test.ts`.
