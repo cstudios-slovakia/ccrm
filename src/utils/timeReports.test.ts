@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  allocationOf,
   buildReport,
   buildSalaryReport,
   clientPdfRows,
@@ -267,4 +268,43 @@ test("CSV carries worked hours next to hours and leverage in summary; the client
   assert.equal(detailed[0], "\uFEFFDate,Person,Project,Title,Hours,Worked hours,Billable,Cost EUR");
   assert.equal(detailed[1], "2026-05-04,u1,p,A,1.00,0.50,1,1.00");
   assert.deepEqual(clientPdfRows(report, { person: () => "x", project: () => "y" }).map((r) => r.hours), ["1.00", "1.00"]);
+});
+
+test("client-only task entries count under client work, client filter/grouping, and salary allocation; project+client counts in both", () => {
+  const entries: ReportEntry[] = [
+    { id: "direct-client", userId: "u1", projectId: null, clientId: "c1", entryDate: "2026-05-04", title: "Client task only", durationSec: 3600, billable: true, cost: 20, currency: "EUR" },
+    { id: "proj-client", userId: "u1", projectId: "p1", clientId: "c1", entryDate: "2026-05-04", title: "Project+client task", durationSec: 1800, billable: true, cost: 10, currency: "EUR" },
+    { id: "unsorted", userId: "u1", projectId: null, clientId: null, entryDate: "2026-05-04", title: "Unsorted task", durationSec: 900, billable: false, cost: 5, currency: "EUR" },
+  ];
+  const byClient = buildReport({
+    entries,
+    filters: { from: "2026-05-01", to: "2026-05-31", userId: null, projectId: null, clientId: null, billable: "all", groupBy: "client" },
+    rounding: { minutes: 0, mode: "nearest" },
+    viewerUserId: "u1",
+    canCosts: true,
+    currency: "EUR",
+    workingDays: 20,
+  });
+  assert.equal(byClient.groups.find((g) => g.key === "c1")?.seconds, 5400);
+  assert.equal(byClient.groups.find((g) => g.key === "")?.seconds, 900);
+  assert.deepEqual(byClient.totals.costSplit.client, { EUR: 30 });
+  assert.deepEqual(byClient.totals.costSplit.unallocated, { EUR: 5 });
+
+  const filteredByClient = buildReport({
+    entries,
+    filters: { from: "2026-05-01", to: "2026-05-31", userId: null, projectId: null, clientId: "c1", billable: "all", groupBy: "project" },
+    rounding: { minutes: 0, mode: "nearest" },
+    viewerUserId: "u1",
+    canCosts: true,
+    currency: "EUR",
+    workingDays: 20,
+  });
+  assert.deepEqual(filteredByClient.lines.map((l) => l.id), ["direct-client", "proj-client"]);
+  assert.equal(filteredByClient.groups.find((g) => g.key === "p1")?.seconds, 1800);
+
+  const projects = [{ id: "p1", isInternal: false }, { id: "int1", isInternal: true }];
+  assert.equal(allocationOf(null, projects, "c1"), "client");
+  assert.equal(allocationOf("p1", projects, "c1"), "client");
+  assert.equal(allocationOf("int1", projects, null), "internal");
+  assert.equal(allocationOf(null, projects, null), "unallocated");
 });

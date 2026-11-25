@@ -86,7 +86,7 @@ if ($to !== '') {
 
 $sql = "
     SELECT
-        COALESCE(NULLIF(te.`project_id`, ''), NULLIF(t.`related_project_id`, ''), NULLIF(tk.`project_id`, '')) AS `eff_project_id`,
+        COALESCE(NULLIF(t.`related_project_id`, ''), NULLIF(te.`project_id`, ''), NULLIF(tk.`project_id`, '')) AS `eff_project_id`,
         te.`user_id`,
         te.`employee_id`,
         COALESCE(SUM(te.`duration_sec`), 0) AS `sec`,

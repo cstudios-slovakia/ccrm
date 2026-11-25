@@ -165,6 +165,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
   // Upload form state
   const [uploadCategory, setUploadCategory] = useState<AgencyFileCategory>("other");
   const [previewFile, setPreviewFile] = useState<AgencyWorkerFile | null>(null);
+  const [expiryDrafts, setExpiryDrafts] = useState<Record<string, string>>({});
 
   const syncDraftsFromWorker = (w: AgencyWorker) => {
     setProfileDraft((w.profile || {}) as AgencyProfileData);
@@ -200,6 +201,7 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
   };
 
   useEffect(() => {
+    setExpiryDrafts({});
     loadDetail();
   }, [workerId]);
 
@@ -557,8 +559,14 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
   const handleChecklistChange = async (idx: number, patch: Partial<AgencyWorkerChecklistItem>) => {
     if (!rights.edit) return;
     const updated = checklist.map((it, i) => (i === idx ? { ...it, ...patch } : it));
-    await saveAgencyChecklist(worker.id, updated);
-    await loadDetail();
+    setDetail((prev) => (prev ? { ...prev, checklist: updated } : prev));
+    try {
+      const savedChecklist = await saveAgencyChecklist(worker.id, updated);
+      setDetail((prev) => (prev ? { ...prev, checklist: savedChecklist } : prev));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save checklist");
+      await loadDetail();
+    }
   };
 
   const handleFileUpload = async (file: File | undefined, cat: AgencyFileCategory, checklistItemId?: string | null) => {
@@ -1678,10 +1686,35 @@ export const AgencyWorkerDetailView: React.FC<AgencyWorkerDetailViewProps> = ({
                                 <input
                                   type="date"
                                   disabled={!rights.edit}
-                                  value={item.expiresAt || ""}
-                                  onChange={(e) =>
-                                    handleChecklistChange(idx, { expiresAt: e.target.value || null })
+                                  value={
+                                    expiryDrafts[item.itemKey] !== undefined
+                                      ? expiryDrafts[item.itemKey]
+                                      : (item.expiresAt || "")
                                   }
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setExpiryDrafts((prev) => ({ ...prev, [item.itemKey]: val }));
+                                    if (val === "" || /^(19|20|21)\d{2}-\d{2}-\d{2}$/.test(val)) {
+                                      setExpiryDrafts((prev) => {
+                                        const next = { ...prev };
+                                        delete next[item.itemKey];
+                                        return next;
+                                      });
+                                      handleChecklistChange(idx, { expiresAt: val || null });
+                                    }
+                                  }}
+                                  onBlur={(e) => {
+                                    const val = e.target.value;
+                                    setExpiryDrafts((prev) => {
+                                      if (!(item.itemKey in prev)) return prev;
+                                      const next = { ...prev };
+                                      delete next[item.itemKey];
+                                      return next;
+                                    });
+                                    if ((val === "" || /^(19|20|21)\d{2}-\d{2}-\d{2}$/.test(val)) && (val || null) !== (item.expiresAt || null)) {
+                                      handleChecklistChange(idx, { expiresAt: val || null });
+                                    }
+                                  }}
                                   className={`px-2 py-1 rounded-lg border text-caption font-semibold ${
                                     isExpiryRed
                                       ? "bg-rose-50 border-rose-400 text-rose-800 ring-1 ring-rose-300"

@@ -1,19 +1,47 @@
 {
   "manifest_version": 3,
   "name": "Koperniq Time Tracker",
-  "version": "1.1.0",
-  "description": "Track time in Koperniq. Activity capture stays off until you turn it on.",
+  "version": "2.0.0",
+  "description": "Side panel for Koperniq tasks & time tracking with 50-minute pulsing check-ins and parallel timers.",
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "Koperniq Time Tracker",
-    "default_icon": { "128": "icons/icon128.png" }
+    "default_title": "Koperniq Time & Tasks",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "popup.html"
   },
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
-  "permissions": ["storage", "alarms", "idle"],
+  "permissions": ["storage", "alarms", "idle", "notifications", "offscreen", "contextMenus", "sidePanel"],
   "optional_permissions": ["tabs"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
-  "icons": { "128": "icons/icon128.png" }
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+T",
+        "mac": "Alt+Shift+T"
+      },
+      "description": "Open Koperniq Time Tracker"
+    },
+    "quick-confirm-or-toggle": {
+      "suggested_key": {
+        "default": "Alt+Shift+S",
+        "mac": "Alt+Shift+S"
+      },
+      "description": "Confirm 50-min check-in or pause/resume timer"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
 }

@@ -35,12 +35,27 @@ export function TaskStatusTimerBridge({ deps, actions }: { deps: TimeDeps; actio
 
 async function runStatusTimerActions(
   tt: TimeTrackingContextValue,
-  resolveTaskProject: ReturnType<typeof useTimeLookups>["resolveTaskProject"],
+  _resolveTaskProject: ReturnType<typeof useTimeLookups>["resolveTaskProject"],
   deps: TimeDeps,
   actions: unknown,
   before: readonly Task[],
   after: readonly Task[],
 ): Promise<void> {
+  // Refresh time totals and open time views whenever a task's project, client, or title changes.
+  const beforeById = new Map(before.map((x) => [x.id, x]));
+  const linkChanged = after.some((next) => {
+    const prev = beforeById.get(next.id);
+    if (!prev) return false;
+    return (
+      (prev.relatedProjectId ?? null) !== (next.relatedProjectId ?? null) ||
+      (prev.relatedLeadId ?? null) !== (next.relatedLeadId ?? null) ||
+      prev.title !== next.title
+    );
+  });
+  if (linkChanged && typeof window !== "undefined") {
+    window.setTimeout(() => tt.bump(), 600);
+  }
+
   const plan = planStatusTimerActions({
     before,
     after,
@@ -58,15 +73,8 @@ async function runStatusTimerActions(
     if (!task) continue;
     const name = task.title || "…";
     if (step.action === "start") {
-      const resolved = resolveTaskProject(task);
-      let projectId = resolved.projectId;
-      if (!projectId && resolved.candidates.length > 1) {
-        const picked = await tt.requestProject("start");
-        if (!picked) continue; // the user cancelled "Which project?": no timer
-        projectId = picked;
-      }
       await tt.start(
-        { taskId: task.id, projectId, description: null, originType: "task", originId: task.id },
+        { taskId: task.id, projectId: task.relatedProjectId || null, description: null, originType: "task", originId: task.id },
         {
           anchor: null,
           notice: () => t(`Timer started for “${name}”.`, `Časovač spustený pre „${name}“.`, `Időzítő elindítva: „${name}”.`),

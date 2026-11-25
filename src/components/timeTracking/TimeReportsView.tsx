@@ -93,13 +93,22 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
   const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-GB";
 
   const clients = useMemo(() => {
-    const ids = new Set<string>();
+    const names = new Map<string, string>();
     for (const p of deps.projects) {
       const id = clientIdOf(p, deps.leads);
-      if (id) ids.add(id);
+      if (id) names.set(id, deps.leads.find((l) => l.id === id)?.name || id);
     }
-    return [...ids].map((id) => ({ id, name: deps.leads.find((l) => l.id === id)?.name || id })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [deps.leads, deps.projects]);
+    for (const e of entries) {
+      if (e.clientId) names.set(e.clientId, e.clientName || deps.leads.find((l) => l.id === e.clientId)?.name || e.clientId);
+    }
+    for (const tk of deps.tasks) {
+      if (!tk.relatedLeadId) continue;
+      const lead = deps.leads.find((l) => l.id === tk.relatedLeadId);
+      const cid = lead ? (isClientRecord(lead) ? lead.id ?? null : lead.clientId || lead.id || null) : null;
+      if (cid && !names.has(cid)) names.set(cid, deps.leads.find((l) => l.id === cid)?.name || cid);
+    }
+    return [...names.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [deps.leads, deps.projects, deps.tasks, entries]);
 
   const workingDayList = useMemo(() => {
     const cal = tt.calendarFor(tt.workCountry);
@@ -128,7 +137,7 @@ export function TimeReportsView({ deps }: { deps: TimeDeps }) {
         id: e.id,
         userId: e.userId,
         projectId: e.projectId,
-        clientId: e.projectId ? clientByProject.get(e.projectId) ?? null : null,
+        clientId: e.clientId ?? (e.projectId ? clientByProject.get(e.projectId) ?? null : null),
         entryDate: e.entryDate,
         title: e.title,
         durationSec: entrySeconds(e, clock),

@@ -3,6 +3,7 @@ import { CheckSquare, GripVertical } from "lucide-react";
 import { Surface } from "../layout";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
+import { clientForTask } from "../../utils/timeLinks.ts";
 import { entryDurationSec } from "../../utils/timeCalendar.ts";
 import { formatDuration, projectColor, todayIso, weekDays } from "../../utils/timeTracking.ts";
 import { RoundTimerButton } from "./RoundTimerButton";
@@ -59,7 +60,8 @@ export function CalendarTaskRail({ deps }: { deps: TimeDeps }) {
             <p className="text-ui text-gray-500">{t("No open tasks due or tracked this week.", "Žiadne otvorené úlohy s termínom alebo časom tento týždeň.", "Nincs ezen a héten esedékes vagy időt kapott nyitott feladat.")}</p>
           )}
           {tasks.map((task) => {
-            const projectId = lookups.resolveTaskProject(task).projectId;
+            const projectId = task.relatedProjectId || null;
+            const party = !projectId ? clientForTask(task, deps.leads) : null;
             const tracked = trackedByTask.get(task.id) ?? 0;
             return (
               <div key={task.id} className="flex items-center gap-1.5 rounded-md border border-gray-200/80 px-2 py-1.5">
@@ -83,8 +85,10 @@ export function CalendarTaskRail({ deps }: { deps: TimeDeps }) {
                         <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: projectColor(projectId) }} />
                         <span className="truncate text-gray-500">{lookups.projectName(projectId)}</span>
                       </>
+                    ) : party ? (
+                      <span className="truncate text-gray-500">{party.name}</span>
                     ) : (
-                      <span className="truncate text-amber-700">{t("No project", "Bez projektu", "Nincs projekt")}</span>
+                      <span className="truncate text-gray-400">{t("Unsorted", "Nezaradené", "Rendezetlen")}</span>
                     )}
                     {tracked > 0 && (
                       <span className="shrink-0 tabular-nums text-gray-500">

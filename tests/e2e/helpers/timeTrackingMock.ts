@@ -28,6 +28,7 @@ interface MockContext {
   tasks: Json[];
   tickets?: Json[];
   projects: Json[];
+  leads?: Json[];
   /** user id -> the employee record pay is taken from (absent = no employee linked). */
   employees: Record<string, { id: string; kind: string; salaryType: string; salaryAmount: number; workCountry?: HolidayCountry | null }>;
   /** Entries to start with. */
@@ -106,18 +107,48 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
   // The server trims the Description and stores an empty one as NULL.
   const cleanNote = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 1000) : null);
 
+  const effProjectOf = (e: Json): string | null => {
+    const task = e.taskId ? ctx.tasks.find((t) => t.id === e.taskId) : null;
+    if (task?.relatedProjectId) return task.relatedProjectId;
+    if (e.projectId) return e.projectId;
+    const ticket = !e.taskId && e.ticketId ? (ctx.tickets ?? []).find((t) => t.id === e.ticketId) : null;
+    return ticket?.projectId ?? null;
+  };
+
+  const leadById = (id: string | null | undefined): Json | null =>
+    id ? (ctx.leads ?? []).find((l) => l.id === id) ?? null : null;
+
+  const effClientOf = (e: Json, effProjId?: string | null): string | null => {
+    const pid = effProjId !== undefined ? effProjId : effProjectOf(e);
+    const project = pid ? ctx.projects.find((p) => p.id === pid) : null;
+    if (project) {
+      if (project.clientId) return project.clientId;
+      if (project.leadId) return leadById(project.leadId)?.clientId || project.leadId;
+    }
+    const task = e.taskId ? ctx.tasks.find((t) => t.id === e.taskId) : null;
+    if (task?.relatedLeadId) return leadById(task.relatedLeadId)?.clientId || task.relatedLeadId;
+    const ticket = !e.taskId && e.ticketId ? (ctx.tickets ?? []).find((t) => t.id === e.ticketId) : null;
+    if (ticket?.clientId) return leadById(ticket.clientId)?.clientId || ticket.clientId;
+    return null;
+  };
+
   const view = (e: Json): Json => {
     const task = e.taskId ? ctx.tasks.find((t) => t.id === e.taskId) : null;
     const renamed = task ? ctx.tasksRenamed?.get(task.id) ?? task.title : null;
     const ticket = !e.taskId && e.ticketId ? (ctx.tickets ?? []).find((t) => t.id === e.ticketId) : null;
     const ticketTitle = ticket ? ctx.ticketsRenamed?.get(ticket.id) ?? ticket.title ?? ticket.subject : null;
     const title = e.taskId ? (task ? renamed : e.titleSnapshot ?? '') : e.ticketId ? (ticket ? ticketTitle : e.titleSnapshot ?? '') : e.description ?? '';
+    const effProjectId = effProjectOf(e);
+    const effClientId = effClientOf(e, effProjectId);
     const out: Json = {
       ...e,
+      projectId: effProjectId,
+      clientId: effClientId,
+      clientName: effClientId ? (leadById(effClientId)?.name ?? null) : null,
       title,
       titleSource: e.taskId ? 'task' : e.ticketId ? 'ticket' : 'entry',
       titleDeleted: e.taskId ? !task : e.ticketId ? !ticket : false,
-      projectName: ctx.projects.find((p) => p.id === e.projectId)?.name ?? null,
+      projectName: effProjectId ? ctx.projects.find((p) => p.id === effProjectId)?.name ?? null : null,
       running: !!e.startAt && !e.endAt,
       // D6: the three states; a paused item is a closed entry with a marker.
       state: e.startAt && !e.endAt ? 'ongoing' : e.pausedAt ? 'paused' : 'stopped',
@@ -143,10 +174,13 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
     const ticketId = taskId ? null : ('ticketId' in input ? input.ticketId : existing?.ticketId ?? null);
     const ticket = ticketId ? (ctx.tickets ?? []).find((t) => t.id === ticketId) : null;
     if (ticketId && !ticket && ctx.tickets) return { error: 'ticket_not_found' };
-    const projectId = 'projectId' in input && input.projectId ? input.projectId : task?.relatedProjectId ?? ticket?.projectId ?? (taskId === existing?.taskId ? existing?.projectId : null) ?? null;
+    const projectId = taskId
+      ? (!('projectId' in input) && existing && taskId === existing.taskId ? existing.projectId : null)
+      : ('projectId' in input ? input.projectId : ticket?.projectId ?? existing?.projectId ?? null) ?? null;
+    const derivedProject = task ? task.relatedProjectId ?? null : ticket ? ticket.projectId ?? null : projectId;
     const description = taskId || ticketId ? null : ('description' in input ? input.description : existing?.description) ?? null;
     const titleSnapshot = task ? (ctx.tasksRenamed?.get(task.id) ?? task.title) : ticket ? (ctx.ticketsRenamed?.get(ticket.id) ?? ticket.title ?? ticket.subject) : description;
-    return { taskId: taskId ?? null, ticketId: ticketId ?? null, projectId, description, titleSnapshot };
+    return { taskId: taskId ?? null, ticketId: ticketId ?? null, projectId, derivedProject, description, titleSnapshot };
   };
 
   const finish = (e: Json, endIso: string) => {
@@ -242,11 +276,11 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
     const p = settings.parallel ?? DEFAULT_TIME_TRACKING_SETTINGS.parallel;
     if (!p.enabled) return { code: 'parallel_disabled' };
     if (rows.length >= p.maxParallel) return { code: 'parallel_limit', maxParallel: p.maxParallel };
-    const project = norm(links.projectId);
+    const project = norm(links.derivedProject ?? links.projectId);
     if (project && p.sameProject !== 'always') {
       const newLinked = !!(norm(links.taskId) || norm(links.ticketId));
       for (const row of rows) {
-        if (norm(row.projectId) !== project || sameTarget(row, links)) continue;
+        if (norm(effProjectOf(row)) !== project || sameTarget(row, links)) continue;
         const rowLinked = !!(norm(row.taskId) || norm(row.ticketId));
         if (p.sameProject === 'never' || !newLinked || !rowLinked) return { code: 'same_project', entry: row };
       }
@@ -286,12 +320,15 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
         const byTask: Record<string, number> = {};
         const byTicket: Record<string, number> = {};
         const byProject: Record<string, { seconds: number; workedMs: number; cost: number | null; billableValue: number | null; billableComplete: boolean }> = {};
+        const byClient: Record<string, { seconds: number; workedMs: number; cost: number | null }> = {};
         for (const e of entries) {
           if (e.deletedAt || !e.durationSec) continue;
           if (e.taskId) byTask[e.taskId] = (byTask[e.taskId] ?? 0) + e.durationSec;
           if (e.ticketId) byTicket[e.ticketId] = (byTicket[e.ticketId] ?? 0) + e.durationSec;
-          if (e.projectId) {
-            const row = byProject[e.projectId] ?? { seconds: 0, workedMs: 0, cost: 0, billableValue: canCosts ? 0 : null, billableComplete: canCosts };
+          const effPid = effProjectOf(e);
+          const effCid = effClientOf(e, effPid);
+          if (effPid) {
+            const row = byProject[effPid] ?? { seconds: 0, workedMs: 0, cost: 0, billableValue: canCosts ? 0 : null, billableComplete: canCosts };
             row.seconds += e.durationSec;
             row.workedMs += e.workedMs ?? e.durationSec * 1000;
             if (e.userId === caller || canCosts) row.cost = (row.cost ?? 0) + (e.cost ?? 0);
@@ -301,10 +338,18 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
               if (rate == null) row.billableComplete = false;
               else row.billableValue = Math.round(((row.billableValue ?? 0) + (e.durationSec / 3600) * rate) * 100) / 100;
             }
-            byProject[e.projectId] = row;
+            byProject[effPid] = row;
+          }
+          if (effCid) {
+            const crow = byClient[effCid] ?? { seconds: 0, workedMs: 0, cost: 0 };
+            crow.seconds += e.durationSec;
+            crow.workedMs += e.workedMs ?? e.durationSec * 1000;
+            if (e.userId === caller || canCosts) crow.cost = (crow.cost ?? 0) + (e.cost ?? 0);
+            else crow.cost = null;
+            byClient[effCid] = crow;
           }
         }
-        return route.fulfill(ok({ byTask, byTicket, byProject, workedByUserDay: {} }));
+        return route.fulfill(ok({ byTask, byTicket, byProject, byClient, workedByUserDay: {} }));
       }
       if (url.searchParams.get('action') === 'rateCard') {
         const employeeId = url.searchParams.get('employeeId') ?? '';
@@ -323,16 +368,21 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       if (url.searchParams.get('action') === 'usage') {
         if (!access.can('tickets.time')) return route.fulfill(fail('forbidden', 403));
         const projectId = url.searchParams.get('projectId');
-        const rows = entries.filter((e) => !e.deletedAt && e.durationSec && (e.projectId === projectId || (ctx.tickets ?? []).some((t) => t.id === e.ticketId && t.projectId === projectId)));
-        return route.fulfill(ok({ entries: rows.map((e) => ({ id: e.id, projectId: e.projectId, ticketId: e.ticketId, taskId: e.taskId, billable: e.billable, entryDate: e.entryDate, durationSec: e.durationSec })) }));
+        const rows = entries.filter((e) => !e.deletedAt && e.durationSec && effProjectOf(e) === projectId);
+        return route.fulfill(ok({ entries: rows.map((e) => ({ id: e.id, projectId: effProjectOf(e), ticketId: e.ticketId, taskId: e.taskId, billable: e.billable, entryDate: e.entryDate, durationSec: e.durationSec })) }));
       }
       const ticketFilter = url.searchParams.get('ticketId');
       if (ticketFilter && !access.can('tickets.time')) return route.fulfill(fail('forbidden', 403));
+      const projectFilter = url.searchParams.get('projectId');
+      const clientFilter = url.searchParams.get('clientId');
+      const clientIds = clientFilter ? clientFilter.split(',').map((s) => s.trim()).filter(Boolean) : null;
       const from = url.searchParams.get('from') ?? '0000-00-00';
       const to = url.searchParams.get('to') ?? '9999-99-99';
       const who = url.searchParams.get('userId');
       const list = entries
         .filter((e) => !e.deletedAt && e.entryDate >= from && e.entryDate <= to && (!ticketFilter || e.ticketId === ticketFilter))
+        .filter((e) => (!projectFilter || effProjectOf(e) === projectFilter))
+        .filter((e) => (!clientIds || (effClientOf(e) !== null && clientIds.includes(effClientOf(e)!))))
         .filter((e) => (ticketFilter ? true : (!who || who === caller || !canTeam ? e.userId === caller : who === 'all' ? true : e.userId === who)));
       return route.fulfill(ok({ entries: list.map(view), viewer: { userId: caller, canEdit, canTeam, canCosts } }));
     }
@@ -405,7 +455,7 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
     }
 
     if (action === 'stop') {
-      const needsProject = (x: Json) => settings.requireProjectToStop && !x.projectId && access.can('projects');
+      const needsProject = (x: Json) => settings.requireProjectToStop && !x.taskId && !effProjectOf(x) && access.can('projects');
       if (body.all) {
         const rows = runningSet();
         const ids = rows.filter(needsProject).map((x) => x.id);

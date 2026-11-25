@@ -70,7 +70,17 @@ if (!function_exists('ccrm_tt_lock_user')) {
      * non-unique `idx_te_running` that could deadlock two users.
      */
     function ccrm_tt_running_rows(\PDO $pdo, string $userId, bool $lock = false): array {
-        $stmt = $pdo->prepare("SELECT * FROM `time_entries` WHERE `running_guard` = ? ORDER BY `start_at` ASC, `id` ASC");
+        $realTasks = function_exists('ccrm_sql_real_tasks')
+            ? ccrm_sql_real_tasks('t')
+            : "(t.`task_kind` IS NULL OR t.`task_kind` <> 'recurring')";
+        $stmt = $pdo->prepare(
+            "SELECT te.*, COALESCE(NULLIF(t.`related_project_id`, ''), NULLIF(te.`project_id`, ''), NULLIF(k.`project_id`, '')) AS `eff_project_id`
+             FROM `time_entries` te
+             LEFT JOIN `tasks` t ON t.`id` = te.`task_id` AND {$realTasks}
+             LEFT JOIN `tickets` k ON k.`id` = te.`ticket_id`
+             WHERE te.`running_guard` = ?
+             ORDER BY te.`start_at` ASC, te.`id` ASC"
+        );
         $stmt->execute([$userId]);
         return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }

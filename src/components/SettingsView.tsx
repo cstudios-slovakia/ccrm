@@ -30,6 +30,7 @@ import { PaymentMethodSettings } from "./PaymentMethodSettings";
 import { FinanceSettings } from "./FinanceSettings";
 import { MarketingRoiSettings } from "./settings/MarketingRoiSettings";
 import { GithubIntegrationSettings } from "./settings/GithubIntegrationSettings";
+import { ClickUpIntegrationSettings } from "./settings/ClickUpIntegrationSettings";
 import { LeadCustomFieldsSettings } from "./settings/LeadCustomFieldsSettings";
 import { PipelineAttachmentsGuide } from "./settings/PipelineAttachmentsGuide";
 import type { ProjectStatusDef } from "../utils/projects";
@@ -643,6 +644,7 @@ interface SettingsViewProps {
   tickets?: Ticket[];
   setTickets?: (updater: Ticket[] | ((prev: Ticket[]) => Ticket[])) => void;
   onTicketsPolled?: () => void;
+  onClickUpConnectionChange?: (connected: boolean) => void;
 }
 
 // Extract all valid Lucide icon names dynamically for search
@@ -757,7 +759,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setTicketSettings,
   tickets = [],
   setTickets,
-  onTicketsPolled
+  onTicketsPolled,
+  onClickUpConnectionChange
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
 
@@ -7003,6 +7006,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         return <WaaiIntegrationSettings activeLang={userLanguage} />;
       case "integrations/github":
         return <GithubIntegrationSettings userLanguage={userLanguage} />;
+      case "integrations/clickup":
+        return (
+          <ClickUpIntegrationSettings
+            activeLang={userLanguage}
+            canEdit={getPermission("general_config") === "edit"}
+            onConnectionChange={onClickUpConnectionChange}
+          />
+        );
       case "agency/workflow":
         return (
           <AgencySettingsSection

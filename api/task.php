@@ -52,7 +52,7 @@ if ($chkKind->fetchColumn() === 'recurring') {
 }
 
 $taskStmt = $pdo->prepare(
-    "SELECT t.`id`, t.`title`, t.`created_by`,
+    "SELECT t.`id`, t.`title`, t.`created_by`, t.`external_source`,
             u.`name` AS session_user_name
        FROM `tasks` t
        JOIN `users` u ON u.`id` = ?
@@ -64,6 +64,11 @@ $task = $taskStmt->fetch();
 if (!$task) {
     http_response_code(404);
     echo json_encode(['success' => false, 'message' => 'Task not found.']);
+    exit;
+}
+if (($task['external_source'] ?? null) === 'clickup') {
+    http_response_code(409);
+    echo json_encode(['success' => false, 'message' => 'ClickUp-synced tasks are managed in ClickUp.']);
     exit;
 }
 

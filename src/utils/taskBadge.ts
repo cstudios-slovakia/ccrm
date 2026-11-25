@@ -25,6 +25,7 @@ export const countBadgeTasks = (
   let missed = 0;
   let today = 0;
   for (const task of tasks) {
+    if (task.externalSource === "clickup") continue;
     if (task.archived) continue;
     if (!isOnPersonalDashboard(task, userName)) continue;
     if (isDoneTaskState(task.status, taskStates)) continue;

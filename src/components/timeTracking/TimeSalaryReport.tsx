@@ -47,6 +47,7 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
         workedMs: e.workedMs,
         userId: e.userId,
         projectId: e.projectId,
+        clientId: e.clientId ?? null,
         entryDate: e.entryDate,
         durationSec: entrySeconds(e, clock),
         cost: e.cost,

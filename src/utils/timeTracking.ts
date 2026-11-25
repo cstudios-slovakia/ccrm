@@ -50,6 +50,8 @@ export interface TimeEntry {
   employeeId: string | null;
   projectId: string | null;
   projectName?: string | null;
+  clientId?: string | null;
+  clientName?: string | null;
   taskId: string | null;
   ticketId: string | null;
   /** What to show: the task's / ticket's title, else the entry's own text. */
@@ -145,7 +147,7 @@ export const DEFAULT_TIME_TRACKING_SETTINGS: TimeTrackingSettings = {
   hoursPerDay: 8,
   employerMultiplier: 1.352,
   holidayOverrides: {},
-  requireProjectToStop: true,
+  requireProjectToStop: false,
   requireTask: false,
   billableByDefault: true,
   autoStopAt: "23:59",

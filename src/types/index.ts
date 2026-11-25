@@ -335,6 +335,21 @@ export interface MarketingChannel {
   leadsCount: number;
 }
 
+export interface ClickUpProjectList {
+  id: string;
+  name: string;
+  folderName?: string | null;
+  spaceName?: string | null;
+}
+
+export interface ClickUpTaskMeta {
+  clickupId: string;
+  listId: string;
+  listName?: string;
+  statusName?: string;
+  statusColor?: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -396,12 +411,16 @@ export interface Task {
   reopenedCount?: number;
   /** Every reopening of a finished task, oldest first: `at` is a UTC ISO instant, `by` the user's name. Written by the server only; read-only. */
   reopens?: { at: string; by: string | null }[];
-  /** Integration that pushed the task in over the machine API ("waai"); read-only, set by the server. */
+  /** Integration that pushed the task in over the machine API ("waai" or "clickup"); read-only, set by the server. */
   externalSource?: string | null;
-  /** Path of the source chat in that system (WhatsApp: `/c/<id>`); read-only. */
+  /** Path of the source chat or external task URL (`https://app.clickup.com/t/...`); read-only. */
   externalUrl?: string | null;
   /** The chat gave no deadline, so CCRM filled one in and nobody has moved it since; read-only. */
   dueInferred?: boolean;
+  /** Parent Koperniq task id when synced as a ClickUp subtask. */
+  parentTaskId?: string | null;
+  /** ClickUp display metadata (list, native status name & color, ClickUp id). */
+  clickupMeta?: ClickUpTaskMeta | null;
   /** ID of the RecurringTaskTemplate series that generated this task occurrence, if any. */
   recurringSourceId?: string | null;
   /** The unshifted scheduled date (YYYY-MM-DD) this occurrence was created for. */
@@ -911,6 +930,8 @@ export interface Project {
   billableRate?: number | null;
   /** Internal work. Time on it is not client work in the salary allocation report. */
   isInternal?: boolean;
+  /** Linked ClickUp lists whose tasks & subtasks mirror into this project. */
+  clickupLists?: ClickUpProjectList[];
 
   // Support Tickets, Floating Widget & Monthly Retainer Configuration (stored on the project)
   ticketWidgetEnabled?: boolean;

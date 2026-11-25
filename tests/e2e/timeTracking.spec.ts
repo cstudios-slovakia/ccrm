@@ -88,14 +88,22 @@ test.describe('Time tracking', () => {
     await expect(row(page, 'Návrh cenovej ponuky')).toBeVisible();
   });
 
-  test('start, stop (asks for a project), then Continue replaces the running timer and Undo brings it back', async ({ page }) => {
+  test('start, stop (asks for a project when enabled), then Continue replaces the running timer and Undo brings it back', async ({ page }) => {
     await startSession(page);
     await gotoView(page, '#time-tracking');
+    await page.evaluate(async () => {
+      await fetch('/api/time_entries.php?action=settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'settings', settings: { requireProjectToStop: true }, requireProjectToStop: true }),
+      });
+    });
+    await page.reload();
     await page.getByTestId('timer-title').fill('Prvá práca');
     await page.getByTestId('timer-start').click();
     await expect(page.getByTestId('header-timer-running')).toContainText('Prvá práca');
 
-    // "Require a project before Stop": the picker opens instead of the stop failing.
+    // "Require a project before Stop" (explicitly enabled above): the picker opens instead of the stop failing.
     await page.getByTestId('timer-stop').click();
     await expect(page.getByTestId('project-request-dialog')).toBeVisible();
     await page.getByTestId('project-request-dialog').getByTestId('project-option').first().click();
@@ -451,9 +459,6 @@ test.describe('Time tracking', () => {
     await page.getByTestId('timer-start').click();
     await expect(page.getByTestId('timer-note')).toHaveValue('Prvý popis');
     await page.getByTestId('timer-stop').click();
-    // "Require a project before Stop": the picker opens and has to be answered first.
-    await expect(page.getByTestId('project-request-dialog')).toBeVisible();
-    await page.getByTestId('project-request-dialog').getByTestId('project-option').first().click();
     await expect(page.getByTestId('project-request-dialog')).toHaveCount(0);
     await expect(row(page, 'Popisná práca').getByTestId('time-entry-note')).toHaveText('Prvý popis');
 
@@ -639,10 +644,9 @@ test.describe('Time tracking', () => {
     await page.keyboard.press('Escape');
     await expect(panel).toHaveCount(0);
 
-    // The QA workspace requires a project, so Stop asks for one first; the panel stays shut.
+    // Default allows stopping without a project; stops cleanly and leaves the panel shut.
     await page.getByTestId('header-timer-stop').click();
     await expect(page.getByTestId('header-timer-panel')).toHaveCount(0);
-    await page.getByRole('button', { name: /Strecha Silvia — etapa 1/ }).click();
     await expect(page.getByTestId('header-timer-start')).toBeVisible();
     await expect(page.getByTestId('header-timer-panel')).toHaveCount(0);
   });
@@ -682,5 +686,32 @@ test.describe('Time tracking', () => {
     expect(await page.getByTestId('report-child-row').count()).toBeGreaterThan(0);
     await first.click();
     await expect(page.getByTestId('report-child-row')).toHaveCount(0);
+  });
+
+  test('start standalone timer, attach a client-only task while running, stop without project, and see time on the client', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#time-tracking');
+
+    await page.getByTestId('timer-title').fill('Príprava hovoru');
+    await page.getByTestId('timer-start').click();
+    await expect(page.getByTestId('header-timer-running')).toBeVisible();
+
+    await page.getByTestId('timer-title').click();
+    await page.getByTestId('timer-title').fill('Zavolať');
+    const suggestion = page.getByTestId('timer-suggestion').filter({ hasText: 'Zavolať klientke Silvii' });
+    await expect(suggestion).toBeVisible();
+    await suggestion.click();
+    await expect(page.getByTestId('timer-derived-entity')).toContainText('Silvia');
+
+    await page.getByTestId('timer-stop').click();
+    await expect(page.getByTestId('project-request-dialog')).toHaveCount(0);
+    await expect(row(page, 'Zavolať klientke Silvii').getByTestId('entry-client-chip')).toContainText('Silvia');
+
+    await gotoView(page, '#client-Silvia');
+    const badge = page.getByTestId('client-tracked-time-badge');
+    await expect(badge).toBeVisible();
+    await badge.click();
+    await expect(page.getByTestId('client-time-tab')).toBeVisible();
+    await expect(page.getByTestId('client-time-entry').filter({ hasText: 'Zavolať klientke Silvii' })).toBeVisible();
   });
 });

@@ -23,6 +23,7 @@ require_once __DIR__ . '/api/deleted_records.php';
 require_once __DIR__ . '/api/sync_write_guards.php';
 require_once __DIR__ . '/api/project_scope.php';
 require_once __DIR__ . '/api/github_pushes.php';
+require_once __DIR__ . '/api/clickup_lib.php';
 // ccrm_employee_file_key() / ccrm_employee_private_gc(). schema.php loads this file only when
 // a migration actually runs, which the schema fingerprint skips on almost every request.
 require_once __DIR__ . '/api/employee_files.php';
@@ -1024,6 +1025,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'externalSource' => $row['external_source'] ?? null,
                 'externalUrl' => $row['external_url'] ?? null,
                 'dueInferred' => ccrm_task_due_inferred($row),
+                'parentTaskId' => $row['parent_task_id'] ?? null,
+                'clickupMeta' => ccrm_decode_clickup_task_meta($row['external_source'] ?? null, $row['external_meta_json'] ?? null),
                 'recurringSourceId' => $row['recurring_source_id'] ?? null,
                 'recurringOccurrenceDate' => $row['recurring_occurrence_date'] ?? null,
                 'commentCount' => (int)($row['comment_count'] ?? 0),
@@ -1547,6 +1550,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'scopeApprovedBy' => $pRow['scope_approved_by'] ?? null,
                     'githubRepo' => $pRow['github_repo'] ?? null,
                     'githubBranch' => $pRow['github_branch'] ?? null,
+                    'clickupLists' => ccrm_decode_clickup_lists($pRow['clickup_lists_json'] ?? null),
                     'customFileFields' => json_decode($pRow['custom_files_json'] ?? '[]', true) ?: [],
                     // Widget and public status-board settings. `ticketPublicHash` is the
                     // key to the public board, so it stays server-side without `tickets`.
@@ -2757,6 +2761,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'ticketStatuses' => $ticketStatuses,
             'ticketSettings' => $ticketSettings,
             'integrationsConfig' => $integrationsConfig,
+            'clickupConnected' => ccrm_clickup_is_connected($pdo),
             'companyBillingSettings' => (ccrm_can($scope, 'invoices') || ccrm_can($scope, 'financial') || ccrm_can($scope, 'general_config')) && isset($settings['COMPANY_BILLING_SETTINGS']) ? json_decode($settings['COMPANY_BILLING_SETTINGS'], true) : null,
             'invoicingIntegrations' => (ccrm_can($scope, 'invoices') || ccrm_can($scope, 'financial') || ccrm_can($scope, 'general_config')) ? $invoicingIntegrations : (object)[],
             'customLabels' => isset($settings['CUSTOM_LABELS']) ? json_decode($settings['CUSTOM_LABELS'], true) : (object)[]
@@ -3129,6 +3134,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             require_once __DIR__ . '/api/task_activity_lib.php';
             ccrm_migrate_task_activities($pdo);
+        }
+        if ((isset($payload['tasks']) && is_array($payload['tasks'])) || (isset($payload['projects']) && is_array($payload['projects']))) {
+            ccrm_heal_clickup_columns($pdo);
         }
         if ((isset($payload['tasks']) && is_array($payload['tasks'])) || (isset($payload['tickets']) && is_array($payload['tickets']))) {
             require_once __DIR__ . '/api/project_breakdown_migrations.php';
@@ -4123,7 +4131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `invoice_date`, `completion_deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `value`, `custom_files_json`, `ticket_widget_enabled`, `ticket_allowed_domains`, `ticket_allowed_emails`, `ticket_public_hash`, `ticket_widget_config_json`, `archived`, `hours_budget`, `billable_rate`, `is_internal`, `contact_phone`, `contact_email`, `acceptance_criteria_json`, `github_repo`, `github_branch`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `invoice_date`=VALUES(`invoice_date`), `completion_deadline`=VALUES(`completion_deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `value`=VALUES(`value`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `ticket_widget_enabled`=VALUES(`ticket_widget_enabled`), `ticket_allowed_domains`=COALESCE(VALUES(`ticket_allowed_domains`), `ticket_allowed_domains`), `ticket_allowed_emails`=COALESCE(VALUES(`ticket_allowed_emails`), `ticket_allowed_emails`), `ticket_public_hash`=COALESCE(VALUES(`ticket_public_hash`), `ticket_public_hash`), `ticket_widget_config_json`=COALESCE(VALUES(`ticket_widget_config_json`), `ticket_widget_config_json`), `archived`=VALUES(`archived`), `hours_budget`=IF(? = 1, VALUES(`hours_budget`), `hours_budget`), `billable_rate`=IF(? = 1, VALUES(`billable_rate`), `billable_rate`), `is_internal`=IF(? = 1, VALUES(`is_internal`), `is_internal`), `contact_phone`=IF(? = 1, VALUES(`contact_phone`), `contact_phone`), `contact_email`=IF(? = 1, VALUES(`contact_email`), `contact_email`), `acceptance_criteria_json`=IF(? = 1, VALUES(`acceptance_criteria_json`), `acceptance_criteria_json`), `github_repo`=IF(? = 1, VALUES(`github_repo`), `github_repo`), `github_branch`=IF(? = 1, VALUES(`github_branch`), `github_branch`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `invoice_date`, `completion_deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `value`, `custom_files_json`, `ticket_widget_enabled`, `ticket_allowed_domains`, `ticket_allowed_emails`, `ticket_public_hash`, `ticket_widget_config_json`, `archived`, `hours_budget`, `billable_rate`, `is_internal`, `contact_phone`, `contact_email`, `acceptance_criteria_json`, `github_repo`, `github_branch`, `clickup_lists_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `invoice_date`=VALUES(`invoice_date`), `completion_deadline`=VALUES(`completion_deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `value`=VALUES(`value`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `ticket_widget_enabled`=VALUES(`ticket_widget_enabled`), `ticket_allowed_domains`=COALESCE(VALUES(`ticket_allowed_domains`), `ticket_allowed_domains`), `ticket_allowed_emails`=COALESCE(VALUES(`ticket_allowed_emails`), `ticket_allowed_emails`), `ticket_public_hash`=COALESCE(VALUES(`ticket_public_hash`), `ticket_public_hash`), `ticket_widget_config_json`=COALESCE(VALUES(`ticket_widget_config_json`), `ticket_widget_config_json`), `archived`=VALUES(`archived`), `hours_budget`=IF(? = 1, VALUES(`hours_budget`), `hours_budget`), `billable_rate`=IF(? = 1, VALUES(`billable_rate`), `billable_rate`), `is_internal`=IF(? = 1, VALUES(`is_internal`), `is_internal`), `contact_phone`=IF(? = 1, VALUES(`contact_phone`), `contact_phone`), `contact_email`=IF(? = 1, VALUES(`contact_email`), `contact_email`), `acceptance_criteria_json`=IF(? = 1, VALUES(`acceptance_criteria_json`), `acceptance_criteria_json`), `github_repo`=IF(? = 1, VALUES(`github_repo`), `github_repo`), `github_branch`=IF(? = 1, VALUES(`github_branch`), `github_branch`), `clickup_lists_json`=IF(? = 1, VALUES(`clickup_lists_json`), `clickup_lists_json`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -4276,6 +4284,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $githubBranchSent = array_key_exists('githubBranch', $p) ? 1 : 0;
                 $projGithubRepo = $githubRepoSent ? ccrm_github_normalize_repo($p['githubRepo']) : null;
                 $projGithubBranch = $githubBranchSent ? ccrm_github_normalize_branch($p['githubBranch']) : null;
+                $clickupListsSent = array_key_exists('clickupLists', $p) ? 1 : 0;
+                $projClickupLists = $clickupListsSent ? ccrm_encode_clickup_lists($p['clickupLists']) : null;
 
                 $insProj->execute([
                     $projId,
@@ -4308,6 +4318,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $scope['criteria'],
                     $projGithubRepo,
                     $projGithubBranch,
+                    $projClickupLists,
                     $hoursSent,
                     $rateSent,
                     $internalSent,
@@ -4316,7 +4327,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $scope['criteriaSent'],
                     $githubRepoSent,
                     $githubBranchSent,
+                    $clickupListsSent,
                 ]);
+                if ($clickupListsSent && $projClickupLists === null) {
+                    ccrm_clickup_prune_project_tasks($pdo, (string)$projId);
+                }
 
                 // Only rewrite this project's managers when the payload actually carries
                 // the list. An omitted `managers` key means "unchanged", not "none".
@@ -5104,11 +5119,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $taskId = $t['id'];
 
-                // Write guard: tasks collection cannot touch or overwrite a recurring template
-                $chkKind = $pdo->prepare("SELECT `task_kind` FROM `tasks` WHERE `id` = ? LIMIT 1"); /* recurring-template: template check */
+                // Write guard: tasks collection cannot touch recurring templates or read-only ClickUp mirrors
+                $chkKind = $pdo->prepare("SELECT `task_kind`, `external_source` FROM `tasks` WHERE `id` = ? LIMIT 1"); /* recurring-template: template & clickup check */
                 $chkKind->execute([$taskId]);
-                if ($chkKind->fetchColumn() === 'recurring') {
+                $kindRow = $chkKind->fetch(PDO::FETCH_ASSOC);
+                if ($kindRow && ($kindRow['task_kind'] ?? null) === 'recurring') {
                     if (is_array($t) && !empty($t['id'])) $conflictedIds['tasks'][] = (string)$t['id'];
+                    $processedTaskIds[] = $taskId;
+                    continue;
+                }
+                if (($kindRow && ($kindRow['external_source'] ?? null) === 'clickup') || (($t['externalSource'] ?? null) === 'clickup')) {
                     $processedTaskIds[] = $taskId;
                     continue;
                 }

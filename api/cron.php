@@ -247,6 +247,15 @@ try {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
 }
 
+// 2f. ClickUp linked-project task mirror (throttled fallback beside webhooks; api/clickup_lib.php)
+$clickupSync = null;
+try {
+    require_once __DIR__ . '/clickup_lib.php';
+    $clickupSync = ccrm_clickup_cron_tick($pdo);
+} catch (Throwable $e) {
+    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+}
+
 // 3. Process Workflow Queue
 try {
     ccrm_process_workflow_queue($pdo);
@@ -270,6 +279,7 @@ try {
         'activityPurge' => $activityPurge,
         'rateCard' => $rateCard,
         'presence' => $presencePass,
+        'clickupSync' => $clickupSync,
         'newsletter' => $newsletter,
         'agentTicks' => $agentTicks,
         'mailFiling' => $mailFiling === null ? null : [

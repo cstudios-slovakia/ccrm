@@ -377,7 +377,14 @@ function mcp_do_update_task(\PDO $pdo, array $user, array $args): array {
         $wasDone = mcp_done_task_state((string)$row['status'], (array)mcp_config_json($pdo, 'TASK_STATES', []));
         $isDone = mcp_done_task_state($status, (array)mcp_config_json($pdo, 'TASK_STATES', []));
         if ($isDone && !$wasDone) {
-            mcp_require_conclusion_to_finish($row, $args['conclusion'] ?? null);
+            $effectiveRow = $row;
+            if (array_key_exists('requires_conclusion', $args)) {
+                $effectiveRow['requires_conclusion'] = !empty($args['requires_conclusion']) ? 1 : 0;
+            }
+            if (array_key_exists('conclusion', $args)) {
+                $effectiveRow['conclusion'] = trim((string)$args['conclusion']);
+            }
+            mcp_require_conclusion_to_finish($effectiveRow, $args['conclusion'] ?? null);
             $add('completed_by', $user['name']); $add('completed_at', date('Y-m-d H:i'));
             $becameDone = true;
         }

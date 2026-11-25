@@ -179,6 +179,7 @@ interface ProjectsViewProps {
   employeeRights?: EmployeeRights;
   /** The workspace orders, when the user may see them: the project card then has an Orders tab. */
   orderLinks?: ProjectOrderLinks;
+  clickupConnected?: boolean;
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
@@ -222,6 +223,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   employeeSalaries,
   employeeRights,
   orderLinks,
+  clickupConnected = false,
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const projectStatuses = useProjectStatuses();
@@ -1596,6 +1598,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         supportContracts={supportContracts}
         setSupportContracts={setSupportContracts}
         orderLinks={orderLinks}
+        clickupConnected={clickupConnected}
         onClose={() => {
           setEditingProject(null);
           setEditingProjectType(null);
@@ -2733,6 +2736,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           mailConfigured={mailConfigured}
           divisions={divisions}
           divisionColors={divisionColors}
+          clickupConnected={clickupConnected}
           onClose={() => setQuickEditProjectId(null)}
           onOpenFullView={() => {
             const p = quickEditProject;

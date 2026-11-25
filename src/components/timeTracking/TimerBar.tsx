@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AlignLeft, ArrowRight, CalendarDays, CheckSquare, Clock, Euro, ListPlus, Plus, X } from "lucide-react";
+import { AlignLeft, ArrowRight, Building2, CalendarDays, CheckSquare, Clock, Euro, ListPlus, Plus, X } from "lucide-react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
-import { matchOpenTasks, matchOpenTickets } from "../../utils/timeLinks.ts";
+import { clientForTask, matchOpenTasks, matchOpenTickets } from "../../utils/timeLinks.ts";
 import {
   elapsedSeconds,
   formatDuration,
@@ -16,7 +16,9 @@ import { isClosedTicketStatus } from "../../utils/tickets";
 import { recoverTaskRequired } from "./timeCreateBridge";
 import { ClockDigits } from "./ClockDigits";
 import { CycleRing } from "./CycleRing";
+import { ProjectLabel } from "./ProjectLabel";
 import { ProjectPicker } from "./ProjectPicker";
+import { projectClientName } from "./projectClient";
 import { RoundTimerButton, roundButtonClass, roundButtonRadius } from "./RoundTimerButton";
 import { TimerContainer } from "./TimerContainer";
 import { canRenameTitle, renameHint, useTimeLookups, type TimeDeps } from "./shared";
@@ -120,31 +122,40 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
     return () => document.removeEventListener("mousedown", onDown);
   }, []);
 
+  const canAttachWhileRunning = !!running && !running.taskId && !running.ticketId;
+  const searchQuery = canAttachWhileRunning ? runningTitle : text;
   const suggestions = useMemo(
-    () => (running || task || ticket ? [] : matchOpenTasks(deps.tasks, text, deps.isTaskDone)),
-    [deps.tasks, deps.isTaskDone, text, running, task, ticket],
+    () => (task || ticket || (running && !canAttachWhileRunning) ? [] : matchOpenTasks(deps.tasks, searchQuery, deps.isTaskDone)),
+    [deps.tasks, deps.isTaskDone, searchQuery, running, canAttachWhileRunning, task, ticket],
   );
   const ticketSuggestions = useMemo(
-    () => (running || task || ticket || !deps.canLinkTicket ? [] : matchOpenTickets(deps.tickets, text, (row) => isClosedTicketStatus(row.status))),
-    [deps.canLinkTicket, deps.tickets, text, running, task, ticket],
+    () => (task || ticket || !deps.canLinkTicket || (running && !canAttachWhileRunning) ? [] : matchOpenTickets(deps.tickets, searchQuery, (row) => isClosedTicketStatus(row.status))),
+    [deps.canLinkTicket, deps.tickets, searchQuery, running, canAttachWhileRunning, task, ticket],
   );
 
   const fail = (e: unknown) => tt.notify(timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t), "error");
 
   const pickTask = (picked: Task) => {
+    setSuggestOpen(false);
+    if (canAttachWhileRunning) {
+      void saveRunning({ taskId: picked.id });
+      return;
+    }
     setTask(picked);
     setTicket(null);
     setText("");
-    setSuggestOpen(false);
-    const resolved = lookups.resolveTaskProject(picked);
-    setProjectId(resolved.projectId);
+    setProjectId(picked.relatedProjectId || null);
   };
 
   const pickTicket = (picked: Ticket) => {
+    setSuggestOpen(false);
+    if (canAttachWhileRunning) {
+      void saveRunning({ ticketId: picked.id });
+      return;
+    }
     setTicket(picked);
     setTask(null);
     setText("");
-    setSuggestOpen(false);
     setProjectId(picked.projectId || null);
   };
 
@@ -157,7 +168,7 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
         taskId: task?.id ?? null,
         ticketId: task ? null : ticket?.id ?? null,
         note: note.trim() || null,
-        projectId: projectId ?? undefined,
+        projectId: task ? undefined : (projectId ?? undefined),
         billable,
         originType: task ? "task" : ticket ? "ticket" : undefined,
         originId: task?.id ?? ticket?.id,
@@ -204,6 +215,11 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
       return;
     }
     if (running.titleSource === "task" && running.taskId) {
+      const linked = deps.tasks.find((tk) => tk.id === running.taskId);
+      if (linked?.externalSource === "clickup") {
+        setRunningTitle(running.title);
+        return;
+      }
       if (next) deps.onRenameTask(running.taskId, next);
       else setRunningTitle(running.title);
       window.setTimeout(() => tt.bump(), 600);
@@ -239,7 +255,7 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
         taskId: task?.id ?? null,
         ticketId: task ? null : ticket?.id ?? null,
         note: note.trim() || null,
-        projectId: projectId ?? undefined,
+        projectId: task ? undefined : (projectId ?? undefined),
         entryDate: date,
         startAt: startIso,
         endAt: endIso,
@@ -273,7 +289,12 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
   const elapsed = running ? elapsedSeconds(running.startAt, nowMs) : 0;
   const rename = running ? canRenameTitle(running, deps) : { can: true };
   const hint = running ? renameHint(running, t) : null;
-  const effectiveProject = running ? running.projectId : projectId;
+  const effectiveProject = running ? running.projectId : task ? task.relatedProjectId || null : projectId;
+  const effectiveClientName = running
+    ? running.clientName || (running.clientId ? deps.leads.find((l) => l.id === running.clientId)?.name || null : null) || projectClientName(running.projectId, deps.projects, deps.leads)
+    : task
+      ? projectClientName(task.relatedProjectId, deps.projects, deps.leads) || clientForTask(task, deps.leads)?.name || null
+      : null;
   const effectiveBillable = running ? running.billable : billable;
   const canPick = deps.canPickProject && !(running && running.taskId && running.projectId && !deps.canPickProject);
   const noteValue = running ? runningNote : note;
@@ -286,22 +307,47 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
   const linked = running ? (running.taskId ? "task" : running.ticketId ? "ticket" : null) : task ? "task" : ticket ? "ticket" : null;
   const linkedKind = linked === "ticket" ? t("Ticket", "Tiket", "Jegy") : t("Task", "Úloha", "Feladat");
   const linkedName = running ? running.title : task?.title || ticket?.title || ticket?.subject || "";
+  const titlePlaceholder = t("Search task or type what you're working on…", "Vyhľadať úlohu alebo na čom pracujete…", "Feladat keresése vagy min dolgozik…");
+  const suggestionMenu = suggestOpen && (suggestions.length > 0 || ticketSuggestions.length > 0) && (
+    <div className="absolute left-0 right-0 z-[960] mt-1 overflow-hidden rounded-md border border-gray-200 bg-white shadow-xl" data-testid="timer-suggestions">
+      {suggestions.length > 0 && <div className="type-overline px-3 pt-2 text-gray-400">{t("Open tasks", "Otvorené úlohy", "Nyitott feladatok")}</div>}
+      {suggestions.map((s) => (
+        <button key={s.id} type="button" onClick={() => pickTask(s)} data-testid="timer-suggestion" className="flex w-full items-center gap-2 px-3 py-2 text-left text-ui hover:bg-gray-50 cursor-pointer">
+          <span className="truncate font-semibold text-gray-800">{s.title}</span>
+          {s.relatedProjectId && <span className="shrink-0 type-meta text-gray-400">{lookups.projectName(s.relatedProjectId)}</span>}
+        </button>
+      ))}
+      {ticketSuggestions.length > 0 && <div className="type-overline px-3 pt-2 text-gray-400">{t("Open tickets", "Otvorené tikety", "Nyitott jegyek")}</div>}
+      {ticketSuggestions.map((s) => (
+        <button key={s.id} type="button" onClick={() => pickTicket(s)} data-testid="timer-ticket-suggestion" className="flex w-full items-center gap-2 px-3 py-2 text-left text-ui hover:bg-gray-50 cursor-pointer">
+          <span className="truncate font-semibold text-gray-800">{s.title || s.subject}</span>
+        </button>
+      ))}
+    </div>
+  );
 
   const titleClass = "h-10 w-full min-w-40 rounded-md border border-transparent bg-transparent px-3 text-body outline-none placeholder:text-gray-400 hover:border-gray-200 focus:border-entity focus:bg-white";
   const titleField = running ? (
-    <div className="min-w-0 flex-1 basis-60">
+    <div ref={box} className="relative min-w-0 flex-1 basis-60">
       <input
         value={runningTitle}
-        onChange={(e) => setRunningTitle(e.target.value)}
+        onChange={(e) => {
+          setRunningTitle(e.target.value);
+          if (canAttachWhileRunning) setSuggestOpen(true);
+        }}
+        onFocus={() => {
+          if (canAttachWhileRunning) setSuggestOpen(true);
+        }}
         onBlur={commitRunningTitle}
         onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
         readOnly={!rename.can}
         title={!rename.can ? t("You cannot edit this task, so you cannot rename it.", "Túto úlohu nemôžete upravovať, preto ju nemôžete premenovať.", "Ezt a feladatot nem szerkesztheti, ezért nem nevezheti át.") : undefined}
-        placeholder={t("What are you working on?", "Na čom pracujete?", "min dolgozik?")}
+        placeholder={canAttachWhileRunning ? titlePlaceholder : t("What are you working on?", "Na čom pracujete?", "Min dolgozik?")}
         data-testid="timer-title"
         className={`${titleClass} font-semibold text-gray-900 read-only:cursor-default`}
       />
       {hint && rename.can && <div className="px-3 type-meta text-gray-400">{hint}</div>}
+      {canAttachWhileRunning && suggestionMenu}
     </div>
   ) : (
     <div ref={box} className="relative min-w-0 flex-1 basis-60">
@@ -315,28 +361,12 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
           onChange={(e) => { setText(e.target.value); setSuggestOpen(true); }}
           onFocus={() => setSuggestOpen(true)}
           onKeyDown={(e) => { if (e.key === "Enter" && mode === "timer") void onStart(); }}
-          placeholder={t("What are you working on?", "Na čom pracujete?", "min dolgozik?")}
+          placeholder={titlePlaceholder}
           data-testid="timer-title"
           className={titleClass}
         />
       )}
-      {suggestOpen && (suggestions.length > 0 || ticketSuggestions.length > 0) && (
-        <div className="absolute left-0 right-0 z-[960] mt-1 overflow-hidden rounded-md border border-gray-200 bg-white shadow-xl" data-testid="timer-suggestions">
-          {suggestions.length > 0 && <div className="type-overline px-3 pt-2 text-gray-400">{t("Open tasks", "Otvorené úlohy", "Nyitott feladatok")}</div>}
-          {suggestions.map((s) => (
-            <button key={s.id} type="button" onClick={() => pickTask(s)} data-testid="timer-suggestion" className="flex w-full items-center gap-2 px-3 py-2 text-left text-ui hover:bg-gray-50 cursor-pointer">
-              <span className="truncate font-semibold text-gray-800">{s.title}</span>
-              {s.relatedProjectId && <span className="shrink-0 type-meta text-gray-400">{lookups.projectName(s.relatedProjectId)}</span>}
-            </button>
-          ))}
-          {ticketSuggestions.length > 0 && <div className="type-overline px-3 pt-2 text-gray-400">{t("Open tickets", "Otvorené tikety", "Nyitott jegyek")}</div>}
-          {ticketSuggestions.map((s) => (
-            <button key={s.id} type="button" onClick={() => pickTicket(s)} data-testid="timer-ticket-suggestion" className="flex w-full items-center gap-2 px-3 py-2 text-left text-ui hover:bg-gray-50 cursor-pointer">
-              <span className="truncate font-semibold text-gray-800">{s.title || s.subject}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      {suggestionMenu}
     </div>
   );
 
@@ -353,23 +383,40 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200/80 bg-white p-2 pl-3 shadow-sm ws-sm:pl-5" data-testid="timer-bar">
       {titleField}
 
-      <ProjectPicker
-        projects={deps.projects}
-        leads={deps.leads}
-        projectTypes={deps.projectTypes}
-        value={effectiveProject}
-        onChange={(id) => {
-          if (running) void saveRunning({ projectId: id });
-          else setProjectId(id);
-        }}
-        t={t}
-        recentIds={recentProjectIds}
-        secondsByProject={secondsByProject}
-        onCreateProject={deps.onCreateProject}
-        disabled={!canPick}
-        align="right"
-        chip
-      />
+      {linked === "task" ? (
+        effectiveProject ? (
+          <span className="inline-flex h-9 max-w-56 items-center rounded-full border border-gray-200 bg-gray-50 px-3 text-ui" data-testid="timer-derived-entity">
+            <ProjectLabel projectId={effectiveProject} name={lookups.projectName(effectiveProject, running?.projectName)} client={effectiveClientName} />
+          </span>
+        ) : effectiveClientName ? (
+          <span className="inline-flex h-9 max-w-48 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 text-ui font-medium text-gray-700" data-testid="timer-derived-entity">
+            <Building2 className="size-3.5 shrink-0 text-gray-500" aria-hidden />
+            <span className="truncate">{effectiveClientName}</span>
+          </span>
+        ) : (
+          <span className="inline-flex h-9 items-center rounded-full border border-gray-200 bg-gray-50 px-3 text-ui font-medium text-gray-500" data-testid="timer-derived-entity">
+            {t("Unsorted", "Nezaradené", "Rendezetlen")}
+          </span>
+        )
+      ) : (
+        <ProjectPicker
+          projects={deps.projects}
+          leads={deps.leads}
+          projectTypes={deps.projectTypes}
+          value={effectiveProject}
+          onChange={(id) => {
+            if (running) void saveRunning({ projectId: id });
+            else setProjectId(id);
+          }}
+          t={t}
+          recentIds={recentProjectIds}
+          secondsByProject={secondsByProject}
+          onCreateProject={deps.onCreateProject}
+          disabled={!canPick}
+          align="right"
+          chip
+        />
+      )}
 
       {linked && (
         <span className="inline-flex h-9 max-w-48 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 pl-3 pr-2 text-ui font-medium text-gray-600" data-testid="timer-linked-task" title={linkedName}>

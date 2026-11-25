@@ -50,6 +50,8 @@ import {
     serializeTaskDescription,
 } from "../utils/blockNotes";
 import { TaskWhatsAppMarks } from "./WhatsAppChip";
+import { ClickUpTaskBadge } from "./projects/ClickUpTaskBadge";
+import { isClickUpTask } from "../utils/clickupTasks";
 import { DeadlinePostponedBadge, QuickDeadlineChips, formatDeadlineDate } from "./TaskDeadlineExtras";
 import { clampDeadline, deadlineChange, minDeadlineFor, taskCreatedDate } from "../utils/taskDeadline";
 import { entityAccentStyle } from "../utils/entityAccent";
@@ -227,9 +229,9 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     systemLanguage,
     currentUserName,
     currentUser,
-    canEdit,
-    canArchive = false,
-    canDelete = false,
+    canEdit: canEditProp,
+    canArchive: canArchiveProp = false,
+    canDelete: canDeleteProp = false,
     mailConfigured,
     agencyEnabled = false,
     existingTags = [],
@@ -252,6 +254,10 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     const t: Translate = (en, sk, hu) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
     const isTemplate = isTemplateProp || Boolean((task as any).recurrence);
+    const isClickUp = !isTemplate && isClickUpTask(task as Task);
+    const canEdit = canEditProp && !isClickUp;
+    const canArchive = canArchiveProp && !isClickUp;
+    const canDelete = canDeleteProp && !isClickUp;
     const [draft, setDraft] = useState<Task>(task as Task);
     const [chatExpandedPref, setChatExpandedPref] = useUserPref("taskDrawerChatExpanded");
     const showChatPane = !isTemplate && Boolean(draft.id);
@@ -636,6 +642,34 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                     className={`flex-1 min-h-0 flex-col ${showChatPane && mobileTab === "activity" ? "hidden lg:flex" : "flex"}`}
                 >
                     <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 text-ui font-bold">
+                        {isClickUp && (
+                            <div
+                                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-violet-200 bg-violet-50/70 px-3 py-2.5 text-caption font-medium text-violet-900"
+                                data-testid="task-drawer-clickup-banner"
+                            >
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                    <ClickUpTaskBadge task={task as Task} showListName showLink={false} userLanguage={systemLanguage} />
+                                    <span>
+                                        {t(
+                                            "Mirrored from ClickUp (read-only). Edit details in ClickUp; track hours below.",
+                                            "Zrkadlené z ClickUpu (iba na čítanie). Detaily upravte v ClickUpe; čas sledujte nižšie.",
+                                            "ClickUpból tükrözve (csak olvasható). A részleteket a ClickUpban szerkessze; az időt alább rögzítheti.",
+                                        )}
+                                    </span>
+                                </div>
+                                {(task as Task).externalUrl && (
+                                    <a
+                                        href={(task as Task).externalUrl || undefined}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 rounded-md border border-violet-300 bg-white px-2.5 py-1 text-micro font-bold text-violet-700 hover:bg-violet-50 transition-colors shrink-0"
+                                    >
+                                        <ArrowUpRight className="h-3.5 w-3.5" />
+                                        {t("Open in ClickUp", "Otvoriť v ClickUpe", "Megnyitás ClickUpban")}
+                                    </a>
+                                )}
+                            </div>
+                        )}
                         {!isTemplate && Boolean((task as Task).recurringSourceId) && (
                             <div className="p-3 bg-entity-subtle border border-entity-border rounded-lg flex items-center justify-between text-caption font-semibold text-entity-text">
                                 <div className="flex items-center gap-2">
@@ -1150,6 +1184,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 />
                             </div>
                         )}
+                    </fieldset>
 
                         <div style={entityAccentStyle("time_tracking")} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                             <div className="type-label mb-2 flex items-center gap-1.5 text-gray-700">
@@ -1181,16 +1216,18 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                             </label>
                         </div>
 
-                        <TaskEmailReminderField
-                            task={draft}
-                            onChange={(emailReminders) => update({ emailReminders })}
-                            currentUserName={currentUserName}
-                            users={users}
-                            systemLanguage={systemLanguage}
-                            t={t}
-                            disabled={!canEdit}
-                            mailConfigured={mailConfigured}
-                        />
+                        {!isClickUp && (
+                            <TaskEmailReminderField
+                                task={draft}
+                                onChange={(emailReminders) => update({ emailReminders })}
+                                currentUserName={currentUserName}
+                                users={users}
+                                systemLanguage={systemLanguage}
+                                t={t}
+                                disabled={!canEdit}
+                                mailConfigured={mailConfigured}
+                            />
+                        )}
 
                         {storedTask && taskCreatedDate(storedTask) && (
                             <p className="type-meta font-medium text-gray-400" data-testid="task-created-on">
@@ -1202,9 +1239,9 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 {storedTask.createdBy ? <> · <span className="font-semibold text-gray-500">{storedTask.createdBy}</span></> : null}
                             </p>
                         )}
-                    </fieldset>
                     </div>
 
+                    {!isClickUp && (
                     <div className="shrink-0 border-t border-gray-200 bg-gray-50/90 px-6 py-4 space-y-2">
                         <button
                             type="submit"
@@ -1294,6 +1331,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                             </div>
                         )}
                     </div>
+                    )}
                 </form>
                 </div>
                 {showChatPane && (chatOpen || mobileTab === "activity") && (

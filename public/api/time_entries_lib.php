@@ -26,7 +26,7 @@ if (!function_exists('ccrm_tt_default_settings')) {
             'hoursPerDay' => 8,
             'employerMultiplier' => 1.352,
             'holidayOverrides' => ['SK' => new \stdClass(), 'HU' => new \stdClass()],
-            'requireProjectToStop' => true,
+            'requireProjectToStop' => false,
             'requireTask' => false,
             'billableByDefault' => true,
             'autoStopAt' => '23:59',
@@ -446,8 +446,8 @@ if (!function_exists('ccrm_tt_default_settings')) {
             if ($monthly > 0 && $scopeProject && preg_match('/^(\d{4})-(\d{2})/', $entryDate, $m)) {
                 $from = sprintf('%s-%s-01', $m[1], $m[2]);
                 $to = gmdate('Y-m-d', strtotime($from . ' +1 month'));
-                $u = $pdo->prepare("SELECT COALESCE(SUM(`duration_sec`), 0) FROM `time_entries` WHERE `deleted_at` IS NULL AND `billable` = 1 AND `entry_date` >= ? AND `entry_date` < ? AND (`project_id` = ? OR `ticket_id` IN (SELECT `id` FROM `tickets` WHERE `project_id` = ?))");
-                $u->execute([$from, $to, $scopeProject, $scopeProject]);
+                $u = $pdo->prepare("SELECT COALESCE(SUM(te.`duration_sec`), 0) FROM `time_entries` te" . ccrm_tt_entity_joins() . " WHERE te.`deleted_at` IS NULL AND te.`billable` = 1 AND te.`entry_date` >= ? AND te.`entry_date` < ? AND (" . ccrm_tt_eff_project_expr() . ") = ?");
+                $u->execute([$from, $to, $scopeProject]);
                 $usedHours = ((int)$u->fetchColumn()) / 3600;
                 if ($usedHours >= $monthly) {
                     return $overage;
@@ -531,9 +531,6 @@ if (!function_exists('ccrm_tt_default_settings')) {
             }
             $title = (string)$task['title'];
             $derivedProject = $task['related_project_id'] ?: null;
-            if ($projectId !== null && $derivedProject !== null && $projectId !== $derivedProject) {
-                return ['ok' => false, 'code' => 'task_project_mismatch'];
-            }
             $linkedTicket = $task['related_ticket_id'] ?: null;
             if ($linkedTicket === null) {
                 $lk = $pdo->prepare("SELECT `ticket_id` FROM `ticket_task_links` WHERE `task_id` = ? ORDER BY `created_at` LIMIT 1");
@@ -541,11 +538,8 @@ if (!function_exists('ccrm_tt_default_settings')) {
                 $linkedTicket = $lk->fetchColumn() ?: null;
             }
             $ticketId = $linkedTicket;
-            $projectId = $projectId ?? $derivedProject;
-            if ($projectId === null && !empty($task['related_lead_id'])) {
-                $projectId = ccrm_tt_one_client_project($pdo, (string)$task['related_lead_id']);
-                $derivedProject = $derivedProject ?? $projectId;
-            }
+            // Tasks are the primary entity: task-linked entries store NULL project_id so live attribution always follows the task.
+            $projectId = null;
         } elseif ($ticketId !== null) {
             $stmt = $pdo->prepare("SELECT `title`, `project_id` FROM `tickets` WHERE `id` = ? LIMIT 1");
             $stmt->execute([$ticketId]);
@@ -595,17 +589,44 @@ if (!function_exists('ccrm_tt_default_settings')) {
         return $s === '' ? null : mb_substr($s, 0, 64);
     }
 
-    // ----- JSON shape --------------------------------------------------------------------
+    // ----- JSON shape and live entity attribution ---------------------------------------
+
+    /** Live effective project SQL expression: task's related_project_id first, then legacy te.project_id snapshot, then ticket's project_id. */
+    function ccrm_tt_eff_project_expr(): string {
+        return "COALESCE(NULLIF(t.`related_project_id`, ''), NULLIF(te.`project_id`, ''), NULLIF(k.`project_id`, ''))";
+    }
+
+    /** Live effective client SQL expression: project's canonical client first, else task's client/lead, else ticket's client. */
+    function ccrm_tt_eff_client_expr(): string {
+        return "COALESCE(NULLIF(p.`client_id`, ''), NULLIF(pl.`client_id`, ''), NULLIF(p.`lead_id`, ''), NULLIF(tl.`client_id`, ''), NULLIF(t.`related_lead_id`, ''), NULLIF(kl.`client_id`, ''), NULLIF(k.`client_id`, ''))";
+    }
+
+    /** Shared LEFT JOINs resolving task -> project -> client / lead -> client live on read. */
+    function ccrm_tt_entity_joins(): string {
+        $realTasks = function_exists('ccrm_sql_real_tasks')
+            ? ccrm_sql_real_tasks('t')
+            : "(t.`task_kind` IS NULL OR t.`task_kind` <> 'recurring')";
+        $effProject = ccrm_tt_eff_project_expr();
+        return " LEFT JOIN `tasks` t ON t.`id` = te.`task_id` AND " . $realTasks
+            . " LEFT JOIN `tickets` k ON k.`id` = te.`ticket_id`"
+            . " LEFT JOIN `projects` p ON p.`id` = {$effProject}"
+            . " LEFT JOIN `leads` pl ON pl.`id` = p.`lead_id`"
+            . " LEFT JOIN `leads` tl ON tl.`id` = t.`related_lead_id`"
+            . " LEFT JOIN `leads` kl ON kl.`id` = k.`client_id`";
+    }
 
     /**
-     * SELECT list + joins for an entry with its live title. The caller appends WHERE / ORDER BY.
+     * SELECT list + joins for an entry with its live title, project and client. The caller appends WHERE / ORDER BY.
      */
     function ccrm_tt_entry_select(): string {
-        return "SELECT te.*, t.`id` AS `task_exists`, t.`title` AS `task_title`, k.`id` AS `ticket_exists`, k.`title` AS `ticket_title`, p.`name` AS `project_name`
-                FROM `time_entries` te
-                LEFT JOIN `tasks` t ON t.`id` = te.`task_id` AND " . ccrm_sql_real_tasks('t') . "
-                LEFT JOIN `tickets` k ON k.`id` = te.`ticket_id`
-                LEFT JOIN `projects` p ON p.`id` = te.`project_id`";
+        $effProject = ccrm_tt_eff_project_expr();
+        $effClient = ccrm_tt_eff_client_expr();
+        return "SELECT te.*, t.`id` AS `task_exists`, t.`title` AS `task_title`, k.`id` AS `ticket_exists`, k.`title` AS `ticket_title`, "
+            . "{$effProject} AS `eff_project_id`, p.`name` AS `project_name`, p.`billable_rate` AS `project_billable_rate`, "
+            . "{$effClient} AS `eff_client_id`, c.`name` AS `client_name`
+                FROM `time_entries` te"
+            . ccrm_tt_entity_joins()
+            . " LEFT JOIN `leads` c ON c.`id` = {$effClient}";
     }
 
     /**
@@ -632,13 +653,17 @@ if (!function_exists('ccrm_tt_default_settings')) {
         }
         $running = $r['start_at'] !== null && $r['end_at'] === null;
         $own = (string)$r['user_id'] === $viewer['userId'];
+        $effProjectId = array_key_exists('eff_project_id', $r) ? ($r['eff_project_id'] ?: null) : ($r['project_id'] ?: null);
+        $effClientId = ($r['eff_client_id'] ?? null) ?: null;
         $out = [
             'id' => $r['id'],
             'userId' => $r['user_id'],
             'recordedByUserId' => $r['recorded_by_user_id'],
             'employeeId' => $r['employee_id'],
-            'projectId' => $r['project_id'],
+            'projectId' => $effProjectId,
             'projectName' => $r['project_name'] ?? null,
+            'clientId' => $effClientId,
+            'clientName' => $r['client_name'] ?? null,
             'taskId' => $r['task_id'],
             'ticketId' => $r['ticket_id'],
             'title' => $title,
@@ -676,7 +701,10 @@ if (!function_exists('ccrm_tt_default_settings')) {
             $out['cost'] = $r['cost'] === null ? null : (float)$r['cost'];
         }
         if ($viewer['canCosts']) {
-            $out['billableRate'] = $r['billable_rate'] === null ? null : (float)$r['billable_rate'];
+            $effBillableRate = $r['billable_rate'] !== null
+                ? (float)$r['billable_rate']
+                : ((isset($r['project_billable_rate']) && $r['project_billable_rate'] !== null && !$running) ? (float)$r['project_billable_rate'] : null);
+            $out['billableRate'] = $effBillableRate;
         }
         return $out;
     }

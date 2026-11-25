@@ -45,6 +45,7 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
 
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [newWorkplaceName, setNewWorkplaceName] = useState("");
   const [creatingWorkplace, setCreatingWorkplace] = useState(false);
   const [form, setForm] = useState({
@@ -69,6 +70,7 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
     e.preventDefault();
     if (!form.companyClientId || !form.startDate) return;
     setSaving(true);
+    setSaveError(null);
     try {
       await saveAgencyPlacement({
         workerId: worker.id,
@@ -79,6 +81,8 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
         status: "active",
         startDate: form.startDate,
         endDate: form.endDate || null,
+        payRateType: "hourly",
+        billRateType: "hourly",
         currency: form.currency || settings.defaultCurrency,
         notes: form.notes.trim(),
         ...(rights.payments
@@ -90,6 +94,8 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
       });
       setShowModal(false);
       await onChanged();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : t("Failed to save placement", "Nepodarilo sa uložiť umiestnenie", "Nem sikerült menteni a kihelyezést"));
     } finally {
       setSaving(false);
     }
@@ -406,7 +412,7 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
                     </label>
                     <input
                       type="number"
-                      step="0.5"
+                      step="any"
                       data-testid="agency-placement-pay-rate"
                       value={form.payRate}
                       onChange={(e) => setForm((p) => ({ ...p, payRate: e.target.value }))}
@@ -419,7 +425,7 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
                     </label>
                     <input
                       type="number"
-                      step="0.5"
+                      step="any"
                       data-testid="agency-placement-bill-rate"
                       value={form.billRate}
                       onChange={(e) => setForm((p) => ({ ...p, billRate: e.target.value }))}
@@ -429,6 +435,12 @@ export const PlacementsPanel: React.FC<PlacementsPanelProps> = ({
                 </>
               )}
             </div>
+
+            {saveError && (
+              <div className="p-2.5 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-caption font-medium">
+                {saveError}
+              </div>
+            )}
 
             <div className="flex justify-end gap-2 pt-2">
               <button

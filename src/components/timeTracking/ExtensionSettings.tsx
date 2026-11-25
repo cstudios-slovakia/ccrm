@@ -26,6 +26,41 @@ interface Props {
   leads?: Lead[];
 }
 
+/** Download button for the packaged Chrome Time Tracker `.zip`. */
+export function ExtensionDownloadButton({ t }: { t: TFn }) {
+  return (
+    <a
+      href={`${import.meta.env.BASE_URL}downloads/${PRODUCT_SLUG}-time-tracker.zip`}
+      download
+      data-testid="tt-extension-download"
+      className="inline-flex h-10 items-center gap-1.5 rounded-md bg-entity-solid px-3 text-ui font-semibold text-white transition-all hover:opacity-90 active:scale-95 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-entity"
+    >
+      <Download className="size-4" />
+      {t("Download (.zip)", "Stiahnuť (.zip)", "Letöltés (.zip)")}
+      <span className="text-micro font-semibold opacity-80">v{EXTENSION_VERSION}</span>
+    </a>
+  );
+}
+
+/** 3-step install, pair, and 50-minute check-in guide for the Chrome extension. */
+export function ExtensionInstallSteps({ t }: { t: TFn }) {
+  const steps = [
+    { n: 1, title: t("Install", "Inštalácia", "Telepítés"), body: t("Download the zip and unzip it. In Chrome open chrome://extensions, turn on Developer mode and press Load unpacked.", "Stiahnite zip a rozbaľte ho. V Chrome otvorte chrome://extensions, zapnite Režim pre vývojárov a stlačte Načítať rozbalené.", "Töltse le a zipet, és csomagolja ki. A Chrome-ban nyissa meg a chrome://extensions oldalt, kapcsolja be a Fejlesztői módot, és nyomja meg a Kicsomagolt betöltése gombot.") },
+    { n: 2, title: t("Pair", "Spárovanie", "Párosítás"), body: t("Choose the unzipped folder, then create a one-time code in the pairing card below and enter it in the extension.", "Vyberte rozbalený priečinok, v karte spárovania nižšie vytvorte jednorazový kód a zadajte ho do rozšírenia.", "Válassza a kicsomagolt mappát, hozzon létre egy egyszer használatos kódot az alábbi párosítókártyán, és írja be a bővítménybe.") },
+    { n: 3, title: t("Track & Confirm", "Sledovanie a potvrdenie", "Követés és megerősítés"), body: t("Start task-first or parallel timers from Chrome (Alt+Shift+T / Alt+Shift+S). At 50 minutes the icon pulses, Chrome flashes, and a chime alerts you to confirm.", "Spúšťajte časovače na úlohy alebo paralelne z Chrome (Alt+Shift+T / Alt+Shift+S). Po 50 minútach ikona pulzuje, Chrome bliká a zvukový signál vás vyzve na potvrdenie.", "Indítson feladatalapú vagy párhuzamos időzítőket a Chrome-ból (Alt+Shift+T / Alt+Shift+S). 50 percnél az ikon pulzál, a Chrome villog, és hangjelzés kéri a megerősítést.") },
+  ];
+  return (
+    <ol className="grid list-none gap-3 ws-sm:grid-cols-3" data-testid="tt-extension-steps">
+      {steps.map((step) => (
+        <li key={step.n} className="rounded-md border border-gray-200 p-3">
+          <p className="text-ui font-semibold text-gray-900">{step.n} · {step.title}</p>
+          <p className="mt-1 type-meta text-gray-500">{step.body}</p>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 /** Download, pairing, watched sites. Activity capture stays off until the user opts in. */
 export function ExtensionSettings({ language, t, canEdit, isAdmin, extension, onExtension, projects: knownProjects = [], leads = [] }: Props) {
   const [enabled, setEnabled] = useState(false);
@@ -84,38 +119,14 @@ export function ExtensionSettings({ language, t, canEdit, isAdmin, extension, on
     setProjects([]);
   };
 
-  const steps = [
-    { n: 1, title: t("Install", "Inštalácia", "Telepítés"), body: t("Download the zip and unzip it. In Chrome open chrome://extensions, turn on Developer mode and press Load unpacked.", "Stiahnite zip a rozbaľte ho. V Chrome otvorte chrome://extensions, zapnite Režim pre vývojárov a stlačte Načítať rozbalené.", "Töltse le a zipet, és csomagolja ki. A Chrome-ban nyissa meg a chrome://extensions oldalt, kapcsolja be a Fejlesztői módot, és nyomja meg a Kicsomagolt betöltése gombot.") },
-    { n: 2, title: t("Pair", "Spárovanie", "Párosítás"), body: t("Choose the unzipped folder, then create a one-time code in the pairing card below and enter it in the extension.", "Vyberte rozbalený priečinok, v karte spárovania nižšie vytvorte jednorazový kód a zadajte ho do rozšírenia.", "Válassza a kicsomagolt mappát, hozzon létre egy egyszer használatos kódot az alábbi párosítókártyán, és írja be a bővítménybe.") },
-    { n: 3, title: t("Track", "Sledovanie", "Követés"), body: t("Start and stop timers from the Chrome toolbar. The icon shows the running time.", "Spúšťajte a zastavujte časovače z lišty Chrome. Ikona zobrazuje bežiaci čas.", "Indítsa és állítsa le az időzítőket a Chrome eszköztárából. Az ikon a futó időt mutatja.") },
-  ];
-
   return (
     <div className="space-y-6" data-testid="tt-extension-settings">
       <SettingsCard
         title={t("Chrome extension", "Rozšírenie Chrome", "Chrome-bővítmény")}
         description={t("Start and stop timers from the Chrome toolbar. With activity capture on, it also suggests entries from the sites you work on.", "Spúšťajte a zastavujte časovače z lišty Chrome. So zapnutým zaznamenávaním aktivity navrhuje záznamy aj podľa stránok, na ktorých pracujete.", "Indítsa és állítsa le az időzítőket a Chrome eszköztárából. Bekapcsolt tevékenység-rögzítés mellett bejegyzéseket is javasol azokból az oldalakból, amelyeken dolgozik.")}
-        action={
-          <a
-            href={`${import.meta.env.BASE_URL}downloads/${PRODUCT_SLUG}-time-tracker.zip`}
-            download
-            data-testid="tt-extension-download"
-            className="inline-flex h-10 items-center gap-1.5 rounded-md bg-entity-solid px-3 text-ui font-semibold text-white transition-all hover:opacity-90 active:scale-95 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-entity"
-          >
-            <Download className="size-4" />
-            {t("Download (.zip)", "Stiahnuť (.zip)", "Letöltés (.zip)")}
-            <span className="text-micro font-semibold opacity-80">v{EXTENSION_VERSION}</span>
-          </a>
-        }
+        action={<ExtensionDownloadButton t={t} />}
       >
-        <ol className="grid list-none gap-3 ws-sm:grid-cols-3" data-testid="tt-extension-steps">
-          {steps.map((step) => (
-            <li key={step.n} className="rounded-md border border-gray-200 p-3">
-              <p className="text-ui font-semibold text-gray-900">{step.n} · {step.title}</p>
-              <p className="mt-1 type-meta text-gray-500">{step.body}</p>
-            </li>
-          ))}
-        </ol>
+        <ExtensionInstallSteps t={t} />
 
         {isAdmin && (
           <div className="grid gap-3 rounded-md border border-gray-200 p-3">

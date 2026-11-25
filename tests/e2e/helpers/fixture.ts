@@ -1274,6 +1274,57 @@ export async function installBackendMocks(
 
   // After the catch-all above, which would otherwise shadow it: the sign-in
   // screen needs `user` in the answer, not the catch-all's empty lists.
+  await page.route('**/api/clickup.php**', (route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    let action = url.searchParams.get('action') || '';
+    let body: Record<string, any> = {};
+    if (req.method() === 'POST') {
+      try {
+        body = JSON.parse(req.postData() || '{}') || {};
+        if (body.action) action = String(body.action);
+      } catch {}
+    }
+    const fulfill = (payload: Record<string, unknown>) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, ...payload }) });
+    if (action === 'test_connection') {
+      return fulfill({ user: { id: 'cu-1', username: 'QA User', email: 'qa@cstudios.sk' }, teams: [{ id: 'team-1', name: 'QA Workspace' }] });
+    }
+    if (action === 'hierarchy') {
+      return fulfill({
+        spaces: [
+          {
+            id: 'sp-1',
+            name: 'Client Delivery',
+            folders: [{ id: 'fl-1', name: 'Web Projects', lists: [{ id: 'lst-1', name: 'Sprint Backlog', taskCount: 3 }] }],
+            lists: [{ id: 'lst-2', name: 'Support Queue', taskCount: 1 }],
+          },
+        ],
+      });
+    }
+    if (action === 'sync_project') {
+      return fulfill({ synced: 0, pruned: 0 });
+    }
+    if (action === 'sync_all') {
+      return fulfill({
+        projects: 0,
+        synced: 0,
+        pruned: 0,
+        errors: [],
+        config: { enabled: false, hasToken: false, apiToken: '', teamId: '', teamName: '', webhookActive: false, lastSyncAt: null, lastSyncError: null },
+        linkedProjectsCount: 0,
+        syncedTasksCount: 0,
+      });
+    }
+    return fulfill({
+      config: { enabled: false, hasToken: false, apiToken: '', teamId: '', teamName: '', webhookActive: false, lastSyncAt: null, lastSyncError: null },
+      connected: false,
+      webhook: { registered: false, reason: 'not_connected' },
+      linkedProjectsCount: 0,
+      syncedTasksCount: 0,
+    });
+  });
+
   await page.route('**/api/login.php', (route) => {
     passkeyPwAuthAt = Date.now();
     return route.fulfill({
@@ -1293,6 +1344,7 @@ export async function installBackendMocks(
     tickets: options.tickets ?? [],
     ticketsRenamed: pushedTicketTitles,
     projects: PROJECTS,
+    leads: LEADS,
     employees: {
       [TEST_USER.id]: { id: 'emp-erik', kind: 'employee', salaryType: 'monthly', salaryAmount: 3200 },
       // A freelancer: hourly, no employer multiplier. The specs that need him add his login via extraUsers.

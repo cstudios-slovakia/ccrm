@@ -108,7 +108,7 @@ function TimeTrackingScreen({ deps, route, onNavigate }: Props) {
         icon={<SectionIcon id="time-tracking" />}
         title={t("Time tracking", "Evidencia času", "Időkövetés")}
         subtitle={t("Track work against projects and tasks. Labour cost is calculated from each employee's salary.", "Sledujte prácu na projektoch a úlohách. Náklady na prácu sa počítajú z platu každého zamestnanca.", "Kövesse nyomon a projektekre és feladatokra fordított munkát. A munkaköltséget az egyes munkatársak fizetéséből számoljuk.")}
-        actions={<TimeHeaderActions onNavigate={onNavigate} />}
+        actions={<TimeHeaderActions onNavigate={onNavigate} language={deps.language} />}
       />
 
       <MobileRunningCard deps={deps} editing={barOpen} onToggleEdit={() => setBarOpen((v) => !v)} onAdd={() => setAddOpen((v) => !v)} />

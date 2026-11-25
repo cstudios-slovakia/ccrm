@@ -10,26 +10,15 @@ const open = () => false;
 test("a task with a project uses that project", () => {
   const r = resolveTaskProject({ relatedProjectId: "p1" }, [], [], open);
   assert.equal(r.projectId, "p1");
+  assert.deepEqual(r.candidates, []);
 });
 
-test("a task with only a client uses the client's single active project", () => {
-  const leads = [lead("client-1", "Acme", { adjustment: 1 })];
-  const projects = [project("p1", { clientId: "client-1" }), project("p2", { clientId: "client-2" })];
-  const r = resolveTaskProject({ relatedLeadId: "client-1" }, projects, leads, open);
-  assert.equal(r.projectId, "p1");
-});
-
-test("with several projects the caller must ask; finished and archived ones do not count", () => {
-  const leads = [lead("client-1", "Acme")];
-  const projects = [
-    project("p1", { clientId: "client-1" }),
-    project("p2", { clientId: "client-1" }),
-    project("p3", { clientId: "client-1", archived: true }),
-    project("p4", { clientId: "client-1", status: "done" }),
-  ];
-  const r = resolveTaskProject({ relatedLeadId: "client-1" }, projects, leads, (p) => p.status === "done");
-  assert.equal(r.projectId, null);
-  assert.deepEqual(r.candidates.map((p) => p.id), ["p1", "p2"]);
+test("a task with only a client does NOT guess a project and returns no blocking candidates", () => {
+  const leads = [lead("client-1", "Acme", { adjustment: 1 }), lead("lead-1", "Side", { clientId: "client-1" })];
+  const projects = [project("p1", { clientId: "client-1" }), project("p2", { clientId: "client-1" })];
+  assert.deepEqual(resolveTaskProject({ relatedLeadId: "client-1" }, [projects[0]], leads, open), { projectId: null, candidates: [] });
+  assert.deepEqual(resolveTaskProject({ relatedLeadId: "client-1" }, projects, leads, open), { projectId: null, candidates: [] });
+  assert.deepEqual(resolveTaskProject({ relatedLeadId: "lead-1" }, projects, leads, open), { projectId: null, candidates: [] });
 });
 
 test("clientForTask resolves the lead to its client, and keeps a lead that has none", () => {
@@ -39,12 +28,6 @@ test("clientForTask resolves the lead to its client, and keeps a lead that has n
   assert.equal(clientForTask({ relatedLeadId: "lead-2" }, leads)?.id, "lead-2");
   assert.equal(clientForTask({}, leads), null);
   assert.equal(clientForTask({ relatedLeadId: "missing" }, leads), null);
-});
-
-test("a lead linked to a client by id finds the client's projects, not a same-named lead's", () => {
-  const leads = [lead("client-1", "Acme", { adjustment: 1 }), lead("lead-1", "Acme", { clientId: "client-1" }), lead("lead-2", "Acme")];
-  const projects = [project("p1", { clientId: "client-1" })];
-  assert.equal(resolveTaskProject({ relatedLeadId: "lead-1" }, projects, leads, open).projectId, "p1");
 });
 
 test("with no project and no client, the timer starts without one", () => {

@@ -1,6 +1,6 @@
 import { type WhatsAppChatSummary, isAgentConnector, type AgentEventTrigger, type WhatsAppConnectorState, type ConnectorType, type CompanyMailbox, type AgentSubagent, type AgentConnectorState } from "../../utils/companyMailboxes";
 import { PROVIDERS, ProviderLogo } from "../CompanyMailboxSettings";
-import { RefreshCw, QrCode, Search, Users, Loader2, Bot, UserPlus, Send } from "lucide-react";
+import { RefreshCw, QrCode, Search, Users, Loader2, Bot, UserPlus, Send, FileText, Download } from "lucide-react";
 import type { Lead } from "../../types";
 import React from "react";
 
@@ -881,10 +881,27 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                         ) : (
                           <>
                             {liveMessages.map((msg) => {
-                              const imgSrc = msg.mediaUrl || msg.mediaPreviewUrl || "";
+                              const mediaSrc = msg.mediaUrl || msg.mediaPreviewUrl || "";
+                              const isImage =
+                                msg.mediaType === "image" ||
+                                (!msg.mediaType &&
+                                  (mediaSrc.startsWith("data:image/") ||
+                                    /\.(jpe?g|png|gif|webp)(\?|$)/i.test(mediaSrc)));
+                              const isVideo = msg.mediaType === "video";
+                              const isAudio = msg.mediaType === "audio";
+                              const isDocument =
+                                msg.mediaType === "document" ||
+                                (!!msg.mediaUrl && !isImage && !isVideo && !isAudio);
+                              const docName =
+                                msg.fileName ||
+                                (msg.text ? msg.text.replace(/^📄\s*/, "").trim() : "") ||
+                                t("Document", "Dokument", "Dokumentum");
                               const showCaption =
                                 msg.text &&
-                                !(imgSrc && (msg.text === "📷 Photo" || msg.text === "🏷️ Sticker"));
+                                !(isImage && mediaSrc && (msg.text === "📷 Photo" || msg.text === "🏷️ Sticker")) &&
+                                !(isDocument && msg.text.trim() === `📄 ${docName}`) &&
+                                !(isAudio && msg.mediaUrl && msg.text === "🎤 Voice message") &&
+                                !(isVideo && msg.mediaUrl && msg.text === "🎥 Video");
                               return (
                                 <div
                                   key={msg.id}
@@ -908,19 +925,66 @@ export const EmailMessagingLayout: React.FC<EmailMessagingLayoutProps> = ({
                                     </span>
                                     <span>{msg.timestamp}</span>
                                   </div>
-                                  {imgSrc && (
+                                  {isImage && mediaSrc && (
                                     <a
-                                      href={msg.mediaUrl || imgSrc}
+                                      href={msg.mediaUrl || mediaSrc}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="block overflow-hidden rounded-md border border-black/10"
                                     >
                                       <img
-                                        src={imgSrc}
+                                        src={mediaSrc}
                                         alt={msg.text || `${adapterLabel} media`}
                                         className="max-h-72 w-full object-cover rounded-md"
                                       />
                                     </a>
+                                  )}
+                                  {isVideo && msg.mediaUrl && (
+                                    <video
+                                      controls
+                                      poster={msg.mediaPreviewUrl}
+                                      src={msg.mediaUrl}
+                                      className="max-h-72 w-full rounded-md border border-black/10 bg-black"
+                                    />
+                                  )}
+                                  {isAudio && msg.mediaUrl && (
+                                    <audio
+                                      controls
+                                      src={msg.mediaUrl}
+                                      className="w-full max-w-xs h-9"
+                                    />
+                                  )}
+                                  {isDocument && (
+                                    msg.mediaUrl ? (
+                                      <a
+                                        href={msg.mediaUrl}
+                                        download={docName}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={`flex items-center justify-between gap-3 px-3 py-2 rounded-md border transition-colors ${
+                                          msg.fromMe
+                                            ? "bg-white/15 hover:bg-white/25 border-white/25 text-white"
+                                            : "bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-800"
+                                        }`}
+                                      >
+                                        <span className="flex items-center gap-2 min-w-0">
+                                          <FileText className="w-4 h-4 shrink-0" />
+                                          <span className="text-caption font-semibold truncate">{docName}</span>
+                                        </span>
+                                        <Download className="w-4 h-4 shrink-0 opacity-80" />
+                                      </a>
+                                    ) : (
+                                      <div
+                                        className={`flex items-center gap-2 px-3 py-2 rounded-md border text-caption ${
+                                          msg.fromMe
+                                            ? "bg-white/10 border-white/20 text-white/90"
+                                            : "bg-gray-50 border-gray-200 text-gray-600"
+                                        }`}
+                                      >
+                                        <FileText className="w-4 h-4 shrink-0" />
+                                        <span className="font-semibold truncate">{docName}</span>
+                                      </div>
+                                    )
                                   )}
                                   {showCaption && (
                                     <div className="text-body whitespace-pre-wrap break-words">{msg.text}</div>

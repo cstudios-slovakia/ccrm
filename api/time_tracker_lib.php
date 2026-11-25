@@ -19,7 +19,7 @@ require_once __DIR__ . '/time_parallel.php';
 require_once __DIR__ . '/time_presence_lib.php';
 require_once __DIR__ . '/read_scope.php';
 
-const CCRM_TT_EXT_VERSION = '1.1.0';
+const CCRM_TT_EXT_VERSION = '2.0.0';
 const CCRM_TTX_PAIR_TTL = 600;
 const CCRM_TTX_OFFLINE_MS = 86400000;
 const CCRM_TTX_MERGE_GAP_MS = 60000;
@@ -457,11 +457,12 @@ function ccrm_ttx_origin(array $links): ?string {
 function ccrm_ttx_close_row(\PDO $pdo, array $row, string $endUtc, array $settings, ?string $projectId = null, ?string $deviceId = null, string $reason = 'user'): void {
     $endUtc = max($endUtc, (string)$row['start_at']);
     $dur = ccrm_tt_seconds_between($row['start_at'], $endUtc);
-    $project = $projectId ?? $row['project_id'];
+    $storedProject = !empty($row['task_id']) ? $row['project_id'] : ($projectId ?? $row['project_id']);
+    $rateProject = ($row['eff_project_id'] ?? null) ?: $storedProject;
     $price = ccrm_tt_price($pdo, (string)$row['user_id'], $row['entry_date'], $dur, $settings, false);
-    $rate = $row['billable_rate'] !== null ? $row['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $project, $row['ticket_id'], (string)$row['entry_date']);
+    $rate = $row['billable_rate'] !== null ? $row['billable_rate'] : ccrm_tt_lookup_billable_rate($pdo, $rateProject, $row['ticket_id'], (string)$row['entry_date']);
     $pdo->prepare("UPDATE `time_entries` SET `end_at` = ?, `duration_sec` = ?, `project_id` = ?, `employee_id` = ?, `billable_rate` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ?, `device_id` = COALESCE(`device_id`, ?), `end_reason` = ? WHERE `id` = ? AND `end_at` IS NULL")
-        ->execute([$endUtc, $dur, $project, $price['employee_id'], $rate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $deviceId, $reason, $row['id']]);
+        ->execute([$endUtc, $dur, $storedProject, $price['employee_id'], $rate, $price['cost_rate'], $price['cost_rate_source'], $price['cost_rate_basis_days'], $deviceId, $reason, $row['id']]);
 }
 
 /**
@@ -496,9 +497,15 @@ function ccrm_ttx_start(\PDO $pdo, array $user, array $device, array $body, arra
     $newId = ccrm_tt_new_id();
     $viewer = ccrm_ttx_viewer($scope, $userId);
 
+    $mode = (($body['mode'] ?? 'switch') === 'parallel') ? 'parallel' : 'switch';
+    $parallelCfg = ccrm_tt_parallel_settings($settings);
+    $canParallel = ccrm_can($scope, 'time_tracking_parallel');
+
     // Warm the holiday cache for every entry the switch may stop: no network inside the transaction.
-    foreach (ccrm_tt_running_rows($pdo, $userId) as $previous) {
-        ccrm_tt_price($pdo, $userId, $previous['entry_date'], null, $settings, true);
+    if ($mode === 'switch') {
+        foreach (ccrm_tt_running_rows($pdo, $userId) as $previous) {
+            ccrm_tt_price($pdo, $userId, $previous['entry_date'], null, $settings, true);
+        }
     }
 
     $stopped = [];
@@ -511,9 +518,18 @@ function ccrm_ttx_start(\PDO $pdo, array $user, array $device, array $body, arra
             $pdo->rollBack();
             return ['ok' => false, 'code' => 'already_running', 'status' => 409, 'entry' => ccrm_ttx_entry($pdo, (string)$same['id'], $viewer)];
         }
-        foreach ($runningRows as $old) {
-            ccrm_ttx_close_row($pdo, $old, $startUtc, $settings, null, null, 'switch');
-            $stopped[] = $old;
+        if ($mode === 'parallel') {
+            $refusal = ccrm_tt_parallel_refusal($runningRows, $links, $parallelCfg, $canParallel);
+            if ($refusal !== null) {
+                $pdo->rollBack();
+                $refusalEntry = !empty($refusal['entryId']) ? ccrm_ttx_entry($pdo, (string)$refusal['entryId'], $viewer) : null;
+                return ['ok' => false, 'code' => $refusal['code'], 'status' => 409, 'entry' => $refusalEntry];
+            }
+        } else {
+            foreach ($runningRows as $old) {
+                ccrm_ttx_close_row($pdo, $old, $startUtc, $settings, null, null, 'switch');
+                $stopped[] = $old;
+            }
         }
         $pdo->prepare(
             "INSERT INTO `time_entries` (`id`, `user_id`, `recorded_by_user_id`, `employee_id`, `project_id`, `task_id`, `ticket_id`, `description`, `title_snapshot`, `entry_date`, `start_at`, `billable`, `tags`, `source`, `origin_type`, `origin_id`, `device_id`)
@@ -546,6 +562,7 @@ function ccrm_ttx_start(\PDO $pdo, array $user, array $device, array $body, arra
         'entry' => ccrm_ttx_entry($pdo, $newId, $viewer),
         'stopped' => $stoppedAll[0] ?? null, // old extensions: the (first) stopped entry
         'stoppedAll' => $stoppedAll,
+        'mode' => $mode,
     ];
 }
 
@@ -614,7 +631,7 @@ function ccrm_ttx_stop(\PDO $pdo, array $user, array $device, array $body, array
         }
         $projectId = $links['project_id'];
     }
-    if ($settings['requireProjectToStop'] && $projectId === null && (ccrm_can($scope, 'projects') || ccrm_workable_projects($pdo, $scope))) {
+    if ($settings['requireProjectToStop'] && $row['task_id'] === null && $projectId === null && (ccrm_can($scope, 'projects') || ccrm_workable_projects($pdo, $scope))) {
         return ['ok' => false, 'code' => 'project_required', 'status' => 422];
     }
     if ($settings['requireTask'] && $row['task_id'] === null && $row['ticket_id'] === null) {
@@ -822,6 +839,161 @@ function ccrm_ttx_tasks(\PDO $pdo, array $scope, string $projectId): array {
             continue;
         }
         $out[] = ['id' => $row['id'], 'title' => (string)$row['title']];
+    }
+    return $out;
+}
+
+/**
+ * Pause one running timer (`id`) or all running timers (`all: true`) from the extension.
+ */
+function ccrm_ttx_pause(\PDO $pdo, array $user, array $body, array $settings, array $scope): array {
+    $userId = (string)$user['id'];
+    if (!ccrm_can($scope, 'time_tracking', 'edit')) {
+        return ['ok' => false, 'code' => 'forbidden', 'status' => 403];
+    }
+    $viewer = ccrm_ttx_viewer($scope, $userId);
+    $all = !empty($body['all']);
+    $id = ccrm_tt_nullable_id($body['id'] ?? null);
+    $running = ccrm_tt_running_rows($pdo, $userId);
+    if (!$running) {
+        return ['ok' => false, 'code' => 'not_running', 'status' => 409];
+    }
+    if (!$all && $id === null) {
+        if (count($running) > 1) {
+            return ['ok' => false, 'code' => 'ambiguous', 'status' => 409, 'extra' => ['running' => count($running)]];
+        }
+        $id = (string)$running[0]['id'];
+    }
+    $ids = $all ? array_column($running, 'id') : [$id];
+    foreach ($running as $r) {
+        if (in_array((string)$r['id'], $ids, true)) {
+            ccrm_tt_price($pdo, $userId, $r['entry_date'], null, $settings, true);
+        }
+    }
+    $nowUtc = ccrm_tt_now_utc();
+    $ended = [];
+    ccrm_tt_lock_prepare($pdo, $userId);
+    try {
+        $pdo->beginTransaction();
+        ccrm_tt_lock_user($pdo, $userId);
+        $ended = ccrm_tt_end_entries($pdo, $userId, $ids, $nowUtc, null, ['reason' => 'manual', 'until' => null], null, true);
+        if (!$ended) {
+            $pdo->rollBack();
+            return ['ok' => false, 'code' => 'not_running', 'status' => 409];
+        }
+        // One of several stopped: anchor = now; the last one: the anchor is cleared (C6).
+        ccrm_tt_presence_touch($pdo, $userId, $nowUtc);
+        $pdo->commit();
+    } catch (\Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+    $paused = [];
+    foreach ($ended as $row) {
+        if ($json = ccrm_ttx_entry($pdo, (string)$row['id'], $viewer)) {
+            $paused[] = $json;
+        }
+    }
+    return ['ok' => true, 'paused' => $paused, 'entry' => $paused[0] ?? null];
+}
+
+/**
+ * Quick-update description, note, or billable flag on a running timer from the extension popup.
+ */
+function ccrm_ttx_update_running(\PDO $pdo, array $user, array $body, array $scope): array {
+    $userId = (string)$user['id'];
+    if (!ccrm_can($scope, 'time_tracking', 'edit')) {
+        return ['ok' => false, 'code' => 'forbidden', 'status' => 403];
+    }
+    $id = ccrm_tt_nullable_id($body['id'] ?? null);
+    if ($id === null) {
+        return ['ok' => false, 'code' => 'bad_request', 'status' => 400];
+    }
+    $stmt = $pdo->prepare("SELECT * FROM `time_entries` WHERE `id` = ? AND `user_id` = ? AND `deleted_at` IS NULL LIMIT 1");
+    $stmt->execute([$id, $userId]);
+    $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
+    if (!$row) {
+        return ['ok' => false, 'code' => 'not_found', 'status' => 404];
+    }
+    $note = array_key_exists('note', $body)
+        ? mb_substr(trim((string)($body['note'] ?? '')), 0, 2000)
+        : (string)($row['note'] ?? '');
+    $canRename = $row['task_id'] === null && $row['ticket_id'] === null && array_key_exists('description', $body);
+    $desc = $canRename
+        ? mb_substr(trim((string)($body['description'] ?? '')), 0, 300)
+        : (string)($row['description'] ?? '');
+    $titleSnapshot = $canRename ? $desc : ($row['title_snapshot'] ?? null);
+    $billable = array_key_exists('billable', $body)
+        ? (int)(bool)$body['billable']
+        : (int)($row['billable'] ?? 0);
+
+    $pdo->prepare("UPDATE `time_entries` SET `note` = ?, `description` = ?, `title_snapshot` = ?, `billable` = ? WHERE `id` = ?")
+        ->execute([$note, $desc, $titleSnapshot, $billable, $id]);
+
+    $viewer = ccrm_ttx_viewer($scope, $userId);
+    return ['ok' => true, 'entry' => ccrm_ttx_entry($pdo, $id, $viewer)];
+}
+
+/**
+ * Task-first search for the extension popup: open visible tasks (assigned to user first),
+ * with optional search query and project filter.
+ */
+function ccrm_ttx_my_tasks(\PDO $pdo, array $user, array $scope, string $q = '', ?string $projectId = null): array {
+    $userName = trim((string)($user['name'] ?? ''));
+    $where = [];
+    $params = [];
+    if ($projectId !== null) {
+        $where[] = "t.`related_project_id` = ?";
+        $params[] = $projectId;
+    }
+    $qTrim = trim($q);
+    if ($qTrim !== '') {
+        $like = '%' . $qTrim . '%';
+        $where[] = "(t.`title` LIKE ? OR p.`name` LIKE ? OR l.`name` LIKE ? OR lp.`name` LIKE ?)";
+        $params[] = $like;
+        $params[] = $like;
+        $params[] = $like;
+        $params[] = $like;
+    }
+    $extraWhere = $where ? (' AND ' . implode(' AND ', $where)) : '';
+    $sql = "SELECT t.`id`, t.`title`, t.`status`, t.`priority`, t.`deadline`, t.`owner`, t.`related_project_id`, p.`name` AS `project_name`,
+                   COALESCE(l.`name`, lp.`name`, '') AS `client_name`,
+                   EXISTS(SELECT 1 FROM `task_assignees` ta WHERE ta.`task_id` = t.`id` AND ta.`user_name` = ?) AS `is_assigned`
+            FROM `tasks` t
+            LEFT JOIN `projects` p ON p.`id` = t.`related_project_id`
+            LEFT JOIN `leads` l ON l.`id` = t.`related_lead_id`
+            LEFT JOIN `leads` lp ON lp.`id` = p.`lead_id`
+            WHERE t.`archived` = 0 AND t.`completed_at` IS NULL AND " . ccrm_sql_real_tasks('t') . $extraWhere . "
+            ORDER BY (`is_assigned` = 1 OR t.`owner` = ?) DESC, t.`updated_at` DESC
+            LIMIT 80";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute(array_merge([$userName], $params, [$userName]));
+    $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    if (!$rows) {
+        return [];
+    }
+    $visible = ccrm_visible_task_ids($pdo, $scope, array_column($rows, 'id'));
+    $out = [];
+    foreach ($rows as $row) {
+        if (!isset($visible[$row['id']])) {
+            continue;
+        }
+        $out[] = [
+            'id' => (string)$row['id'],
+            'title' => (string)$row['title'],
+            'status' => (string)($row['status'] ?? ''),
+            'priority' => (string)($row['priority'] ?? 'medium'),
+            'deadline' => (string)($row['deadline'] ?? ''),
+            'projectId' => $row['related_project_id'] !== null ? (string)$row['related_project_id'] : null,
+            'projectName' => (string)($row['project_name'] ?? ''),
+            'clientName' => (string)($row['client_name'] ?? ''),
+            'mine' => !empty($row['is_assigned']) || ($userName !== '' && (string)($row['owner'] ?? '') === $userName),
+        ];
+        if (count($out) >= 30) {
+            break;
+        }
     }
     return $out;
 }

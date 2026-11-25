@@ -163,7 +163,7 @@ function mcp_tool_permissions(): array {
         'list_clients' => $v('clients'), 'get_client' => $v('clients'),
         'create_client' => $e('clients'), 'update_client' => $e('clients'),
         'list_contacts' => $v('clients'), 'create_contact' => $e('clients'),
-        'list_tasks' => $v('tasks'), 'get_task' => $v('tasks'),
+        'list_tasks' => $v('tasks'), 'get_task' => $v('tasks'), 'get_task_chat' => $v('tasks'),
         'create_task' => $e('tasks'), 'update_task' => $e('tasks'), 'complete_task' => $e('tasks'),
         'add_task_comment' => $e('tasks'),
         'list_projects' => $v('projects'), 'get_project' => $v('projects'),
@@ -745,6 +745,7 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 3: Tasks & Collaboration
         mcp_crm_defs()['list_tasks'],
         mcp_crm_defs()['get_task'],
+        mcp_crm_defs()['get_task_chat'],
         [
             'name' => 'create_task',
             'description' => 'Create a new task with assignees, dates, tags, blocking/conclusion flags, and project/client/ticket/agency links.',
@@ -1605,6 +1606,9 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
         case 'get_task':
             return mcp_get_task($pdo, $user, $args);
+
+        case 'get_task_chat':
+            return mcp_get_task_chat($pdo, $user, $args);
 
         case 'create_task':
             return mcp_do_create_task($pdo, $user, $args);

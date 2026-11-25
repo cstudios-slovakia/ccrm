@@ -76,11 +76,12 @@ if (!function_exists('ccrm_tt_parallel_settings')) {
         if (count($rows) >= $parallel['maxParallel']) {
             return ['code' => 'parallel_limit', 'maxParallel' => $parallel['maxParallel']];
         }
-        $project = ccrm_tt_norm_id($links['project_id'] ?? null);
+        $project = ccrm_tt_norm_id($links['derivedProject'] ?? ($links['project_id'] ?? null));
         if ($project !== '' && $parallel['sameProject'] !== 'always') {
             $newLinked = ccrm_tt_norm_id($links['task_id'] ?? null) !== '' || ccrm_tt_norm_id($links['ticket_id'] ?? null) !== '';
             foreach ($rows as $row) {
-                if (ccrm_tt_norm_id($row['project_id'] ?? null) !== $project || ccrm_tt_same_target($row, $links)) {
+                $rowProject = ccrm_tt_norm_id($row['eff_project_id'] ?? ($row['project_id'] ?? null));
+                if ($rowProject !== $project || ccrm_tt_same_target($row, $links)) {
                     continue;
                 }
                 $rowLinked = ccrm_tt_norm_id($row['task_id'] ?? null) !== '' || ccrm_tt_norm_id($row['ticket_id'] ?? null) !== '';

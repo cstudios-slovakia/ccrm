@@ -128,8 +128,11 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
   const mayEdit = scope !== "all" && (scopeUserId ? tt.viewer.canTeam : tt.viewer.canEdit);
 
   const taskOptions = deps.tasks
-    .filter((task) => !task.archived && draftProject && task.relatedProjectId === draftProject)
-    .map((task) => ({ value: task.id, label: task.title }));
+    .filter((task) => !task.archived && !deps.isTaskDone(task) && (!draftProject || task.relatedProjectId === draftProject))
+    .map((task) => ({
+      value: task.id,
+      label: !draftProject && task.relatedProjectId ? `${task.title} · ${lookups.projectName(task.relatedProjectId)}` : task.title,
+    }));
 
   const fail = (e: unknown) => tt.notify(timeErrorMessage(e instanceof TimeApiError ? e.code : "save_failed", t), "error");
 
@@ -217,7 +220,7 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
 
   const addRow = () => {
     if (!draftProject && !draftTask) {
-      tt.notify(t("Pick a project for the new row.", "Vyberte projekt pre nový riadok.", "Válasszon projektet az új sorhoz."), "warning");
+      tt.notify(t("Pick a task or project for the new row.", "Vyberte úlohu alebo projekt pre nový riadok.", "Válasszon feladatot vagy projektet az új sorhoz."), "warning");
       return;
     }
     const row: TimesheetRowKey = { projectId: draftProject, taskId: draftTask || null, userId: byPerson ? null : scopeUserId ?? tt.userId };
@@ -241,7 +244,11 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
   const weekNo = isoWeekNumber(from);
   const rangeLabel = `${t(`Week ${weekNo}`, `Týždeň ${weekNo}`, `${weekNo}. hét`)} · ${rangeText}`;
   const rowLabel = (row: TimesheetRow): { project: string; task: string; person: string } => ({
-    project: row.projectId ? lookups.projectName(row.projectId) : t("Assign project", "Priradiť projekt", "Projekt hozzárendelése"),
+    project: row.projectId
+      ? lookups.projectName(row.projectId)
+      : row.taskId
+        ? t("Unsorted", "Nezaradené", "Rendezetlen")
+        : t("Assign project", "Priradiť projekt", "Projekt hozzárendelése"),
     task: row.taskId ? lookups.taskById.get(row.taskId)?.title || t("Task", "Úloha", "Feladat") : "",
     person: row.userId ? lookups.userById.get(row.userId)?.name || "" : "",
   });
@@ -275,6 +282,22 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
 
       {adding && mayEdit && (
         <Surface tone="inset" className="flex flex-wrap items-center gap-2">
+          <div className="min-w-40 flex-1">
+            <CustomSelect
+              searchable
+              value={draftTask}
+              onChange={(id) => {
+                setDraftTask(id);
+                if (id) {
+                  const picked = lookups.taskById.get(id);
+                  setDraftProject(picked?.relatedProjectId || null);
+                }
+              }}
+              options={[{ value: "", label: t("No task", "Bez úlohy", "Feladat nélkül") }, ...taskOptions]}
+              placeholder={t("Pick task…", "Vybrať úlohu…", "Feladat kiválasztása…")}
+              size="sm"
+            />
+          </div>
           <ProjectPicker
             projects={deps.projects}
             leads={deps.leads}
@@ -288,18 +311,8 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
             recentIds={recentProjectIds}
             secondsByProject={secondsByProject}
             onCreateProject={deps.onCreateProject}
-            disabled={!deps.canPickProject}
+            disabled={!deps.canPickProject || !!draftTask}
           />
-          <div className="min-w-40 flex-1">
-            <CustomSelect
-              value={draftTask}
-              onChange={setDraftTask}
-              options={[{ value: "", label: t("No task", "Bez úlohy", "Feladat nélkül") }, ...taskOptions]}
-              placeholder={t("Task", "Úloha", "Feladat")}
-              size="sm"
-              disabled={!draftProject}
-            />
-          </div>
           <button type="button" onClick={addRow} className="inline-flex h-9 items-center rounded-md bg-entity-solid px-3 text-ui font-semibold text-white cursor-pointer">
             {t("Add", "Pridať", "Hozzáadás")}
           </button>
@@ -347,6 +360,16 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
                       <div className="flex min-w-0 items-center gap-1.5 text-ui">
                         {row.projectId ? (
                           <ProjectLabel projectId={row.projectId} name={label.project} />
+                        ) : row.taskId ? (
+                          (() => {
+                            const lastId = row.cells.find((c) => c.lastId)?.lastId;
+                            const entry = lastId ? byId.get(lastId) : undefined;
+                            return entry?.clientName ? (
+                              <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-micro font-medium text-gray-700">{entry.clientName}</span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-micro font-medium text-gray-500">{t("Unsorted", "Nezaradené", "Rendezetlen")}</span>
+                            );
+                          })()
                         ) : (
                           (() => {
                             const lastId = row.cells.find((c) => c.lastId)?.lastId;
@@ -402,7 +425,7 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
                 <div className="p-2">
                   <button type="button" onClick={() => setAdding(true)} disabled={!mayEdit} data-testid="timesheet-add-row" className="inline-flex h-10 w-full items-center gap-1.5 rounded-md border border-dashed border-gray-300 px-3 text-ui font-semibold text-gray-500 hover:bg-gray-50 hover:text-gray-800 disabled:opacity-40 cursor-pointer">
                     <Plus className="size-4" />
-                    {t("Add row — pick project and task", "Pridať riadok — vyberte projekt a úlohu", "Sor hozzáadása — válasszon projektet és feladatot")}
+                    {t("Add row — pick task or project", "Pridať riadok — vyberte úlohu alebo projekt", "Sor hozzáadása — válasszon feladatot vagy projektet")}
                   </button>
                 </div>
               </td>
