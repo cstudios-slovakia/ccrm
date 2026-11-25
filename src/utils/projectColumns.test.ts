@@ -264,11 +264,12 @@ test("dates sort as text, because they are stored ISO-first", () => {
 /* Totals row                                                                  */
 /* -------------------------------------------------------------------------- */
 
-const money = (totalBudget: number, invoiced: number, currency = "EUR", hasValue = true, received = 0) => ({
+const money = (totalBudget: number, invoiced: number, currency = "EUR", hasValue = true, received = 0, costs = 0) => ({
   totalBudget,
   invoiced,
   invoicable: Math.max(0, totalBudget - invoiced),
   stillToBePaid: Math.max(0, totalBudget - received),
+  costs,
   currency,
   hasValue,
 });
@@ -290,6 +291,15 @@ test("the totals row sums Still to be paid from what has been received", () => {
   );
   assert.deepEqual(totals.get("stillToBePaid"), [{ currency: "EUR", amount: 1100 }]);
   assert.deepEqual(totals.get("invoicable"), [{ currency: "EUR", amount: 500 }]);
+});
+
+test("the totals row sums Costs even for projects without a contract value", () => {
+  const totals = totalProjectColumns(
+    [{ key: "value" }, { key: "costs" }],
+    [money(1000, 0, "EUR", true, 0, 250), money(0, 0, "EUR", false, 0, 150)],
+  );
+  assert.deepEqual(totals.get("value"), [{ currency: "EUR", amount: 1000 }]);
+  assert.deepEqual(totals.get("costs"), [{ currency: "EUR", amount: 400 }]);
 });
 
 test("Still to be paid is a built-in column that starts hidden, after Invoicable", () => {

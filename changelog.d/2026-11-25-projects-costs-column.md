@@ -1,0 +1,1 @@
+- **Projects**: Added a built-in **Costs** column (with sorting and Totals row support) showing total non-cancelled project expenses.

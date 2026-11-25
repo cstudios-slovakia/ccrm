@@ -70,6 +70,7 @@ import {
 import type { BuiltinProjectColumnKey, ResolvedProjectColumn } from "../utils/projectColumns";
 import { formatMoney, isMoneyValueEmpty, parseMoneyValue } from "../utils/currency";
 import { projectBilling, resolveProjectValue } from "../utils/projectBilling";
+import { projectExpenseCosts } from "../utils/performance/profitability";
 import { PageHeader } from "./layout";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { archiveRecordsWithUndo, deleteRecordsWithUndo } from "../utils/recordActions";
@@ -648,6 +649,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       invoiced: billing.invoiced,
       invoicable: billing.notInvoiced,
       stillToBePaid: billing.stillToBePaid,
+      costs: projectExpenseCosts(financialRecords || [], p.id, "all"),
       currency: contract.currency,
       hasValue: contract.value > 0,
     };
@@ -794,6 +796,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const sortValueActive = effectiveSort.key === "value";
   const sortInvoicableActive = effectiveSort.key === "invoicable";
   const sortStillToBePaidActive = effectiveSort.key === "stillToBePaid";
+  const sortCostsActive = effectiveSort.key === "costs";
   const orderedProjects = useMemo(() => {
     const statusOrder = projectStatusOrder(projectStatuses);
     const contactName = (id: string) => leads.find(l => l.id === id)?.name || null;
@@ -828,13 +831,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           const fin = getProjectFinancials(p, pType, leads.find(l => l.id === p.leadId));
           return fin.hasValue ? fin.stillToBePaid : null;
         })() : null,
+        costs: sortCostsActive ? (getProjectFinancials(p, pType, leads.find(l => l.id === p.leadId)).costs || null) : null,
         division: p.division || "",
         statusRank: rank === -1 ? statusOrder.length : rank,
         attributes,
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, manualOrder, effectiveSort.key, effectiveSort.direction, projectTypes, projectStatuses, leads, today, sortableAttributes, defaultCurrency, sortValueActive, sortInvoicableActive, sortStillToBePaidActive, getProjectFinancials]);
+  }, [projects, manualOrder, effectiveSort.key, effectiveSort.direction, projectTypes, projectStatuses, leads, today, sortableAttributes, defaultCurrency, sortValueActive, sortInvoicableActive, sortStillToBePaidActive, sortCostsActive, getProjectFinancials]);
 
   /* Every project in the structure: the hand-set order, whatever the sort says.
      Projects it has never seen (created since the last drag) sit on top. */
@@ -1172,6 +1176,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     { value: "value", label: t("Value", "Hodnota", "Érték") },
     { value: "invoicable", label: t("Invoicable", "Fakturovateľné", "Számlázható") },
     { value: "stillToBePaid", label: t("Still to be paid", "Zostáva uhradiť", "Még fizetendő") },
+    { value: "costs", label: t("Costs", "Náklady", "Költségek") },
     { value: "division", label: t("Division", "Divízia", "Divízió") },
     ...sortableAttributes.map(({ key, attribute }) => ({ value: key as ProjectSortKey, label: attribute.name })),
   ];
@@ -1492,6 +1497,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           ? (
             <span className={`text-ui font-bold tabular-nums whitespace-nowrap ${fin.stillToBePaid > 0 ? "text-blue-600 dark:text-blue-400" : "text-emerald-600 dark:text-emerald-400"}`}>
               {formatMoney(fin.stillToBePaid, fin.currency, userLanguage)}
+            </span>
+          )
+          : emptyCell;
+      }
+      case "costs": {
+        const fin = getProjectFinancials(p, pType, lead);
+        return fin.costs > 0
+          ? (
+            <span className="text-ui font-bold text-rose-600 dark:text-rose-400 tabular-nums whitespace-nowrap">
+              {formatMoney(fin.costs, fin.currency, userLanguage)}
             </span>
           )
           : emptyCell;
