@@ -1,0 +1,1 @@
+- **Detail headers no longer crush the title** (`PageHeader.tsx` → `EntityHeader`): on a narrower window the action buttons kept their full width and the name collapsed to one letter with the badges stacked in a thin column (seen on the lead detail). The title now keeps at least 20rem and the actions wrap to their own right-aligned row when they don't fit.
