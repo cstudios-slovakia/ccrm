@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { EyeOff, RotateCcw } from "lucide-react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, EyeOff, RotateCcw } from "lucide-react";
 import type { Language } from "../../utils/translations";
 import { formatDuration } from "../../utils/timeTracking.ts";
 import { getProjectCosts, setProjectCostExclusion, type ProjectCostItem } from "../../utils/timeTrackingApi";
@@ -153,7 +153,7 @@ export function useProjectTimeCosts({
   return { visibleItems, labourCost, toggleExclusion };
 }
 
-/** Monthly × employee time-tracking rows inside Direct Project Costs & Materials. */
+/** Employee-grouped time-tracking rows inside Direct Project Costs & Materials, expandable by month. */
 export function ProjectTimeCostRows({
   items,
   language,
@@ -167,60 +167,194 @@ export function ProjectTimeCostRows({
   canToggle: boolean;
   onToggle: (item: ProjectCostItem) => void;
 }) {
+  const [expandedUsers, setExpandedUsers] = useState<Record<string, boolean>>({});
+  const toggleExpand = (userId: string) =>
+    setExpandedUsers((prev) => ({ ...prev, [userId]: !prev[userId] }));
+
   const payLabelOf = (st: string | null) => {
     if (st === "daily") return "MD";
     if (st === "hourly") return pick(language, "Hourly", "Hodinová", "Óradíj");
     if (st === "monthly") return pick(language, "Monthly", "Mesačná", "Havi");
     return "";
   };
+
+  const groups = useMemo(() => {
+    const map = new Map<string, ProjectCostItem[]>();
+    for (const item of items) {
+      const list = map.get(item.userId) ?? [];
+      list.push(item);
+      map.set(item.userId, list);
+    }
+    return [...map.entries()].map(([userId, months]) => {
+      const sorted = [...months].sort((a, b) => b.month.localeCompare(a.month));
+      const totalSeconds = sorted.reduce((s, r) => s + r.seconds, 0);
+      const activeRows = sorted.filter((r) => !r.excluded);
+      const excludedCount = sorted.length - activeRows.length;
+      const allExcluded = activeRows.length === 0;
+      const missingCost = activeRows.some((r) => r.cost == null && r.seconds > 0);
+      const activeCost = missingCost
+        ? null
+        : Math.round(activeRows.reduce((s, r) => s + (r.cost ?? 0), 0) * 100) / 100;
+      const fullCost = sorted.some((r) => r.cost == null && r.seconds > 0)
+        ? null
+        : Math.round(sorted.reduce((s, r) => s + (r.cost ?? 0), 0) * 100) / 100;
+      const newest = sorted[0]?.month ?? "";
+      const oldest = sorted[sorted.length - 1]?.month ?? "";
+      return {
+        userId,
+        userName: sorted[0]?.userName ?? userId,
+        salaryType: sorted[0]?.salaryType ?? null,
+        months: sorted,
+        dateLabel: sorted.length > 1 ? `${oldest} – ${newest}` : newest,
+        totalSeconds,
+        activeCost,
+        fullCost,
+        excludedCount,
+        allExcluded,
+      };
+    });
+  }, [items]);
+
   return (
     <>
-      {items.map((item) => {
-        const payLabel = payLabelOf(item.salaryType);
+      {groups.map((g) => {
+        const payLabel = payLabelOf(g.salaryType);
+        const isSingle = g.months.length === 1;
+        const singleItem = isSingle ? g.months[0] : null;
+        const expanded = !!expandedUsers[g.userId];
+        const displayCost = g.allExcluded ? g.fullCost : g.activeCost;
+
         return (
-          <tr key={`tt-${item.month}-${item.userId}`} className={`hover:bg-white/80 ${item.excluded ? "opacity-60" : ""}`}>
-            <td className="py-2.5 px-3 whitespace-nowrap">{item.month}</td>
-            <td className="py-2.5 px-3">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-900">{item.userName}</span>
-                <span className="px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 text-micro font-bold">
-                  {pick(language, "Time tracking", "Evidencia času", "Időkövetés")}
+          <Fragment key={`tt-user-${g.userId}`}>
+            <tr className={`hover:bg-white/80 ${g.allExcluded ? "opacity-60" : ""}`}>
+              <td className="py-2.5 px-3 whitespace-nowrap">
+                {isSingle ? (
+                  g.dateLabel
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => toggleExpand(g.userId)}
+                    className="inline-flex items-center gap-1 text-slate-700 hover:text-violet-700 cursor-pointer"
+                    aria-expanded={expanded}
+                    title={expanded
+                      ? pick(language, "Collapse months", "Zbaliť mesiace", "Hónapok összecsukása")
+                      : pick(language, "Expand by month", "Rozbaliť podľa mesiacov", "Kibontás hónapokra")}
+                  >
+                    {expanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+                    <span>{g.dateLabel}</span>
+                  </button>
+                )}
+              </td>
+              <td className="py-2.5 px-3">
+                <div className="flex items-center gap-2">
+                  {!isSingle && (
+                    <button
+                      type="button"
+                      onClick={() => toggleExpand(g.userId)}
+                      className="font-bold text-slate-900 hover:text-violet-700 cursor-pointer text-left"
+                    >
+                      {g.userName}
+                    </button>
+                  )}
+                  {isSingle && <span className="font-bold text-slate-900">{g.userName}</span>}
+                  <span className="px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 text-micro font-bold">
+                    {pick(language, "Time tracking", "Evidencia času", "Időkövetés")}
+                  </span>
+                  {!isSingle && (
+                    <span className="text-micro text-slate-400">
+                      ({g.months.length} {pick(language, "months", "mes.", "hó")})
+                    </span>
+                  )}
+                </div>
+                <span className="text-micro text-slate-400">
+                  {formatDuration(g.totalSeconds)}{payLabel ? ` · ${payLabel}` : ""}
+                  {!g.allExcluded && g.excludedCount > 0 && (
+                    <> · {g.excludedCount} {pick(language, "excluded", "vylúčené", "kizárva")}</>
+                  )}
                 </span>
-              </div>
-              <span className="text-micro text-slate-400">
-                {formatDuration(item.seconds)}{payLabel ? ` · ${payLabel}` : ""}
-              </span>
-            </td>
-            <td className="py-2.5 px-3 text-right font-normal text-slate-400">—</td>
-            <td className={`py-2.5 px-3 text-right font-bold tabular-nums ${item.excluded ? "line-through text-slate-400" : "text-violet-700"}`}>
-              {item.cost != null ? money(item.cost) : "—"}
-            </td>
-            <td className="py-2.5 px-3 text-center">
-              {item.excluded ? (
-                <span className="inline-flex px-2 py-0.5 rounded-full border border-slate-300 bg-slate-100 text-slate-600 text-micro font-bold">
-                  {pick(language, "Excluded", "Vylúčené", "Kizárva")}
-                </span>
-              ) : (
-                <span className="inline-flex px-2 py-0.5 rounded-full border border-violet-200 bg-violet-50 text-violet-700 text-micro font-bold">
-                  {pick(language, "Time tracking", "Evidencia času", "Időkövetés")}
-                </span>
-              )}
-            </td>
-            <td className="py-2.5 px-3 text-right">
-              {canToggle && (
-                <button
-                  type="button"
-                  onClick={() => onToggle(item)}
-                  title={item.excluded
-                    ? pick(language, "Include in project costs", "Zahrnúť do nákladov projektu", "Visszavétel a projektköltségekbe")
-                    : pick(language, "Exclude from project costs (fixed agreement)", "Vylúčiť z nákladov projektu (fixná dohoda)", "Kizárás a projektköltségekből (fix megállapodás)")}
-                  className="p-1 text-slate-400 hover:text-violet-600 rounded cursor-pointer"
-                >
-                  {item.excluded ? <RotateCcw className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-                </button>
-              )}
-            </td>
-          </tr>
+              </td>
+              <td className="py-2.5 px-3 text-right font-normal text-slate-400">—</td>
+              <td className={`py-2.5 px-3 text-right font-bold tabular-nums ${g.allExcluded ? "line-through text-slate-400" : "text-violet-700"}`}>
+                {displayCost != null ? money(displayCost) : "—"}
+              </td>
+              <td className="py-2.5 px-3 text-center">
+                {g.allExcluded ? (
+                  <span className="inline-flex px-2 py-0.5 rounded-full border border-slate-300 bg-slate-100 text-slate-600 text-micro font-bold">
+                    {pick(language, "Excluded", "Vylúčené", "Kizárva")}
+                  </span>
+                ) : (
+                  <span className="inline-flex px-2 py-0.5 rounded-full border border-violet-200 bg-violet-50 text-violet-700 text-micro font-bold">
+                    {pick(language, "Time tracking", "Evidencia času", "Időkövetés")}
+                  </span>
+                )}
+              </td>
+              <td className="py-2.5 px-3 text-right">
+                {isSingle && singleItem && canToggle ? (
+                  <button
+                    type="button"
+                    onClick={() => onToggle(singleItem)}
+                    title={singleItem.excluded
+                      ? pick(language, "Include in project costs", "Zahrnúť do nákladov projektu", "Visszavétel a projektköltségekbe")
+                      : pick(language, "Exclude from project costs (fixed agreement)", "Vylúčiť z nákladov projektu (fixná dohoda)", "Kizárás a projektköltségekből (fix megállapodás)")}
+                    className="p-1 text-slate-400 hover:text-violet-600 rounded cursor-pointer"
+                  >
+                    {singleItem.excluded ? <RotateCcw className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                  </button>
+                ) : !isSingle ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleExpand(g.userId)}
+                    title={expanded
+                      ? pick(language, "Collapse months", "Zbaliť mesiace", "Hónapok összecsukása")
+                      : pick(language, "Expand by month", "Rozbaliť podľa mesiacov", "Kibontás hónapokra")}
+                    className="p-1 text-slate-400 hover:text-violet-600 rounded cursor-pointer"
+                  >
+                    {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                  </button>
+                ) : null}
+              </td>
+            </tr>
+
+            {!isSingle && expanded && g.months.map((item) => (
+              <tr key={`tt-${item.month}-${item.userId}`} className={`bg-violet-50/40 hover:bg-violet-50/70 ${item.excluded ? "opacity-60" : ""}`}>
+                <td className="py-2 pl-8 pr-3 whitespace-nowrap text-slate-600">{item.month}</td>
+                <td className="py-2 px-3 text-slate-600">
+                  <span className="text-micro text-slate-500">
+                    {formatDuration(item.seconds)}{payLabel ? ` · ${payLabel}` : ""}
+                  </span>
+                </td>
+                <td className="py-2 px-3 text-right font-normal text-slate-400">—</td>
+                <td className={`py-2 px-3 text-right font-semibold tabular-nums ${item.excluded ? "line-through text-slate-400" : "text-violet-700"}`}>
+                  {item.cost != null ? money(item.cost) : "—"}
+                </td>
+                <td className="py-2 px-3 text-center">
+                  {item.excluded ? (
+                    <span className="inline-flex px-2 py-0.5 rounded-full border border-slate-300 bg-slate-100 text-slate-600 text-micro font-bold">
+                      {pick(language, "Excluded", "Vylúčené", "Kizárva")}
+                    </span>
+                  ) : (
+                    <span className="inline-flex px-2 py-0.5 rounded-full border border-violet-200 bg-white text-violet-700 text-micro font-bold">
+                      {pick(language, "Included", "Zahrnuté", "Beleszámítva")}
+                    </span>
+                  )}
+                </td>
+                <td className="py-2 px-3 text-right">
+                  {canToggle && (
+                    <button
+                      type="button"
+                      onClick={() => onToggle(item)}
+                      title={item.excluded
+                        ? pick(language, "Include in project costs", "Zahrnúť do nákladov projektu", "Visszavétel a projektköltségekbe")
+                        : pick(language, "Exclude from project costs (fixed agreement)", "Vylúčiť z nákladov projektu (fixná dohoda)", "Kizárás a projektköltségekből (fix megállapodás)")}
+                      className="p-1 text-slate-400 hover:text-violet-600 rounded cursor-pointer"
+                    >
+                      {item.excluded ? <RotateCcw className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </Fragment>
         );
       })}
     </>
