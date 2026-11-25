@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { StickyHScrollbar } from "../ui/StickyHScrollbar";
 import { useStickyTableHead } from "../../hooks/useStickyTableHead";
 import {
@@ -131,8 +131,18 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
   onLinkTogglUser,
 }) => {
   const brand = PRODUCT_NAME;
+  const hasAttachedUser = Boolean(
+    employee.timeTrackingUserId &&
+    String(employee.timeTrackingUserId).trim() !== "" &&
+    String(employee.timeTrackingUserId).trim() !== "0" &&
+    String(employee.timeTrackingUserId).trim() !== "none"
+  );
+  const lang = (systemLanguage === "en" || systemLanguage === "sk" || systemLanguage === "hu" ? systemLanguage : "sk") as "en" | "sk" | "hu";
   const [viewMode, setViewMode] = useState<ViewMode>("matrix");
-  const [source, setSource] = useState<TimesheetSource>("toggl");
+  const [source, setSource] = useState<TimesheetSource>(() => (hasAttachedUser ? "toggl" : "ccrm"));
+  useEffect(() => {
+    setSource(hasAttachedUser ? "toggl" : "ccrm");
+  }, [employee.id, hasAttachedUser]);
   const sourceSwitch = timesheetSourceSwitch(source);
   const [matrixWrapRef, matrixWrapEl] = useStickyTableHead();
   const [dailyFilter, setDailyFilter] = useState<"all" | "worked" | "weekdays">("all");
@@ -296,14 +306,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
-  const hasAttachedUser = Boolean(
-    employee.timeTrackingUserId &&
-    String(employee.timeTrackingUserId).trim() !== "" &&
-    String(employee.timeTrackingUserId).trim() !== "0" &&
-    String(employee.timeTrackingUserId).trim() !== "none"
-  );
-
-  const sourceBar = (
+  const sourceBar = hasAttachedUser ? (
     <div className="flex flex-wrap gap-2" role="group" aria-label={t("Timesheet source", "Zdroj výkazu", "Munkalap forrása")} data-testid="timesheet-source">
       {sourceSwitch.available.map((key) => (
         <button
@@ -319,13 +322,13 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
         </button>
       ))}
     </div>
-  );
+  ) : null;
 
-  if (sourceSwitch.selected === "ccrm") {
+  if (!hasAttachedUser || sourceSwitch.selected === "ccrm") {
     return (
       <div className="space-y-4">
         {sourceBar}
-        <EmployeeCcrmTimesheet employee={employee} year={togglYear} month={togglMonth} t={t} />
+        <EmployeeCcrmTimesheet employee={employee} language={lang} t={t} />
       </div>
     );
   }
