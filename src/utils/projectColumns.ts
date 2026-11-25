@@ -21,6 +21,7 @@ export type BuiltinProjectColumnKey =
   | "value"
   | "invoicable"
   | "stillToBePaid"
+  | "costs"
   | "division";
 
 /**
@@ -40,6 +41,7 @@ export const BUILTIN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = [
   "value",
   "invoicable",
   "stillToBePaid",
+  "costs",
   "division",
 ];
 
@@ -47,7 +49,7 @@ export const BUILTIN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = [
  * Built-ins that are offered but start switched off, like an attribute: they
  * widen the table, so they appear only when someone asks for them.
  */
-export const DEFAULT_HIDDEN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = ["value", "invoicable", "stillToBePaid", "division"];
+export const DEFAULT_HIDDEN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = ["value", "invoicable", "stillToBePaid", "costs", "division"];
 
 /**
  * The project's own name is what identifies the row and opens it, so it is the
@@ -74,6 +76,7 @@ export const BUILTIN_COLUMN_LABELS: Record<BuiltinProjectColumnKey, [string, str
   value: ["Value", "Hodnota", "Érték"],
   invoicable: ["Invoicable", "Fakturovateľné", "Számlázható"],
   stillToBePaid: ["Still to be paid", "Zostáva uhradiť", "Még fizetendő"],
+  costs: ["Costs", "Náklady", "Költségek"],
   division: ["Division", "Divízia", "Divízió"],
 };
 
@@ -88,6 +91,8 @@ export interface ProjectMoneyFigures {
   invoicable: number;
   /** Invoiced but unpaid plus not invoiced yet: the Finances tab's "Still to be paid to us". */
   stillToBePaid: number;
+  /** Sum of non-cancelled project expense records (real + planned). */
+  costs: number;
   currency: string;
   /** False for a project with no value at all — its cells are empty and add nothing. */
   hasValue: boolean;
@@ -105,11 +110,12 @@ export interface ProjectMoneyFigures {
  * forints would be a number nobody can read.
  */
 export const SUMMABLE_PROJECT_COLUMNS: Partial<
-  Record<BuiltinProjectColumnKey, (figures: ProjectMoneyFigures) => number>
+  Record<BuiltinProjectColumnKey, (figures: ProjectMoneyFigures) => number | null>
 > = {
-  value: f => f.totalBudget,
-  invoicable: f => f.invoicable,
-  stillToBePaid: f => f.stillToBePaid,
+  value: f => (f.hasValue ? f.totalBudget : null),
+  invoicable: f => (f.hasValue ? f.invoicable : null),
+  stillToBePaid: f => (f.hasValue ? f.stillToBePaid : null),
+  costs: f => (f.costs > 0 ? f.costs : null),
 };
 
 export const isSummableProjectColumn = (key: string): boolean =>
@@ -138,9 +144,8 @@ export function totalProjectColumns(
 
     const byCurrency = new Map<string, number>();
     for (const row of rows) {
-      if (!row.hasValue) continue;
       const amount = measure(row);
-      if (!Number.isFinite(amount)) continue;
+      if (amount === null || !Number.isFinite(amount)) continue;
       byCurrency.set(row.currency, (byCurrency.get(row.currency) ?? 0) + amount);
     }
 
