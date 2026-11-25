@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   DEFAULT_COST_SETTINGS,
   computeCostRate,
+  computeDayAllocatedCost,
   computeWorkedCost,
   costRateTooltip,
   explainCostRate,
@@ -26,7 +27,11 @@ for (const c of fixtures.cases) {
     for (const key of ["monthCost", "basisHours", "fallback", "paidLeaveDays", "unpaidLeaveDays", "hoursPerDay"] as const) {
       if (key in c.expect) assert.equal(r[key], c.expect[key], key);
     }
-    assert.equal(computeWorkedCost(c.workedMs ?? c.durationSec * 1000, r.rate), c.expect.cost);
+    const workedMs = c.workedMs ?? c.durationSec * 1000;
+    const cost = "dayTotalWorkedMs" in c
+      ? computeDayAllocatedCost(workedMs, c.dayTotalWorkedMs, r.rate, r.source, r.hoursPerDay ?? settings.hoursPerDay)
+      : computeWorkedCost(workedMs, r.rate);
+    assert.equal(cost, c.expect.cost);
   });
 }
 

@@ -979,6 +979,12 @@ Time tracking rate card (docs/TIME-TRACKING-V2.md D4.3): the hourly cost rate of
 * `frozen_at` DATETIME [NULLable] (UTC; set when the month froze)
 * `updated_at` TIMESTAMP
 
+### `project_labour_exclusions`
+Per-project, per-employee, per-month exclusion flags for time-tracking labour costs (e.g. fixed-agreement workers whose costs are tracked outside time tracking). Managed via `public/api/time_entries.php?action=setProjectCostExclusion`; subtracted from Project Finances, `#projects` Costs, Profitability, and Project Breakdown while leaving time-tracking hours and payroll untouched.
+* `project_id` VARCHAR(50) [PK part]
+* `user_id` VARCHAR(50) [PK part]
+* `month` CHAR(7) [PK part] (`YYYY-MM`)
+
 ### `weekly_plan_cards`
 Standalone planning cards displayed on the Weekly Plan board (by day date and vertical position). Cards are independent of `tasks` (no automatic sync), while their `refs_json` can reference projects, leads, clients, employees, tickets, tasks, and `#tags`.
 * `id` VARCHAR(64) [PK]

@@ -1809,6 +1809,15 @@ if (!function_exists('ccrm_schema_statements')) {
               UNIQUE KEY `uq_agency_pay_worker_period` (`worker_id`, `period_ym`),
               INDEX `idx_agency_pay_period` (`period_ym`),
               INDEX `idx_agency_pay_company` (`company_client_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Per-(project, user, month) exclusions for time-tracking labour costs
+            "CREATE TABLE IF NOT EXISTS `project_labour_exclusions` (
+              `project_id` VARCHAR(50) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              `month` CHAR(7) NOT NULL COMMENT 'YYYY-MM',
+              PRIMARY KEY (`project_id`, `user_id`, `month`),
+              INDEX `idx_ple_project` (`project_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }
@@ -2774,6 +2783,15 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_notes($pdo);
         require_once __DIR__ . '/ticket_time_migration.php';
         ccrm_migrate_ticket_time_entries($pdo);
+        if (!ccrm_table_exists($pdo, 'project_labour_exclusions')) {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `project_labour_exclusions` (
+              `project_id` VARCHAR(50) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              `month` CHAR(7) NOT NULL COMMENT 'YYYY-MM',
+              PRIMARY KEY (`project_id`, `user_id`, `month`),
+              INDEX `idx_ple_project` (`project_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        }
     }
 
     /**

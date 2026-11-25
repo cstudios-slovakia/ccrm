@@ -71,6 +71,7 @@ import type { BuiltinProjectColumnKey, ResolvedProjectColumn } from "../utils/pr
 import { formatMoney, isMoneyValueEmpty, parseMoneyValue } from "../utils/currency";
 import { projectBilling, resolveProjectValue } from "../utils/projectBilling";
 import { projectExpenseCosts } from "../utils/performance/profitability";
+import { useTimeTracking } from "../hooks/useTimeTracking";
 import { PageHeader } from "./layout";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { archiveRecordsWithUndo, deleteRecordsWithUndo } from "../utils/recordActions";
@@ -228,6 +229,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const projectStatuses = useProjectStatuses();
+  const timeTracking = useTimeTracking();
 
   // Read once here; every handler below checks the flag before it writes.
   const canEdit = access.edit;
@@ -643,17 +645,19 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
        is never taken for revenue. */
     const contract = resolveProjectValue(p, pType, lead, defaultCurrency);
     const billing = projectBilling(contract.value, financialRecords || [], p.id);
+    const ledgerCosts = projectExpenseCosts(financialRecords || [], p.id, "all");
+    const labourCost = timeTracking.enabled ? (timeTracking.totals.byProject[p.id]?.cost ?? 0) : 0;
 
     return {
       totalBudget: contract.value,
       invoiced: billing.invoiced,
       invoicable: billing.notInvoiced,
       stillToBePaid: billing.stillToBePaid,
-      costs: projectExpenseCosts(financialRecords || [], p.id, "all"),
+      costs: Math.round((ledgerCosts + labourCost) * 100) / 100,
       currency: contract.currency,
       hasValue: contract.value > 0,
     };
-  }, [defaultCurrency, financialRecords]);
+  }, [defaultCurrency, financialRecords, timeTracking.enabled, timeTracking.totals.byProject]);
 
   /* Active project status items calculation for the expandable equation statistics */
   const activeProjectStatusItems = useMemo<StatusStatItem[]>(() => {

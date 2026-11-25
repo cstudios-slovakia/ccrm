@@ -72,17 +72,6 @@ if (!function_exists('ccrm_tc_round2')) {
         if ($person === null) {
             return ccrm_tc_none();
         }
-        $amount = $person['salaryAmount'] ?? null;
-        if (!is_numeric($amount) || (float)$amount <= 0) {
-            return ccrm_tc_none();
-        }
-        $amount = (float)$amount;
-        $personHours = $leave['hoursPerDay'] ?? null;
-        $hoursPerDay = is_numeric($personHours) && (float)$personHours > 0 ? (float)$personHours : (float)$settings['hoursPerDay'];
-        if (!($hoursPerDay > 0)) {
-            return ccrm_tc_none();
-        }
-
         $kind = $person['kind'] ?? null;
         $kind = ($kind === null || $kind === '') ? 'employee' : (string)$kind;
         if ($kind === 'ledger') {
@@ -91,6 +80,24 @@ if (!function_exists('ccrm_tc_round2')) {
         $isContractor = $kind === 'contractor';
         $salaryType = $person['salaryType'] ?? null;
         $salaryType = ($salaryType === null || $salaryType === '') ? ($isContractor ? 'hourly' : 'monthly') : (string)$salaryType;
+
+        $rawLabor = $leave['laborCost'] ?? null;
+        $actualLabor = (!$isContractor && $salaryType === 'monthly' && is_numeric($rawLabor) && (float)$rawLabor > 0)
+            ? (float)$rawLabor
+            : null;
+
+        $rawAmount = $person['salaryAmount'] ?? null;
+        $amount = (is_numeric($rawAmount) && (float)$rawAmount > 0) ? (float)$rawAmount : 0.0;
+        if ($amount <= 0 && $actualLabor === null) {
+            return ccrm_tc_none();
+        }
+
+        $personHours = $leave['hoursPerDay'] ?? null;
+        $hoursPerDay = is_numeric($personHours) && (float)$personHours > 0 ? (float)$personHours : (float)$settings['hoursPerDay'];
+        if (!($hoursPerDay > 0)) {
+            return ccrm_tc_none();
+        }
+
         $multiplier = $isContractor ? 1.0 : ((float)$settings['employerMultiplier'] > 0 ? (float)$settings['employerMultiplier'] : 1.0);
 
         if ($salaryType === 'hourly') {
@@ -124,8 +131,6 @@ if (!function_exists('ccrm_tc_round2')) {
             $unpaid = $wd > 0 ? min(ccrm_tc_non_negative($leave['unpaidLeaveDays'] ?? null), (float)$wd) : 0.0;
             $paid = $wd > 0 ? min(ccrm_tc_non_negative($leave['paidLeaveDays'] ?? null), $wd - $unpaid) : 0.0;
             $left = $wd - $unpaid - $paid;
-            // No leave: exactly today's arithmetic (amount / hours x multiplier).
-            $monthBase = $unpaid > 0 ? ($amount * ($wd - $unpaid)) / $wd : $amount;
             $hours = $fullHours;
             if ($unpaid > 0 || $paid > 0) {
                 $hours = $fixed ? ((float)$settings['fixedHoursPerMonth'] * $left) / $wd : $left * $hoursPerDay;
@@ -134,14 +139,17 @@ if (!function_exists('ccrm_tc_round2')) {
             if ($fallback) {
                 $hours = $fullHours;
             }
+            $effMultiplier = $actualLabor !== null ? 1.0 : $multiplier;
+            $monthBase = $actualLabor !== null ? $actualLabor : ($unpaid > 0 ? ($amount * ($wd - $unpaid)) / $wd : $amount);
+            $displayAmount = $actualLabor !== null ? $actualLabor : $amount;
             return [
-                'rate' => ccrm_tc_round4(($monthBase / $hours) * $multiplier),
+                'rate' => ccrm_tc_round4(($monthBase / $hours) * $effMultiplier),
                 'source' => $isContractor ? 'contractor_monthly' : 'monthly',
                 'basisDays' => $fixed ? null : $workingDays,
                 'basisHours' => ccrm_tc_num((float)$hours),
                 'manDay' => ccrm_tc_round4(($monthBase / $hours) * $hoursPerDay),
-                'multiplier' => $multiplier, 'amount' => $amount,
-                'monthCost' => ccrm_tc_round4($monthBase * $multiplier),
+                'multiplier' => $effMultiplier, 'amount' => $displayAmount,
+                'monthCost' => ccrm_tc_round4($monthBase * $effMultiplier),
                 'paidLeaveDays' => ccrm_tc_num($paid),
                 'unpaidLeaveDays' => ccrm_tc_num($unpaid),
                 'hoursPerDay' => ccrm_tc_num($hoursPerDay),
@@ -160,5 +168,24 @@ if (!function_exists('ccrm_tc_round2')) {
             return null;
         }
         return ccrm_tc_round4(($workedMs / 3600000) * $rate);
+    }
+
+    function ccrm_tc_is_day_allocated_source(?string $source): bool {
+        return in_array((string)$source, ['daily', 'contractor_daily', 'monthly', 'contractor_monthly'], true);
+    }
+
+    /**
+     * Day-ratio allocation with an `hoursPerDay` floor for daily (MD) and monthly pay.
+     */
+    function ccrm_tc_day_allocated_cost(?int $workedMs, ?int $dayTotalWorkedMs, ?float $rate, ?string $source, float $hoursPerDay = 8.0): ?float {
+        if ($rate === null || $workedMs === null) {
+            return null;
+        }
+        $h = $hoursPerDay > 0 ? $hoursPerDay : 8.0;
+        $capMs = (int)round($h * 3600000);
+        if (ccrm_tc_is_day_allocated_source($source) && $capMs > 0 && $dayTotalWorkedMs !== null && $dayTotalWorkedMs > $capMs) {
+            return ccrm_tc_round4(($workedMs / $dayTotalWorkedMs) * $h * $rate);
+        }
+        return ccrm_tc_worked_cost($workedMs, $rate);
     }
 }

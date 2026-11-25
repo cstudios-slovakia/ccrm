@@ -34,7 +34,7 @@ import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { useTimeTracking } from "../hooks/useTimeTracking";
 import { ProjectTimeTab } from "./timeTracking/ProjectTimeTab";
 import { formatDuration } from "../utils/timeTracking.ts";
-import { ProjectTimeFinanceLines } from "./timeTracking/ProjectTimeFinanceLines";
+import { ProjectTimeCostRows, ProjectTimeFinanceLines, useProjectTimeCosts } from "./timeTracking/ProjectTimeFinanceLines";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
@@ -779,7 +779,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     return projectFinancials.filter((r) => r.type === "expense");
   }, [projectFinancials]);
   const timeTracking = useTimeTracking();
-  const labourCost = timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.cost ?? null : null;
+  const { visibleItems: visibleCostItems, labourCost, toggleExclusion: handleToggleLabourExclusion } = useProjectTimeCosts({
+    projectId: project?.id,
+    enabled: timeTracking.enabled,
+    canCosts: timeTracking.viewer.canCosts,
+    totalsCost: timeTracking.totals.byProject[project?.id ?? ""]?.cost ?? null,
+    version: timeTracking.version,
+    language: userLanguage,
+    onChanged: timeTracking.bump,
+  });
 
   const revenueAnalysis = useMemo(() => {
     let totalPlannedIncome = 0;
@@ -4779,6 +4787,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             </td>
                           </tr>
                         ))}
+                        <ProjectTimeCostRows
+                          items={visibleCostItems}
+                          language={userLanguage}
+                          money={money}
+                          canToggle={canEditFinance && timeTracking.viewer.canCosts}
+                          onToggle={(item) => void handleToggleLabourExclusion(item)}
+                        />
                       </tbody>
                     </table>
                   </div>
@@ -4791,7 +4806,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <div className="flex items-center gap-2">
                     <TrendingDown className="h-4 w-4 text-rose-600" />
                     <span className="text-ui font-bold text-slate-900">
-                      {t("Direct Project Costs & Materials", "Priame náklady a materiál projektu", "Közvetlen projektköltségek és anyagok")} ({projectExpenses.length})
+                      {t("Direct Project Costs & Materials", "Priame náklady a materiál projektu", "Közvetlen projektköltségek és anyagok")} ({projectExpenses.length + visibleCostItems.filter((i) => !i.excluded).length})
                     </span>
                   </div>
                   {canEditFinance && (
@@ -4806,7 +4821,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   )}
                 </div>
 
-                {projectExpenses.length === 0 ? (
+                {projectExpenses.length === 0 && visibleCostItems.length === 0 ? (
                   <div className="py-6 text-center text-ui text-slate-400 font-medium">
                     {t("No expenses logged for this project yet.", "K tomuto projektu zatiaľ neboli zaevidované žiadne výdavky.", "Még nincsenek kiadások rögzítve.")}
                   </div>
@@ -4868,6 +4883,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             </td>
                           </tr>
                         ))}
+                        <ProjectTimeCostRows
+                          items={visibleCostItems}
+                          language={userLanguage}
+                          money={money}
+                          canToggle={canEditFinance && timeTracking.viewer.canCosts}
+                          onToggle={(item) => void handleToggleLabourExclusion(item)}
+                        />
                       </tbody>
                     </table>
                   </div>
