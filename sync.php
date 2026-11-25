@@ -3117,6 +3117,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!ccrm_column_exists($pdo, 'projects', 'contact_email')) {
                 $pdo->exec("ALTER TABLE `projects` ADD COLUMN `contact_email` VARCHAR(190) NULL COMMENT 'E-mail of the project contact; copied from the lead on conversion'");
             }
+            if (!ccrm_column_exists($pdo, 'projects', 'clickup_lists_json')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `clickup_lists_json` TEXT NULL COMMENT 'JSON array of linked ClickUp lists [{id,name,folderName,spaceName}]'");
+            }
             // Assigned employees: same shape as project_managers (healed here, never inside the transaction).
             $pdo->exec("CREATE TABLE IF NOT EXISTS `project_employees` (
               `project_id` VARCHAR(50) NOT NULL,

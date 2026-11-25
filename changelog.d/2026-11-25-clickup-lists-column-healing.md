@@ -1,0 +1,1 @@
+- **Fixed: saving a project right after deploying the ClickUp integration cannot fail** with an unknown `clickup_lists_json` column; sync.php heals it before the transaction.
