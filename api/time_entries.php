@@ -522,7 +522,7 @@ if ($method === 'GET') {
         $exclJoin = $hasExcl
             ? " LEFT JOIN `project_labour_exclusions` ple ON ple.`project_id` = ? AND ple.`user_id` = te.`user_id` AND ple.`month` = LEFT(te.`entry_date`, 7)"
             : '';
-        $sql = "SELECT LEFT(te.`entry_date`, 7) AS `month`, te.`user_id`,
+        $sql = "SELECT LEFT(te.`entry_date`, 7) AS `entry_month`, te.`user_id`,
                        MAX(u.`name`) AS `user_name`,
                        MAX(emp.`salary_type`) AS `salary_type`,
                        COALESCE(SUM(te.`duration_sec`), 0) AS `sec`,
@@ -536,8 +536,8 @@ if ($method === 'GET') {
             . " LEFT JOIN `employees` emp ON emp.`id` = te.`employee_id`"
             . $exclJoin
             . " WHERE te.`deleted_at` IS NULL AND te.`duration_sec` IS NOT NULL AND ({$effProj}) = ?
-                GROUP BY `month`, te.`user_id`
-                ORDER BY `month` DESC, `user_name` ASC, te.`user_id` ASC";
+                GROUP BY LEFT(te.`entry_date`, 7), te.`user_id`
+                ORDER BY `entry_month` DESC, `user_name` ASC, te.`user_id` ASC";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($hasExcl ? [$projectId, $projectId] : [$projectId]);
         $items = [];
@@ -555,7 +555,7 @@ if ($method === 'GET') {
             }
             $missing = (int)($r['missing'] ?? 0);
             $items[] = [
-                'month' => (string)$r['month'],
+                'month' => (string)$r['entry_month'],
                 'userId' => $uid,
                 'userName' => (string)($r['user_name'] ?: $uid),
                 'salaryType' => $salType,

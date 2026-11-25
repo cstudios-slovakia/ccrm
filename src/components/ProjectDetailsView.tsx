@@ -4787,13 +4787,6 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             </td>
                           </tr>
                         ))}
-                        <ProjectTimeCostRows
-                          items={visibleCostItems}
-                          language={userLanguage}
-                          money={money}
-                          canToggle={canEditFinance && timeTracking.viewer.canCosts}
-                          onToggle={(item) => void handleToggleLabourExclusion(item)}
-                        />
                       </tbody>
                     </table>
                   </div>
