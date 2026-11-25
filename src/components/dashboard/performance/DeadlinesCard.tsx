@@ -37,7 +37,7 @@ export const DeadlinesCard = ({
     { tone: "later", n: data.later, label: t("later", "neskôr", "később") },
   ];
   return (
-    <Card className={className}>
+    <Card className={`ws-lg:h-112 ${className}`}>
       <CardTitle
         title={t("Project deadlines", "Termíny projektov", "Projektek határidői")}
         caption={t(
@@ -47,7 +47,7 @@ export const DeadlinesCard = ({
         )}
         onInfo={onInfo}
       />
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-4 flex shrink-0 flex-wrap gap-2">
         {counters.map((c) => (
           <span key={c.tone} className={`type-meta rounded-full border px-2.5 py-0.5 font-bold ${CHIP[c.tone]}`}>
             {c.n} {c.label}
@@ -57,11 +57,11 @@ export const DeadlinesCard = ({
       {data.rows.length === 0 ? (
         <NoRows language={language} />
       ) : (
-        <div className="mt-3 flex flex-col">
+        <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-y-auto">
           {data.rows.map((row) => (
             <div
               key={row.projectId}
-              className="grid h-13 grid-cols-[--spacing(11)_minmax(0,1fr)_auto] items-center gap-x-3 border-t border-gray-100"
+              className="grid h-13 shrink-0 grid-cols-[--spacing(11)_minmax(0,1fr)_auto] items-center gap-x-3 border-t border-gray-100"
             >
               <div className={`flex h-10 flex-col items-center justify-center rounded-lg leading-tight ${DATE_BOX[row.tone]}`}>
                 <span className="type-body font-extrabold">{row.deadline.getDate()}</span>

@@ -29,7 +29,7 @@ export const ProfitabilityCard = ({
   const t = makeT(language);
   const { total } = data;
   return (
-    <Card className={className}>
+    <Card className={`ws-lg:h-112 ${className}`}>
       <CardTitle
         title={t("Project profitability", "Ziskovosť projektov", "Projektek jövedelmezősége")}
         caption={t(
@@ -55,9 +55,9 @@ export const ProfitabilityCard = ({
           )}
         </p>
       )}
-      <div className="mt-4 overflow-x-auto">
-        <div className="min-w-180 text-ui tabular-nums">
-          <div className={`${COLS} ${HEAD}`}>
+      <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-x-auto">
+        <div className="flex min-h-0 flex-1 min-w-180 flex-col text-ui tabular-nums">
+          <div className={`${COLS} ${HEAD} shrink-0`}>
             <span>{t("Project", "Projekt", "Projekt")}</span>
             <span className="text-right">{t("Invoiced", "Fakturované", "Számlázott")}</span>
             <span className="text-right">{t("Costs", "Náklady", "Költségek")}</span>
@@ -68,40 +68,42 @@ export const ProfitabilityCard = ({
             <NoRows language={language} />
           ) : (
             <>
-              {data.rows.map((row) => {
-                const level = row.costRatioPct === null ? null : levelOf(row.costRatioPct);
-                return (
-                  <div key={row.projectId} className={`${COLS} h-13 border-t border-gray-100`}>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate font-semibold text-gray-900">{row.name}</span>
-                        {row.inactive && (
-                          <span className="rounded-full border border-gray-200 bg-gray-100 px-2 py-px text-micro font-semibold text-gray-600">
-                            {t("Inactive", "Neaktívny", "Inaktív")}
-                          </span>
-                        )}
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {data.rows.map((row) => {
+                  const level = row.costRatioPct === null ? null : levelOf(row.costRatioPct);
+                  return (
+                    <div key={row.projectId} className={`${COLS} h-13 border-t border-gray-100`}>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate font-semibold text-gray-900">{row.name}</span>
+                          {row.inactive && (
+                            <span className="rounded-full border border-gray-200 bg-gray-100 px-2 py-px text-micro font-semibold text-gray-600">
+                              {t("Inactive", "Neaktívny", "Inaktív")}
+                            </span>
+                          )}
+                        </div>
+                        <div className="type-meta truncate text-gray-500">{row.clientName}</div>
                       </div>
-                      <div className="type-meta truncate text-gray-500">{row.clientName}</div>
-                    </div>
-                    <span className="text-right text-gray-800">{money(row.invoiced, currencyCode, language)}</span>
-                    <span className="text-right text-gray-800">{money(row.costs, currencyCode, language)}</span>
-                    <span className={`text-right font-bold ${row.profit < 0 ? "text-rose-700" : "text-emerald-700"}`}>
-                      {signedMoney(row.profit, currencyCode, language)}
-                    </span>
-                    <div className="grid grid-cols-[minmax(0,1fr)_--spacing(12)] items-center gap-x-2.5">
-                      <Track
-                        pct={row.costRatioPct === null ? 0 : Math.min(100, row.costRatioPct * 0.8)}
-                        tickPct={80}
-                        fillClass={level ? FILL[level] : "bg-gray-100"}
-                      />
-                      <span className={`text-right font-bold ${level ? TEXT[level] : "text-gray-900"}`}>
-                        {percent(row.costRatioPct, language, 0)}
+                      <span className="text-right text-gray-800">{money(row.invoiced, currencyCode, language)}</span>
+                      <span className="text-right text-gray-800">{money(row.costs, currencyCode, language)}</span>
+                      <span className={`text-right font-bold ${row.profit < 0 ? "text-rose-700" : "text-emerald-700"}`}>
+                        {signedMoney(row.profit, currencyCode, language)}
                       </span>
+                      <div className="grid grid-cols-[minmax(0,1fr)_--spacing(12)] items-center gap-x-2.5">
+                        <Track
+                          pct={row.costRatioPct === null ? 0 : Math.min(100, row.costRatioPct * 0.8)}
+                          tickPct={80}
+                          fillClass={level ? FILL[level] : "bg-gray-100"}
+                        />
+                        <span className={`text-right font-bold ${level ? TEXT[level] : "text-gray-900"}`}>
+                          {percent(row.costRatioPct, language, 0)}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-              <div className={`${COLS} h-13 border-t border-gray-200 font-bold text-gray-900`}>
+                  );
+                })}
+              </div>
+              <div className={`${COLS} h-13 shrink-0 border-t border-gray-200 bg-white font-bold text-gray-900`}>
                 <span>
                   {t("Total", "Spolu", "Összesen")} · {countNoun("project", total.projects, language)}
                 </span>
