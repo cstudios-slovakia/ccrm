@@ -487,17 +487,86 @@ function mcp_task_activity_where(array $args, array $user, string $alias = 'task
     return [[$sql], array_merge($ownP, $tlP, $timeScopeP, $timeP)];
 }
 
+/**
+ * Load non-deleted task chat & activity items from `task_activities` in chronological order.
+ * Returns [messages, hasMore]. Tolerates unmigrated databases by healing `task_activities` first.
+ */
+function mcp_read_task_chat(\PDO $pdo, string $taskId, string $kind = 'all', int $limit = 50, ?int $beforeId = null, ?int $afterId = null): array {
+    require_once __DIR__ . '/task_activity_lib.php';
+    ccrm_migrate_task_activities($pdo);
+    $limit = max(1, min(100, $limit));
+    $where = ['`task_id` = ?', '`deleted_at` IS NULL'];
+    $params = [$taskId];
+    if ($kind === 'comment' || $kind === 'state_change') {
+        $where[] = '`kind` = ?';
+        $params[] = $kind;
+    }
+    if ($afterId !== null && $afterId > 0) {
+        $where[] = '`id` > ?';
+        $params[] = $afterId;
+        $order = 'ASC';
+    } else {
+        if ($beforeId !== null && $beforeId > 0) {
+            $where[] = '`id` < ?';
+            $params[] = $beforeId;
+        }
+        $order = 'DESC';
+    }
+    $fetch = $limit + 1;
+    $sql = "SELECT `id`, `kind`, `event_type`, `author_name`, `body`, `meta_json`, `reactions_json`, `created_at`, `updated_at`
+              FROM `task_activities`
+             WHERE " . implode(' AND ', $where) . "
+             ORDER BY `id` {$order}
+             LIMIT {$fetch}";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+    $hasMore = count($rows) > $limit;
+    if ($hasMore) {
+        $rows = array_slice($rows, 0, $limit);
+    }
+    if ($order === 'DESC') {
+        $rows = array_reverse($rows);
+    }
+    $messages = array_map(static function (array $r): array {
+        $meta = (!empty($r['meta_json']) && is_string($r['meta_json'])) ? json_decode($r['meta_json'], true) : null;
+        $rx = ccrm_normalize_reaction_map($r['reactions_json'] ?? null);
+        $created = (string)($r['created_at'] ?? '');
+        return [
+            'id' => (int)$r['id'],
+            'kind' => (string)$r['kind'],
+            'event_type' => $r['event_type'] !== null ? (string)$r['event_type'] : null,
+            'author_name' => (string)($r['author_name'] ?? ''),
+            'body' => $r['body'] !== null ? (string)$r['body'] : '',
+            'meta' => is_array($meta) ? $meta : null,
+            'reactions' => !empty($rx) ? $rx : (object)[],
+            'created_at' => $created,
+            'created_at_iso' => mcp_local_iso($created !== '' ? substr($created, 0, 19) : null),
+        ];
+    }, $rows);
+    return [$messages, $hasMore];
+}
+
 function mcp_list_tasks(\PDO $pdo, array $user, array $args): array {
     mcp_ensure_task_link($pdo);
+    require_once __DIR__ . '/task_activity_lib.php';
+    ccrm_migrate_task_activities($pdo);
     $where = []; $params = [];
     if (empty($args['include_archived'])) $where[] = 'archived = 0';
     foreach (['status' => 'status', 'priority' => 'priority', 'owner' => 'owner', 'project_id' => 'related_project_id', 'client_id' => 'related_lead_id'] as $key => $col) {
         if (!empty($args[$key])) { $where[] = "$col = ?"; $params[] = $args[$key]; }
     }
+    if (array_key_exists('has_conclusion', $args)) {
+        $want = filter_var($args['has_conclusion'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if ($want === null) throw new \InvalidArgumentException("'has_conclusion' must be true or false.");
+        $where[] = $want
+            ? "(conclusion IS NOT NULL AND TRIM(conclusion) <> '')"
+            : "(conclusion IS NULL OR TRIM(conclusion) = '')";
+    }
     if (!empty($args['search'])) {
         $term = '%' . $args['search'] . '%';
-        $where[] = '(title LIKE ? OR description LIKE ?)';
-        array_push($params, $term, $term);
+        $where[] = '(title LIKE ? OR description LIKE ? OR conclusion LIKE ?)';
+        array_push($params, $term, $term, $term);
     }
     [$scopeSql, $scopeParams] = mcp_task_scope($user);
     if ($scopeSql !== '') { $where[] = $scopeSql; $params = array_merge($params, $scopeParams); }
@@ -511,7 +580,7 @@ function mcp_list_tasks(\PDO $pdo, array $user, array $args): array {
     $params = array_merge($params, $win['params'], $bParams, $dParams, $aParams);
     $stmt = $pdo->prepare(
         'SELECT id, title, description, priority, deadline, deadline_time, original_deadline, deadline_moves, status, owner, created_by, related_lead_id, related_project_id,
-                completed_by, completed_at, archived, ' . (ccrm_tasks_have_category($pdo) ? 'category, ' : '') . mcp_moment_select('created_at', 'created_at') . ', ' . mcp_moment_select('updated_at', 'updated_at')
+                completed_by, completed_at, requires_conclusion, conclusion, comment_count, archived, ' . (ccrm_tasks_have_category($pdo) ? 'category, ' : '') . mcp_moment_select('created_at', 'created_at') . ', ' . mcp_moment_select('updated_at', 'updated_at')
         . ' FROM tasks /* recurring-template: where holds ccrm_sql_real_tasks */ WHERE ' . implode(' AND ', $where) . ' ' . $win['tail']
     );
     $stmt->execute($params);
@@ -519,6 +588,9 @@ function mcp_list_tasks(\PDO $pdo, array $user, array $args): array {
     $latest = mcp_task_activity_latest($pdo, $user, array_column($rows, 'id'));
     return array_map(function ($t) use ($latest) {
         $t['archived'] = (int)$t['archived'] === 1;
+        $t['requires_conclusion'] = (int)($t['requires_conclusion'] ?? 0) === 1;
+        $t['conclusion'] = $t['conclusion'] ?? null;
+        $t['comment_count'] = (int)($t['comment_count'] ?? 0);
         $t['category'] = $t['category'] ?? null; // null too on a database not migrated yet
         $t['deadline_moves'] = (int)$t['deadline_moves'];
         $t['completed_at_iso'] = mcp_local_iso($t['completed_at']);
@@ -538,6 +610,9 @@ function mcp_get_task(\PDO $pdo, array $user, array $args): array {
     $latest = mcp_task_activity_latest($pdo, $user, [(string)$args['id']]);
     $lastActivityTs = mcp_last_activity_ts($task['updated_ts'], [(string)$args['id']], $latest);
     $task = mcp_task_moments($task);
+    $task['requires_conclusion'] = (int)($task['requires_conclusion'] ?? 0) === 1;
+    $task['conclusion'] = $task['conclusion'] ?? null;
+    $task['comment_count'] = (int)($task['comment_count'] ?? 0);
     $task['category'] = $task['category'] ?? null; // "bug" or null; null too on a database not migrated yet
     $task['last_activity_at'] = mcp_format_moment($lastActivityTs);
     // completed_at is a local "YYYY-MM-DD HH:MM" string; the same moment with the offset sits beside it.
@@ -548,7 +623,54 @@ function mcp_get_task(\PDO $pdo, array $user, array $args): array {
     $tg = $pdo->prepare('SELECT tag_name FROM task_tags WHERE task_id = ?');
     $tg->execute([$args['id']]);
     $task['tags'] = $tg->fetchAll(\PDO::FETCH_COLUMN);
+    [$chat, $chatHasMore] = mcp_read_task_chat($pdo, (string)$args['id'], 'all', 50);
+    $task['chat'] = $chat;
+    $task['chat_has_more'] = $chatHasMore;
     return $task;
+}
+
+function mcp_get_task_chat(\PDO $pdo, array $user, array $args): array {
+    mcp_ensure_task_link($pdo);
+    $taskId = mcp_require_string($args, 'task_id');
+    [$scopeSql, $scopeParams] = mcp_task_scope($user);
+    $stmt = $pdo->prepare('SELECT id, title, status, requires_conclusion, conclusion, comment_count FROM tasks WHERE id = ? AND ' . ccrm_sql_real_tasks() . ($scopeSql !== '' ? " AND $scopeSql" : ''));
+    $stmt->execute(array_merge([$taskId], $scopeParams));
+    $task = $stmt->fetch(\PDO::FETCH_ASSOC);
+    if (!$task) throw new \Exception('Task not found with ID: ' . $taskId);
+
+    $kind = mcp_enum($args, 'kind', ['all', 'comment', 'state_change'], 'all');
+    $limit = isset($args['limit']) ? (int)$args['limit'] : 50;
+    $beforeId = isset($args['before_id']) && is_numeric($args['before_id']) ? (int)$args['before_id'] : null;
+    $afterId = isset($args['after_id']) && is_numeric($args['after_id']) ? (int)$args['after_id'] : null;
+
+    [$messages, $hasMore] = mcp_read_task_chat($pdo, $taskId, $kind, $limit, $beforeId, $afterId);
+
+    $tlStmt = $pdo->prepare(
+        'SELECT id, timestamp, title, content, author FROM timeline_events WHERE task_id = ? AND hidden = 0 ORDER BY timestamp ASC LIMIT 50'
+    );
+    $tlStmt->execute([$taskId]);
+    $timelineComments = array_map(static function (array $r): array {
+        return [
+            'id' => (string)$r['id'],
+            'author' => (string)($r['author'] ?? ''),
+            'title' => (string)($r['title'] ?? ''),
+            'content' => (string)($r['content'] ?? ''),
+            'timestamp' => (string)($r['timestamp'] ?? ''),
+            'timestamp_iso' => mcp_local_iso($r['timestamp'] ?? null),
+        ];
+    }, $tlStmt->fetchAll(\PDO::FETCH_ASSOC) ?: []);
+
+    return [
+        'task_id' => (string)$task['id'],
+        'task_title' => (string)$task['title'],
+        'status' => (string)$task['status'],
+        'requires_conclusion' => (int)($task['requires_conclusion'] ?? 0) === 1,
+        'conclusion' => $task['conclusion'] ?? null,
+        'comment_count' => (int)($task['comment_count'] ?? 0),
+        'messages' => $messages,
+        'has_more' => $hasMore,
+        'timeline_comments' => $timelineComments,
+    ];
 }
 
 // ============================================================================
@@ -628,7 +750,8 @@ function mcp_crm_defs(): array {
         ],
         'list_tasks' => [
             'name' => 'list_tasks',
-            'description' => 'List and filter tasks across projects, clients, and team members. '
+            'description' => 'List and filter tasks across projects, clients, and team members (including closed tasks with bucket="done"). '
+                . 'Each row includes requires_conclusion (bool), conclusion (completion note or null), and comment_count (task chat messages). '
                 . 'updated_at moves on any edit to the task, including its assignees and tags, and when it is archived or restored; comments and tracked time do not move it. '
                 . 'last_activity_at is the later of updated_at, the newest comment added with add_task_comment and the newest time entry on the task (time entries count only if your key may see them); '
                 . 'activity_from/activity_to select tasks with an edit, a comment or a time entry inside that window, so use them for "what happened on tasks since X" and updated_from/updated_to for "which tasks were edited". '
@@ -645,7 +768,8 @@ function mcp_crm_defs(): array {
                     'owner' => $s('Filter by assignee name'),
                     'project_id' => $s('Filter by related project ID'),
                     'client_id' => $s('Filter by related client ID'),
-                    'search' => $s('Search task titles and descriptions'),
+                    'search' => $s('Search task titles, descriptions, and conclusions'),
+                    'has_conclusion' => ['type' => 'boolean', 'description' => 'true = only tasks with a non-empty conclusion; false = only tasks without a conclusion'],
                     'include_archived' => ['type' => 'boolean', 'description' => 'Also list archived tasks (default false)'],
                     'activity_from' => $s('Edited, commented or time tracked at or after: YYYY-MM-DD or YYYY-MM-DD HH:MM'),
                     'activity_to' => $s('Edited, commented or time tracked before: YYYY-MM-DD HH:MM (exclusive), or YYYY-MM-DD for up to the end of that day'),
@@ -654,8 +778,23 @@ function mcp_crm_defs(): array {
         ],
         'get_task' => [
             'name' => 'get_task',
-            'description' => 'Retrieve full task details, assignees, and tags. created_at and updated_at are ISO moments with the offset; last_activity_at is the later of updated_at, the newest comment and the newest time entry you may see; completed_at is a local "YYYY-MM-DD HH:MM" string and completed_at_iso the same moment with the offset; original_deadline and deadline_moves show how often the deadline was pushed; category is "bug" for a task marked as a Bug, otherwise null.',
+            'description' => 'Retrieve full task details, assignees, tags, conclusion (requires_conclusion + conclusion), and recent task chat/activity messages (chat, chat_has_more, comment_count). created_at and updated_at are ISO moments with the offset; last_activity_at is the later of updated_at, the newest comment and the newest time entry you may see; completed_at is a local "YYYY-MM-DD HH:MM" string and completed_at_iso the same moment with the offset; original_deadline and deadline_moves show how often the deadline was pushed; category is "bug" for a task marked as a Bug, otherwise null.',
             'inputSchema' => ['type' => 'object', 'properties' => ['id' => $s('Task ID')], 'required' => ['id']],
+        ],
+        'get_task_chat' => [
+            'name' => 'get_task_chat',
+            'description' => 'Read the chat messages and activity history on a task (from task_activities), along with the task\'s conclusion and any legacy timeline comments. Supports pagination via before_id / after_id and filtering by kind ("all", "comment", or "state_change").',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'task_id' => $s('Task ID'),
+                    'kind' => $s('Filter entries: "all" (default), "comment" (chat messages only), or "state_change" (status/field audit events)'),
+                    'limit' => ['type' => 'integer', 'description' => 'Max messages to return (default 50, max 100)'],
+                    'before_id' => ['type' => 'integer', 'description' => 'Return older messages with id < before_id'],
+                    'after_id' => ['type' => 'integer', 'description' => 'Return newer messages with id > after_id'],
+                ],
+                'required' => ['task_id'],
+            ],
         ],
         'list_meetings' => [
             'name' => 'list_meetings',
