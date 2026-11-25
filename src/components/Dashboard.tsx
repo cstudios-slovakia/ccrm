@@ -10,7 +10,7 @@ import { isPipelineLead, isWonLeadState, leadKpis } from "../utils/dashboardMetr
 import { type FinanceInput, type Period } from "../utils/marketingRoi";
 import { MarketingRoiTab, type AdCampaign } from "./dashboard/MarketingRoiTab";
 import { getTranslation } from "../utils/translations";
-import { isLiveInvoiceStatus, type OfferStatusDef } from "../utils/offerStatuses";
+import { DEFAULT_INVOICE_STATUS_DEFS, DEFAULT_OFFER_STATUS_DEFS, isLiveInvoiceStatus, type OfferStatusDef } from "../utils/offerStatuses";
 import { effectiveDocumentAmount } from "../utils/invoiceFinanceBridge";
 import type { Language } from "../utils/translations";
 import { resolveCurrencySymbol, resolveCurrencyPosition, formatMoney, currencyForRegion } from "../utils/currency";
@@ -1062,6 +1062,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
           now={now}
           onToggleStatus={toggleEquationStatus}
           onClearSelection={() => setEquationExcluded([])}
+          breakdownSource={{
+            leads,
+            leadStageGroups,
+            leadStateParents,
+            invoicesOffers,
+            invoiceStatuses: invoiceStatuses ?? DEFAULT_INVOICE_STATUS_DEFS,
+            offerStatuses: offerStatuses ?? DEFAULT_OFFER_STATUS_DEFS,
+            financialRecords,
+            projects,
+            tasks,
+            tickets,
+            ticketStatuses,
+          }}
         />
       )}
 

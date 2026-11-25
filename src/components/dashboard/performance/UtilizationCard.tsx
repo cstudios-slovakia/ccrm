@@ -10,6 +10,7 @@ export const UtilizationCard = ({
   truncated = false,
   language,
   className = "",
+  onInfo,
 }: {
   data: UtilizationData | null;
   state?: UtilizationState;
@@ -17,6 +18,7 @@ export const UtilizationCard = ({
   truncated?: boolean;
   language: Language;
   className?: string;
+  onInfo?: () => void;
 }) => {
   const t = makeT(language);
   const title = t("Utilization · time on bugs", "Utilizácia · čas na bugoch", "Kihasználtság · hibákra fordított idő");
@@ -62,6 +64,7 @@ export const UtilizationCard = ({
       <CardTitle
         title={title}
         caption={caption}
+        onInfo={onInfo}
         legend={
           <>
             <LegendItem swatch="bg-rose-500" label={t("Bugs", "Bugy", "Hibák")} />

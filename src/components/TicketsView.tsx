@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { SectionIcon } from "./icons/SectionIcon";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
+import { collectTicketAttachments, mergeTicketAttachments } from "../utils/ticketAttachments";
 import {
   Ticket as TicketIcon,
   Plus,
@@ -908,6 +909,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
             : tk.firstRespondedAt,
           resolvedAt: becomingClosed ? tk.resolvedAt || now : tk.resolvedAt,
           updatedAt: now,
+          attachments: mergeTicketAttachments(tk.attachments, replyAttachments),
           messages: [...(tk.messages || []), ...appendedMessages],
         };
       }),
@@ -938,6 +940,10 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     if (!selectedTicket || !canEdit) return;
     const now = nowLocalStamp();
     updateSelectedTicket({
+      attachments: mergeTicketAttachments(
+        selectedTicket.attachments,
+        editingMsgAttachments,
+      ),
       messages: (selectedTicket.messages || []).map((m) =>
         m.id === msgId
           ? {
@@ -1764,8 +1770,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       </div>
                     </div>
                   ) : effectiveDescription ||
-                    (selectedTicket.attachments &&
-                      selectedTicket.attachments.length > 0) ? (
+                    collectTicketAttachments(selectedTicket).length > 0 ? (
                     <div className="p-3 rounded-lg bg-gray-50 border border-gray-200 space-y-2">
                       {effectiveDescription && (
                         <TicketHtmlContent
@@ -1774,7 +1779,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                         />
                       )}
                       <TicketAttachmentsList
-                        attachments={selectedTicket.attachments}
+                        attachments={collectTicketAttachments(selectedTicket)}
                       />
                     </div>
                   ) : (

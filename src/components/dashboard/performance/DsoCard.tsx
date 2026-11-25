@@ -21,11 +21,13 @@ export const DsoCard = ({
   labels,
   language,
   className = "",
+  onInfo,
 }: {
   data: DsoData;
   labels: PeriodLabels;
   language: Language;
   className?: string;
+  onInfo?: () => void;
 }) => {
   const t = makeT(language);
   const [order, setOrder] = useState<"worst" | "best">("worst");
@@ -43,6 +45,7 @@ export const DsoCard = ({
           "Dni od vystavenia faktúry po úhradu",
           "Napok a számla kiállításától a kifizetésig",
         )}
+        onInfo={onInfo}
       />
       <HeadlineValue value={days(data.averageDays, language)} unit={t("on average", "v priemere", "átlagosan")} />
       <SubLine>

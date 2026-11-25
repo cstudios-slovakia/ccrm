@@ -18,11 +18,13 @@ export const ProfitabilityCard = ({
   language,
   currencyCode,
   className = "",
+  onInfo,
 }: {
   data: ProfitabilityData;
   language: Language;
   currencyCode?: string | null;
   className?: string;
+  onInfo?: () => void;
 }) => {
   const t = makeT(language);
   const { total } = data;
@@ -35,6 +37,7 @@ export const ProfitabilityCard = ({
           "Aktívne projekty a neaktívne s nákladmi za posledný mesiac",
           "Aktív projektek és az elmúlt hónapban költséggel rendelkező inaktívak",
         )}
+        onInfo={onInfo}
         legend={
           <>
             <LegendItem swatch="bg-emerald-500" label={t("up to 80 %", "do 80 %", "80 %-ig")} />

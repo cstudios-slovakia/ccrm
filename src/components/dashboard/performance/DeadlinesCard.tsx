@@ -23,10 +23,12 @@ export const DeadlinesCard = ({
   data,
   language,
   className = "",
+  onInfo,
 }: {
   data: DeadlinesData;
   language: Language;
   className?: string;
+  onInfo?: () => void;
 }) => {
   const t = makeT(language);
   const counters: { tone: DeadlineTone; n: number; label: string }[] = [
@@ -43,6 +45,7 @@ export const DeadlinesCard = ({
           "Aktívne projekty podľa najbližšieho termínu",
           "Aktív projektek a legközelebbi határidő szerint",
         )}
+        onInfo={onInfo}
       />
       <div className="mt-4 flex flex-wrap gap-2">
         {counters.map((c) => (

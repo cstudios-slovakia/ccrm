@@ -8,10 +8,12 @@ export const ReworkCountCard = ({
   data,
   language,
   className = "",
+  onInfo,
 }: {
   data: ReworkCountData | null;
   language: Language;
   className?: string;
+  onInfo?: () => void;
 }) => {
   const t = makeT(language);
   const title = "Rework count";
@@ -38,7 +40,7 @@ export const ReworkCountCard = ({
   }
   return (
     <Card className={className}>
-      <CardTitle title={title} caption={caption} />
+      <CardTitle title={title} caption={caption} onInfo={onInfo} />
       <HeadlineValue
         value={multiplier(data.average, language)}
         unit={t("per reopened task", "na znovuotvorenú úlohu", "újranyitott feladatonként")}

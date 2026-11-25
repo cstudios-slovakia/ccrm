@@ -8,11 +8,13 @@ export const ResponseTimeCard = ({
   labels,
   language,
   className = "",
+  onInfo,
 }: {
   data: ResponseTimeData;
   labels: PeriodLabels;
   language: Language;
   className?: string;
+  onInfo?: () => void;
 }) => {
   const t = makeT(language);
   const weekMax = Math.max(0, ...data.weeks.map((w) => w.averageMs ?? 0));
@@ -27,6 +29,7 @@ export const ResponseTimeCard = ({
           "Čas od prijatia ticketu po prvú odpoveď",
           "A jegy beérkezésétől az első válaszig eltelt idő",
         )}
+        onInfo={onInfo}
       />
       <HeadlineValue value={duration(data.averageMs, language)} />
       <SubLine>
