@@ -129,7 +129,6 @@ export function useStickyTableHead(): [(el: HTMLElement | null) => void, HTMLEle
         mirror.setAttribute("aria-hidden", "true");
         mirror.addEventListener("click", replayClick);
         mirror.addEventListener("pointerdown", forwardResize);
-        mirror.addEventListener("dblclick", forwardResize);
         mirror.addEventListener("wheel", forwardWheel, { passive: true });
         mirror.append(document.createElement("div"));
       }

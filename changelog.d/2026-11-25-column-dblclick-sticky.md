@@ -1,0 +1,1 @@
+- **Lists: double-clicking a column handle works in sticky table heads too** (the press is detected by the handle itself; the browser's dblclick never reached it once the sticky copy handed the press over).

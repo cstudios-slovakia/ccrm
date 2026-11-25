@@ -36,11 +36,23 @@ interface Props {
  */
 export function ColumnResizeHandle({ getWidth, onStart, onLive, onCommit, onReset }: Props) {
   const drag = useRef<{ x: number; w: number; last: number } | null>(null);
+  const lastDown = useRef(0);
 
+  // A double press is detected here, not with onDoubleClick: the press captures the pointer, and in a
+  // sticky table head the visible handle is a copy that hands the press to this one, so the browser's
+  // dblclick lands on neither handle.
   const down = (e: PointerEvent<HTMLSpanElement>) => {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
+    const now = Date.now();
+    if (now - lastDown.current < 400) {
+      lastDown.current = 0;
+      drag.current = null;
+      onReset();
+      return;
+    }
+    lastDown.current = now;
     e.currentTarget.setPointerCapture(e.pointerId);
     onStart();
     const w = getWidth();
@@ -80,10 +92,7 @@ export function ColumnResizeHandle({ getWidth, onStart, onLive, onCommit, onRese
       onPointerCancel={up}
       onKeyDown={key}
       onClick={(e) => e.stopPropagation()}
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        onReset();
-      }}
+      onDoubleClick={(e) => e.stopPropagation()}
       className="group/resize absolute inset-y-0 right-0 z-30 flex w-2 cursor-col-resize touch-none select-none items-stretch justify-center py-2.5 outline-none"
     >
       <span className="w-px rounded-full bg-slate-300/60 transition-colors duration-150 group-hover/resize:bg-slate-400 group-focus-visible/resize:bg-indigo-500 group-active/resize:bg-indigo-500" />
