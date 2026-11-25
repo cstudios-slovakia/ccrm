@@ -494,10 +494,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const now = useMemo(() => new Date(), [clockMinute]);
 
-  // Interval date range filter states (opens on "This month")
-  const [filterStartDate, setFilterStartDate] = useState<Date | null>(() => presetRange("month", new Date()).start);
-  const [filterEndDate, setFilterEndDate] = useState<Date | null>(() => presetRange("month", new Date()).end);
-  const [filterPresetName, setFilterPresetName] = useState<string>(() => presetNameOf("month"));
+  // Interval date range filter states (restores last quick-switch preset; manual ranges reset it to "month")
+  const [storedPeriodPreset, setStoredPeriodPreset] = useUserPref("dashboardPeriodPreset");
+  const initialPeriodPreset =
+    storedPeriodPreset === "week" || storedPeriodPreset === "month" || storedPeriodPreset === "quarter" || storedPeriodPreset === "year"
+      ? storedPeriodPreset
+      : "month";
+  const [filterStartDate, setFilterStartDate] = useState<Date | null>(() => presetRange(initialPeriodPreset, new Date()).start);
+  const [filterEndDate, setFilterEndDate] = useState<Date | null>(() => presetRange(initialPeriodPreset, new Date()).end);
+  const [filterPresetName, setFilterPresetName] = useState<string>(() => presetNameOf(initialPeriodPreset));
   const [isDatePickerOpen, setIsDatePickerOpen] = useState<boolean>(false);
 
   // PM comparison aspect state
@@ -827,6 +832,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       setFilterStartDate(date);
       setFilterEndDate(null);
       setFilterPresetName("Custom Range");
+      setStoredPeriodPreset("month");
     } else if (filterStartDate && !filterEndDate) {
       if (date < filterStartDate) {
         setFilterStartDate(date);
@@ -834,6 +840,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         setFilterEndDate(date);
       }
       setFilterPresetName("Custom Range");
+      setStoredPeriodPreset("month");
     }
   };
 
@@ -854,6 +861,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 setFilterStartDate(range.start);
                 setFilterEndDate(range.end);
                 setFilterPresetName(presetNameOf(preset));
+                setStoredPeriodPreset(preset);
                 setIsDatePickerOpen(false);
               }}
               rangeLabel={periodRangeLabel(overview.period, systemLanguage)}
@@ -950,6 +958,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             setFilterStartDate(start);
                             setFilterEndDate(end);
                             setFilterPresetName(preset.name);
+                            setStoredPeriodPreset("month");
                             setIsDatePickerOpen(false);
                           }}
           className={`text-left px-2.5 py-1.5 rounded-md type-overline transition-all cursor-pointer border ${

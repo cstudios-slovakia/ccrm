@@ -273,6 +273,8 @@ export interface UserPrefs {
   taskCalendarExpanded: boolean;
   /** Whether the TaskEditDrawer right-hand Activity & Chat panel is expanded on desktop. */
   taskDrawerChatExpanded: boolean;
+  /** Dashboard overview: last selected quick-period switch ("week" | "month" | "quarter" | "year"). */
+  dashboardPeriodPreset: "week" | "month" | "quarter" | "year";
 }
 
 export const DEFAULT_USER_PREFS: UserPrefs = {
@@ -335,6 +337,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   taskCalendarActiveLens: "tasks",
   taskCalendarExpanded: false,
   taskDrawerChatExpanded: true,
+  dashboardPeriodPreset: "month",
 };
 
 /** Anything with a metadata_json blob — UserProfile, or a raw sync.php row. */
