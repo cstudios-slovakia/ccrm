@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Koperniq Time Tracker",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Side panel for Koperniq tasks & time tracking with 50-minute pulsing check-ins and parallel timers.",
   "action": {
     "default_title": "Koperniq Time & Tasks",

@@ -4,6 +4,7 @@ import { TrackerError, trackerCall } from "./client.ts";
 import { loadLocal, saveLocal, type ExtensionPrefs, type QueueItem } from "./storage.ts";
 import { PRODUCT_NAME, errorMessage, t } from "./i18n.ts";
 import { formatClock, formatCountdown, serverOffset, timeOfDay, type PresenceState } from "./presence.ts";
+import { LIVE_REFRESH_MS, runningFingerprint } from "./liveRefresh.ts";
 
 declare const chrome: any;
 
@@ -25,6 +26,10 @@ let taskSearch = "";
 let panelTasks: any[] = [];
 const collapsedBuckets = new Set<string>(["tomorrow", "upcoming"]);
 let bucketTouched = false;
+// The running state the panel last rendered, and whether the user has typed since; see liveRefresh().
+let liveFingerprint = "";
+let formTouched = false;
+let liveInFlight = false;
 
 const initials = (name: string) =>
   name
@@ -220,6 +225,7 @@ async function showTracker(): Promise<void> {
       trackerCall(state.ccrmUrl, state.deviceKey, "GET", "myTasks", {}, {}).catch(() => ({ tasks: [] })),
     ]);
     panelTasks = Array.isArray(myTasksRes?.tasks) ? myTasksRes.tasks : [];
+    liveFingerprint = runningFingerprint(running);
     const items: any[] = state.optimistic
       ? [{ id: "", running: true, title: state.optimistic.title, projectName: state.optimistic.projectName, startAt: state.optimistic.startedAt, taskId: state.optimistic.taskTitle ? "local" : null, titleSource: "entry", billable: true }]
       : Array.isArray(running.running) && running.running.length > 0
@@ -405,6 +411,7 @@ function renderMainView(opts: {
 }): void {
   const { items, workedTodaySeconds, recent, unsorted, ccrmUrl, offline, extras } = opts;
   const loadedAt = Date.now();
+  formTouched = false;
   const runningCount = items.length;
   const showStartForm = runningCount === 0 || startFormExpanded;
   const totalToday = runningCount === 1
@@ -1282,6 +1289,35 @@ async function stop(entry: any): Promise<void> {
     showNotice(errorMessage(failure));
   }
 }
+
+/** Never re-render under the user's hands: while they type, edit an entry or have settings open. */
+function panelBusy(): boolean {
+  if (settingsOpen || editingEntryId || formTouched) return true;
+  const active = document.activeElement;
+  return !!active && app.contains(active) && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName);
+}
+
+/** The side panel stays open for hours: re-read the server and re-render only when the running timers changed. */
+async function liveRefresh(): Promise<void> {
+  if (document.visibilityState !== "visible" || liveInFlight || panelBusy()) return;
+  const state = await loadLocal();
+  if (!state.deviceKey || !state.ccrmUrl || state.queue.length > 0 || state.optimistic) return;
+  liveInFlight = true;
+  try {
+    const running = await trackerCall(state.ccrmUrl, state.deviceKey, "GET", "running");
+    if (runningFingerprint(running) !== liveFingerprint && !panelBusy()) await showTracker();
+  } catch {
+    /* offline or revoked: the next user action or tick shows it */
+  } finally {
+    liveInFlight = false;
+  }
+}
+
+app?.addEventListener("input", () => {
+  formTouched = true;
+});
+window.setInterval(() => void liveRefresh(), LIVE_REFRESH_MS);
+document.addEventListener("visibilitychange", () => void liveRefresh());
 
 document.title = t(`${PRODUCT_NAME} Time Tracker`, `${PRODUCT_NAME} Sledovanie času`, `${PRODUCT_NAME} Időkövetés`);
 void showTracker();

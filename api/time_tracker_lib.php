@@ -19,9 +19,11 @@ require_once __DIR__ . '/time_parallel.php';
 require_once __DIR__ . '/time_presence_lib.php';
 require_once __DIR__ . '/read_scope.php';
 
-const CCRM_TT_EXT_VERSION = '2.0.0';
+const CCRM_TT_EXT_VERSION = '2.0.1';
 const CCRM_TTX_PAIR_TTL = 600;
 const CCRM_TTX_OFFLINE_MS = 86400000;
+// A client clock up to this far ahead of the server is clamped to the server's now, not refused.
+const CCRM_TTX_FUTURE_SKEW_MS = 300000;
 const CCRM_TTX_MERGE_GAP_MS = 60000;
 const CCRM_TTX_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -125,10 +127,11 @@ function ccrm_ttx_client_instant($iso, int $nowMs): array {
     if ($ms === null) {
         return ['ok' => false, 'code' => 'bad_timestamp'];
     }
-    if ($ms > $nowMs || ($nowMs - $ms) > CCRM_TTX_OFFLINE_MS) {
+    if (($ms - $nowMs) > CCRM_TTX_FUTURE_SKEW_MS || ($nowMs - $ms) > CCRM_TTX_OFFLINE_MS) {
         return ['ok' => false, 'code' => 'timestamp_out_of_window'];
     }
-    return ['ok' => true, 'ms' => $ms];
+    // A PC clock a few seconds ahead of the server is normal; never store an instant in the server's future.
+    return ['ok' => true, 'ms' => min($ms, $nowMs)];
 }
 
 /** TT2 D7.3: settle the user's presence cycle and autoStopAt first (lazy, exact); never blocks the call. */
