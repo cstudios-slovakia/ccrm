@@ -619,7 +619,7 @@ echo 'ok';`);
   // Settings: every name-keyed map must travel as an object, even when empty.
   {
     const s = (await json("/sync.php")).body?.settings || {};
-    const bad = ["leadStateColors", "leadSourceColors", "leadCategoryColors", "leadStageGroups", "leadStateParents", "leadStateFollowUp"]
+    const bad = ["leadStateColors", "leadSourceColors", "leadCategoryColors", "leadStageGroups", "leadStateParents", "leadStateFollowUp", "leadStatePipelineHidden"]
       .filter((k) => Array.isArray(s[k]));
     check("settings: name-keyed maps are objects, never arrays", bad.length === 0, `arrays=${bad.join(",")}`);
   }

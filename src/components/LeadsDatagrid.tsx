@@ -289,7 +289,9 @@ import {
     // formatTimestampLocalized — only used by the commented-out e-mail full view
 } from "../utils/localTime";
 import { formatMoney, isMoneyValueEmpty, parseMoneyValue } from "../utils/currency";
-import { typePx, useViewSize } from "../utils/viewSize";
+import { PipelineStrip } from "./ui/PipelineStrip";
+import { LeadPipelineRowStrip } from "./leads/LeadPipelineRowStrip";
+import { makeLeadPipeline } from "../utils/leadPipeline";
 import { WhatsAppChip, OpenInChatLink } from "./WhatsAppChip";
 import { EntityHeader, PageHeader, Tabs } from "./layout";
 
@@ -912,6 +914,8 @@ interface LeadsDatagridProps {
     setProjects?: React.Dispatch<React.SetStateAction<Project[]>>;
     setActiveTab?: (tab: string) => void;
     leadStateFollowUp?: Record<string, boolean>;
+    /** Lowercased state name → true when Settings leaves the state out of the pipeline strip. */
+    leadStatePipelineHidden?: Record<string, boolean>;
     /** Per-phase SLA in days, keyed by lowercased state name (Settings -> Pipeline stages). */
     leadStateSla?: LeadStateSla;
     /** Rules for handing an ownerless new lead to a project manager (Settings -> Users). */
@@ -1117,6 +1121,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     setProjects,
     setActiveTab,
     leadStateFollowUp = {},
+    leadStatePipelineHidden = {},
     leadStateSla = {},
     leadAssignment = DEFAULT_LEAD_ASSIGNMENT,
     currencyCode,
@@ -1731,23 +1736,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             />
         );
     };
-
-    // Hover state for the detail view left card progress bar
-    const [hoveredDetailTimeline, setHoveredDetailTimeline] =
-        useState<boolean>(false);
-    const detailPipelineStripRef = React.useRef<HTMLDivElement>(null);
-    const detailPipelineMeasureCanvasRef =
-        React.useRef<HTMLCanvasElement | null>(null);
-    // Auto-fit for the pipeline strip labels: `fontSize` is the largest size at
-    // which every label still fits, `weights` are the per-segment flex-grow
-    // factors that give each segment room proportional to its own label. The
-    // states are configurable in Settings, so neither their count nor their
-    // length is fixed and both have to be measured at runtime.
-    const { size: viewSize } = useViewSize();
-    const [detailPipelineFit, setDetailPipelineFit] = useState<{
-        fontSize: number;
-        weights: number[];
-    }>(() => ({ fontSize: typePx("micro"), weights: [] }));
 
     // View mode switcher: list (default) or kanban. Along with the compact and
     // ordering switches below, this is a per-user preference stored in the
@@ -4865,164 +4853,27 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         return favoritesFirst ? pinFavoriteLeads(columns, isFavorite, false) : columns;
     }, [stateGroupedLeads, resolvedVisibleStates, favoritesFirst, isFavorite]);
 
-    // Order all major states and their associated substates sequentially for the progress bar
-    const orderedAllStates = useMemo(() => {
-        const list: string[] = [];
-        leadStates.forEach((state) => {
-            const stateLower = state.toLowerCase();
-            // If it is a major state (not a substate), push it, and then push all its substates immediately after
-            if (!leadStateParents[stateLower]) {
-                list.push(state);
-                const substates = leadStates.filter(
-                    (s) => leadStateParents[s.toLowerCase()] === stateLower,
-                );
-                list.push(...substates);
-            }
-        });
-        return Array.from(new Set(list));
-    }, [leadStates, leadStateParents]);
-
-    // Segments for the lead detail pipeline strip — extracted into a memo (rather
-    // than computed inline in JSX) so the font-size-fitting effect below can read
-    // the same list of labels that gets rendered.
-    const detailPipelineSegments = useMemo(() => {
-        const isStateClosed = (stateName: string) => {
-            const sLower = stateName.toLowerCase();
-            const parent = leadStateParents[sLower];
-            return (
-                sLower === "accepted" ||
-                sLower === "rejected" ||
-                parent === "accepted" ||
-                parent === "rejected"
-            );
-        };
-
-        const nonClosedStates = orderedAllStates.filter(
-            (s) => !isStateClosed(s),
-        );
-        const closedStates = orderedAllStates.filter((s) => isStateClosed(s));
-
-        const currentStatus = leadStatus || activeLead?.status || "";
-        const leadStatusLower = currentStatus.toLowerCase();
-        const isLeadClosed = isStateClosed(leadStatusLower);
-
-        const segments: {
-            key: string;
-            title: string;
-            isPastOrCurrent: boolean;
-            color: string;
-            tooltip: string;
-        }[] = [];
-
-        nonClosedStates.forEach((state) => {
-            const stateLower = state.toLowerCase();
-            const sIndex = orderedAllStates.findIndex(
-                (s) => s.toLowerCase() === stateLower,
-            );
-            const cIndex = orderedAllStates.findIndex(
-                (s) => s.toLowerCase() === leadStatusLower,
-            );
-
-            const isPastOrCurrent =
-                isLeadClosed ||
-                (sIndex !== -1 && cIndex !== -1 && sIndex <= cIndex);
-            const stateColor = getSafeStateColor(state);
-            const bgStyle = isPastOrCurrent ? stateColor : "#cbd5e1";
-
-            segments.push({
-                key: state,
-                title: state,
-                isPastOrCurrent,
-                color: bgStyle,
-                tooltip: `${state} ${isPastOrCurrent ? t("(Current/Past)", "(Aktuálne/Minulé)", "(Aktuális/Múlt)") : t("(Upcoming)", "(Nadchádzajúce)", "(Közelgő)")}`,
-            });
-        });
-
-        if (closedStates.length > 0) {
-            const combinedTitle = closedStates.join(" / ");
-            const activeColor = isLeadClosed
-                ? getSafeStateColor(currentStatus)
-                : "#cbd5e1";
-
-            segments.push({
-                key: "closed_states_combined",
-                title: combinedTitle,
-                isPastOrCurrent: isLeadClosed,
-                color: activeColor,
-                tooltip: isLeadClosed
-                    ? `${t("Closed", "Uzavreté", "Lezárva")} (${currentStatus})`
-                    : `${t("Closed", "Uzavreté", "Lezárva")} (${combinedTitle})`,
-            });
-        }
-
-        return segments;
-    }, [orderedAllStates, leadStateParents, leadStatus, activeLead?.status]);
-
-    // Fit the pipeline strip's labels: pick the largest font size at which every
-    // segment title still fits, and hand each segment a flex-grow weight based on
-    // its own label width. Equal-width segments would peg the whole strip to the
-    // longest label ("ACCEPTED / REJECTED") and shrink the type to the point of
-    // unreadability; proportional widths let every label sit at the same, much
-    // larger size. Recalculated whenever the segment list or the strip's own
-    // width changes (panel resize, sidebar collapse, etc).
-    useEffect(() => {
-        const el = detailPipelineStripRef.current;
-        if (!el || detailPipelineSegments.length === 0) return;
-
-        const measure = () => {
-            const containerWidth = el.clientWidth;
-            if (!containerWidth) return;
-
-            const canvas =
-                detailPipelineMeasureCanvasRef.current ??
-                (detailPipelineMeasureCanvasRef.current =
-                    document.createElement("canvas"));
-            const ctx = canvas.getContext("2d");
-            if (!ctx) return;
-
-            const REF_SIZE = 24;
-            ctx.font = `900 ${REF_SIZE}px ui-sans-serif, system-ui, -apple-system, sans-serif`;
-            // Canvas measurement ignores the `tracking-wider` letter-spacing the
-            // label actually renders with, so pad the estimate to compensate.
-            const TRACKING = 1.12;
-            const textWidths = detailPipelineSegments.map(
-                (seg) =>
-                    ctx.measureText(seg.title.toUpperCase()).width * TRACKING,
-            );
-            if (textWidths.some((w) => !w)) return;
-
-            // Per-segment chrome: the px-1 padding (4px) plus the diagonal
-            // clip-path notch (4px) on either side, plus a little slack.
-            // Added into the weight as well, so a short label like "NEW"
-            // keeps a sane minimum share of the strip.
-            const CHROME = 9;
-            const weights = textWidths.map((w) => w + CHROME * 2);
-            const weightTotal = weights.reduce((a, b) => a + b, 0);
-            const usable = containerWidth - (detailPipelineSegments.length - 1);
-
-            // The binding segment decides the size — with proportional weights
-            // they all come out near-identical, but the min keeps it exact.
-            let scale = Infinity;
-            weights.forEach((weight, i) => {
-                const segWidth = (usable * weight) / weightTotal - CHROME;
-                scale = Math.min(scale, Math.max(segWidth, 1) / textWidths[i]);
-            });
-
-            const nextSize = Math.min(typePx("ui"), Math.max(typePx("micro"), REF_SIZE * scale));
-            setDetailPipelineFit((prev) =>
-                prev.fontSize === nextSize &&
-                prev.weights.length === weights.length &&
-                prev.weights.every((w, i) => w === weights[i])
-                    ? prev
-                    : { fontSize: nextSize, weights },
-            );
-        };
-
-        measure();
-        const ro = new ResizeObserver(measure);
-        ro.observe(el);
-        return () => ro.disconnect();
-    }, [detailPipelineSegments, viewSize]);
+    // One builder for the drawer's pipeline strip and every list row's: main
+    // states only, closed by stage group, one outcome segment, hidden states left
+    // out (utils/leadPipeline). Prepared once, then called per lead.
+    const leadPipelineFor = useMemo(
+        () =>
+            makeLeadPipeline({
+                leadStates,
+                leadStageGroups,
+                leadStateParents,
+                leadStateColors,
+                leadStatePipelineHidden,
+                t,
+            }),
+        // `t` only changes with the language.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [leadStates, leadStageGroups, leadStateParents, leadStateColors, leadStatePipelineHidden, systemLanguage],
+    );
+    const detailPipelineSegments = useMemo(
+        () => leadPipelineFor(leadStatus || activeLead?.status || ""),
+        [leadPipelineFor, leadStatus, activeLead?.status],
+    );
 
     // Aggregate statistics for Card 1 & Card 2 (Unused)
     /*
@@ -5753,87 +5604,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 the header and the state itself is always editable here —
                                 it is the one field that must not need the edit toggle. */}
                             <div className="-mt-3 space-y-3 border-b-2 border-slate-100 pb-4">
-                                {/* Pipeline State Progress Bar — expands on hover of the
-                                    strip itself only, not the state selector below it */}
-                                <div
-                                    ref={detailPipelineStripRef}
-                                    onMouseEnter={() =>
-                                        setHoveredDetailTimeline(true)
-                                    }
-                                    onMouseLeave={() =>
-                                        setHoveredDetailTimeline(false)
-                                    }
-                                    className="w-[calc(100%+48px)] -mx-6 flex items-center gap-0.25 select-none bg-slate-200 transition-all duration-300 overflow-hidden shrink-0"
-                                    style={{
-                                        height: hoveredDetailTimeline
-                                            ? "24px"
-                                            : "4px",
-                                    }}
-                                >
-                                {detailPipelineSegments.map((seg, index) => {
-                                        const isFirst = index === 0;
-                                        const isLast =
-                                            index ===
-                                            detailPipelineSegments.length - 1;
-
-                                        let segmentClipPath = "none";
-                                        if (detailPipelineSegments.length > 1) {
-                                            if (isFirst) {
-                                                segmentClipPath =
-                                                    "polygon(0% 0%, calc(100% - 4px) 0%, 100% 50%, calc(100% - 4px) 100%, 0% 100%)";
-                                            } else if (isLast) {
-                                                segmentClipPath =
-                                                    "polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%, 4px 50%)";
-                                            } else {
-                                                segmentClipPath =
-                                                    "polygon(0% 0%, calc(100% - 4px) 0%, 100% 50%, calc(100% - 4px) 100%, 0% 100%, 4px 50%)";
-                                            }
-                                        }
-
-                                        const textColor = seg.isPastOrCurrent
-                                            ? "#ffffff"
-                                            : "#334155";
-
-                                        return (
-                                            <div
-                                                key={seg.key}
-                                                className="h-full flex items-center justify-center relative transition-all duration-300"
-                                                style={{
-                                                    // Width proportional to the label, so the font
-                                                    // never has to shrink to the longest one's worst
-                                                    // case. Falls back to equal shares before the
-                                                    // first measurement lands.
-                                                    flexGrow:
-                                                        detailPipelineFit
-                                                            .weights[index] ??
-                                                        1,
-                                                    flexShrink: 1,
-                                                    flexBasis: 0,
-                                                    minWidth: 0,
-                                                    backgroundColor: seg.color,
-                                                    clipPath: segmentClipPath,
-                                                }}
-                                                title={seg.tooltip}
-                                            >
-                                                {hoveredDetailTimeline && (
-                                                    <span
-                                                        className="font-bold uppercase tracking-wider px-1 truncate"
-                                                        style={{
-                                                            fontSize: `${detailPipelineFit.fontSize}px`,
-                                                            // Room for the accents on uppercase Slovak/Hungarian
-                                                            // labels (Ý, Á, Ô, Ő) — `truncate` clips whatever
-                                                            // grows past the line box.
-                                                            lineHeight: `${detailPipelineFit.fontSize + 4}px`,
-                                                            color: textColor,
-                                                        }}
-                                                    >
-                                                        {seg.title}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        );
-                                })}
-                                </div>
+                                {/* Pipeline strip — expands on hover of the strip itself only, not the
+                                    state selector below it. Segments: utils/leadPipeline. */}
+                                <PipelineStrip segments={detailPipelineSegments} className="w-[calc(100%+48px)] -mx-6" />
 
                                 {/* Lead state — always editable, no edit toggle needed */}
                                 <div className="space-y-1">
@@ -11151,235 +10924,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                     colSpan={activeColumns.length + 2}
                                                                                     className="lead-hover-strip-cell p-0 border-none select-none block ws-lg:table-cell w-full ws-lg:w-auto"
                                                                                 >
-                                                                                    <div
-                                                                                        className="lead-hover-strip flex items-center gap-0.25 select-none bg-slate-200 overflow-hidden"
-                                                                                    >
-                                                                                        {(() => {
-                                                                                            const isStateClosed =
-                                                                                                (
-                                                                                                    stateName: string,
-                                                                                                ) => {
-                                                                                                    const sLower =
-                                                                                                        stateName.toLowerCase();
-                                                                                                    const parent =
-                                                                                                        leadStateParents[
-                                                                                                            sLower
-                                                                                                        ];
-                                                                                                    return (
-                                                                                                        sLower ===
-                                                                                                            "accepted" ||
-                                                                                                        sLower ===
-                                                                                                            "rejected" ||
-                                                                                                        parent ===
-                                                                                                            "accepted" ||
-                                                                                                        parent ===
-                                                                                                            "rejected"
-                                                                                                    );
-                                                                                                };
-
-                                                                                            const nonClosedStates =
-                                                                                                orderedAllStates.filter(
-                                                                                                    (
-                                                                                                        s,
-                                                                                                    ) =>
-                                                                                                        !isStateClosed(
-                                                                                                            s,
-                                                                                                        ),
-                                                                                                );
-                                                                                            const closedStates =
-                                                                                                orderedAllStates.filter(
-                                                                                                    (
-                                                                                                        s,
-                                                                                                    ) =>
-                                                                                                        isStateClosed(
-                                                                                                            s,
-                                                                                                        ),
-                                                                                                );
-
-                                                                                            const leadStatusLower =
-                                                                                                (
-                                                                                                    lead.status ||
-                                                                                                    ""
-                                                                                                ).toLowerCase();
-                                                                                            const isLeadClosed =
-                                                                                                isStateClosed(
-                                                                                                    leadStatusLower,
-                                                                                                );
-
-                                                                                            // Create the list of renderable segments
-                                                                                            const segments: {
-                                                                                                key: string;
-                                                                                                title: string;
-                                                                                                isPastOrCurrent: boolean;
-                                                                                                color: string;
-                                                                                                tooltip: string;
-                                                                                            }[] =
-                                                                                                [];
-
-                                                                                            // 1. Add non-closed states
-                                                                                            nonClosedStates.forEach(
-                                                                                                (
-                                                                                                    state,
-                                                                                                ) => {
-                                                                                                    const stateLower =
-                                                                                                        state.toLowerCase();
-                                                                                                    const sIndex =
-                                                                                                        orderedAllStates.findIndex(
-                                                                                                            (
-                                                                                                                s,
-                                                                                                            ) =>
-                                                                                                                s.toLowerCase() ===
-                                                                                                                stateLower,
-                                                                                                        );
-                                                                                                    const cIndex =
-                                                                                                        orderedAllStates.findIndex(
-                                                                                                            (
-                                                                                                                s,
-                                                                                                            ) =>
-                                                                                                                s.toLowerCase() ===
-                                                                                                                leadStatusLower,
-                                                                                                        );
-
-                                                                                                    // If the lead is in any closed state, then all non-closed states are in the past
-                                                                                                    const isPastOrCurrent =
-                                                                                                        isLeadClosed ||
-                                                                                                        (sIndex !==
-                                                                                                            -1 &&
-                                                                                                            cIndex !==
-                                                                                                                -1 &&
-                                                                                                            sIndex <=
-                                                                                                                cIndex);
-                                                                                                    const stateColor =
-                                                                                                        getSafeStateColor(
-                                                                                                            state,
-                                                                                                        );
-                                                                                                    const bgStyle =
-                                                                                                        isPastOrCurrent
-                                                                                                            ? stateColor
-                                                                                                            : "#cbd5e1";
-
-                                                                                                    segments.push(
-                                                                                                        {
-                                                                                                            key: state,
-                                                                                                            title: state,
-                                                                                                            isPastOrCurrent,
-                                                                                                            color: bgStyle,
-                                                                                                            tooltip: `${state} ${isPastOrCurrent ? t("(Current/Past)", "(Aktuálne/Minulé)", "(Aktuális/Múlt)") : t("(Upcoming)", "(Nadchádzajúce)", "(Közelgő)")}`,
-                                                                                                        },
-                                                                                                    );
-                                                                                                },
-                                                                                            );
-
-                                                                                            // 2. Add the combined final segment if there are closed states
-                                                                                            if (
-                                                                                                closedStates.length >
-                                                                                                0
-                                                                                            ) {
-                                                                                                const combinedTitle =
-                                                                                                    closedStates.join(
-                                                                                                        " / ",
-                                                                                                    );
-                                                                                                const activeColor =
-                                                                                                    isLeadClosed
-                                                                                                        ? getSafeStateColor(
-                                                                                                              lead.status,
-                                                                                                          )
-                                                                                                        : "#cbd5e1";
-
-                                                                                                segments.push(
-                                                                                                    {
-                                                                                                        key: "closed_states_combined",
-                                                                                                        title: combinedTitle,
-                                                                                                        isPastOrCurrent:
-                                                                                                            isLeadClosed,
-                                                                                                        color: activeColor,
-                                                                                                        tooltip:
-                                                                                                            isLeadClosed
-                                                                                                                ? `${t("Closed", "Uzavreté", "Lezárva")} (${lead.status})`
-                                                                                                                : `${t("Closed", "Uzavreté", "Lezárva")} (${combinedTitle})`,
-                                                                                                    },
-                                                                                                );
-                                                                                            }
-
-                                                                                            return segments.map(
-                                                                                                (
-                                                                                                    seg,
-                                                                                                    index,
-                                                                                                ) => {
-                                                                                                    const isFirst =
-                                                                                                        index ===
-                                                                                                        0;
-                                                                                                    const isLast =
-                                                                                                        index ===
-                                                                                                        segments.length -
-                                                                                                            1;
-
-                                                                                                    let segmentClipPath =
-                                                                                                        "none";
-                                                                                                    if (
-                                                                                                        segments.length >
-                                                                                                        1
-                                                                                                    ) {
-                                                                                                        if (
-                                                                                                            isFirst
-                                                                                                        ) {
-                                                                                                            segmentClipPath =
-                                                                                                                "polygon(0% 0%, calc(100% - 4px) 0%, 100% 50%, calc(100% - 4px) 100%, 0% 100%)";
-                                                                                                        } else if (
-                                                                                                            isLast
-                                                                                                        ) {
-                                                                                                            segmentClipPath =
-                                                                                                                "polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%, 4px 50%)";
-                                                                                                        } else {
-                                                                                                            segmentClipPath =
-                                                                                                                "polygon(0% 0%, calc(100% - 4px) 0%, 100% 50%, calc(100% - 4px) 100%, 0% 100%, 4px 50%)";
-                                                                                                        }
-                                                                                                    }
-
-                                                                                                    const textColor =
-                                                                                                        seg.isPastOrCurrent
-                                                                                                            ? "#ffffff"
-                                                                                                            : "#334155";
-
-                                                                                                    return (
-                                                                                                        <div
-                                                                                                            key={
-                                                                                                                seg.key
-                                                                                                            }
-                                                                                                            className="flex-1 h-full flex items-center justify-center relative transition-all duration-300"
-                                                                                                            style={{
-                                                                                                                backgroundColor:
-                                                                                                                    seg.color,
-                                                                                                                clipPath:
-                                                                                                                    segmentClipPath,
-                                                                                                            }}
-                                                                                                            title={
-                                                                                                                seg.tooltip
-                                                                                                            }
-                                                                                                        >
-                                                                                                            <span
-                                                                                                                    className="lead-hover-strip-label type-overline px-1 truncate"
-                                                                                                                    style={{
-                                                                                                                        fontSize:
-                                                                                                                            "var(--text-micro)",
-                                                                                                                        // Room for the accents on uppercase Slovak/Hungarian
-                                                                                                                        // labels (Ý, Á, Ô, Ő) — `truncate` clips whatever
-                                                                                                                        // grows past the line box.
-                                                                                                                        lineHeight:
-                                                                                                                            "14px",
-                                                                                                                        color: textColor,
-                                                                                                                    }}
-                                                                                                                >
-                                                                                                                    {
-                                                                                                                        seg.title
-                                                                                                                    }
-                                                                                                                </span>
-                                                                                                        </div>
-                                                                                                    );
-                                                                                                },
-                                                                                            );
-                                                                                        })()}
-                                                                                    </div>
+                                                                                    <LeadPipelineRowStrip segments={leadPipelineFor(lead.status)} />
                                                                                 </td>
                                                                             </tr>
                                                                         )}

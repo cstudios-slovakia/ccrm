@@ -36,6 +36,7 @@ export const computeSettingsSig = (s: any): string => {
     s.leadStageGroups && Object.keys(s.leadStageGroups).length ? s.leadStageGroups : null,
     s.leadStateParents && Object.keys(s.leadStateParents).length ? s.leadStateParents : null,
     s.leadStateFollowUp && Object.keys(s.leadStateFollowUp).length ? s.leadStateFollowUp : null,
+    s.leadStatePipelineHidden && Object.keys(s.leadStatePipelineHidden).length ? s.leadStatePipelineHidden : null,
     normalizeLeadStateSla(s.leadStateSla),
     normalizeLeadAssignment(s.leadAssignment),
     normalizeLeadAttributes(s.leadAttributes),
