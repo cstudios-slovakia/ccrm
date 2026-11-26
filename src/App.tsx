@@ -882,8 +882,6 @@ function App() {
   // Keyed by lowercased state name (admin-configurable in Settings). Robust to
   // renaming/removing states — a removed state's entry simply stops mattering.
   const [leadStateFollowUp, setLeadStateFollowUp] = useState<Record<string, boolean>>({});
-  // Lowercased state name → true when the state is not a step in the lead pipeline strip.
-  const [leadStatePipelineHidden, setLeadStatePipelineHidden] = useState<Record<string, boolean>>({});
 
   // Per-state SLA: how many days a lead may sit in that phase before the leads
   // list and the lead detail start flagging it. Keyed by lowercased state name;
@@ -1448,7 +1446,6 @@ ${log.payload || ''}
         leadStageGroups,
         leadStateParents,
         leadStateFollowUp,
-        leadStatePipelineHidden,
         leadStateSla,
         leadAssignment,
         leadAttributes,
@@ -2721,7 +2718,7 @@ ${log.payload || ''}
       leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds,
       systemName: systemNameOverride, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
-      leadStateParents, leadStateFollowUp, leadStatePipelineHidden, leadStateSla, leadAssignment, leadAttributes, projectAutoCreate, taskStates, taskStateColors, taskStateTimerActions, taskSettings,
+      leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, leadAttributes, projectAutoCreate, taskStates, taskStateColors, taskStateTimerActions, taskSettings,
       projectStatuses,
       offerStatuses,
       invoiceStatuses,
@@ -2757,7 +2754,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemNameOverride, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStatePipelineHidden, leadStateSla, leadAssignment, leadAttributes, projectAutoCreate, taskStates, taskStateColors, taskStateTimerActions, projectStatuses, offerStatuses, invoiceStatuses, priceLevels, orderStatuses, ticketStatuses, ticketSettings, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
+  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemNameOverride, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, leadAttributes, projectAutoCreate, taskStates, taskStateColors, taskStateTimerActions, projectStatuses, offerStatuses, invoiceStatuses, priceLevels, orderStatuses, ticketStatuses, ticketSettings, financialMode, financialSimplifiedTable, isInitialSyncResolved, taskSettings]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -3110,7 +3107,6 @@ ${log.payload || ''}
         setLeadStageGroups((prev) => s.leadStageGroups && JSON.stringify(s.leadStageGroups) !== JSON.stringify(prev) ? s.leadStageGroups : prev);
         setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
         setLeadStateFollowUp((prev) => s.leadStateFollowUp && JSON.stringify(s.leadStateFollowUp) !== JSON.stringify(prev) ? s.leadStateFollowUp : prev);
-        setLeadStatePipelineHidden((prev) => s.leadStatePipelineHidden && JSON.stringify(s.leadStatePipelineHidden) !== JSON.stringify(prev) ? s.leadStatePipelineHidden : prev);
         setLeadStateSla((prev) => {
           const next = normalizeLeadStateSla(s.leadStateSla);
           return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
@@ -3624,8 +3620,6 @@ ${log.payload || ''}
           setLeadStageGroups={setLeadStageGroups}
           leadStateFollowUp={leadStateFollowUp}
           setLeadStateFollowUp={setLeadStateFollowUp}
-          leadStatePipelineHidden={leadStatePipelineHidden}
-          setLeadStatePipelineHidden={setLeadStatePipelineHidden}
           leadStateSla={leadStateSla}
           setLeadStateSla={setLeadStateSla}
           leadAssignment={leadAssignment}
@@ -3861,7 +3855,7 @@ ${log.payload || ''}
           projects={projects}
           setProjects={updateProjectsAndSync}
           setActiveTab={setActiveTab}
-          leadStateFollowUp={leadStateFollowUp} leadStatePipelineHidden={leadStatePipelineHidden}
+          leadStateFollowUp={leadStateFollowUp}
           leadStateSla={leadStateSla}
           leadAssignment={leadAssignment}
           leadAttributes={leadAttributes}
@@ -3907,7 +3901,6 @@ ${log.payload || ''}
           setLeadStageGroups={setLeadStageGroups}
           leadStateFollowUp={leadStateFollowUp}
           setLeadStateFollowUp={setLeadStateFollowUp}
-          leadStatePipelineHidden={leadStatePipelineHidden} setLeadStatePipelineHidden={setLeadStatePipelineHidden}
           leadStateSla={leadStateSla}
           setLeadStateSla={setLeadStateSla}
           leadAssignment={leadAssignment}
@@ -4054,7 +4047,7 @@ ${log.payload || ''}
             projects={projects}
             setProjects={updateProjectsAndSync}
             setActiveTab={setActiveTab}
-            leadStateFollowUp={leadStateFollowUp} leadStatePipelineHidden={leadStatePipelineHidden}
+            leadStateFollowUp={leadStateFollowUp}
             leadStateSla={leadStateSla}
             leadAssignment={leadAssignment}
             leadAttributes={leadAttributes}

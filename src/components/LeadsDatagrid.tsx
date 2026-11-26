@@ -914,8 +914,6 @@ interface LeadsDatagridProps {
     setProjects?: React.Dispatch<React.SetStateAction<Project[]>>;
     setActiveTab?: (tab: string) => void;
     leadStateFollowUp?: Record<string, boolean>;
-    /** Lowercased state name → true when Settings leaves the state out of the pipeline strip. */
-    leadStatePipelineHidden?: Record<string, boolean>;
     /** Per-phase SLA in days, keyed by lowercased state name (Settings -> Pipeline stages). */
     leadStateSla?: LeadStateSla;
     /** Rules for handing an ownerless new lead to a project manager (Settings -> Users). */
@@ -1121,7 +1119,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     setProjects,
     setActiveTab,
     leadStateFollowUp = {},
-    leadStatePipelineHidden = {},
     leadStateSla = {},
     leadAssignment = DEFAULT_LEAD_ASSIGNMENT,
     currencyCode,
@@ -4854,8 +4851,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     }, [stateGroupedLeads, resolvedVisibleStates, favoritesFirst, isFavorite]);
 
     // One builder for the drawer's pipeline strip and every list row's: main
-    // states only, closed by stage group, one outcome segment, hidden states left
-    // out (utils/leadPipeline). Prepared once, then called per lead.
+    // states only, closed by stage group, one outcome segment
+    // (utils/leadPipeline). Prepared once, then called per lead.
     const leadPipelineFor = useMemo(
         () =>
             makeLeadPipeline({
@@ -4863,12 +4860,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 leadStageGroups,
                 leadStateParents,
                 leadStateColors,
-                leadStatePipelineHidden,
                 t,
             }),
         // `t` only changes with the language.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [leadStates, leadStageGroups, leadStateParents, leadStateColors, leadStatePipelineHidden, systemLanguage],
+        [leadStates, leadStageGroups, leadStateParents, leadStateColors, systemLanguage],
     );
     const detailPipelineSegments = useMemo(
         () => leadPipelineFor(leadStatus || activeLead?.status || ""),

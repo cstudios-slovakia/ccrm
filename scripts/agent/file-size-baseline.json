@@ -3,7 +3,7 @@
   "threshold": 2500,
   "slack": 150,
   "files": {
-    "src/components/LeadsDatagrid.tsx": 12530,
+    "src/components/LeadsDatagrid.tsx": 12526,
     "src/components/FinancialManagementView.tsx": 9077,
     "src/components/SettingsView.tsx": 7425,
     "public/sync.php": 7565,

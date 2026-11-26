@@ -11,8 +11,7 @@ import { DEFAULT_VAT_RATES, DEFAULT_STANDARD_VAT_RATE, getAvailableVatRates, san
 import { DEFAULT_SHIPPING_METHODS } from "../utils/shipping";
 import { DEFAULT_PAYMENT_METHODS, DEFAULT_STANDARD_PAYMENT_METHOD } from "../utils/payment";
 import { leadAssignmentPanel, resolveAssignmentPool, type LeadAssignmentPanel } from "../utils/leadAssignment";
-import { isClosedLeadState, normalizeSlaDays, type LeadStateSla } from "../utils/leadSla";
-import { LeadStatePipelineToggle } from "./settings/LeadStatePipelineToggle";
+import { normalizeSlaDays, type LeadStateSla } from "../utils/leadSla";
 import { listIdFor, nextListId, type ListIds } from "../utils/listIds";
 import { getTranslation, formatTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
@@ -545,8 +544,6 @@ interface SettingsViewProps {
   setLeadStageGroups: React.Dispatch<React.SetStateAction<Record<string, "new" | "in_progress" | "closed">>>;
   leadStateFollowUp: Record<string, boolean>;
   setLeadStateFollowUp: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
-  leadStatePipelineHidden: Record<string, boolean>;
-  setLeadStatePipelineHidden: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   // Per-phase SLA in days, keyed by lowercased state name. A phase without an
   // entry has no limit. See utils/leadSla.ts.
   leadStateSla: LeadStateSla;
@@ -696,8 +693,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setLeadStageGroups,
   leadStateFollowUp,
   setLeadStateFollowUp,
-  leadStatePipelineHidden,
-  setLeadStatePipelineHidden,
   leadStateSla,
   setLeadStateSla,
   leadAssignment,
@@ -935,7 +930,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     // showing up on every lead in it.
     setLeadStateSla((prev) => migrateMapKey(prev, oldName, next));
     setLeadStateFollowUp((prev) => migrateMapKey(prev, oldName, next));
-    setLeadStatePipelineHidden((prev) => migrateMapKey(prev, oldName, next));
     setLeads?.((prev) =>
       prev.map((l) => {
         const renamed = l.status === oldName ? { ...l, status: next } : l;
@@ -5036,7 +5030,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 {t("SLA limit", "Limit SLA", "SLA-határidő")}
                               </th>
                               <th className="py-3 px-4 type-overline text-gray-500 w-28 text-center">{t("Follow-up", "Follow-up", "Follow-up")}</th>
-                              <th className="py-3 px-4 type-overline text-gray-500 w-28 text-center">{t("Pipeline bar", "Lišta fáz", "Fázissáv")}</th>
                               <th className="py-3 px-4 type-overline text-gray-500 w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
                             </tr>
                           </thead>
@@ -5079,7 +5072,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                         isDragOver ? "bg-entity-soft scale-[0.99] border-2 border-dashed border-entity-border" : "bg-gray-100/70"
                                       }`}
                                     >
-                                      <td colSpan={8} className="py-3 px-4 font-bold uppercase text-gray-800 tracking-wide select-none">
+                                      <td colSpan={7} className="py-3 px-4 font-bold uppercase text-gray-800 tracking-wide select-none">
                                         <div className="flex items-center justify-between">
                                           <div className="flex items-center gap-2">
                                             <span className="type-overline text-gray-900">{item.name}</span>
@@ -5296,18 +5289,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       })()}
                                     </td>
         
-                                    {/* 4c. PIPELINE BAR — is this main, open state a step in the lead pipeline strip */}
-                                    <td className="py-3 px-4 text-center align-middle select-none">
-                                      <LeadStatePipelineToggle
-                                        stateKey={state.toLowerCase()}
-                                        notAStep={isSub || isClosedLeadState(state, leadStageGroups, leadStateParents)}
-                                        hidden={leadStatePipelineHidden}
-                                        setHidden={setLeadStatePipelineHidden}
-                                        canEdit={getPermission("pipeline_stages") === "edit"}
-                                        t={t}
-                                      />
-                                    </td>
-
                                     {/* 5. DELETE BUTTON */}
                                     <td className="py-3 px-4 text-center align-middle">
                                       {getPermission("pipeline_stages") === "edit" ? (

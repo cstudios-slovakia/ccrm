@@ -13,9 +13,6 @@ import { orderLeadStates } from "./leadStates.ts";
     its English name, so "Odmietnutá" ends the pipeline like "Rejected" does.
   - All closed states share ONE outcome segment at the end: a neutral "Closed"
     while the lead is open, the actual outcome in its colour once it is closed.
-  - States switched off under "Pipeline bar" (leadStatePipelineHidden) are not
-    steps — "Do not contact" is somewhere a lead sits, not a stage it passes.
-    A lead that sits in one still sees it, in its place, as the current step.
 */
 
 export interface LeadPipelineConfig {
@@ -23,8 +20,6 @@ export interface LeadPipelineConfig {
   leadStageGroups?: Record<string, string>;
   leadStateParents?: Record<string, string>;
   leadStateColors?: Record<string, string>;
-  /** Lowercased state name → true when the state is not a pipeline step. */
-  leadStatePipelineHidden?: Record<string, boolean>;
   t: (en: string, sk: string, hu: string) => string;
 }
 
@@ -40,7 +35,6 @@ export const makeLeadPipeline = (cfg: LeadPipelineConfig) => {
   const groups = cfg.leadStageGroups ?? {};
   const parents = cfg.leadStateParents ?? {};
   const colors = cfg.leadStateColors ?? {};
-  const hidden = cfg.leadStatePipelineHidden ?? {};
   const { t } = cfg;
 
   const ordered = orderLeadStates([...cfg.leadStates], groups, parents);
@@ -64,10 +58,9 @@ export const makeLeadPipeline = (cfg: LeadPipelineConfig) => {
     const path = parentKey ? `${labelOf.get(parentKey) ?? parentKey} › ${label}` : label;
     const leadClosed = key !== "" && isClosed(key);
 
-    const visible = steps.filter((s) => !hidden[s.toLowerCase()] || s.toLowerCase() === majorKey);
-    const currentIndex = leadClosed || !key ? -1 : visible.findIndex((s) => s.toLowerCase() === majorKey);
+    const currentIndex = leadClosed || !key ? -1 : steps.findIndex((s) => s.toLowerCase() === majorKey);
 
-    const segments: PipelineStripSegment[] = visible.map((state, i) => {
+    const segments: PipelineStripSegment[] = steps.map((state, i) => {
       const filled = leadClosed || (currentIndex !== -1 && i <= currentIndex);
       const current = i === currentIndex;
       const title = current ? path : state;

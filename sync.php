@@ -1168,8 +1168,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leadStageGroups = (isset($settings['LEAD_STAGE_GROUPS']) ? json_decode($settings['LEAD_STAGE_GROUPS'], true) : []) ?: (object)[];
     $leadStateParents = (isset($settings['LEAD_STATE_PARENTS']) ? json_decode($settings['LEAD_STATE_PARENTS'], true) : []) ?: (object)[];
     $leadStateFollowUp = (isset($settings['LEAD_STATE_FOLLOWUP']) ? json_decode($settings['LEAD_STATE_FOLLOWUP'], true) : []) ?: (object)[];
-    // States that are not a step in the lead pipeline strip (Settings -> Pipeline stages, "Pipeline bar").
-    $leadStatePipelineHidden = (isset($settings['LEAD_STATE_PIPELINE_HIDDEN']) ? json_decode($settings['LEAD_STATE_PIPELINE_HIDDEN'], true) : []) ?: (object)[];
     // How many days a lead may sit in each pipeline phase before the app flags it.
     // Normalized on the way out so the client never has to defend against a
     // malformed blob, and so its own normalization compares equal to this one.
@@ -2751,7 +2749,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'leadStageGroups' => $leadStageGroups,
             'leadStateParents' => $leadStateParents,
             'leadStateFollowUp' => $leadStateFollowUp,
-            'leadStatePipelineHidden' => $leadStatePipelineHidden,
             // Empty has to travel as {} — an empty PHP array encodes as [], which
             // the client would read as a list and normalize back to {} forever.
             'leadStateSla' => $leadStateSla ?: (object)[],
@@ -3478,7 +3475,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'LEAD_STAGE_GROUPS' => ccrm_settings_list_value($s, 'leadStageGroups', true),
                 'LEAD_STATE_PARENTS' => ccrm_settings_list_value($s, 'leadStateParents', true),
                 'LEAD_STATE_FOLLOWUP' => ccrm_settings_list_value($s, 'leadStateFollowUp', true),
-                'LEAD_STATE_PIPELINE_HIDDEN' => ccrm_settings_list_value($s, 'leadStatePipelineHidden', true),
                 // Omitted means unchanged (null is skipped below), the same
                 // contract as the auto-assignment settings underneath: a client
                 // that knows nothing about SLA limits must not clear everyone
@@ -3575,7 +3571,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $settingsAllowedKeys = array_merge($settingsAllowedKeys, [
                     'LEAD_STATES', 'LEAD_CATEGORIES', 'LEAD_CATEGORY_IDS',
                     'LEAD_STATE_COLORS', 'LEAD_CATEGORY_COLORS',
-                    'LEAD_STAGE_GROUPS', 'LEAD_STATE_PARENTS', 'LEAD_STATE_FOLLOWUP', 'LEAD_STATE_PIPELINE_HIDDEN',
+                    'LEAD_STAGE_GROUPS', 'LEAD_STATE_PARENTS', 'LEAD_STATE_FOLLOWUP',
                     'LEAD_STATE_SLA', 'LEAD_ASSIGNMENT', 'LEAD_ATTRIBUTES',
                 ]);
             }
