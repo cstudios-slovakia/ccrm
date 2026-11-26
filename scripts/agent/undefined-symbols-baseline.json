@@ -158,7 +158,6 @@
     "public/api/agent_utils.php unknown-column tasks.project_id in build_comprehensive_crm_rag_context()",
     "public/api/passkeys_lib.php function ccrm_start_session in ccrm_pw_auth_recent() — defined in public/api/auth.php",
     "public/api/tickets.php function ccrm_decrypt_settings_secrets in ccrm_load_ticket_settings()",
-    "public/api/tickets.php function parse_email_structure in ccrm_poll_ticket_imap()",
     "scripts/import/villatesta/seed_config.php function ccrm_default_lists in vt_is_installer_default() — defined in public/api/schema.php",
     "scripts/seed_demo_warehouse.php function demo_seed_warehouse — defined in public/api/demo_seed/warehouse.php",
     "scripts/test-demo-packs.php function demo_ctx_force in {closure}() — defined in public/api/demo_seed/context.php",
