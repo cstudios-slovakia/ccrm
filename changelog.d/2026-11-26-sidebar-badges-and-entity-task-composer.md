@@ -1,0 +1,2 @@
+- **Sidebar badges**: Added open-ticket count and today+overdue task count badges to the left navigation sidebar (inline pill when expanded, top-right corner notification badge when collapsed).
+- **Full compact task composer in Tickets & Entities**: Replaced the minimal task creation forms inside Tickets, Clients, Projects, Leads, and Agency Workers with a compact full-featured task composer (`TaskComposerBar` + `QuickTaskModal`), pre-filled with the current entity while keeping entity pickers editable.

@@ -51,6 +51,8 @@ import {
   UserCheck,
 } from "lucide-react";
 import { AgencyWorkerSelect } from "./agency/AgencyWorkerSelect";
+import { QuickTaskModal, type ComposerOrigin } from "./QuickTaskModal";
+import { TaskComposerBar } from "./TaskComposerBar";
 import type {
   Ticket,
   TicketAttachment,
@@ -94,7 +96,6 @@ import { projectDisplayName } from "../utils/projects";
 import {
   nowLocalStamp,
   todayLocal,
-  todayLocalPlusDays,
   formatTimestampLocalized,
 } from "../utils/localTime";
 import { EntityHeader, PageHeader, Tabs } from "./layout";
@@ -113,7 +114,6 @@ import { PinnedFilterChips } from "./ui/PinnedFilterChips";
 import { useTicketFacets, type TicketKpiBucket } from "./tickets/useTicketFacets";
 import { useTicketTimeEntries } from "../hooks/useTimeEntries";
 import { useTimeTracking } from "../hooks/useTimeTracking";
-import { clampDeadline, todayStr } from "../utils/taskDeadline";
 import { createEntry, deleteEntry, listProjectUsage, updateEntry, type UsageEntry } from "../utils/timeTrackingApi";
 import { PRODUCT_NAME } from "../utils/brand";
 import { EntityBadge } from "./tremor/EntityBadge";
@@ -479,11 +479,12 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   const [contractRate] = useState<number>(65);
   const [contractTier] = useState<"standard" | "priority" | "enterprise">("standard");
 
-  // Task creation from ticket state
-  const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [newTaskAssignee, setNewTaskAssignee] = useState(currentUser?.name || "");
-  const [newTaskDeadline, setNewTaskDeadline] = useState(() => todayLocalPlusDays(3));
-  const [showTaskForm, setShowTaskForm] = useState(false);
+  // Task creation from ticket state (inline composer in Tasks tab, floating modal from sidebar)
+  const [taskComposerOpen, setTaskComposerOpen] = useState(false);
+  const [taskComposerInline, setTaskComposerInline] = useState(true);
+  const [taskComposerOrigin, setTaskComposerOrigin] = useState<ComposerOrigin | undefined>(undefined);
+  const [taskComposerDictate, setTaskComposerDictate] = useState(false);
+  const [taskComposerReturned, setTaskComposerReturned] = useState(false);
 
   // Time entry form & admin edit state
   const [logMinutes, setLogMinutes] = useState<string>("0:30");
@@ -1016,63 +1017,49 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     );
   };
 
-  const handleCreateTaskFromTicket = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedTicket || !canEdit || !newTaskTitle.trim()) return;
+  const openTicketTaskComposer = (
+    inline: boolean,
+    origin?: ComposerOrigin,
+    dictate = false,
+  ) => {
+    setTaskComposerInline(inline);
+    setTaskComposerOrigin(origin);
+    setTaskComposerDictate(dictate);
+    setTaskComposerReturned(false);
+    setTaskComposerOpen(true);
+  };
+
+  const closeTicketTaskComposer = () => {
+    setTaskComposerOpen(false);
+    setTaskComposerDictate(false);
+    setTaskComposerReturned(true);
+  };
+
+  const handleCreateTasksFromTicket = (createdTasks: Task[]) => {
+    if (!selectedTicket || !canEdit || createdTasks.length === 0) return;
     const now = nowLocalStamp();
-    const taskId = `task-${Date.now()}`;
-    const plainDesc = (selectedTicket.description || "")
-      .replace(/<[^>]*>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    const chosenAssignee = newTaskAssignee || currentUser?.name || "";
-    const newTask: Task = {
-      id: taskId,
-      title: newTaskTitle.trim().startsWith(`[${selectedTicket.ticketNumber}]`)
-        ? newTaskTitle.trim()
-        : `[${selectedTicket.ticketNumber}] ${newTaskTitle.trim()}`,
-      description: `${selectedTicket.subject}\n\n${plainDesc}`.trim(),
-      status: taskStates[0] || "New",
-      priority:
-        selectedTicket.priority === "critical" ||
-        selectedTicket.priority === "high"
-          ? "high"
-          : selectedTicket.priority === "low"
-            ? "low"
-            : "medium",
-      deadline: newTaskDeadline || todayLocalPlusDays(3),
-      owner: chosenAssignee,
-      createdBy: currentUser?.name || "",
-      assignedUsers: chosenAssignee ? [chosenAssignee] : [],
-      relatedProjectId: selectedTicket.projectId || undefined,
-      relatedLeadId:
-        selectedTicket.leadId || selectedTicket.clientId || undefined,
+    const prefix = `[${selectedTicket.ticketNumber}]`;
+    const linkedTasks: Task[] = createdTasks.map((tsk) => ({
+      ...tsk,
+      title: tsk.title.trim().startsWith(prefix)
+        ? tsk.title.trim()
+        : `${prefix} ${tsk.title.trim()}`,
       relatedTicketId: selectedTicket.id,
-    };
+    }));
 
-    setTasks((prev) => [newTask, ...prev]);
+    setTasks((prev) => [...linkedTasks, ...prev]);
 
-    const newLink = {
-      id: `${selectedTicket.id}:${taskId}`,
+    const newLinks = linkedTasks.map((tsk) => ({
+      id: `${selectedTicket.id}:${tsk.id}`,
       ticketId: selectedTicket.id,
-      taskId,
+      taskId: tsk.id,
       syncMode: "auto_resolve" as const,
       createdAt: now,
-    };
+    }));
 
     updateSelectedTicket({
-      taskLinks: [...(selectedTicket.taskLinks || []), newLink],
+      taskLinks: [...(selectedTicket.taskLinks || []), ...newLinks],
     });
-
-    setNewTaskTitle("");
-    setShowTaskForm(false);
-    (window as any).showToast?.(
-      t(
-        `${PRODUCT_NAME} Task created & linked to employee.`,
-        "Úloha vytvorená a priradená riešiteľovi.",
-        `${PRODUCT_NAME} feladat létrehozva és hozzárendelve.`,
-      ),
-    );
   };
 
   const handleLogTime = (
@@ -1886,16 +1873,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     {canEdit && (
                       <button
                         type="button"
-                        onClick={() => {
-                          setNewTaskTitle(selectedTicket.subject);
-                          setNewTaskAssignee(
-                            selectedTicket.assignedUsers?.[0] ||
-                              currentUser?.name ||
-                              assigneeOptions[0]?.value ||
-                              "",
-                          );
-                          setShowTaskForm((v) => !v);
-                        }}
+                        onClick={() => openTicketTaskComposer(false)}
                         className="text-micro font-semibold text-entity-text hover:underline cursor-pointer"
                       >
                         {t(
@@ -1907,59 +1885,32 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                     )}
                   </div>
 
-                  {showTaskForm && (
-                    <form
-                      onSubmit={handleCreateTaskFromTicket}
-                      className="p-2.5 rounded-lg bg-gray-50 border border-entity-border space-y-2"
-                    >
-                      <input
-                        type="text"
-                        required
-                        value={newTaskTitle}
-                        onChange={(e) => setNewTaskTitle(e.target.value)}
-                        placeholder={t(
-                          "Task title...",
-                          "Názov úlohy...",
-                          "Feladat címe...",
-                        )}
-                        className="w-full px-2.5 py-1.5 rounded-md border border-gray-200 bg-white text-caption font-medium focus:outline-none focus:border-entity-solid"
-                      />
-                      <div className="space-y-1">
-                        <label className="block type-overline text-gray-400">
-                          {t(
-                            "Assign Employee",
-                            "Priradiť zamestnanca",
-                            "Alkalmazott hozzárendelése",
-                          )}
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <select
-                            value={newTaskAssignee}
-                            onChange={(e) => setNewTaskAssignee(e.target.value)}
-                            className="flex-1 px-2 py-1.5 rounded-md border border-gray-200 bg-white text-micro font-semibold text-gray-700"
-                          >
-                            <option value="">
-                              {t(
-                                "— Select Employee —",
-                                "— Vybrať zamestnanca —",
-                                "— Alkalmazott kiválasztása —",
-                              )}
-                            </option>
-                            {assigneeOptions.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            type="submit"
-                            className="px-3 py-1.5 rounded-md bg-entity-solid hover:opacity-90 text-white text-micro font-semibold cursor-pointer shrink-0"
-                          >
-                            {t("Create", "Vytvoriť", "Létrehozás")}
-                          </button>
-                        </div>
-                      </div>
-                    </form>
+                  {taskComposerOpen && !taskComposerInline && (
+                    <QuickTaskModal
+                      tasks={tasks}
+                      leads={leads}
+                      projects={projects}
+                      users={users}
+                      taskStates={taskStates}
+                      systemLanguage={userLanguage}
+                      currentUserName={currentUser?.name || ""}
+                      agencyEnabled={agencyEnabled}
+                      initialRelatedTicketId={selectedTicket.id}
+                      initialRelatedLeadId={selectedTicket.leadId || selectedTicket.clientId || undefined}
+                      initialRelatedProjectId={selectedTicket.projectId || undefined}
+                      initialRelatedAgencyWorkerId={selectedTicket.agencyWorkerId || undefined}
+                      initialPriority={
+                        selectedTicket.priority === "critical" || selectedTicket.priority === "high"
+                          ? "high"
+                          : selectedTicket.priority === "low"
+                            ? "low"
+                            : "medium"
+                      }
+                      origin={taskComposerOrigin}
+                      startDictation={taskComposerDictate}
+                      onCreate={handleCreateTasksFromTicket}
+                      onClose={closeTicketTaskComposer}
+                    />
                   )}
 
                   {mergedTicketTaskLinks.length === 0 ? (
@@ -3663,101 +3614,46 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
               /* TASKS TAB (Create & Assign Employee to Ticket Tasks) */
               <div style={entityAccentStyle("tasks")} className="flex-1 flex flex-col min-h-0 ws-lg:overflow-y-auto space-y-4">
                 {canEdit && (
-                  <form
-                    onSubmit={handleCreateTaskFromTicket}
-                    className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3 shrink-0"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="type-overline text-gray-700 flex items-center gap-1.5">
-                        <CheckSquare className="h-3.5 w-3.5 text-entity-text" />
-                        {t(
-                          "Create & Assign Task for Ticket",
-                          "Vytvoriť a priradiť úlohu k tiketu",
-                          "Feladat létrehozása és hozzárendelése a jegyhez",
-                        )}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 ws-sm:grid-cols-12 gap-2.5">
-                      <div className="ws-sm:col-span-5">
-                        <label className="block type-overline text-gray-500 mb-1">
-                          {t("Task Title", "Názov úlohy", "Feladat címe")}
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={newTaskTitle}
-                          onChange={(e) => setNewTaskTitle(e.target.value)}
-                          placeholder={
-                            selectedTicket.subject ||
-                            t(
-                              "Enter task title...",
-                              "Zadajte názov úlohy...",
-                              "Adja meg a feladat címét...",
-                            )
-                          }
-                          className="w-full h-9 px-3 rounded-md border border-gray-200 bg-white text-caption font-medium text-gray-900 focus:outline-none focus:border-entity-solid"
-                        />
-                      </div>
-
-                      <div className="ws-sm:col-span-4">
-                        <label className="block type-overline text-gray-500 mb-1">
-                          {t(
-                            "Assigned Employee",
-                            "Priradený zamestnanec",
-                            "Felelős alkalmazott",
-                          )}
-                        </label>
-                        <select
-                          value={newTaskAssignee}
-                          onChange={(e) => setNewTaskAssignee(e.target.value)}
-                          className="w-full h-9 px-3 rounded-md border border-gray-200 bg-white text-caption font-semibold text-gray-700 cursor-pointer focus:outline-none focus:border-entity-solid"
-                        >
-                          <option value="">
-                            {t(
-                              "— Select Employee —",
-                              "— Vybrať zamestnanca —",
-                              "— Alkalmazott kiválasztása —",
-                            )}
-                          </option>
-                          {assigneeOptions.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="ws-sm:col-span-3">
-                        <label className="block type-overline text-gray-500 mb-1">
-                          {t("Deadline", "Termín", "Határidő")}
-                        </label>
-                        <input
-                          type="date"
-                          value={newTaskDeadline}
-                          min={todayStr()}
-                          onChange={(e) => setNewTaskDeadline(clampDeadline(e.target.value, todayStr()))}
-                          className="w-full h-9 px-3 rounded-md border border-gray-200 bg-white text-caption font-semibold text-gray-700 focus:outline-none focus:border-entity-solid"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end">
-                      <button
-                        type="submit"
-                        className="px-4 py-2 rounded-md bg-entity-solid hover:opacity-90 text-white text-caption font-semibold flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>
-                          {t(
-                            "Create & Assign Task",
-                            "Vytvoriť a priradiť úlohu",
-                            "Feladat létrehozása és hozzárendelése",
-                          )}
-                        </span>
-                      </button>
-                    </div>
-                  </form>
+                  <div className="shrink-0">
+                    {taskComposerOpen && taskComposerInline ? (
+                      <QuickTaskModal
+                        inline
+                        compact
+                        tasks={tasks}
+                        leads={leads}
+                        projects={projects}
+                        users={users}
+                        taskStates={taskStates}
+                        systemLanguage={userLanguage}
+                        currentUserName={currentUser?.name || ""}
+                        agencyEnabled={agencyEnabled}
+                        initialRelatedTicketId={selectedTicket.id}
+                        initialRelatedLeadId={selectedTicket.leadId || selectedTicket.clientId || undefined}
+                        initialRelatedProjectId={selectedTicket.projectId || undefined}
+                        initialRelatedAgencyWorkerId={selectedTicket.agencyWorkerId || undefined}
+                        initialPriority={
+                          selectedTicket.priority === "critical" || selectedTicket.priority === "high"
+                            ? "high"
+                            : selectedTicket.priority === "low"
+                              ? "low"
+                              : "medium"
+                        }
+                        origin={taskComposerOrigin}
+                        startDictation={taskComposerDictate}
+                        onCreate={handleCreateTasksFromTicket}
+                        onClose={closeTicketTaskComposer}
+                      />
+                    ) : (
+                      <TaskComposerBar
+                        compact
+                        canCreate={canEdit}
+                        systemLanguage={userLanguage}
+                        returned={taskComposerReturned}
+                        onCreate={(origin) => openTicketTaskComposer(true, origin, false)}
+                        onDictate={(origin) => openTicketTaskComposer(true, origin, true)}
+                      />
+                    )}
+                  </div>
                 )}
 
                 {mergedTicketTaskLinks.length === 0 ? (

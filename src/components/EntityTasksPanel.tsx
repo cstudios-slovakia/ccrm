@@ -1,41 +1,36 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Archive as ArchiveIcon,
   Calendar,
   Check,
   ChevronDown,
   Clock,
-  CornerDownLeft,
   CornerDownRight,
   Eye,
   Filter,
   ListTodo,
   Lock,
   Pencil,
-  Plus,
   RotateCcw,
   Trash2,
 } from "lucide-react";
 import type { Lead, Project, Task, UserProfile } from "../types";
 import type { Language } from "../utils/translations";
-import { CustomSelect } from "./ui/CustomSelect";
 import { LinkedTaskDrawer } from "./LinkedTaskDrawer";
 import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
 import { needsConclusionToFinish } from "../utils/taskConclusion";
 import { TaskPillText } from "./TaskPillText";
 import { TaskWhatsAppMarks } from "./WhatsAppChip";
-import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
+import { QuickTaskModal, type ComposerOrigin } from "./QuickTaskModal";
+import { TaskComposerBar } from "./TaskComposerBar";
 import { ClickUpTaskBadge } from "./projects/ClickUpTaskBadge";
 import { groupTasksWithSubtasks, isClickUpTask, type GroupedTaskRow } from "../utils/clickupTasks";
 import {
-  buildProjectTasks,
   computeTaskDateRange,
   getTaskCreationDate,
   doneTaskState,
   isDoneTaskState,
-  localDateStr,
   localStampStr,
-  parseTaskLines,
   splitFilteredTasks,
   toggleTaskDone,
   type TaskDateBasis,
@@ -49,23 +44,14 @@ import { useRecurringTemplates } from "../hooks/useRecurringTemplates";
 import { TaskDescriptionMark } from "./TaskDescriptionMark";
 import { TaskActivityMarks } from "./tasks/TaskActivityMarks";
 import { DeadlinePostponedBadge } from "./TaskDeadlineExtras";
-import { clampDeadline, todayStr } from "../utils/taskDeadline";
 import { entityAccentStyle } from "../utils/entityAccent";
 import { EntityBadge } from "./tremor/EntityBadge";
 import {
   canDeleteTask,
   canEditTask,
   isOnPersonalDashboard,
-  resolveAssigneeName,
   type TaskAccess,
 } from "../utils/taskSelectors";
-
-const toast = (message: string) => {
-  const show = (window as any).showToast;
-  if (typeof show === "function") show(message);
-};
-
-const QUICK_ADD_DEADLINE_TIME = "";
 
 export interface EntityTasksPanelProps {
   entityType: "project" | "lead" | "client" | "agency_worker";
@@ -128,9 +114,10 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
   const userNames = users.map((u) => u.name).filter(Boolean);
   const myName = currentUser?.name || userNames[0] || "";
 
-  const [draft, setDraft] = useState("");
-  const [deadline, setDeadline] = useState(() => localDateStr(new Date()));
-  const [assignee, setAssignee] = useState(() => resolveAssigneeName(myName, myName, userNames));
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerOrigin, setComposerOrigin] = useState<ComposerOrigin | undefined>(undefined);
+  const [composerDictate, setComposerDictate] = useState(false);
+  const [composerReturned, setComposerReturned] = useState(false);
   const [showFinished, setShowFinished] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
   const [collapsedParents, setCollapsedParents] = useState<Set<string>>(() => new Set());
@@ -138,7 +125,6 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
   // Completing a task that requires a conclusion asks for it first.
   const { ask: askConclusion, dialog: conclusionDialog } = useTaskConclusionPrompt(userLanguage);
   const [recentIds, setRecentIds] = useState<Set<string>>(() => new Set());
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Date interval filter state
   const [dateFilter, setDateFilter] = useState<TaskDateFilter>("all");
@@ -223,8 +209,27 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
     return `${formatPart(range.start)} – ${formatPart(range.end)}`;
   };
 
-  const pendingTitles = parseTaskLines(draft);
   const canCreate = taskAccess.create && !isNew;
+  const defaultLeadId =
+    entityType === "lead"
+      ? entityId
+      : entityType === "client"
+        ? (relatedLeadId || entityId)
+        : (relatedLeadId || undefined);
+  const defaultProjectId = entityType === "project" ? entityId : (relatedProjectId || undefined);
+  const defaultWorkerId = entityType === "agency_worker" ? entityId : (relatedAgencyWorkerId || undefined);
+
+  const openComposer = (origin?: ComposerOrigin, dictate = false) => {
+    setComposerOrigin(origin);
+    setComposerDictate(dictate);
+    setComposerReturned(false);
+    setComposerOpen(true);
+  };
+  const closeComposer = () => {
+    setComposerOpen(false);
+    setComposerDictate(false);
+    setComposerReturned(true);
+  };
 
   // Picker project list
   const projectsForPicker = useMemo(() => {
@@ -243,45 +248,6 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
     }
     return projects;
   }, [projects, entityType, entityId, entityName]);
-
-  const addTasks = () => {
-    if (!canCreate || pendingTitles.length === 0) return;
-    const today = localDateStr(new Date());
-    const created = buildProjectTasks(pendingTitles, {
-      projectId: entityType === "project" ? entityId : (relatedProjectId || ""),
-      relatedAgencyWorkerId: entityType === "agency_worker" ? entityId : (relatedAgencyWorkerId || undefined),
-      status: taskStates[0] || "New",
-      deadline: deadline || today,
-      deadlineTime: QUICK_ADD_DEADLINE_TIME,
-      assignee,
-      createdBy: myName,
-      startDate: today,
-    }).map((task) => ({
-      ...task,
-      relatedLeadId:
-        entityType === "lead"
-          ? entityId
-          : entityType === "client"
-            ? (relatedLeadId || entityId)
-            : (relatedLeadId || undefined),
-      relatedProjectId: entityType === "project" ? entityId : (relatedProjectId || undefined),
-      relatedAgencyWorkerId: entityType === "agency_worker" ? entityId : (relatedAgencyWorkerId || undefined),
-    }));
-
-    setTasks((prev) => [...created, ...prev]);
-    setDraft("");
-    setRecentIds(new Set(created.map((task) => task.id)));
-    if (created.length > 1) {
-      toast(
-        t(
-          `${created.length} tasks added`,
-          `Pridané úlohy: ${created.length}`,
-          `${created.length} feladat hozzáadva`,
-        ),
-      );
-    }
-    inputRef.current?.focus();
-  };
 
   const toggleDone = async (task: Task) => {
     if (isClickUpTask(task) || !canEditTask(task, currentUser, taskAccess)) return;
@@ -594,120 +560,52 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
 
   return (
     <div style={entityAccentStyle("tasks")} className="flex-1 min-h-0 ws-lg:overflow-y-auto flex flex-col gap-4 pr-0 ws-lg:pr-1">
-      {/* Quick Add Card */}
+      {/* Task Composer */}
       {taskAccess.create && (
-        <div className="shrink-0 rounded-lg border border-gray-200 bg-gray-50 p-3.5 transition-all focus-within:border-entity-solid focus-within:bg-white focus-within:shadow-xs">
+        <div className="shrink-0">
           {isNew ? (
-            <p className="px-1 py-2 text-ui font-medium text-gray-500">
-              {t(
-                "Save this entity first, then add its tasks here.",
-                "Najprv túto položku uložte, potom sem pridajte jej úlohy.",
-                "Először mentse el az entitást, utána adja hozzá a feladatait.",
-              )}
-            </p>
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3.5">
+              <p className="px-1 py-2 text-ui font-medium text-gray-500">
+                {t(
+                  "Save this entity first, then add its tasks here.",
+                  "Najprv túto položku uložte, potom sem pridajte jej úlohy.",
+                  "Először mentse el az entitást, utána adja hozzá a feladatait.",
+                )}
+              </p>
+            </div>
+          ) : composerOpen ? (
+            <QuickTaskModal
+              inline
+              compact
+              tasks={tasks}
+              leads={leads}
+              projects={projectsForPicker}
+              users={users}
+              taskStates={taskStates}
+              systemLanguage={userLanguage}
+              currentUserName={myName}
+              mailConfigured={mailConfigured}
+              agencyEnabled={agencyEnabled}
+              initialRelatedLeadId={defaultLeadId}
+              initialRelatedProjectId={defaultProjectId}
+              initialRelatedAgencyWorkerId={defaultWorkerId}
+              origin={composerOrigin}
+              startDictation={composerDictate}
+              onCreate={(created) => {
+                setTasks((prev) => [...created, ...prev]);
+                setRecentIds(new Set(created.map((tk) => tk.id)));
+              }}
+              onClose={closeComposer}
+            />
           ) : (
-            <>
-              <div className="flex items-start gap-2">
-                <Plus className="h-4 w-4 mt-2.5 shrink-0 text-entity-text" />
-                <textarea
-                  ref={inputRef}
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      addTasks();
-                    }
-                  }}
-                  rows={Math.min(Math.max(draft.split("\n").length, 1), 6)}
-                  aria-label={t("New tasks, one per line", "Nové úlohy, jedna na riadok", "Új feladatok, soronként egy")}
-                  placeholder={t(
-                    "Write a task and press Enter",
-                    "Napíšte úlohu a stlačte Enter",
-                    "Írjon egy feladatot és nyomjon Entert",
-                  )}
-                  className="flex-1 min-w-0 resize-none bg-transparent py-2 text-ui font-medium text-gray-900 placeholder:text-gray-400 focus:outline-none"
-                />
-              </div>
-
-              <div className="mt-2 pt-2 border-t border-gray-200 flex flex-wrap items-center gap-x-4 gap-y-2 text-micro font-semibold text-gray-500">
-                <label className="flex items-center gap-1.5">
-                  <span className="uppercase tracking-wider">{t("Due", "Termín", "Határidő")}</span>
-                  <input
-                    type="date"
-                    value={deadline}
-                    min={todayStr()}
-                    onChange={(e) => setDeadline(clampDeadline(e.target.value, todayStr()))}
-                    className="px-2 py-1 rounded-md border border-gray-200 bg-white text-gray-700 font-semibold focus:border-entity-solid focus:outline-none"
-                  />
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <span className="uppercase tracking-wider">{t("Assignee", "Zodpovedný", "Felelős")}</span>
-                  <div className="w-44">
-                    <CustomSelect
-                      size="sm"
-                      value={assignee}
-                      onChange={setAssignee}
-                      options={[
-                        { value: "", label: t("-- Unassigned --", "-- Nepriradený --", "-- Kijelöletlen --") },
-                        ...userNames.map((name) => ({ value: name, label: name })),
-                      ]}
-                    />
-                  </div>
-                </div>
-                <span className="ml-auto hidden ws-md:inline text-gray-400 font-medium">
-                  {t(
-                    "One task per line · Shift+Enter new line",
-                    "Každý riadok je úloha · Shift+Enter nový riadok",
-                    "Soronként egy feladat · Shift+Enter új sor",
-                  )}
-                </span>
-              </div>
-
-              <div className="mt-2.5 pt-2.5 border-t border-gray-200">
-                <VoiceTaskActionBar
-                  canCreate={canCreate}
-                  systemLanguage={userLanguage}
-                  currentUser={currentUser}
-                  users={users}
-                  defaultAssignee={assignee}
-                  defaultStatus={taskStates[0] || "New"}
-                  relatedProjectId={entityType === "project" ? entityId : (relatedProjectId || undefined)}
-                  relatedAgencyWorkerId={entityType === "agency_worker" ? entityId : (relatedAgencyWorkerId || undefined)}
-                  relatedLeadId={
-                    entityType === "lead"
-                      ? entityId
-                      : entityType === "client"
-                        ? (relatedLeadId || entityId)
-                        : (relatedLeadId || undefined)
-                  }
-                  manualButtonText={
-                    pendingTitles.length > 1
-                      ? t(`Add ${pendingTitles.length} Tasks`, `Pridať ${pendingTitles.length} úloh`, `${pendingTitles.length} feladat hozzáadása`)
-                      : t("Add Task", "Pridať úlohu", "Feladat hozzáadása")
-                  }
-                  manualButtonIcon={<CornerDownLeft className="h-3.5 w-3.5" />}
-                  manualButtonClassName="py-2 px-3 rounded-md bg-entity-solid hover:opacity-90 text-white type-overline shadow-2xs transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-                  voiceButtonClassName="w-[20%] py-2 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded-md type-overline shadow-2xs transition-all cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-                  onManualCreateClick={addTasks}
-                  onTasksCreated={(createdTasks) => {
-                    const mapped = createdTasks.map((t) => ({
-                      ...t,
-                      relatedLeadId:
-                        entityType === "lead"
-                          ? entityId
-                          : entityType === "client"
-                            ? (relatedLeadId || entityId)
-                            : (relatedLeadId || undefined),
-                      relatedProjectId: entityType === "project" ? entityId : (relatedProjectId || undefined),
-                      relatedAgencyWorkerId: entityType === "agency_worker" ? entityId : (relatedAgencyWorkerId || undefined),
-                    }));
-                    setTasks((prev) => [...mapped, ...prev]);
-                    setRecentIds(new Set(mapped.map((tk) => tk.id)));
-                  }}
-                />
-              </div>
-            </>
+            <TaskComposerBar
+              compact
+              canCreate={canCreate}
+              systemLanguage={userLanguage}
+              returned={composerReturned}
+              onCreate={(origin) => openComposer(origin, false)}
+              onDictate={(origin) => openComposer(origin, true)}
+            />
           )}
         </div>
       )}

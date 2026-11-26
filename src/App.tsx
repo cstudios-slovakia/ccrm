@@ -32,7 +32,7 @@ import { normalizeOrderStatusDefs, type OrderStatusDef } from "./utils/orders";
 import { OrderStatusesProvider } from "./hooks/useOrderStatuses";
 import { TaskSettingsProvider } from "./hooks/useTaskSettings";
 import { RecurringTemplatesProvider } from "./hooks/useRecurringTemplates";
-import { normalizeTicketStatuses, normalizeTicketSettings } from "./utils/tickets";
+import { normalizeTicketStatuses, normalizeTicketSettings, isClosedTicketStatus } from "./utils/tickets";
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
 import { isSystemMailConfigured } from "./utils/taskReminders";
 import {
@@ -5019,7 +5019,7 @@ ${log.payload || ''}
               defaultPage={getDefaultPageForUser(currentUser) || "dashboard"}
               onSaveDefaultPage={handleSaveDefaultPage}
               disabledModules={integrationsConfig?.disabledModules || []}
-              badges={{ whatsapp: whatsappUnread }}
+              badges={{ whatsapp: whatsappUnread, tickets: tickets.filter((t) => !isClosedTicketStatus(t.status, ticketStatuses)).length, tasks: tasks.filter((t) => !t.archived && !isDoneTaskState(t.status, taskStates) && !!t.deadline && t.deadline.slice(0, 10) <= todayLocal()).length }}
             />
         
         {/* Workspace Area - Add pb-20 on mobile viewports so that the bottom navigation bar never overlaps content */}

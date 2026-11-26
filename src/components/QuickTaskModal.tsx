@@ -316,6 +316,12 @@ interface QuickTaskModalProps {
     leadStateParents?: Record<string, string>;
     /** Pre-filled deadline (the calendar's "+" on a day); defaults to today. */
     initialDeadline?: string;
+    /** Pre-filled entity links (kept free/editable in the composer). */
+    initialRelatedLeadId?: string;
+    initialRelatedProjectId?: string;
+    initialRelatedAgencyWorkerId?: string;
+    initialRelatedTicketId?: string;
+    initialPriority?: Priority;
     /**
      * Text arriving from outside (a shortcut, the share target, the bookmarklet).
      * Fills the title on open; a new `id` while the form is already open adds the
@@ -335,6 +341,8 @@ interface QuickTaskModalProps {
     onClose: () => void;
     /** Renders in place (where the closed bar was) instead of floating under the header. */
     inline?: boolean;
+    /** Tighter vertical spacing for embedded entity panels (tickets, clients, projects). */
+    compact?: boolean;
     /** The button that opened it; the card grows out of it and shrinks back into it. */
     origin?: ComposerOrigin;
     /** Start dictating as soon as it opens (the bar's "Dictate" button). */
@@ -364,12 +372,18 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     leadStageGroups,
     leadStateParents,
     initialDeadline,
+    initialRelatedLeadId,
+    initialRelatedProjectId,
+    initialRelatedAgencyWorkerId,
+    initialRelatedTicketId,
+    initialPriority,
     incomingTitle,
     onCreate,
     onCreateRecurring,
     initialRepeat = false,
     onClose,
     inline = false,
+    compact = false,
     origin,
     startDictation = false,
 }) => {
@@ -388,13 +402,13 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     }, [incomingTitle]);
 
     const [description, setDescription] = useState("");
-    const [priority, setPriority] = useState<Priority>("medium");
+    const [priority, setPriority] = useState<Priority>(initialPriority || "medium");
     const [deadline, setDeadline] = useState(() => clampDeadline(initialDeadline || toLocalDateStr(new Date()), todayStr()));
     const [deadlineTime, setDeadlineTime] = useState("16:00");
     const [customTime, setCustomTime] = useState(false);
-    const [relatedLeadId, setRelatedLeadId] = useState("");
-    const [relatedProjectId, setRelatedProjectId] = useState("");
-    const [relatedAgencyWorkerId, setRelatedAgencyWorkerId] = useState("");
+    const [relatedLeadId, setRelatedLeadId] = useState(initialRelatedLeadId || "");
+    const [relatedProjectId, setRelatedProjectId] = useState(initialRelatedProjectId || "");
+    const [relatedAgencyWorkerId, setRelatedAgencyWorkerId] = useState(initialRelatedAgencyWorkerId || "");
     const [category, setCategory] = useState("");
     const [isLocking, setIsLocking] = useState(false);
     const { offerConclusion, defaultRequiresConclusion } = useTaskSettings();
@@ -972,6 +986,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
             relatedLeadId: relatedLeadId || undefined,
             relatedProjectId: relatedProjectId || undefined,
             relatedAgencyWorkerId: relatedAgencyWorkerId || undefined,
+            relatedTicketId: initialRelatedTicketId || undefined,
             category: category || undefined,
             isLocking: relatedLeadId ? isLocking : false,
             emailReminders,
@@ -1147,10 +1162,12 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                     mentionEntities={mentionEntities}
                     onAssignEntity={onAssignEntity}
                     placeholder={t("What needs to be done?", "Čo treba urobiť?", "Mit kell tenni?")}
-                    className={`box-border w-full min-h-12 rounded-xl text-body font-semibold text-slate-900 resize-y outline-none leading-[1.4] placeholder:text-slate-400 transition-[border-color,box-shadow] duration-150 ${
+                    className={`box-border w-full font-semibold text-slate-900 resize-y outline-none leading-[1.4] placeholder:text-slate-400 transition-[border-color,box-shadow] duration-150 ${
+                        compact ? "min-h-10 rounded-lg text-ui" : "min-h-12 rounded-xl text-body"
+                    } ${
                         isDictated("title")
-                            ? "px-3.75 py-3.25 border border-blue-200 bg-[#f8fbff] dark:bg-blue-50 nt-fill"
-                            : "px-3.5 py-3 border-2 border-slate-200 bg-white focus:border-[#ff5d00] focus:shadow-[0_0_0_4px_rgba(255,93,0,0.12)]"
+                            ? `${compact ? "px-3 py-2" : "px-3.75 py-3.25"} border border-blue-200 bg-[#f8fbff] dark:bg-blue-50 nt-fill`
+                            : `${compact ? "px-3 py-2" : "px-3.5 py-3"} border-2 border-slate-200 bg-white focus:border-[#ff5d00] focus:shadow-[0_0_0_4px_rgba(255,93,0,0.12)]`
                     }`}
                 />
             )}
@@ -1194,7 +1211,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
             </div>
             <div
                 id="nt-desc"
-                className={`box-border w-full flex flex-col min-h-52 max-h-96 overflow-y-auto px-2.5 py-1.5 rounded-xl text-ui text-slate-800 transition-colors duration-150 cursor-text ${
+                className={`box-border w-full flex flex-col ${compact ? "min-h-24 max-h-56 rounded-lg" : "min-h-52 max-h-96 rounded-xl"} overflow-y-auto px-2.5 py-1.5 text-ui text-slate-800 transition-colors duration-150 cursor-text ${
                     isDictated("description")
                         ? "border border-blue-200 bg-[#f8fbff] dark:bg-blue-50 nt-fill focus-within:border-[#ff5d00]"
                         : "border border-slate-200 bg-white focus-within:border-[#ff5d00]"
@@ -1222,9 +1239,9 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     );
 
     const whenSection = (
-        <div className={`flex flex-col gap-3 ${rise(240).className}`} style={rise(240).style}>
+        <div className={`flex flex-col ${compact ? "gap-2" : "gap-3"} ${rise(240).className}`} style={rise(240).style}>
             <Overline>{t("When", "Kedy", "Mikor")}</Overline>
-            <div className={`grid grid-cols-1 gap-3 ${repeat ? "@md:grid-cols-2" : "@md:grid-cols-3"}`}>
+            <div className={`grid grid-cols-1 ${compact ? "gap-2" : "gap-3"} ${repeat ? "@md:grid-cols-2" : "@md:grid-cols-3"}`}>
                 {/* Deadline — a repeating task takes its dates from the rule under Options */}
                 {!repeat && (
                 <div className="relative flex flex-col gap-1.5">
@@ -1378,7 +1395,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                     )}
                 </p>
             ) : (
-            <div className="flex flex-wrap gap-2">
+            <div className={`flex flex-wrap ${compact ? "gap-1.5" : "gap-2"}`}>
                 {quickDates.map((d) => {
                     const on = deadline === d.date;
                     return (
@@ -1387,7 +1404,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                             type="button"
                             aria-pressed={on}
                             onClick={() => changeDeadline(d.date)}
-                            className={`h-8 px-3 rounded-md text-caption font-semibold border transition-colors duration-150 cursor-pointer ${
+                            className={`${compact ? "h-7 px-2.5 text-micro" : "h-8 px-3 text-caption"} rounded-md font-semibold border transition-colors duration-150 cursor-pointer ${
                                 on
                                     ? "bg-entity-subtle border-entity-border text-entity-text"
                                     : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
@@ -1404,9 +1421,9 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
 
     const anyDictatedContext = isDictated("deadline") || isDictated("time") || isDictated("priority") || isDictated("lead") || isDictated("assignee");
     const whoSection = (
-        <div className={`flex flex-col gap-3 ${rise(280).className}`} style={rise(280).style}>
+        <div className={`flex flex-col ${compact ? "gap-2" : "gap-3"} ${rise(280).className}`} style={rise(280).style}>
             <Overline>{t("Who and what for", "Kto a k čomu", "Ki és mihez")}</Overline>
-            <div className="grid grid-cols-1 @md:grid-cols-3 gap-3">
+            <div className={`grid grid-cols-1 @md:grid-cols-3 ${compact ? "gap-2" : "gap-3"}`}>
                 <div className="flex flex-col gap-1.5">
                     <FieldLabel badge={badge("assignee")}>{t("Assignee", "Riešiteľ", "Felelős")}</FieldLabel>
                     <CustomSelect
@@ -1506,7 +1523,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     );
 
     const optionsSection = (
-        <div className={`flex flex-col gap-3 ${rise(320).className}`} style={rise(320).style}>
+        <div className={`flex flex-col ${compact ? "gap-2" : "gap-3"} ${rise(320).className}`} style={rise(320).style}>
             <Overline>{t("Options", "Možnosti", "Beállítások")}</Overline>
             <div className="rounded-lg bg-gray-50 border border-gray-200 flex flex-col">
                 {canRepeat && (
@@ -1661,7 +1678,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                 if (e.target === e.currentTarget && e.animationName === "nt-grow") setEntering(false);
             }}
             style={{ ...cardStyle, ...entityAccentStyle("tasks") }}
-            className={`@container bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden flex flex-col ${cardMotionClass || (origin ? "" : "nt-rise")} ${
+            className={`@container bg-white border border-gray-200 rounded-lg ${compact ? "shadow-sm" : "shadow-xl"} overflow-hidden flex flex-col ${cardMotionClass || (origin ? "" : "nt-rise")} ${
                 inline
                     ? "relative w-full"
                     : "fixed top-22.5 right-2 sm:right-4 md:right-6 z-[100000] w-[calc(100vw-1rem)] sm:w-[calc(100vw-2rem)] max-w-160 max-h-[calc(100vh-6.5rem)]"
@@ -1683,15 +1700,17 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                 className="flex flex-col min-h-0"
             >
                 {/* Header: same row as the closed bar — create on the left, mic on the right */}
-                <header className="flex items-center gap-3 py-4 pr-4 pl-6 border-b border-gray-200 shrink-0">
-                    <span className="w-9 h-9 rounded-md bg-entity-subtle text-entity-text border border-entity-border flex items-center justify-center shrink-0">
-                        <Plus aria-hidden="true" className="h-4.5 w-4.5" strokeWidth={2.25} />
+                <header className={`flex items-center border-b border-gray-200 shrink-0 ${compact ? "gap-2.5 py-2.5 px-4" : "gap-3 py-4 pr-4 pl-6"}`}>
+                    <span className={`${compact ? "w-7 h-7" : "w-9 h-9"} rounded-md bg-entity-subtle text-entity-text border border-entity-border flex items-center justify-center shrink-0`}>
+                        <Plus aria-hidden="true" className={compact ? "h-4 w-4" : "h-4.5 w-4.5"} strokeWidth={2.25} />
                     </span>
                     <div className="flex-grow min-w-0">
-                        <h2 id="nt-title" className="m-0 text-title-sm font-semibold text-gray-900 leading-[1.3]">
+                        <h2 id="nt-title" className={`m-0 font-semibold text-gray-900 leading-[1.3] ${compact ? "text-ui" : "text-title-sm"}`}>
                             {manyTasks ? t("New tasks", "Nové úlohy", "Új feladatok") : t("New task", "Nová úloha", "Új feladat")}
                         </h2>
-                        <p className="mt-0.5 mb-0 text-caption text-gray-500 truncate">{subtitle}</p>
+                        {(!compact || isRecording || isProcessing || dictated.size > 0) && (
+                            <p className="mt-0.5 mb-0 text-caption text-gray-500 truncate">{subtitle}</p>
+                        )}
                     </div>
                     <button
                         type="button"
@@ -1699,7 +1718,9 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                         aria-pressed={isRecording}
                         disabled={isProcessing}
                         onClick={() => (isRecording ? void dictation.stop() : void dictation.start())}
-                        className={`nt-press relative h-10 px-3.5 border-0 rounded-md text-white text-ui font-semibold flex items-center gap-2 shrink-0 cursor-pointer disabled:cursor-wait focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-400 ${
+                        className={`nt-press relative border-0 rounded-md text-white font-semibold flex items-center shrink-0 cursor-pointer disabled:cursor-wait focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-400 ${
+                            compact ? "h-8 px-2.5 text-caption gap-1.5" : "h-10 px-3.5 text-ui gap-2"
+                        } ${
                             isRecording || isProcessing
                                 ? "bg-rose-700 shadow-none"
                                 : "bg-rose-600 hover:bg-rose-700 shadow-xs"
@@ -1727,9 +1748,11 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                         type="button"
                         onClick={() => requestClose()}
                         aria-label={t("Close", "Zavrieť", "Bezárás")}
-                        className="nt-press w-10 h-10 border-0 rounded-xl bg-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center shrink-0 cursor-pointer"
+                        className={`nt-press border-0 rounded-xl bg-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center shrink-0 cursor-pointer ${
+                            compact ? "w-8 h-8" : "w-10 h-10"
+                        }`}
                     >
-                        <X aria-hidden="true" className="h-4.5 w-4.5" />
+                        <X aria-hidden="true" className={compact ? "h-4 w-4" : "h-4.5 w-4.5"} />
                     </button>
                 </header>
 
@@ -1760,9 +1783,9 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                     </div>
                 )}
 
-                <div className={`p-6 flex flex-col gap-7 min-h-0 ${inline ? "" : "overflow-y-auto"}`}>
+                <div className={`${compact ? "p-4 gap-4" : "p-6 gap-7"} flex flex-col min-h-0 ${inline ? "" : "overflow-y-auto"}`}>
                     {/* 1 · WHAT */}
-                    <div className="flex flex-col gap-3">
+                    <div className={`flex flex-col ${compact ? "gap-2.5" : "gap-3"}`}>
                         {titleSection}
                         {descriptionSection}
                     </div>
@@ -1780,7 +1803,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                 </div>
 
                 <footer
-                    className={`py-3.5 pr-4 pl-6 bg-gray-50 border-t border-gray-200 flex flex-wrap items-center justify-end gap-2 shrink-0 ${rise(360).className}`}
+                    className={`${compact ? "py-2.5 px-4" : "py-3.5 pr-4 pl-6"} bg-gray-50 border-t border-gray-200 flex flex-wrap items-center justify-end gap-2 shrink-0 ${rise(360).className}`}
                     style={rise(360).style}
                 >
                     <span className="hidden @md:flex flex-grow text-micro text-gray-500 items-center gap-1.5">
@@ -1790,7 +1813,9 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                     <button
                         type="button"
                         onClick={() => requestClose()}
-                        className="nt-press h-10 px-3.5 border-0 rounded-md bg-transparent text-gray-600 text-ui font-semibold hover:bg-gray-100 cursor-pointer"
+                        className={`nt-press border-0 rounded-md bg-transparent text-gray-600 font-semibold hover:bg-gray-100 cursor-pointer ${
+                            compact ? "h-8.5 px-3 text-caption" : "h-10 px-3.5 text-ui"
+                        }`}
                     >
                         {t("Cancel", "Zrušiť", "Mégse")}
                     </button>
@@ -1798,14 +1823,18 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                         <button
                             type="button"
                             onClick={() => createTasks(false)}
-                            className="nt-press h-10 px-3.5 border border-gray-200 rounded-md bg-white text-gray-800 text-ui font-semibold shadow-2xs hover:border-gray-300 cursor-pointer"
+                            className={`nt-press border border-gray-200 rounded-md bg-white text-gray-800 font-semibold shadow-2xs hover:border-gray-300 cursor-pointer ${
+                                compact ? "h-8.5 px-3 text-caption" : "h-10 px-3.5 text-ui"
+                            }`}
                         >
                             {t("Create & next", "Vytvoriť a ďalšia", "Létrehozás és következő")}
                         </button>
                     )}
                     <button
                         type="submit"
-                        className="nt-press h-10 px-4.5 border-0 rounded-md bg-entity-solid hover:opacity-90 text-white text-ui font-semibold flex items-center gap-2 shadow-xs cursor-pointer"
+                        className={`nt-press border-0 rounded-md bg-entity-solid hover:opacity-90 text-white font-semibold flex items-center shadow-xs cursor-pointer ${
+                            compact ? "h-8.5 px-3.5 text-caption gap-1.5" : "h-10 px-4.5 text-ui gap-2"
+                        }`}
                     >
                         <Check aria-hidden="true" className="h-4 w-4" strokeWidth={2.5} />
                         {createLabel}
