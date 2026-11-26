@@ -1,0 +1,1 @@
+- **Project manager pickers offer only Project Managers** (`ProjectDetailsView.tsx`, `AutomationView.tsx`): a project's manager picker and the "Convert lead to project" automation step now list only users with the Project Manager role, like the projects list's PM filter and bulk action. A manager saved on an automation before this stays listed.

@@ -51,6 +51,7 @@ import { ProjectPushTimelineItem, ProjectPushesFailedNote } from "./projects/Pro
 import { useProjectPushes } from "../hooks/useProjectPushes";
 import { isPushItem, mergePushesIntoTimeline } from "../utils/projectPushTimeline";
 import { displayEmployeeName } from "../utils/nameOrder";
+import { isProjectManagerRole } from "../utils/projectEmployees";
 import type { Task, Ticket, TicketStatusDefinition, TicketSettings, SupportContract } from "../types";
 import { DEFAULT_TICKET_STATUSES, DEFAULT_TICKET_SETTINGS } from "../utils/tickets";
 import { isDoneTaskState } from "../utils/projectTasks";
@@ -2608,7 +2609,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </div>
               )}
               {canEdit && (() => {
-                const available = users.filter(u => !selectedManagers.includes(u.name));
+                // Only users with the Project Manager role can be assigned (Settings -> Users).
+                const pms = users.filter(u => isProjectManagerRole(u.role));
+                const available = pms.filter(u => !selectedManagers.includes(u.name));
                 return (
                   <CustomSelect
                     value=""
@@ -2617,8 +2620,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     }}
                     disabled={available.length === 0}
                     placeholder={
-                      available.length === 0
-                        ? t("Everyone is assigned", "Priradení sú všetci", "Mindenki hozzá van rendelve")
+                      pms.length === 0
+                        ? t("No user has the Project Manager role", "Žiadny používateľ nemá rolu projektového manažéra", "Egyik felhasználónak sincs projektmenedzser szerepköre")
+                        : available.length === 0
+                        ? t("All project managers are assigned", "Priradení sú všetci projektoví manažéri", "Minden projektmenedzser hozzá van rendelve")
                         : selectedManagers.length > 0
                           ? t("Add another manager...", "Pridať ďalšieho manažéra...", "További menedzser hozzáadása...")
                           : t("Assign a manager...", "Priradiť manažéra...", "Menedzser kijelölése...")
