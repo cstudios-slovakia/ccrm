@@ -3808,6 +3808,8 @@ ${log.payload || ''}
           taskAccess={taskAccess}
           clientCategories={clientCategories}
           setClientCategories={updateClientCategoriesAndSync}
+          clientContacts={clientContacts}
+          setClientContacts={updateClientContactsAndSync}
           systemLanguage={userLanguage}
           tasks={tasks}
           setTasks={updateTasksAndSync}
