@@ -142,19 +142,6 @@ Effort: S (small, <1h) · M (medium) · L (large / architectural)
   (store UTC, convert on display) only if a customer really has staff spread across
   zones. The MCP already returns `created_at` / `updated_at` with an offset and
   accepts one on filters (v1.13.68). (M for the company setting, L for per-user)
-- [ ] 🟡 **Lead and client "Project Manager" pickers still offer every user**
-  (noted 2026-11-26). The project pickers offer only users with the Project
-  Manager role (`src/utils/projectEmployees.ts`), but the leads' and clients'
-  "Project Manager" fields (new lead, lead detail, assign owner, a client's
-  primary manager, the new-client form) still list all users. They set the
-  record's `owner`, and fill from the `projectManagers` prop that `App.tsx` builds
-  as **all** user names. The same list is the "registered users" check in
-  `resolveAssigneeName()` (follow-up tasks from a lead or client) and the pool for
-  automatic lead assignment, so filtering that prop to PMs would hand the tasks of a
-  non-PM owner to someone else. Fix: pass a separate PM-only list to the pickers,
-  keep the all-users list for task assignment, keep an existing non-PM owner
-  visible in the picker, and decide whether the auto-assignment rotation is PM-only
-  too. (S–M)
 
 ---
 
