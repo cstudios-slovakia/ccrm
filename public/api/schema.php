@@ -100,6 +100,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `client_category_id` VARCHAR(50) NULL COMMENT 'client_categories.id - not a foreign key, the app clears it when a category is deleted',
               `company_client_id` VARCHAR(50) NULL COMMENT 'leads.id of parent company for person client-side contacts (never rented workers)',
               `contact_role` VARCHAR(120) NULL COMMENT 'Role at company for attached person contacts (e.g. HR, Site Manager)',
+              `contact_tags` TEXT NULL COMMENT 'JSON array of contact function tags',
               `ticket_allowed_emails` TEXT NULL COMMENT 'JSON array of whitelisted sender emails/domains for support tickets',
               `custom_fields_json` LONGTEXT NULL COMMENT 'JSON map of custom lead attribute values keyed by attribute id',
               `archived` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Archived from the client register',
@@ -2529,6 +2530,9 @@ if (!function_exists('ccrm_schema_statements')) {
                 }
                 if (!ccrm_column_exists($pdo, 'leads', 'contact_role')) {
                     $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_role` VARCHAR(120) NULL AFTER `company_client_id`");
+                }
+                if (!ccrm_column_exists($pdo, 'leads', 'contact_tags')) {
+                    $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_tags` TEXT NULL AFTER `contact_role`");
                 }
                 if (!ccrm_index_exists($pdo, 'leads', 'idx_lead_company_client')) {
                     try { $pdo->exec("ALTER TABLE `leads` ADD INDEX `idx_lead_company_client` (`company_client_id`)"); } catch (\Throwable $e) {}

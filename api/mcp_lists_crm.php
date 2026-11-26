@@ -271,43 +271,181 @@ function mcp_profiles_activity(\PDO $pdo, array $profiles): array {
 }
 
 // ============================================================================
+// Contact function-tag helpers (leads.contact_tags JSON array + contact_role)
+// ============================================================================
+
+function mcp_ensure_contact_tags_column(\PDO $pdo): void {
+    static $done = false;
+    if ($done) return;
+    $cols = $pdo->query("SHOW COLUMNS FROM `leads` LIKE 'contact_tags'")->fetchAll(\PDO::FETCH_ASSOC);
+    if (!$cols) {
+        $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_tags` TEXT NULL AFTER `contact_role`");
+    }
+    $done = true;
+}
+
+function mcp_encode_contact_tags($tagsInput, ?string $roleFallback = null): array {
+    $rawList = [];
+    if (is_array($tagsInput)) {
+        $rawList = $tagsInput;
+    } elseif (is_string($tagsInput) && trim($tagsInput) !== '') {
+        $rawList = explode(',', $tagsInput);
+    } elseif ($roleFallback !== null && trim($roleFallback) !== '') {
+        $rawList = explode(',', $roleFallback);
+    }
+    $seen = [];
+    $clean = [];
+    foreach ($rawList as $item) {
+        $v = trim((string)$item);
+        if ($v === '') continue;
+        $k = mb_strtolower($v, 'UTF-8');
+        if (isset($seen[$k])) continue;
+        $seen[$k] = true;
+        $clean[] = $v;
+    }
+    return [
+        'tags' => $clean,
+        'json' => $clean ? json_encode($clean, JSON_UNESCAPED_UNICODE) : null,
+        'summary' => $clean ? mb_substr(implode(', ', $clean), 0, 120, 'UTF-8') : null,
+    ];
+}
+
+function mcp_contact_tags_from_row(array $row): array {
+    $raw = $row['contact_tags'] ?? null;
+    if (is_string($raw) && trim($raw) !== '') {
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            $enc = mcp_encode_contact_tags($decoded);
+            if ($enc['tags']) return $enc['tags'];
+        }
+    } elseif (is_array($raw) && $raw) {
+        $enc = mcp_encode_contact_tags($raw);
+        if ($enc['tags']) return $enc['tags'];
+    }
+    $role = trim((string)($row['contact_role'] ?? ''));
+    if ($role === '' || strcasecmp($role, 'Contact') === 0) return [];
+    return mcp_encode_contact_tags(null, $role)['tags'];
+}
+
+// ============================================================================
 // list_contacts
 // ============================================================================
 
 function mcp_list_contacts(\PDO $pdo, array $args): array {
-    $stmt = $pdo->prepare('SELECT id, name, adjustment, contact_person, email, phone, ' . mcp_moment_select('updated_at', 'updated_at') . ' FROM leads WHERE id = ?');
-    $stmt->execute([$args['client_id']]);
-    $lead = $stmt->fetch(\PDO::FETCH_ASSOC);
-    // The record's kind needs its module, as everywhere else (the answer for "not readable" is the answer for "not there").
-    if (!$lead || !mcp_lead_module_visible($lead)) return [];
-    $rows = [[
-        'id' => $lead['id'],
-        'is_primary' => true,
-        'name' => $lead['contact_person'] ?: $lead['name'],
-        'email' => $lead['email'],
-        'phone' => $lead['phone'],
-        'role' => 'Primary Contact',
-        'updated_at' => mcp_format_moment($lead['updated_at__ts']),
-    ]];
-    $linked = $pdo->prepare(
-        'SELECT id, name, contact_person, contact_first_name, contact_last_name, contact_role, email, phone, adjustment, '
-        . mcp_moment_select('updated_at', 'updated_at')
-        . " FROM leads WHERE company_client_id = ? AND archived = 0 ORDER BY name ASC, id ASC"
-    );
-    $linked->execute([$args['client_id']]);
-    foreach ($linked->fetchAll(\PDO::FETCH_ASSOC) as $c) {
-        if (!mcp_lead_module_visible($c)) continue;
+    mcp_ensure_contact_tags_column($pdo);
+    $clientId = trim((string)($args['client_id'] ?? ''));
+    $includeArchived = !empty($args['include_archived']);
+    $filterTags = [];
+    if (!empty($args['tag'])) $filterTags[] = mb_strtolower(trim((string)$args['tag']), 'UTF-8');
+    if (!empty($args['tags']) && is_array($args['tags'])) {
+        foreach ($args['tags'] as $t) {
+            $s = mb_strtolower(trim((string)$t), 'UTF-8');
+            if ($s !== '') $filterTags[] = $s;
+        }
+    }
+    $filterTags = array_values(array_unique(array_filter($filterTags)));
+    $search = mb_strtolower(trim((string)($args['search'] ?? '')), 'UTF-8');
+
+    $matches = static function (array $item) use ($filterTags, $search): bool {
+        if ($filterTags) {
+            $itemTags = array_map(fn($x) => mb_strtolower((string)$x, 'UTF-8'), $item['function_tags'] ?? []);
+            if (!array_intersect($filterTags, $itemTags)) return false;
+        }
+        if ($search !== '') {
+            $hay = mb_strtolower(implode(' ', [
+                (string)($item['name'] ?? ''),
+                (string)($item['company_name'] ?? ''),
+                (string)($item['email'] ?? ''),
+                (string)($item['phone'] ?? ''),
+                (string)($item['role'] ?? ''),
+                implode(' ', $item['function_tags'] ?? []),
+            ]), 'UTF-8');
+            if (mb_strpos($hay, $search, 0, 'UTF-8') === false) return false;
+        }
+        return true;
+    };
+
+    $rows = [];
+    if ($clientId !== '') {
+        $stmt = $pdo->prepare('SELECT id, name, adjustment, contact_person, contact_role, contact_tags, email, phone, ' . mcp_moment_select('updated_at', 'updated_at') . ' FROM leads WHERE id = ?');
+        $stmt->execute([$clientId]);
+        $lead = $stmt->fetch(\PDO::FETCH_ASSOC);
+        // The record's kind needs its module, as everywhere else (the answer for "not readable" is the answer for "not there").
+        if (!$lead || !mcp_lead_module_visible($lead)) return [];
+        $companyName = (string)$lead['name'];
         $rows[] = [
-            'id' => $c['id'],
-            'is_primary' => false,
-            'name' => $c['contact_person'] ?: $c['name'],
-            'first_name' => $c['contact_first_name'],
-            'last_name' => $c['contact_last_name'],
-            'email' => $c['email'],
-            'phone' => $c['phone'],
-            'role' => $c['contact_role'] ?: 'Contact',
-            'updated_at' => mcp_format_moment($c['updated_at__ts']),
+            'id' => $lead['id'],
+            'is_primary' => true,
+            'company_client_id' => $lead['id'],
+            'company_name' => $companyName,
+            'name' => $lead['contact_person'] ?: $lead['name'],
+            'email' => $lead['email'],
+            'phone' => $lead['phone'],
+            'role' => 'Primary Contact',
+            'function_tags' => mcp_contact_tags_from_row($lead),
+            'updated_at' => mcp_format_moment($lead['updated_at__ts']),
         ];
+        $archSql = $includeArchived ? '' : ' AND archived = 0';
+        $linked = $pdo->prepare(
+            'SELECT id, name, contact_person, contact_first_name, contact_last_name, contact_role, contact_tags, email, phone, adjustment, archived, '
+            . mcp_moment_select('updated_at', 'updated_at')
+            . " FROM leads WHERE company_client_id = ?{$archSql} ORDER BY name ASC, id ASC"
+        );
+        $linked->execute([$clientId]);
+        foreach ($linked->fetchAll(\PDO::FETCH_ASSOC) as $c) {
+            if (!mcp_lead_module_visible($c)) continue;
+            $tags = mcp_contact_tags_from_row($c);
+            $rows[] = [
+                'id' => $c['id'],
+                'is_primary' => false,
+                'company_client_id' => $clientId,
+                'company_name' => $companyName,
+                'name' => $c['contact_person'] ?: $c['name'],
+                'first_name' => $c['contact_first_name'],
+                'last_name' => $c['contact_last_name'],
+                'email' => $c['email'],
+                'phone' => $c['phone'],
+                'role' => $c['contact_role'] ?: ($tags ? implode(', ', $tags) : 'Contact'),
+                'function_tags' => $tags,
+                'archived' => !empty($c['archived']),
+                'updated_at' => mcp_format_moment($c['updated_at__ts']),
+            ];
+        }
+    } else {
+        $archSql = $includeArchived ? '' : ' AND c.archived = 0';
+        $stmt = $pdo->query(
+            'SELECT c.id, c.name, c.contact_person, c.contact_first_name, c.contact_last_name, '
+            . 'c.contact_role, c.contact_tags, c.email, c.phone, c.adjustment, c.archived, '
+            . 'c.company_client_id, p.name AS company_name, '
+            . mcp_moment_select('c.updated_at', 'updated_at')
+            . " FROM leads c LEFT JOIN leads p ON p.id = c.company_client_id"
+            . " WHERE c.client_type = 'person' AND c.company_client_id IS NOT NULL AND TRIM(c.company_client_id) != ''"
+            . $archSql
+            . " ORDER BY p.name ASC, c.name ASC, c.id ASC"
+        );
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $c) {
+            if (!mcp_lead_module_visible($c)) continue;
+            $tags = mcp_contact_tags_from_row($c);
+            $rows[] = [
+                'id' => $c['id'],
+                'is_primary' => false,
+                'company_client_id' => $c['company_client_id'],
+                'company_name' => $c['company_name'] ?? null,
+                'name' => $c['contact_person'] ?: $c['name'],
+                'first_name' => $c['contact_first_name'],
+                'last_name' => $c['contact_last_name'],
+                'email' => $c['email'],
+                'phone' => $c['phone'],
+                'role' => $c['contact_role'] ?: ($tags ? implode(', ', $tags) : 'Contact'),
+                'function_tags' => $tags,
+                'archived' => !empty($c['archived']),
+                'updated_at' => mcp_format_moment($c['updated_at__ts']),
+            ];
+        }
+    }
+
+    if ($filterTags || $search !== '') {
+        $rows = array_values(array_filter($rows, $matches));
     }
     return array_slice($rows, max(0, (int)($args['offset'] ?? 0)), mcp_limit($args));
 }
@@ -737,15 +875,18 @@ function mcp_crm_defs(): array {
         ],
         'list_contacts' => [
             'name' => 'list_contacts',
-            'description' => 'List contacts associated with a specific client: its primary contact and linked contact person records (via company_client_id). updated_at is an ISO moment. Pages: limit + offset.',
+            'description' => 'List company contacts with name, phone, email, company, and function_tags. Pass client_id for one company (primary + linked contacts), or omit client_id to list/datamine contacts across all companies; filter by tag / tags or search. updated_at is an ISO moment. Pages: limit + offset.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
-                    'client_id' => $s('Client ID'),
+                    'client_id' => $s('Optional client/company ID; omit to list contacts across all companies'),
+                    'tag' => $s('Filter by a single function tag (case-insensitive, e.g. "CEO" or "Billing")'),
+                    'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Filter by any of these function tags (case-insensitive)'],
+                    'search' => $s('Search across contact name, company name, email, phone, and function tags'),
+                    'include_archived' => ['type' => 'boolean', 'description' => 'Include archived contacts (default false)'],
                     'limit' => ['type' => 'integer', 'description' => 'Max rows (default 50, at most 100)'],
                     'offset' => ['type' => 'integer', 'description' => 'Rows to skip, for the next page'],
                 ],
-                'required' => ['client_id'],
             ],
         ],
         'list_tasks' => [

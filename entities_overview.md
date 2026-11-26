@@ -103,6 +103,7 @@ Main table representing potential deals, customers, and client accounts.
 * `price_level_id` VARCHAR(50) [NULLable] (the price level - an `id` of the `PRICE_LEVELS` setting - this client buys on; NULL = the items' default sell prices)
 * `company_client_id` VARCHAR(50) [NULLable, indexed] (for person clients: optional parent Business/Partner company `leads.id` where they act as a client-side contact; rented agency employees never live in `leads`)
 * `contact_role` VARCHAR(120) [NULLable] (role/title of an attached person contact at their company, e.g. HR Manager)
+* `contact_tags` TEXT [NULLable] (JSON array of function tags for an attached person contact, e.g. ["CEO","Billing"])
 * `contact_person` VARCHAR(100)
 * `contact_first_name` VARCHAR(100) [NULLable] (the contact person's first name as typed; synced as `contactFirstName`. `{{first_name}}` of the newsletter reads this, never `contact_person`. Rule shared by `composeContactName()` and `ccrm_compose_contact_name()`: when either part is filled, `contact_person` = first + ' ' + last; both empty keeps `contact_person`. Rows that predate the column were split once by `ccrm_backfill_contact_names()`, flag `CONTACT_NAME_BACKFILL` in `system_settings`)
 * `contact_last_name` VARCHAR(100) [NULLable] (the contact person's last name as typed; synced as `contactLastName`)

@@ -736,7 +736,8 @@ function mcp_core_tool_definitions(): array {
                     'last_name' => ['type' => 'string', 'description' => 'Contact last name'],
                     'email' => ['type' => 'string', 'description' => 'Email'],
                     'phone' => ['type' => 'string', 'description' => 'Phone'],
-                    'role' => ['type' => 'string', 'description' => 'Position or role at the company']
+                    'role' => ['type' => 'string', 'description' => 'Position or role at the company (legacy summary fallback)'],
+                    'function_tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Function / category tags for the contact (e.g. ["CEO", "Billing"])']
                 ],
                 'required' => ['client_id', 'name']
             ]

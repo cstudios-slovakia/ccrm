@@ -77,6 +77,8 @@ import { fetchFiledMail, shouldReadStoredBody } from "../utils/filedMail";
 import { EntityHeader, PageHeader, Tabs } from "./layout";
 import { WhatsAppChip, OpenInChatLink } from "./WhatsAppChip";
 import { ClientCompanyContacts } from "./clients/ClientCompanyContacts";
+import { ContactTagInput } from "./clients/ContactTagInput";
+import { collectAllContactTags, contactTagsSummary, normalizeContactTags, resolveContactTags } from "../utils/contactTags";
 import { ClientContactChats } from "./clients/ClientContactChats";
 import {
   getWhatsAppChats,
@@ -353,7 +355,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [newClientCategories, setNewClientCategories] = useState<string[]>([]);
   const [newClientCategoryId, setNewClientCategoryId] = useState("");
   const [newClientCompanyClientId, setNewClientCompanyClientId] = useState("");
-  const [newClientContactRole, setNewClientContactRole] = useState("");
+  const [newClientContactTags, setNewClientContactTags] = useState<string[]>([]);
 
   // Company registry type-ahead for the register drawer. The client profile
   // panel keeps its own instance, declared next to the profile form state.
@@ -685,7 +687,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       categories: newClientCategories,
       clientCategoryId: newClientCategoryId || null,
       companyClientId: newClientType === "person" ? (newClientCompanyClientId || null) : null,
-      contactRole: newClientType === "person" ? (newClientContactRole.trim() || null) : null,
+      contactRole: newClientType === "person" ? contactTagsSummary(newClientContactTags) : null,
+      contactTags: newClientType === "person" ? normalizeContactTags(newClientContactTags) : [],
       timeline: [
         {
           id: `ev-${Date.now()}`,
@@ -732,7 +735,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setNewClientCategories([]);
     setNewClientCategoryId("");
     setNewClientCompanyClientId("");
-    setNewClientContactRole("");
+    setNewClientContactTags([]);
     setNewClientVatStatus("idle");
     setNewClientVatResult(null);
     
@@ -789,6 +792,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       priceLevelId: string | null;
       companyClientId: string | null;
       contactRole: string | null;
+      contactTags: string[];
       archived: boolean;
       aiSummary?: string;
       aiSummaryFingerprint?: string;
@@ -860,6 +864,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           priceLevelId: anchor.priceLevelId || null,
           companyClientId: anchor.companyClientId || null,
           contactRole: anchor.contactRole || null,
+          contactTags: resolveContactTags(anchor.contactTags, anchor.contactRole),
           archived: !!anchor.archived,
           aiSummary: anchor.aiSummary || "",
           aiSummaryFingerprint: anchor.aiSummaryFingerprint || "",
@@ -888,6 +893,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       }
       if (!profilesMap[clientKey].contactRole && lead.contactRole) {
         profilesMap[clientKey].contactRole = lead.contactRole;
+      }
+      if (profilesMap[clientKey].contactTags.length === 0) {
+        const mergedTags = resolveContactTags(lead.contactTags, lead.contactRole);
+        if (mergedTags.length > 0) profilesMap[clientKey].contactTags = mergedTags;
       }
       // Archived only while every lead of the profile is: a new deal under the
       // same name brings the client back into the register on its own.
@@ -995,6 +1004,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     }
     return map;
   }, [clientProfiles]);
+
+  const allContactTags = useMemo(() => collectAllContactTags(leads), [leads]);
 
   // Find active client details based on URL deep routing (resilient matching across all client profiles)
   const activeClient = useMemo(() => {
@@ -1323,9 +1334,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [profileClientCategoryId, setProfileClientCategoryId] = useState("");
   const [profilePriceLevelId, setProfilePriceLevelId] = useState("");
   const [profileCompanyClientId, setProfileCompanyClientId] = useState("");
-  const [profileContactRole, setProfileContactRole] = useState("");
+  const [profileContactTags, setProfileContactTags] = useState<string[]>([]);
   const [attachExistingPersonId, setAttachExistingPersonId] = useState("");
-  const [attachExistingRole, setAttachExistingRole] = useState("");
+  const [attachExistingTags, setAttachExistingTags] = useState<string[]>([]);
 
   // The same registry autofill as the register drawer, on the client profile.
   const profileLookup = useCompanyLookup<CompanyLookupField>({
@@ -2611,7 +2622,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         setProfileClientCategoryId(activeClient.clientCategoryId || "");
         setProfilePriceLevelId(activeClient.priceLevelId || "");
         setProfileCompanyClientId(activeClient.companyClientId || "");
-        setProfileContactRole(activeClient.contactRole || "");
+        setProfileContactTags(resolveContactTags(activeClient.contactTags, activeClient.contactRole));
         
         if (clientNameChanged) {
           setIsEditingProfile(false); // Reset to read-only by default on transition to a new client
@@ -2714,7 +2725,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       clientCategoryId: profileClientCategoryId || null,
       priceLevelId: profilePriceLevelId || null,
       companyClientId: profileType === "person" ? (profileCompanyClientId || null) : null,
-      contactRole: profileType === "person" ? (profileContactRole.trim() || null) : null
+      contactRole: profileType === "person" ? contactTagsSummary(profileContactTags) : null,
+      contactTags: profileType === "person" ? normalizeContactTags(profileContactTags) : []
     }));
 
     setIsEditingProfile(false); // Toggle back to read-only
@@ -3263,17 +3275,20 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     {activeClient.clientType}
                   </span>
                 )}
-                {activeClient.clientType === "person" && activeClient.companyClientId && companyByIdMap.get(activeClient.companyClientId) && (
-                  <EntityBadge
-                    entity="clients"
-                    label={`${companyByIdMap.get(activeClient.companyClientId)!.name}${activeClient.contactRole ? ` • ${activeClient.contactRole}` : ""}`}
-                    onClick={() => {
-                      const comp = companyByIdMap.get(activeClient.companyClientId!);
-                      if (comp) window.location.hash = `client-${encodeURIComponent(comp.name)}`;
-                    }}
-                    size="sm"
-                  />
-                )}
+                {activeClient.clientType === "person" && activeClient.companyClientId && companyByIdMap.get(activeClient.companyClientId) && (() => {
+                  const tagSummary = resolveContactTags(activeClient.contactTags, activeClient.contactRole).join(", ");
+                  return (
+                    <EntityBadge
+                      entity="clients"
+                      label={`${companyByIdMap.get(activeClient.companyClientId)!.name}${tagSummary ? ` • ${tagSummary}` : ""}`}
+                      onClick={() => {
+                        const comp = companyByIdMap.get(activeClient.companyClientId!);
+                        if (comp) window.location.hash = `client-${encodeURIComponent(comp.name)}`;
+                      }}
+                      size="sm"
+                    />
+                  );
+                })()}
                 {activeClient.companyId && (
                   <span className="font-mono bg-gray-100 text-gray-700 px-2 py-0.5 rounded-md border border-gray-200 text-caption">
                     IČO: {activeClient.companyId}
@@ -3356,38 +3371,29 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           </>}
         />
 
-        {(!isOpenAiConfigured || localSummary || isGeneratingSummary) && (
+        {isOpenAiConfigured && (localSummary || isGeneratingSummary) && (
           <div className="flex flex-wrap items-center gap-3" style={entityAccentStyle("rag_ai")}>
             {/* AI Summary Card */}
-            {(!isOpenAiConfigured && !localSummary) ? (
-              <div className="flex items-center gap-2.5 bg-entity-subtle/50 border border-entity-border p-2.5 px-3.5 rounded-lg max-w-md text-ui font-semibold text-entity-text shadow-2xs">
-                <Brain className="h-4.5 w-4.5 text-entity-text shrink-0" />
-                <span className="text-micro italic">
-                  {systemLanguage === "sk" ? "AI zhrnutie nie je k dispozícii. Nastavte OpenAI kľúč v nastaveniach." : systemLanguage === "hu" ? "Az AI összefoglaló nem érhető el. Állítsa be az OpenAI kulcsot a beállításokban." : "AI summary unavailable. Configure OpenAI Key in settings."}
-                </span>
+            <div className="flex items-center gap-2.5 bg-entity-subtle/70 border border-entity-border p-2.5 px-3.5 rounded-lg max-w-xl text-ui font-medium text-gray-900 shadow-xs transition-all animate-fade-in">
+              <Brain className={`h-4.5 w-4.5 text-entity-text shrink-0 ${isGeneratingSummary ? 'animate-pulse' : ''}`} />
+              <div>
+                {isGeneratingSummary && !localSummary ? (
+                  <span className="text-micro text-entity-text italic animate-pulse flex items-center gap-1.5">
+                    <Loader2 className="h-3 w-3 animate-spin text-entity-text" />
+                    {systemLanguage === "sk" ? "Generuje sa AI zhrnutie..." : systemLanguage === "hu" ? "AI összefoglaló generálása..." : "Generating AI summary..."}
+                  </span>
+                ) : (
+                  <p className="leading-relaxed text-caption font-medium text-left">
+                    {localSummary}
+                    {isGeneratingSummary && (
+                      <span className="ml-1 text-micro text-entity-text animate-pulse">
+                        ({systemLanguage === "sk" ? "Aktualizuje sa..." : systemLanguage === "hu" ? "Frissítés..." : "Updating..."})
+                      </span>
+                    )}
+                  </p>
+                )}
               </div>
-            ) : (localSummary || isGeneratingSummary) ? (
-              <div className="flex items-center gap-2.5 bg-entity-subtle/70 border border-entity-border p-2.5 px-3.5 rounded-lg max-w-xl text-ui font-medium text-gray-900 shadow-xs transition-all animate-fade-in">
-                <Brain className={`h-4.5 w-4.5 text-entity-text shrink-0 ${isGeneratingSummary ? 'animate-pulse' : ''}`} />
-                <div>
-                  {isGeneratingSummary && !localSummary ? (
-                    <span className="text-micro text-entity-text italic animate-pulse flex items-center gap-1.5">
-                      <Loader2 className="h-3 w-3 animate-spin text-entity-text" />
-                      {systemLanguage === "sk" ? "Generuje sa AI zhrnutie..." : systemLanguage === "hu" ? "AI összefoglaló generálása..." : "Generating AI summary..."}
-                    </span>
-                  ) : (
-                    <p className="leading-relaxed text-caption font-medium text-left">
-                      {localSummary}
-                      {isGeneratingSummary && (
-                        <span className="ml-1 text-micro text-entity-text animate-pulse">
-                          ({systemLanguage === "sk" ? "Aktualizuje sa..." : systemLanguage === "hu" ? "Frissítés..." : "Updating..."})
-                        </span>
-                      )}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ) : null}
+            </div>
           </div>
         )}
 
@@ -3465,7 +3471,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     setProfileRegion(activeClient.region || "");
                     setProfileDistrict(activeClient.district || "");
                     setProfileCompanyClientId(activeClient.companyClientId || "");
-                    setProfileContactRole(activeClient.contactRole || "");
+                    setProfileContactTags(resolveContactTags(activeClient.contactTags, activeClient.contactRole));
                   }
                   setIsEditingProfile(!isEditingProfile);
                 }}
@@ -3987,23 +3993,30 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       </span>
                     )}
                   </div>
-                  {(isEditingProfile ? !!profileCompanyClientId : !!(profileCompanyClientId && profileContactRole)) && (
+                  {(isEditingProfile || profileContactTags.length > 0) && (
                     <div className="space-y-1">
                       <label className="type-overline text-slate-500">
-                        {t("Role at Company", "Pozícia vo firme", "Szerepkör a cégnél")}
+                        {t("Function tags", "Funkčné štítky", "Funkció címkék")}
                       </label>
-                      <input
-                        type="text"
-                        readOnly={!isEditingProfile}
-                        value={profileContactRole}
-                        onChange={(e) => setProfileContactRole(e.target.value)}
-                        placeholder={isEditingProfile ? t("e.g. HR Manager, Site Supervisor", "napr. HR manažér, Majster zmeny", "pl. HR vezető, Műszakvezető") : ""}
-                        className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
-                          isEditingProfile
-                            ? "bg-white border-2 border-slate-200 text-slate-800"
-                            : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default"
-                        }`}
-                      />
+                      {isEditingProfile ? (
+                        <ContactTagInput
+                          value={profileContactTags}
+                          onChange={setProfileContactTags}
+                          suggestions={allContactTags}
+                          placeholder={t("e.g. CEO, Billing", "napr. CEO, Fakturácia", "pl. Ügyvezető, Számlázás")}
+                        />
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5 pt-0.5">
+                          {profileContactTags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="px-2 py-0.5 rounded-md type-overline bg-sky-50 text-sky-700 border border-sky-200"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -5152,17 +5165,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 <ClientCompanyContacts
                   activeClient={activeClient}
                   clientProfiles={clientProfiles}
+                  allContactTags={allContactTags}
+                  defaultOwner={activeClient.owner || projectManagers[0] || currentUser?.name || ""}
                   setLeads={setLeads}
                   canEdit={canEdit}
                   t={t}
-                  setNewClientType={setNewClientType}
-                  setNewClientCompanyClientId={setNewClientCompanyClientId}
-                  setNewClientContactRole={setNewClientContactRole}
-                  setShowRegisterDrawer={setShowRegisterDrawer}
                   attachExistingPersonId={attachExistingPersonId}
                   setAttachExistingPersonId={setAttachExistingPersonId}
-                  attachExistingRole={attachExistingRole}
-                  setAttachExistingRole={setAttachExistingRole}
+                  attachExistingTags={attachExistingTags}
+                  setAttachExistingTags={setAttachExistingTags}
                 />
               )}
 
@@ -6372,15 +6383,18 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         </div>
                         <div className="flex flex-col">
                           <span className="line-clamp-1 group-hover:text-entity-text transition-colors font-semibold text-body text-gray-900">{client.name}</span>
-                          {client.clientType === "person" && client.companyClientId && companyByIdMap.get(client.companyClientId) && (
-                            <span className="text-micro text-sky-700 font-semibold flex items-center gap-1 mt-0.5">
-                              <Building2 className="h-3 w-3 shrink-0 text-sky-600" />
-                              <span className="truncate">
-                                {companyByIdMap.get(client.companyClientId)!.name}
-                                {client.contactRole ? ` (${client.contactRole})` : ""}
+                          {client.clientType === "person" && client.companyClientId && companyByIdMap.get(client.companyClientId) && (() => {
+                            const tagSummary = resolveContactTags(client.contactTags, client.contactRole).join(", ");
+                            return (
+                              <span className="text-micro text-sky-700 font-semibold flex items-center gap-1 mt-0.5">
+                                <Building2 className="h-3 w-3 shrink-0 text-sky-600" />
+                                <span className="truncate">
+                                  {companyByIdMap.get(client.companyClientId)!.name}
+                                  {tagSummary ? ` (${tagSummary})` : ""}
+                                </span>
                               </span>
-                            </span>
-                          )}
+                            );
+                          })()}
                           {client.categories && client.categories.length > 0 && (
                             <span className="type-overline text-slate-400 line-clamp-1 mt-0.5">
                               {client.categories.join(", ")}
@@ -6989,14 +7003,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
                   <div className="space-y-1">
                     <label className="type-overline text-slate-500 block">
-                      {t("Role at Company", "Pozícia vo firme", "Szerepkör a cégnél")}
+                      {t("Function tags", "Funkčné štítky", "Funkció címkék")}
                     </label>
-                    <input
-                      type="text"
-                      value={newClientContactRole}
-                      onChange={(e) => setNewClientContactRole(e.target.value)}
-                      placeholder={t("e.g. HR Manager", "napr. HR manažér", "pl. HR vezető")}
-                      className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 focus:outline-none focus:border-emerald-500 transition-all font-semibold"
+                    <ContactTagInput
+                      value={newClientContactTags}
+                      onChange={setNewClientContactTags}
+                      suggestions={allContactTags}
+                      placeholder={t("e.g. CEO, Billing", "napr. CEO, Fakturácia", "pl. Ügyvezető, Számlázás")}
                     />
                   </div>
                 </div>

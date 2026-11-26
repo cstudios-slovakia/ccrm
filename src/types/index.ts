@@ -232,6 +232,7 @@ export interface Lead {
   // site manager, billing contact). Rented agency employees NEVER live in `leads`.
   companyClientId?: string | null;
   contactRole?: string | null;
+  contactTags?: string[] | null;
 
   // Which channel first brought the visitor to the website (facebook,
   // instagram, google, direct, ...) and a free-text detail (medium, campaign,
