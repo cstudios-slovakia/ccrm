@@ -122,7 +122,7 @@ import { listLlmSourceConnectors, type LlmSourceConnector } from "../utils/compa
 const COMPANY_FORM_KEYS: Array<keyof CompanyBillingSettings> = [
   "companyLogoUrl", "companyName", "companySubtitle", "companyId", "taxId", "vatId",
   "street", "city", "postalCode", "country", "email", "phone", "phoneSecondary", "website",
-  "iban", "swift", "defaultPaymentDueDays", "defaultVatRate", "vatRates",
+  "iban", "swift", "defaultPaymentDueDays", "defaultVatRate", "financeNetMode", "vatRates",
 ];
 const normField = (v: unknown) => (v === undefined || v === null ? "" : Array.isArray(v) ? JSON.stringify(v) : String(v));
 
@@ -1466,6 +1466,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     bankName: "",
     defaultPaymentDueDays: 14,
     defaultVatRate: DEFAULT_STANDARD_VAT_RATE,
+    financeNetMode: false,
     vatRates: [...DEFAULT_VAT_RATES],
     shippingMethods: [...DEFAULT_SHIPPING_METHODS],
     paymentMethods: [...DEFAULT_PAYMENT_METHODS],
@@ -1491,6 +1492,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       ...base,
       ...loaded,
       defaultVatRate: loaded.defaultVatRate !== undefined ? loaded.defaultVatRate : base.defaultVatRate,
+      financeNetMode: Boolean(loaded.financeNetMode),
       vatRates: loaded.vatRates && loaded.vatRates.length > 0 ? loaded.vatRates : base.vatRates,
       shippingMethods: loaded.shippingMethods && loaded.shippingMethods.length > 0 ? loaded.shippingMethods : base.shippingMethods,
       paymentMethods: loaded.paymentMethods && loaded.paymentMethods.length > 0 ? loaded.paymentMethods : base.paymentMethods,
@@ -1509,6 +1511,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         ...prev,
         ...companyBillingSettings,
         defaultVatRate: companyBillingSettings.defaultVatRate !== undefined ? companyBillingSettings.defaultVatRate : (prev.defaultVatRate ?? DEFAULT_STANDARD_VAT_RATE),
+        financeNetMode: Boolean(companyBillingSettings.financeNetMode),
         vatRates: companyBillingSettings.vatRates && companyBillingSettings.vatRates.length > 0
           ? companyBillingSettings.vatRates
           : (prev.vatRates && prev.vatRates.length > 0 ? prev.vatRates : [...DEFAULT_VAT_RATES]),
@@ -3071,7 +3074,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   if (nameDirty || (["companyLogoUrl", "companyName", "companySubtitle", "email", "phone", "phoneSecondary", "website"] as const).some(fieldDirty)) companyChip.current = "profile";
   else if ((["companyId", "taxId", "vatId", "street", "city", "postalCode", "country"] as const).some(fieldDirty)) companyChip.current = "billing";
   else if ((["iban", "swift"] as const).some(fieldDirty)) companyChip.current = "bank";
-  else if ((["defaultPaymentDueDays", "defaultVatRate", "vatRates"] as const).some(fieldDirty)) companyChip.current = "defaults";
+  else if ((["defaultPaymentDueDays", "defaultVatRate", "financeNetMode", "vatRates"] as const).some(fieldDirty)) companyChip.current = "defaults";
   const companyAction = (which: "profile" | "billing" | "bank" | "defaults") =>
     companyChip.current === which ? companySaveStatus : undefined;
 
@@ -6996,6 +6999,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                 ))}
                               </select>
                             </div>
+
+                            <label className="md:col-span-2 flex items-start gap-2.5 pt-2 border-t border-gray-100 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(billingForm.financeNetMode)}
+                                onChange={e =>
+                                  setBillingForm(prev => ({ ...prev, financeNetMode: e.target.checked }))
+                                }
+                                className="mt-0.5 size-4 accent-entity-solid"
+                              />
+                              <span className="text-ui text-gray-800">
+                                <span className="font-semibold block">
+                                  {t("Net (VAT-excluded) finance mode", "Financie bez DPH (netto režim)", "Nettó (ÁFA nélküli) pénzügyi mód")}
+                                </span>
+                                <span className="text-caption text-gray-500">
+                                  {t(
+                                    "Sync invoice subtotals (net) into Finance and keep lead, offer, and project values consistent without VAT.",
+                                    "Synchronizovať do financií sumy bez DPH (základ) a držať hodnoty leadov, ponúk a projektov jednotne bez DPH.",
+                                    "A számlák nettó összegét (ÁFA nélkül) szinkronizálja a pénzügyekbe, egységesítve a lead, árajánlat és projekt értékeket."
+                                  )}
+                                </span>
+                              </span>
+                            </label>
                           </div>
                         </SectionCard>
         </>

@@ -12,6 +12,7 @@ import type { FinancialRecord, InvoiceOffer, Lead, Project, ProjectType } from "
 import type { ProfitabilityData, ProfitabilityRow } from "../../components/dashboard/performance/types.ts";
 import { movementAmounts } from "../financialOverviewTable.ts";
 import { isLiveInvoiceStatus, type OfferStatusDef } from "../offerStatuses.ts";
+import { effectiveDocumentAmount } from "../invoiceFinanceBridge.ts";
 import { projectBilling, resolveProjectValue } from "../projectBilling.ts";
 import { dayDiff, parseAppDate } from "./period.ts";
 import type { TimeEntry } from "../timeTracking.ts";
@@ -119,6 +120,9 @@ export interface ProjectInvoicedInput {
   financialRecords: readonly FinancialRecord[];
   invoicesOffers: readonly InvoiceOffer[];
   invoiceStatuses: readonly OfferStatusDef[];
+  siblingProjects?: readonly Project[];
+  projectTypes?: readonly ProjectType[];
+  netMode?: boolean;
 }
 
 /**
@@ -133,15 +137,23 @@ export const projectInvoicedAmount = ({
   financialRecords,
   invoicesOffers,
   invoiceStatuses,
+  siblingProjects,
+  projectTypes,
+  netMode,
 }: ProjectInvoicedInput): number => {
   if (financialRecords.length > 0) {
-    const value = resolveProjectValue(project, projectType, lead, defaultCurrency).value;
+    const value = resolveProjectValue(project, projectType, lead, defaultCurrency, {
+      siblingProjects,
+      projectTypes,
+      netMode,
+      invoicesOffers,
+    }).value;
     return projectBilling(value, financialRecords as FinancialRecord[], project.id).invoiced;
   }
   if (!project.leadId) return 0;
   return invoicesOffers
     .filter((io) => io.leadId === project.leadId && io.type === "invoice" && isLiveInvoiceStatus(io.status, invoiceStatuses))
-    .reduce((sum, io) => sum + (Number(io.totalPrice) || 0), 0);
+    .reduce((sum, io) => sum + effectiveDocumentAmount(io, Boolean(netMode)), 0);
 };
 
 /**

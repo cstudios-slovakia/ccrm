@@ -2,17 +2,19 @@ import { useEffect, useState } from "react";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { useRecentProjects } from "../../hooks/useRecentProjects";
 import { todayIso, type TimeEntry } from "../../utils/timeTracking.ts";
+import { deleteEntry } from "../../utils/timeTrackingApi.ts";
 import { EntryDrawer } from "./EntryDrawer";
 import type { TimeDeps } from "./shared";
-import { NEW_TIME_ENTRY_EVENT, type NewTimeEntryRequest } from "./timeCreateBridge";
+import { EDIT_TIME_ENTRY_EVENT, NEW_TIME_ENTRY_EVENT, type NewTimeEntryRequest } from "./timeCreateBridge";
 
 /**
  * Mounted once in App: opens the entry drawer on a blank manual entry when the task drawer or a
- * project's Time tab asks for "Add time manually". Save creates the entry (EntryDrawer `isNew`).
+ * project's Time tab asks for "Add time manually", or on an existing entry when clicked in a
+ * project's Time tab.
  */
 export function NewEntryHost({ deps }: { deps: TimeDeps }) {
   const tt = useTimeTracking();
-  const [draft, setDraft] = useState<(TimeEntry & { nonce: number; taskRequired?: boolean }) | null>(null);
+  const [draft, setDraft] = useState<(TimeEntry & { nonce: number; isNew: boolean }) | null>(null);
   useEffect(() => {
     const onNew = (e: Event) => {
       const req = ((e as CustomEvent<NewTimeEntryRequest>).detail ?? {}) as NewTimeEntryRequest;
@@ -26,14 +28,11 @@ export function NewEntryHost({ deps }: { deps: TimeDeps }) {
       }
       if (startAt && endAt) durationSec = Math.max(0, Math.round((new Date(endAt).getTime() - new Date(startAt).getTime()) / 1000));
       if (!startAt) { endAt = null; }
-      // An admin may have switched "Require a task" on in another session: the server's 422 is the truth, so re-read the rule
-      // and the drawer labels the Task field as required.
-      if (req.taskRequired) void tt.reloadSettings();
       const task = req.taskId ? deps.tasks.find((x) => x.id === req.taskId) ?? null : null;
       setDraft({
         id: "",
         nonce: Date.now(),
-        taskRequired: !!req.taskRequired,
+        isNew: true,
         userId: req.userId || tt.userId || "",
         recordedByUserId: tt.userId ?? "",
         employeeId: null,
@@ -60,27 +59,42 @@ export function NewEntryHost({ deps }: { deps: TimeDeps }) {
         createdAt: new Date().toISOString(),
       });
     };
+    const onEdit = (e: Event) => {
+      const entry = (e as CustomEvent<TimeEntry>).detail;
+      if (entry && entry.id) {
+        setDraft({ ...entry, nonce: Date.now(), isNew: false });
+      }
+    };
     window.addEventListener(NEW_TIME_ENTRY_EVENT, onNew);
-    return () => window.removeEventListener(NEW_TIME_ENTRY_EVENT, onNew);
-  }, [deps.tasks, tt.userId, tt.settings.billableByDefault, tt.reloadSettings]);
+    window.addEventListener(EDIT_TIME_ENTRY_EVENT, onEdit);
+    return () => {
+      window.removeEventListener(NEW_TIME_ENTRY_EVENT, onNew);
+      window.removeEventListener(EDIT_TIME_ENTRY_EVENT, onEdit);
+    };
+  }, [deps.tasks, tt.userId, tt.settings.billableByDefault]);
   if (!draft) return null;
   return <OpenDraft draft={draft} deps={deps} onClose={() => setDraft(null)} />;
 }
 
 /** Inner component so the recent-projects fetch only runs while a draft is open. */
-function OpenDraft({ draft, deps, onClose }: { draft: TimeEntry & { nonce: number; taskRequired?: boolean }; deps: TimeDeps; onClose: () => void }) {
+function OpenDraft({ draft, deps, onClose }: { draft: TimeEntry & { nonce: number; isNew: boolean }; deps: TimeDeps; onClose: () => void }) {
+  const tt = useTimeTracking();
   const { recentProjectIds, secondsByProject } = useRecentProjects();
   return (
     <EntryDrawer
       key={draft.nonce}
-      isNew
-      taskRequired={draft.taskRequired}
+      isNew={draft.isNew}
       entry={draft}
       deps={deps}
       recentProjectIds={recentProjectIds}
       secondsByProject={secondsByProject}
       onClose={onClose}
-      onDelete={onClose}
+      onDelete={(entry) => {
+        if (!draft.isNew && entry.id) {
+          void deleteEntry(entry.id).then(() => tt.bump());
+        }
+        onClose();
+      }}
     />
   );
 }

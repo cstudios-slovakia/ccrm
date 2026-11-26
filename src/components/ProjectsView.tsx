@@ -69,7 +69,9 @@ import {
 } from "../utils/projectColumns";
 import type { BuiltinProjectColumnKey, ResolvedProjectColumn } from "../utils/projectColumns";
 import { formatMoney, isMoneyValueEmpty, parseMoneyValue } from "../utils/currency";
-import { projectBilling, resolveProjectValue } from "../utils/projectBilling";
+import { projectBilling, resolveProjectValueWithSource } from "../utils/projectBilling";
+import { projectExpenseCosts } from "../utils/performance/profitability";
+import { useTimeTracking } from "../hooks/useTimeTracking";
 import { PageHeader } from "./layout";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { archiveRecordsWithUndo, deleteRecordsWithUndo } from "../utils/recordActions";
@@ -227,6 +229,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   const projectStatuses = useProjectStatuses();
+  const timeTracking = useTimeTracking();
 
   // Read once here; every handler below checks the flag before it writes.
   const canEdit = access.edit;
@@ -640,18 +643,26 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
        so this list cannot disagree with it. Cancelled rows are not invoiced,
        a partly paid row counts in full, and `project.budget` (a cost ceiling)
        is never taken for revenue. */
-    const contract = resolveProjectValue(p, pType, lead, defaultCurrency);
+    const contract = resolveProjectValueWithSource(p, pType, lead, defaultCurrency, {
+      siblingProjects: projects,
+      projectTypes,
+      netMode: Boolean(companyBillingSettings?.financeNetMode),
+    });
     const billing = projectBilling(contract.value, financialRecords || [], p.id);
+    const ledgerCosts = projectExpenseCosts(financialRecords || [], p.id, "all");
+    const labourCost = timeTracking.enabled ? (timeTracking.totals.byProject[p.id]?.cost ?? 0) : 0;
 
     return {
       totalBudget: contract.value,
       invoiced: billing.invoiced,
       invoicable: billing.notInvoiced,
       stillToBePaid: billing.stillToBePaid,
+      costs: Math.round((ledgerCosts + labourCost) * 100) / 100,
       currency: contract.currency,
       hasValue: contract.value > 0,
+      inheritedFromLead: contract.inheritedFromLead,
     };
-  }, [defaultCurrency, financialRecords]);
+  }, [defaultCurrency, financialRecords, projects, projectTypes, companyBillingSettings?.financeNetMode, timeTracking.enabled, timeTracking.totals.byProject]);
 
   /* Active project status items calculation for the expandable equation statistics */
   const activeProjectStatusItems = useMemo<StatusStatItem[]>(() => {
@@ -794,6 +805,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const sortValueActive = effectiveSort.key === "value";
   const sortInvoicableActive = effectiveSort.key === "invoicable";
   const sortStillToBePaidActive = effectiveSort.key === "stillToBePaid";
+  const sortCostsActive = effectiveSort.key === "costs";
   const orderedProjects = useMemo(() => {
     const statusOrder = projectStatusOrder(projectStatuses);
     const contactName = (id: string) => leads.find(l => l.id === id)?.name || null;
@@ -828,13 +840,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           const fin = getProjectFinancials(p, pType, leads.find(l => l.id === p.leadId));
           return fin.hasValue ? fin.stillToBePaid : null;
         })() : null,
+        costs: sortCostsActive ? (getProjectFinancials(p, pType, leads.find(l => l.id === p.leadId)).costs || null) : null,
         division: p.division || "",
         statusRank: rank === -1 ? statusOrder.length : rank,
         attributes,
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, manualOrder, effectiveSort.key, effectiveSort.direction, projectTypes, projectStatuses, leads, today, sortableAttributes, defaultCurrency, sortValueActive, sortInvoicableActive, sortStillToBePaidActive, getProjectFinancials]);
+  }, [projects, manualOrder, effectiveSort.key, effectiveSort.direction, projectTypes, projectStatuses, leads, today, sortableAttributes, defaultCurrency, sortValueActive, sortInvoicableActive, sortStillToBePaidActive, sortCostsActive, getProjectFinancials]);
 
   /* Every project in the structure: the hand-set order, whatever the sort says.
      Projects it has never seen (created since the last drag) sit on top. */
@@ -1172,6 +1185,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     { value: "value", label: t("Value", "Hodnota", "Érték") },
     { value: "invoicable", label: t("Invoicable", "Fakturovateľné", "Számlázható") },
     { value: "stillToBePaid", label: t("Still to be paid", "Zostáva uhradiť", "Még fizetendő") },
+    { value: "costs", label: t("Costs", "Náklady", "Költségek") },
     { value: "division", label: t("Division", "Divízia", "Divízió") },
     ...sortableAttributes.map(({ key, attribute }) => ({ value: key as ProjectSortKey, label: attribute.name })),
   ];
@@ -1470,8 +1484,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         const fin = getProjectFinancials(p, pType, lead);
         return fin.hasValue
           ? (
-            <span className="text-ui font-bold text-slate-700 tabular-nums whitespace-nowrap">
+            <span
+              className="inline-flex items-center gap-1 text-ui font-bold text-slate-700 tabular-nums whitespace-nowrap"
+              title={fin.inheritedFromLead ? t("Inherited from linked lead", "Zdedené z prepojeného leadu", "A kapcsolódó leadből örökölve") : undefined}
+            >
               {formatMoney(fin.totalBudget, fin.currency, userLanguage)}
+              {fin.inheritedFromLead && (
+                <span className="px-1 py-0.5 rounded bg-amber-50 border border-amber-200/80 text-micro font-medium text-amber-700">
+                  {t("Lead", "Lead", "Lead")}
+                </span>
+              )}
             </span>
           )
           : emptyCell;
@@ -1492,6 +1514,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           ? (
             <span className={`text-ui font-bold tabular-nums whitespace-nowrap ${fin.stillToBePaid > 0 ? "text-blue-600 dark:text-blue-400" : "text-emerald-600 dark:text-emerald-400"}`}>
               {formatMoney(fin.stillToBePaid, fin.currency, userLanguage)}
+            </span>
+          )
+          : emptyCell;
+      }
+      case "costs": {
+        const fin = getProjectFinancials(p, pType, lead);
+        return fin.costs > 0
+          ? (
+            <span className="text-ui font-bold text-rose-600 dark:text-rose-400 tabular-nums whitespace-nowrap">
+              {formatMoney(fin.costs, fin.currency, userLanguage)}
             </span>
           )
           : emptyCell;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { FinancialRecord, ProjectType } from "../types";
-import { projectBilling, resolveProjectValue } from "./projectBilling.ts";
+import { projectBilling, resolveLeadEffectiveValue, resolveProjectValue, resolveProjectValueWithSource } from "./projectBilling.ts";
 import { aggregateOverviewTable, type OverviewColumn } from "./financialOverviewTable.ts";
 import { projectFutureMovements } from "./futureMovements.ts";
 import { materializeDueCharges } from "./recurringRuleDeletion.ts";
@@ -159,4 +159,73 @@ test("old bug: S1 + a payment for notInvoiced adds up to exactly the value in Fi
   const after = projectBilling(10000, records, P);
   assert.equal(after.stillToBePaid, 5200);
   assert.equal(after.received + after.stillToBePaid, 10000);
+});
+
+test("resolveProjectValue: explicit 0 on project.value does not fall back to lead.value", () => {
+  const r = resolveProjectValueWithSource(
+    { id: "p1", value: 0, data: {}, leadId: "lead-1" },
+    moneyType,
+    { id: "lead-1", value: 15000 },
+    "EUR",
+  );
+  assert.deepEqual(r, { value: 0, currency: "EUR", inheritedFromLead: false });
+});
+
+test("resolveProjectValue: shared leadId with one explicit project does not double-count on null sibling", () => {
+  const p1 = { id: "p1", value: 8000, data: {}, leadId: "lead-1", archived: false, createdAt: "2026-01-01" };
+  const p2 = { id: "p2", value: null, data: {}, leadId: "lead-1", archived: false, createdAt: "2026-01-02" };
+  const lead = { id: "lead-1", value: 10000 };
+  const opts = { siblingProjects: [p1, p2], projectTypes: [moneyType] };
+
+  assert.deepEqual(resolveProjectValueWithSource(p1, moneyType, lead, "EUR", opts), {
+    value: 8000,
+    currency: "EUR",
+    inheritedFromLead: false,
+  });
+  assert.deepEqual(resolveProjectValueWithSource(p2, moneyType, lead, "EUR", opts), {
+    value: 0,
+    currency: "EUR",
+    inheritedFromLead: false,
+  });
+});
+
+test("resolveProjectValue: shared leadId with multiple null-value projects inherits lead.value at most once", () => {
+  const p1 = { id: "p1", value: null, data: {}, leadId: "lead-1", archived: false, createdAt: "2026-01-01" };
+  const p2 = { id: "p2", value: null, data: {}, leadId: "lead-1", archived: false, createdAt: "2026-01-05" };
+  const lead = { id: "lead-1", value: 10000 };
+  const opts = { siblingProjects: [p1, p2], projectTypes: [moneyType] };
+
+  const r1 = resolveProjectValueWithSource(p1, moneyType, lead, "EUR", opts);
+  const r2 = resolveProjectValueWithSource(p2, moneyType, lead, "EUR", opts);
+  assert.deepEqual(r1, { value: 10000, currency: "EUR", inheritedFromLead: true });
+  assert.deepEqual(r2, { value: 0, currency: "EUR", inheritedFromLead: false });
+  assert.equal(r1.value + r2.value, 10000);
+});
+
+test("resolveProjectValue: archived sibling does not prevent active project from inheriting lead.value", () => {
+  const archived = { id: "p-old", value: 5000, data: {}, leadId: "lead-1", archived: true, createdAt: "2026-01-01" };
+  const active = { id: "p-new", value: null, data: {}, leadId: "lead-1", archived: false, createdAt: "2026-02-01" };
+  const lead = { id: "lead-1", value: 9000 };
+  const opts = { siblingProjects: [archived, active], projectTypes: [moneyType] };
+
+  assert.deepEqual(resolveProjectValueWithSource(active, moneyType, lead, "EUR", opts), {
+    value: 9000,
+    currency: "EUR",
+    inheritedFromLead: true,
+  });
+});
+
+test("resolveLeadEffectiveValue & netMode: converts lead value matching gross offer to net subtotal", () => {
+  const lead = { id: "lead-1", value: 1230 };
+  const docs = [{ leadId: "lead-1", type: "price_offer" as const, status: "sent", subtotal: 1000, vatAmount: 230, totalPrice: 1230 }];
+
+  assert.equal(resolveLeadEffectiveValue(lead, { netMode: false, invoicesOffers: docs }), 1230);
+  assert.equal(resolveLeadEffectiveValue(lead, { netMode: true, invoicesOffers: docs }), 1000);
+  assert.deepEqual(
+    resolveProjectValueWithSource({ id: "p1", value: null, data: {}, leadId: "lead-1" }, moneyType, lead, "EUR", {
+      netMode: true,
+      invoicesOffers: docs,
+    }),
+    { value: 1000, currency: "EUR", inheritedFromLead: true },
+  );
 });

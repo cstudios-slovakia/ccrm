@@ -7,6 +7,7 @@
 
 import type { Project, ProjectType } from "../../types";
 import type { Language } from "../../utils/translations";
+import type { TimeEntry } from "../../utils/timeTracking.ts";
 import { TimeApiError, timeErrorMessage } from "../../utils/timeTrackingApi.ts";
 import type { NewProjectInput } from "./ProjectPicker";
 
@@ -43,12 +44,17 @@ export interface NewTimeEntryRequest {
   billable?: boolean;
   /** The person the entry is for (a manager's Timesheet cell); defaults to the viewer. */
   userId?: string | null;
-  /** The server just refused a create with `task_required`: the page's settings may be stale, so the host reloads them. */
-  taskRequired?: boolean;
 }
 
 export const requestNewTimeEntry = (detail: NewTimeEntryRequest): void => {
   window.dispatchEvent(new CustomEvent<NewTimeEntryRequest>(NEW_TIME_ENTRY_EVENT, { detail }));
+};
+
+/** Opens the mounted EntryDrawer on an existing time entry (e.g. clicking a row in a project's Time tab). */
+export const EDIT_TIME_ENTRY_EVENT = "ccrm-time-edit-entry";
+
+export const requestEditTimeEntry = (entry: TimeEntry): void => {
+  window.dispatchEvent(new CustomEvent<TimeEntry>(EDIT_TIME_ENTRY_EVENT, { detail: entry }));
 };
 
 /**
@@ -63,6 +69,6 @@ export const recoverTaskRequired = (
 ): boolean => {
   if (!(e instanceof TimeApiError) || e.code !== "task_required") return false;
   notify(timeErrorMessage("task_required", t), "warning");
-  requestNewTimeEntry({ ...request, taskRequired: true });
+  requestNewTimeEntry(request);
   return true;
 };

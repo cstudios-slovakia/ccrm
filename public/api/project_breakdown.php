@@ -84,18 +84,27 @@ if ($to !== '') {
     $params[] = $to;
 }
 
+$hasExcl = ccrm_table_exists($pdo, 'project_labour_exclusions');
+$effProjExpr = "COALESCE(NULLIF(t.`related_project_id`, ''), NULLIF(te.`project_id`, ''), NULLIF(tk.`project_id`, ''))";
+$exclJoin = $hasExcl
+    ? "LEFT JOIN `project_labour_exclusions` ple ON ple.`project_id` = {$effProjExpr} AND ple.`user_id` = te.`user_id` AND ple.`month` = LEFT(te.`entry_date`, 7)"
+    : '';
+$costSelect = $hasExcl ? "SUM(CASE WHEN ple.`project_id` IS NULL THEN te.`cost` ELSE 0 END) AS `cost`" : "SUM(te.`cost`) AS `cost`";
+$unpricedSelect = $hasExcl ? "COALESCE(SUM(CASE WHEN ple.`project_id` IS NULL AND te.`cost` IS NULL THEN te.`duration_sec` ELSE 0 END), 0) AS `unpriced_sec`" : "COALESCE(SUM(CASE WHEN te.`cost` IS NULL THEN te.`duration_sec` ELSE 0 END), 0) AS `unpriced_sec`";
+
 $sql = "
     SELECT
-        COALESCE(NULLIF(t.`related_project_id`, ''), NULLIF(te.`project_id`, ''), NULLIF(tk.`project_id`, '')) AS `eff_project_id`,
+        {$effProjExpr} AS `eff_project_id`,
         te.`user_id`,
         te.`employee_id`,
         COALESCE(SUM(te.`duration_sec`), 0) AS `sec`,
         COALESCE(SUM(CASE WHEN te.`billable` = 1 THEN te.`duration_sec` ELSE 0 END), 0) AS `billable_sec`,
-        SUM(te.`cost`) AS `cost`,
-        COALESCE(SUM(CASE WHEN te.`cost` IS NULL THEN te.`duration_sec` ELSE 0 END), 0) AS `unpriced_sec`
+        {$costSelect},
+        {$unpricedSelect}
     FROM `time_entries` te
     LEFT JOIN `tasks` t ON t.`id` = te.`task_id` AND /* recurring-template: lookup task project */ 1 = 1
     LEFT JOIN `tickets` tk ON tk.`id` = te.`ticket_id`
+    {$exclJoin}
     WHERE " . implode(' AND ', $where) . "
     GROUP BY `eff_project_id`, te.`user_id`, te.`employee_id`
 ";

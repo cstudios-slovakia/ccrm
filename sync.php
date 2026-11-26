@@ -514,6 +514,11 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         $dbRole = ($db['contact_role'] ?? '') !== '' ? (string)$db['contact_role'] : null;
         if ($incRole !== $dbRole) return false;
     }
+    if (array_key_exists('contactTags', $inc)) {
+        $incTags = is_array($inc['contactTags']) ? array_values(array_filter(array_map('trim', $inc['contactTags']))) : [];
+        $dbTags = (!empty($db['contact_tags'])) ? (json_decode($db['contact_tags'], true) ?: []) : [];
+        if ($incTags !== $dbTags) return false;
+    }
 
     if (array_key_exists('ticketAllowedEmails', $inc)) {
         $incEmails = is_array($inc['ticketAllowedEmails']) ? array_values(array_filter(array_map('trim', $inc['ticketAllowedEmails']))) : [];
@@ -924,6 +929,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'clientCategoryId' => $row['client_category_id'] ?? null,
                 'companyClientId' => ($row['company_client_id'] ?? '') !== '' ? $row['company_client_id'] : null,
                 'contactRole' => ($row['contact_role'] ?? '') !== '' ? $row['contact_role'] : null,
+                'contactTags' => (!empty($row['contact_tags']) && is_array($ct = json_decode($row['contact_tags'], true))) ? array_values(array_filter(array_map(fn($x) => trim((string)$x), $ct))) : [],
                 // Ticket-module data riding on the lead row: withheld without `tickets`.
                 'ticketAllowedEmails' => (ccrm_can($scope, 'tickets') && !empty($row['ticket_allowed_emails'])) ? (json_decode($row['ticket_allowed_emails'], true) ?: []) : [],
                 'data' => (!empty($row['custom_fields_json']) && is_array($cf = json_decode($row['custom_fields_json'], true))) ? (object)$cf : (object)[],
@@ -3303,6 +3309,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!ccrm_column_exists($pdo, 'leads', 'contact_role')) {
                 $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_role` VARCHAR(120) NULL AFTER `company_client_id`");
             }
+            if (!ccrm_column_exists($pdo, 'leads', 'contact_tags')) {
+                $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_tags` TEXT NULL AFTER `contact_role`");
+            }
             if (!ccrm_column_exists($pdo, 'leads', 'custom_fields_json')) {
                 $pdo->exec("ALTER TABLE `leads` ADD COLUMN `custom_fields_json` LONGTEXT NULL COMMENT 'JSON map of custom lead attribute values keyed by attribute id' AFTER `ticket_allowed_emails`");
             }
@@ -4182,7 +4191,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : null;
 
                 // Total project / contract value from which invoices are billed.
-                $projValue = (isset($p['value']) && is_numeric($p['value']) && (float)$p['value'] > 0)
+                // Explicit 0 is preserved so a project sharing a lead does not fall back to lead.value.
+                $projValue = (isset($p['value']) && is_numeric($p['value']) && (float)$p['value'] >= 0)
                     ? round(min((float)$p['value'], 999999999999.99), 2)
                     : null;
 
@@ -4752,6 +4762,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (array_key_exists('contactRole', $l)) {
                     $pdo->prepare("UPDATE `leads` SET `contact_role` = ? WHERE `id` = ?")
                         ->execute([($l['contactRole'] ?? '') !== '' ? trim((string)$l['contactRole']) : null, $leadId]);
+                }
+                if (array_key_exists('contactTags', $l)) {
+                    $cleanTags = is_array($l['contactTags'])
+                        ? array_values(array_unique(array_filter(array_map(fn($x) => trim((string)$x), $l['contactTags']))))
+                        : [];
+                    $pdo->prepare("UPDATE `leads` SET `contact_tags` = ? WHERE `id` = ?")
+                        ->execute([$cleanTags ? json_encode($cleanTags, JSON_UNESCAPED_UNICODE) : null, $leadId]);
                 }
                 // Custom Lead fields (`leads.custom_fields_json`): only touch when `data` is supplied
                 // so partial callers (`ClientsView`, legacy bundles) never clear stored values.

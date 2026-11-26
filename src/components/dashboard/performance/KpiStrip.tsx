@@ -4,6 +4,7 @@ import type { Language } from "../../../utils/translations";
 import type { KpiStripData, PeriodLabels } from "./types";
 import { acceptedWord, countNoun, makeT, money, noun, ofTotal, percent, pointsDelta, signedPercent } from "./format";
 import { DeltaPhrase, DotJoin, Figure, Track, deltaTone } from "./shared";
+import { InfoTrigger } from "./MetricBreakdownDrawer";
 
 /** A bar-high block: tiles without a bar reserve its height so all caption lines share one baseline. */
 const BarSlot = ({ children }: { children?: ReactNode }) => (
@@ -17,13 +18,21 @@ export const KpiStrip = ({
   labels,
   language,
   currencyCode,
+  onInspect,
 }: {
   data: KpiStripData;
   labels: PeriodLabels;
   language: Language;
   currencyCode?: string | null;
+  onInspect?: (key: "kpi:revenue" | "kpi:conversion" | "kpi:offers" | "kpi:avgDeal") => void;
 }) => {
   const t = makeT(language);
+  const labelWithInfo = (text: string, key: "kpi:revenue" | "kpi:conversion" | "kpi:offers" | "kpi:avgDeal") => (
+    <span className="inline-flex items-center gap-1">
+      <span>{text}</span>
+      {onInspect && <InfoTrigger onClick={() => onInspect(key)} label={text} />}
+    </span>
+  );
   const { revenue, leadConversion: lc, offerSuccess: os, averageDeal: ad } = data;
   const rejected = Math.max(0, os.closed - os.accepted);
   const closedOffers =
@@ -37,7 +46,7 @@ export const KpiStrip = ({
     <section aria-label={t("Sales", "Obchod", "Értékesítés")}>
       <StatGrid count={4}>
         <StatTile
-          label={t("Revenue · closed deals", "Obrat · uzavreté obchody", "Árbevétel · lezárt ügyletek")}
+          label={labelWithInfo(t("Revenue · closed deals", "Obrat · uzavreté obchody", "Árbevétel · lezárt ügyletek"), "kpi:revenue")}
           value={money(revenue.value, currencyCode, language)}
           delta={
             <>
@@ -53,7 +62,7 @@ export const KpiStrip = ({
           }
         />
         <StatTile
-          label={t("Lead → client conversion", "Konverzia lead → klient", "Lead → ügyfél konverzió")}
+          label={labelWithInfo(t("Lead → client conversion", "Konverzia lead → klient", "Lead → ügyfél konverzió"), "kpi:conversion")}
           value={percent(lc.ratePct, language)}
           delta={
             <>
@@ -74,7 +83,7 @@ export const KpiStrip = ({
           }
         />
         <StatTile
-          label={t("Price offer success rate", "Úspešnosť cenových ponúk", "Árajánlatok sikeressége")}
+          label={labelWithInfo(t("Price offer success rate", "Úspešnosť cenových ponúk", "Árajánlatok sikeressége"), "kpi:offers")}
           value={percent(os.ratePct, language)}
           delta={
             <>
@@ -98,7 +107,7 @@ export const KpiStrip = ({
           }
         />
         <StatTile
-          label={t("Average deal value", "Priemerná hodnota zákazky", "Átlagos megrendelésérték")}
+          label={labelWithInfo(t("Average deal value", "Priemerná hodnota zákazky", "Átlagos megrendelésérték"), "kpi:avgDeal")}
           value={money(ad.value, currencyCode, language)}
           delta={
             <>

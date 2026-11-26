@@ -12,12 +12,14 @@ export const DeploymentsCard = ({
   language,
   now,
   className = "",
+  onInfo,
 }: {
   data: DeploymentsData | null;
   state?: DeploymentsState;
   language: Language;
   now: Date;
   className?: string;
+  onInfo?: () => void;
 }) => {
   const t = makeT(language);
   const title = t("Server deployments", "Nasadenia na server", "Szerver telepítések");
@@ -58,7 +60,7 @@ export const DeploymentsCard = ({
   }
   return (
     <Card className={className}>
-      <CardTitle title={title} caption={caption} />
+      <CardTitle title={title} caption={caption} onInfo={onInfo} />
       <HeadlineValue value={countNoun("push", data.total, language)} />
       {data.lastPushAt && (
         <SubLine>

@@ -396,6 +396,34 @@ export const repriceEntries = async (from: string, to: string, userIds?: string[
   return { repriced: Number(body.repriced) || 0 };
 };
 
+export interface ProjectCostItem {
+  month: string;
+  userId: string;
+  userName: string;
+  salaryType: "monthly" | "daily" | "hourly" | string | null;
+  seconds: number;
+  workedMs: number;
+  cost: number | null;
+  unpricedSeconds?: number;
+  canSeeCost: boolean;
+  complete: boolean;
+  excluded: boolean;
+}
+
+export const getProjectCosts = async (projectId: string): Promise<ProjectCostItem[]> => {
+  const body = await get({ action: "projectCosts", projectId });
+  return Array.isArray(body.items) ? (body.items as ProjectCostItem[]) : [];
+};
+
+export const setProjectCostExclusion = async (input: {
+  projectId: string;
+  userId: string;
+  month: string;
+  excluded: boolean;
+}): Promise<void> => {
+  await post("setProjectCostExclusion", input);
+};
+
 export interface HolidaysResponse {
   country: HolidayCountry;
   year: number;

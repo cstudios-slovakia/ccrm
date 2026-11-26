@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Download, ListChecks, Play, Plus, Square, Wallet } from "lucide-react";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
-import { requestNewTimeEntry } from "./timeCreateBridge";
+import { requestEditTimeEntry, requestNewTimeEntry } from "./timeCreateBridge";
 import { clockTime, entrySeconds, formatDuration, todayIso } from "../../utils/timeTracking.ts";
 import { localeCodeFor } from "../../utils/localTime";
 import { projectPeriodRange, timeByTask, type ProjectPeriod } from "../../utils/projectTimeStats.ts";
@@ -246,7 +246,20 @@ export function ProjectTimeTab({
             {entries.map((e) => {
               const span = e.startAt ? `${clockTime(e.startAt)}${e.endAt ? `–${clockTime(e.endAt)}` : ""}` : "";
               return (
-                <li key={e.id} data-testid="project-time-entry" className="flex items-center justify-between gap-3 px-3 py-2 rounded-md bg-white border border-gray-200 text-ui">
+                <li
+                  key={e.id}
+                  data-testid="project-time-entry"
+                  onClick={() => requestEditTimeEntry(e)}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter" || ev.key === " ") {
+                      ev.preventDefault();
+                      requestEditTimeEntry(e);
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  className="flex items-center justify-between gap-3 px-3 py-2 rounded-md bg-white border border-gray-200 hover:border-entity-border hover:bg-gray-50 transition-colors cursor-pointer text-ui"
+                >
                   <span className="min-w-0">
                     <span className="flex items-center gap-1.5 min-w-0">
                       <span className="truncate font-semibold text-gray-800">{e.title || e.note || t("No description", "Bez popisu", "Nincs leírás")}</span>

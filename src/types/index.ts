@@ -232,6 +232,7 @@ export interface Lead {
   // site manager, billing contact). Rented agency employees NEVER live in `leads`.
   companyClientId?: string | null;
   contactRole?: string | null;
+  contactTags?: string[] | null;
 
   // Which channel first brought the visitor to the website (facebook,
   // instagram, google, direct, ...) and a free-text detail (medium, campaign,
@@ -1347,6 +1348,8 @@ export interface CompanyBillingSettings {
   // here must match the forms that write them: Settings → Invoicing (identity, bank, VAT) and the Price Offers settings (offer texts).
   defaultPaymentDueDays: number;
   defaultVatRate: number;
+  /** When true, finance ledger bridge, offer-to-lead sync, and lead→project inheritance use net (VAT-excluded) amounts. */
+  financeNetMode?: boolean;
   vatRates?: number[]; // Configured VAT rates for orders & invoices (defaults to [23, 19, 10, 5, 0])
   shippingMethods?: string[]; // Configured shipping methods for orders (e.g. DPD, Packeta, GLS, etc.)
   paymentMethods?: string[]; // Configured payment methods for orders (e.g. Prevod na účet, Dobierka, etc.)

@@ -102,11 +102,22 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
   canReopenPayroll = false,
   integrationsConfig
 }) => {
+  const hasAttachedTogglUser = useMemo(
+    () =>
+      Boolean(
+        employee.timeTrackingUserId &&
+        String(employee.timeTrackingUserId).trim() !== "" &&
+        String(employee.timeTrackingUserId).trim() !== "0" &&
+        String(employee.timeTrackingUserId).trim() !== "none"
+      ),
+    [employee.timeTrackingUserId]
+  );
+
   // Check if Toggl API key is configured
   const hasTogglKey = useMemo(() => {
     // A role without general_config is never sent the key (the server masks or omits it), yet the
     // hours endpoint answers for anyone with employees access: a mapped tracker user is enough.
-    if (employee.timeTrackingUserId) return true;
+    if (hasAttachedTogglUser) return true;
     const rawKey = settings.togglApiKey || settings.timeTracking?.togglApiToken;
     if (!rawKey || typeof rawKey !== "string") return false;
     const trimmed = rawKey.trim();
@@ -115,7 +126,9 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
       trimmed !== "9c8a1b2e3d4f5g6h7i8j9k0l" &&
       trimmed !== "test_dummy_token"
     );
-  }, [settings.togglApiKey, settings.timeTracking?.togglApiToken, employee.timeTrackingUserId]);
+  }, [settings.togglApiKey, settings.timeTracking?.togglApiToken, hasAttachedTogglUser]);
+
+  const hasHoursTab = hasAttachedTogglUser || Boolean(employee.userId);
 
   const getInitialTab = (): "hours" | "salaries" | "vacations" | "files" => {
     const raw = typeof window !== "undefined" ? window.location.hash : "";
@@ -128,7 +141,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
     ) {
       return tabParam;
     }
-    if (tabParam === "hours" && hasTogglKey) {
+    if (tabParam === "hours" && hasHoursTab) {
       return "hours";
     }
     return firstAllowedTab();
@@ -136,7 +149,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
   // The first tab this person may open: hours, then pay, leave, documents.
   const firstAllowedTab = (): "hours" | "salaries" | "vacations" | "files" => {
-    if (hasTogglKey) return "hours";
+    if (hasHoursTab) return "hours";
     if (rights.salaries) return "salaries";
     if (rights.vacations) return "vacations";
     return "files";
@@ -166,20 +179,20 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
         (tabParam === "files" && rights.files)
       ) {
         setActiveTab(tabParam);
-      } else if (tabParam === "hours" && hasTogglKey) {
+      } else if (tabParam === "hours" && hasHoursTab) {
         setActiveTab("hours");
       }
     };
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
-  }, [hasTogglKey]);
+  }, [hasHoursTab]);
 
-  // If Toggl key is not set up, don't stay on hours tab
+  // If neither Toggl nor native login is set up, don't stay on hours tab
   useEffect(() => {
-    if (!hasTogglKey && activeTab === "hours") {
+    if (!hasHoursTab && activeTab === "hours") {
       handleTabClick(firstAllowedTab());
     }
-  }, [hasTogglKey, activeTab]);
+  }, [hasHoursTab, activeTab]);
 
   // Salary modal
   const [isSalaryModalOpen, setIsSalaryModalOpen] = useState<boolean>(false);
@@ -1722,7 +1735,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
         <div className="ws-lg:col-span-8 space-y-6">
           {/* Sub-Tabs Navigation */}
           <div className="flex flex-wrap items-center gap-1.5 p-1 bg-gray-100 rounded-lg border border-gray-200 max-w-full">
-            {hasTogglKey && (
+            {hasHoursTab && (
               <button
                 style={activeTab === "hours" ? (entityAccentStyle("time-tracking") as React.CSSProperties) : undefined}
                 onClick={() => handleTabClick("hours")}
@@ -1733,7 +1746,11 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                 }`}
               >
                 <Clock className="w-4 h-4 shrink-0" />
-                <span>{t("Worked Hours (Toggl)", "Odpracované hodiny (Toggl)", "Ledolgozott órák (Toggl)")}</span>
+                <span>
+                  {hasAttachedTogglUser
+                    ? t("Worked Hours (Toggl)", "Odpracované hodiny (Toggl)", "Ledolgozott órák (Toggl)")
+                    : t("Worked Hours", "Odpracované hodiny", "Ledolgozott órák")}
+                </span>
               </button>
             )}
 
@@ -1792,8 +1809,8 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             )}
           </div>
 
-          {/* TAB 1: WORKED HOURS (TOGGL) */}
-          {hasTogglKey && activeTab === "hours" && (
+          {/* TAB 1: WORKED HOURS */}
+          {hasHoursTab && activeTab === "hours" && (
             <div style={entityAccentStyle("time-tracking") as React.CSSProperties}>
               <EmployeeTimesheetSummary
                 employee={employee}

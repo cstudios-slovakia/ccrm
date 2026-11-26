@@ -1,12 +1,14 @@
 /**
  * Splatnosť / DSO: how many days pass between issuing an invoice and being paid.
  *
- * An invoice does not store its payment date. It lives on the invoice's ledger row
- * (`fr-inv-<invoice id>`, invoiceFinanceBridge.ts), so an invoice is "paid in the period" when
- * that row has a `paidDate` inside it.
+ * Counts both:
+ * 1. Live invoices from `invoices_offers` whose linked ledger row (`fr-inv-<id>`) has a `paidDate`
+ *    in the period, and
+ * 2. Standalone paid ledger income invoices (e.g., created from Project Finances or imported from
+ *    SuperFaktura) that are not already represented by an `invoices_offers` document.
  */
 
-import type { FinancialRecord, InvoiceOffer, Lead } from "../../types/index.ts";
+import type { FinancialRecord, InvoiceOffer, Lead, Project } from "../../types/index.ts";
 import type { DsoClientRow, DsoData, PerformancePeriod } from "../../components/dashboard/performance/types.ts";
 import { invoiceMovementId } from "../invoiceFinanceBridge.ts";
 import { resolveLinkedClient } from "../leadClient.ts";
@@ -17,34 +19,91 @@ export interface DsoInput {
   invoices: readonly InvoiceOffer[];
   financialRecords: readonly FinancialRecord[];
   leads: readonly Lead[];
+  projects?: readonly Project[];
   invoiceStatuses: readonly OfferStatusDef[];
   period: PerformancePeriod;
 }
 
-interface PaidInvoice {
-  invoice: InvoiceOffer;
+interface PaidDsoItem {
+  issued: Date;
+  due: Date | null;
   days: number;
+  clientId: string;
+  clientName: string;
 }
 
 const mean = (values: readonly number[]): number | null =>
   values.length > 0 ? values.reduce((sum, v) => sum + v, 0) / values.length : null;
 
-const paidInvoicesIn = (
+const isStandaloneInvoiceRecord = (rec: FinancialRecord): boolean =>
+  rec.type === "income" &&
+  rec.status === "paid" &&
+  !rec.isRecurring &&
+  (rec.subtype === "invoice" || Boolean(rec.invoiceNumber?.trim()) || Boolean(rec.projectId));
+
+const paidItemsIn = (
   invoices: readonly InvoiceOffer[],
+  financialRecords: readonly FinancialRecord[],
   ledger: ReadonlyMap<string, FinancialRecord>,
+  leadList: Lead[],
+  leadById: ReadonlyMap<string, Lead>,
+  projectById: ReadonlyMap<string, Project>,
   invoiceStatuses: readonly OfferStatusDef[],
   start: Date | null,
   end: Date | null,
-): PaidInvoice[] => {
-  const out: PaidInvoice[] = [];
+): PaidDsoItem[] => {
+  const out: PaidDsoItem[] = [];
+  const linkedLedgerIds = new Set<string>();
+
   for (const invoice of invoices) {
+    const movId = invoiceMovementId(invoice.id);
+    linkedLedgerIds.add(movId);
     if (invoice.type !== "invoice" || !isLiveInvoiceStatus(invoice.status, invoiceStatuses)) continue;
     const issued = parseAppDate(invoice.issuedAt);
     if (!issued) continue;
-    const paid = parseAppDate(ledger.get(invoiceMovementId(invoice.id))?.paidDate);
+    const paid = parseAppDate(ledger.get(movId)?.paidDate);
     if (!paid || !isInRange(paid, start, end)) continue;
-    out.push({ invoice, days: Math.max(0, dayDiff(issued, paid)) });
+
+    const lead = invoice.leadId ? leadById.get(invoice.leadId) : undefined;
+    const client = invoice.clientId
+      ? leadById.get(invoice.clientId)
+      : lead
+        ? resolveLinkedClient(lead, leadList) ?? lead
+        : undefined;
+    const clientId = invoice.clientId || client?.id || invoice.leadId || `name:${invoice.clientName}`;
+    const clientName = client?.name || invoice.clientName || clientId;
+    out.push({
+      issued,
+      due: parseAppDate(invoice.dueDate),
+      days: Math.max(0, dayDiff(issued, paid)),
+      clientId,
+      clientName,
+    });
   }
+
+  for (const rec of financialRecords) {
+    if (linkedLedgerIds.has(rec.id) || !isStandaloneInvoiceRecord(rec)) continue;
+    const issued = parseAppDate(rec.issueDate);
+    const paid = parseAppDate(rec.paidDate);
+    if (!issued || !paid || !isInRange(paid, start, end)) continue;
+
+    const project = rec.projectId ? projectById.get(rec.projectId) : undefined;
+    const directId = rec.clientId || project?.clientId || null;
+    const leadId = project?.leadId || null;
+    const direct = directId ? leadById.get(directId) : undefined;
+    const lead = direct ?? (leadId ? leadById.get(leadId) : undefined);
+    const client = direct ?? (lead ? resolveLinkedClient(lead, leadList) ?? lead : undefined);
+    const clientId = client?.id || directId || leadId || `name:${rec.title || rec.id}`;
+    const clientName = client?.name || project?.name || rec.title || clientId;
+    out.push({
+      issued,
+      due: parseAppDate(rec.dueDate),
+      days: Math.max(0, dayDiff(issued, paid)),
+      clientId,
+      clientName,
+    });
+  }
+
   return out;
 };
 
@@ -52,39 +111,37 @@ const paidInvoicesIn = (
  * The agreed payment term: the mean of (`dueDate` - `issuedAt`) in whole days over the counted
  * invoices that have a due date (never below 0), rounded to a whole day; null when none has one.
  */
-const agreedTermDays = (counted: readonly PaidInvoice[]): number | null => {
+const agreedTermDays = (counted: readonly PaidDsoItem[]): number | null => {
   const terms: number[] = [];
-  for (const { invoice } of counted) {
-    const issued = parseAppDate(invoice.issuedAt);
-    const due = parseAppDate(invoice.dueDate);
-    if (issued && due) terms.push(Math.max(0, dayDiff(issued, due)));
+  for (const { issued, due } of counted) {
+    if (due) terms.push(Math.max(0, dayDiff(issued, due)));
   }
   const term = mean(terms);
   return term === null ? null : Math.round(term);
 };
 
-export const computeDso = ({ invoices, financialRecords, leads, invoiceStatuses, period }: DsoInput): DsoData => {
+export const computeDso = ({ invoices, financialRecords, leads, projects = [], invoiceStatuses, period }: DsoInput): DsoData => {
   const ledger = new Map(financialRecords.map((r) => [r.id, r]));
   const leadList = leads as Lead[];
   const leadById = new Map(leadList.map((l) => [l.id, l]));
+  const projectById = new Map(projects.map((p) => [p.id, p]));
 
-  const current = paidInvoicesIn(invoices, ledger, invoiceStatuses, period.start, period.end);
+  const current = paidItemsIn(invoices, financialRecords, ledger, leadList, leadById, projectById, invoiceStatuses, period.start, period.end);
   const averageDays = mean(current.map((p) => p.days));
 
   let deltaDays: number | null = null;
   if (period.previousStart && period.previousEnd && averageDays !== null) {
-    const previousAverage = mean(paidInvoicesIn(invoices, ledger, invoiceStatuses, period.previousStart, period.previousEnd).map((p) => p.days));
+    const previousAverage = mean(
+      paidItemsIn(invoices, financialRecords, ledger, leadList, leadById, projectById, invoiceStatuses, period.previousStart, period.previousEnd).map(
+        (p) => p.days,
+      ),
+    );
     if (previousAverage !== null) deltaDays = averageDays - previousAverage;
   }
 
-  // Per client: the client on the invoice, else the client its lead is linked to, else the lead itself.
   const perClient = new Map<string, { name: string; days: number[] }>();
-  for (const { invoice, days } of current) {
-    const lead = invoice.leadId ? leadById.get(invoice.leadId) : undefined;
-    const client = invoice.clientId ? leadById.get(invoice.clientId) : lead ? resolveLinkedClient(lead, leadList) ?? lead : undefined;
-    const clientId = invoice.clientId || client?.id || invoice.leadId || `name:${invoice.clientName}`;
-    const name = client?.name || invoice.clientName || clientId;
-    const entry = perClient.get(clientId) ?? { name, days: [] };
+  for (const { clientId, clientName, days } of current) {
+    const entry = perClient.get(clientId) ?? { name: clientName, days: [] };
     entry.days.push(days);
     perClient.set(clientId, entry);
   }

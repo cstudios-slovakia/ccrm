@@ -167,6 +167,20 @@ if (!function_exists('ccrm_tt_rate_for')) {
         } catch (\Throwable $e) {
             // No vacations table: no leave.
         }
+        $laborCost = null;
+        $empKind = (string)($emp['kind'] ?? 'employee');
+        if (($empKind === '' || $empKind === 'employee') && (string)($emp['salary_type'] ?? 'monthly') === 'monthly') {
+            try {
+                $salStmt = $pdo->prepare("SELECT `labor_cost` FROM `employee_salaries` WHERE `employee_id` = ? AND `period_key` = ? AND `period_type` = 'monthly' LIMIT 1");
+                $salStmt->execute([$employeeId, $month]);
+                $val = $salStmt->fetchColumn();
+                if (is_numeric($val) && (float)$val > 0) {
+                    $laborCost = (float)$val;
+                }
+            } catch (\Throwable $e) {
+                $laborCost = null;
+            }
+        }
         $personHours = is_numeric($emp['hours_per_day'] ?? null) && (float)$emp['hours_per_day'] > 0 ? (float)$emp['hours_per_day'] : null;
         $costSettings = [
             'hoursBasis' => $settings['hoursBasis'],
@@ -178,11 +192,13 @@ if (!function_exists('ccrm_tt_rate_for')) {
             ['kind' => $emp['kind'], 'salaryType' => $emp['salary_type'], 'salaryAmount' => $emp['salary_amount']],
             $workingDays,
             $costSettings,
-            ['paidLeaveDays' => $leave['paid'], 'unpaidLeaveDays' => $leave['unpaid'], 'hoursPerDay' => $personHours]
+            ['paidLeaveDays' => $leave['paid'], 'unpaidLeaveDays' => $leave['unpaid'], 'hoursPerDay' => $personHours, 'laborCost' => $laborCost]
         );
         $hoursPerDay = $personHours ?? (float)$settings['hoursPerDay'];
+        $effectiveAmount = $r['amount'] !== null ? (float)$r['amount'] : (float)$emp['salary_amount'];
         $hash = sha1(json_encode([
             (string)$emp['kind'], (string)$emp['salary_type'], number_format((float)$emp['salary_amount'], 2, '.', ''),
+            $laborCost !== null ? number_format($laborCost, 2, '.', '') : 'none',
             $country, $workingDays, number_format((float)$leave['paid'], 1, '.', ''), number_format((float)$leave['unpaid'], 1, '.', ''),
             number_format($hoursPerDay, 2, '.', ''), number_format((float)$costSettings['employerMultiplier'], 4, '.', ''),
             (string)$costSettings['hoursBasis'], number_format((float)$costSettings['fixedHoursPerMonth'], 2, '.', ''),
@@ -199,6 +215,7 @@ if (!function_exists('ccrm_tt_rate_for')) {
             'unpaidLeaveDays' => (float)($r['unpaidLeaveDays'] ?? $leave['unpaid']),
             'hoursPerDay' => $hoursPerDay,
             'multiplier' => (float)($r['multiplier'] ?? 1),
+            'salaryAmount' => $effectiveAmount,
             'fallback' => !empty($r['fallback']),
             'inputsHash' => $hash,
             'hoursBasis' => (string)$costSettings['hoursBasis'],
@@ -232,7 +249,7 @@ if (!function_exists('ccrm_tt_rate_for')) {
             'rate' => $c['rate'], 'source' => $c['source'], 'basisDays' => $c['basisDays'], 'workingDays' => $c['workingDays'],
             'country' => $c['country'], 'paidLeaveDays' => $c['paidLeaveDays'], 'unpaidLeaveDays' => $c['unpaidLeaveDays'],
             'hoursPerDay' => $c['hoursPerDay'], 'multiplier' => $c['multiplier'], 'fallback' => $c['fallback'],
-            'salaryType' => $c['employee']['salary_type'], 'salaryAmount' => (float)$c['employee']['salary_amount'],
+            'salaryType' => $c['employee']['salary_type'], 'salaryAmount' => (float)($c['salaryAmount'] ?? $c['employee']['salary_amount']),
             'inputsHash' => $c['inputsHash'], 'frozen' => $frozen, 'stored' => $stored,
         ];
     }
@@ -250,7 +267,7 @@ if (!function_exists('ccrm_tt_rate_for')) {
                   `unpaid_leave_days` = VALUES(`unpaid_leave_days`), `hours_per_day` = VALUES(`hours_per_day`), `multiplier` = VALUES(`multiplier`),
                   `fallback` = VALUES(`fallback`), `inputs_hash` = VALUES(`inputs_hash`){$frozenUpdate}")
             ->execute([
-                $employeeId, $month, $c['rate'], $c['source'], $c['employee']['salary_type'], $c['employee']['salary_amount'],
+                $employeeId, $month, $c['rate'], $c['source'], $c['employee']['salary_type'], $c['salaryAmount'] ?? $c['employee']['salary_amount'],
                 $c['workingDays'], $c['paidLeaveDays'], $c['unpaidLeaveDays'], $c['hoursPerDay'], $c['multiplier'],
                 $c['fallback'] ? 1 : 0, $c['inputsHash'],
             ]);
@@ -262,11 +279,11 @@ if (!function_exists('ccrm_tt_rate_for')) {
      * tries again.
      * @return int how many entries got a new rate
      */
-    function ccrm_trc_store_and_reprice(\PDO $pdo, array $c, string $month, array $settings): int {
+    function ccrm_trc_store_and_reprice(\PDO $pdo, array $c, string $month, array $settings, bool $allowClosedPayroll = false): int {
         $employeeId = (string)$c['employee']['id'];
         $userId = (string)($c['employee']['user_id'] ?? '');
         if ($userId === '') {
-            ccrm_trc_upsert($pdo, $employeeId, $month, $c, 'keep');
+            ccrm_trc_upsert($pdo, $employeeId, $month, $c, $allowClosedPayroll ? 'now' : 'keep');
             return 0;
         }
         if (!function_exists('ccrm_te_lock_reason_of')) {
@@ -290,15 +307,17 @@ if (!function_exists('ccrm_tt_rate_for')) {
                 && $r['cost_rate'] !== null && $c['rate'] !== null && abs((float)$r['cost_rate'] - (float)$c['rate']) < 0.00005
                 && (string)$r['cost_rate_source'] === (string)$c['source']
                 && (string)($r['cost_rate_basis_days'] ?? '') === (string)($c['basisDays'] ?? '');
-            if ($same || ccrm_te_lock_reason_of($pdo, $r, $lockSettings, $today) !== null) {
+            $lockReason = ccrm_te_lock_reason_of($pdo, $r, $lockSettings, $today);
+            $locked = $allowClosedPayroll ? ($lockReason === 'approved') : ($lockReason !== null);
+            if ($same || $locked) {
                 continue;
             }
             $ids[] = (string)$r['id'];
         }
         $from = ccrm_ts_local_day_ms($monthStart);
         $to = ccrm_ts_local_day_ms($monthEnd);
-        ccrm_ts_in_tx($pdo, function () use ($pdo, $ids, $c, $month, $employeeId, $userId, $from, $to) {
-            ccrm_trc_upsert($pdo, $employeeId, $month, $c, 'keep');
+        ccrm_ts_in_tx($pdo, function () use ($pdo, $ids, $c, $month, $employeeId, $userId, $from, $to, $allowClosedPayroll) {
+            ccrm_trc_upsert($pdo, $employeeId, $month, $c, $allowClosedPayroll ? 'now' : 'keep');
             if (!$ids) {
                 return;
             }
@@ -309,7 +328,7 @@ if (!function_exists('ccrm_tt_rate_for')) {
             // The re-rated rows are the caller's own writes (written even when age-locked); any other
             // row keeps the lock rule of D3.3. Only settle writes `cost`.
             if ($from !== null && $to !== null) {
-                ccrm_tt_settle($pdo, $userId, ccrm_ts_utc($from[0]), ccrm_ts_utc($to[1]), false, $ids);
+                ccrm_tt_settle($pdo, $userId, ccrm_ts_utc($from[0]), ccrm_ts_utc($to[1]), $allowClosedPayroll, $ids);
             }
         });
         return count($ids);
@@ -350,6 +369,15 @@ if (!function_exists('ccrm_tt_rate_for')) {
                 return ccrm_trc_result($c, true, true);
             }
             if ($row['frozen_at'] === null) {
+                if ($row['inputs_hash'] !== $c['inputsHash']) {
+                    $active[$key] = true;
+                    try {
+                        ccrm_trc_store_and_reprice($pdo, $c, $month, $settings, true);
+                    } finally {
+                        unset($active[$key]);
+                    }
+                    return ccrm_trc_result($c, true, true);
+                }
                 $pdo->prepare("UPDATE `time_rate_months` SET `frozen_at` = UTC_TIMESTAMP() WHERE `employee_id` = ? AND `month` = ? AND `frozen_at` IS NULL")
                     ->execute([$employeeId, $month]);
                 $row['frozen_at'] = gmdate('Y-m-d H:i:s');

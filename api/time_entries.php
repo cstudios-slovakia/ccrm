@@ -336,12 +336,19 @@ if ($method === 'GET') {
     if ($action === 'totals') {
         $effProj = ccrm_tt_eff_project_expr();
         $effClient = ccrm_tt_eff_client_expr();
+        $hasExcl = ccrm_table_exists($pdo, 'project_labour_exclusions');
+        $exclJoin = $hasExcl
+            ? " LEFT JOIN `project_labour_exclusions` ple ON ple.`project_id` = ({$effProj}) AND ple.`user_id` = te.`user_id` AND ple.`month` = LEFT(te.`entry_date`, 7)"
+            : '';
+        $costExpr = $hasExcl ? "SUM(CASE WHEN ple.`project_id` IS NULL THEN te.`cost` ELSE 0 END)" : "SUM(te.`cost`)";
+        $unpricedExpr = $hasExcl ? "COALESCE(SUM(CASE WHEN ple.`project_id` IS NULL AND te.`cost` IS NULL THEN te.`duration_sec` ELSE 0 END), 0)" : "COALESCE(SUM(CASE WHEN te.`cost` IS NULL THEN te.`duration_sec` ELSE 0 END), 0)";
         $stmt = $pdo->query(
             "SELECT te.`task_id`, te.`ticket_id`, {$effProj} AS `eff_project_id`, {$effClient} AS `eff_client_id`, te.`user_id`,
                     COALESCE(SUM(te.`duration_sec`), 0) AS `sec`, COALESCE(SUM(te.`worked_ms`), 0) AS `worked`,
-                    SUM(te.`cost`) AS `cost`, COALESCE(SUM(CASE WHEN te.`cost` IS NULL THEN te.`duration_sec` ELSE 0 END), 0) AS `unpriced`
+                    {$costExpr} AS `cost`, {$unpricedExpr} AS `unpriced`
              FROM `time_entries` te"
             . ccrm_tt_entity_joins()
+            . $exclJoin
             . " WHERE te.`deleted_at` IS NULL AND te.`duration_sec` IS NOT NULL
                GROUP BY te.`task_id`, te.`ticket_id`, `eff_project_id`, `eff_client_id`, te.`user_id`"
         );
@@ -499,6 +506,74 @@ if ($method === 'GET') {
         ccrm_te_respond(['people' => $people]);
     }
     /* PHASE2-TASK-PEOPLE-END */
+
+    // Per-(month, employee) time-tracking costs on one project, with exclusion status.
+    if ($action === 'projectCosts') {
+        if (!ccrm_can($scope, 'projects')) {
+            ccrm_te_fail('forbidden', 403);
+        }
+        $projectId = trim((string)($_GET['projectId'] ?? ''));
+        if ($projectId === '') {
+            ccrm_te_fail('bad_request', 400);
+        }
+        $effProj = ccrm_tt_eff_project_expr();
+        $hasExcl = ccrm_table_exists($pdo, 'project_labour_exclusions');
+        $exclSelect = $hasExcl ? ", MAX(ple.`project_id` IS NOT NULL) AS `excluded`" : ", 0 AS `excluded`";
+        $exclJoin = $hasExcl
+            ? " LEFT JOIN `project_labour_exclusions` ple ON ple.`project_id` = ? AND ple.`user_id` = te.`user_id` AND ple.`month` = LEFT(te.`entry_date`, 7)"
+            : '';
+        $sql = "SELECT LEFT(te.`entry_date`, 7) AS `entry_month`, te.`user_id`,
+                       MAX(u.`name`) AS `user_name`,
+                       MAX(emp.`salary_type`) AS `salary_type`,
+                       COALESCE(SUM(te.`duration_sec`), 0) AS `sec`,
+                       COALESCE(SUM(te.`worked_ms`), 0) AS `worked`,
+                       SUM(te.`cost`) AS `cost`,
+                       COUNT(te.`cost`) AS `priced_cnt`,
+                       SUM(te.`cost` IS NULL) AS `missing`,
+                       COALESCE(SUM(CASE WHEN te.`cost` IS NULL THEN te.`duration_sec` ELSE 0 END), 0) AS `unpriced_sec`
+                       {$exclSelect}
+                FROM `time_entries` te"
+            . ccrm_tt_entity_joins()
+            . " LEFT JOIN `users` u ON u.`id` = te.`user_id`"
+            . " LEFT JOIN `employees` emp ON emp.`id` = te.`employee_id`"
+            . $exclJoin
+            . " WHERE te.`deleted_at` IS NULL AND te.`duration_sec` IS NOT NULL AND ({$effProj}) = ?
+                GROUP BY LEFT(te.`entry_date`, 7), te.`user_id`
+                ORDER BY `entry_month` DESC, `user_name` ASC, te.`user_id` ASC";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($hasExcl ? [$projectId, $projectId] : [$projectId]);
+        $items = [];
+        $empCache = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $uid = (string)$r['user_id'];
+            $own = $uid === $callerId;
+            $canSee = $own || $canCosts;
+            $salType = $r['salary_type'] ?: null;
+            if ($salType === null && $uid !== '') {
+                if (!array_key_exists($uid, $empCache)) {
+                    $empCache[$uid] = ccrm_tt_employee_for_user($pdo, $uid);
+                }
+                $salType = $empCache[$uid]['salary_type'] ?? null;
+            }
+            $missing = (int)($r['missing'] ?? 0);
+            $pricedCnt = (int)($r['priced_cnt'] ?? 0);
+            $unpricedSec = (int)($r['unpriced_sec'] ?? 0);
+            $items[] = [
+                'month' => (string)$r['entry_month'],
+                'userId' => $uid,
+                'userName' => (string)($r['user_name'] ?: $uid),
+                'salaryType' => $salType,
+                'seconds' => (int)$r['sec'],
+                'workedMs' => (int)$r['worked'],
+                'cost' => $canSee ? ($pricedCnt > 0 ? round((float)$r['cost'], 2) : null) : null,
+                'unpricedSeconds' => $canSee ? $unpricedSec : 0,
+                'canSeeCost' => $canSee,
+                'complete' => $canSee ? ($missing === 0) : false,
+                'excluded' => (bool)$r['excluded'],
+            ];
+        }
+        ccrm_te_respond(['items' => $items]);
+    }
 
     // Retainer maths: billable rows of a project, without titles, names or cost.
     // Reading a ticket's time requires tickets.time (B15).
@@ -1151,6 +1226,31 @@ if ($action === 'reprice') {
     }
     ccrm_audit_log($pdo, $sessionUser, 'time_tracking.reprice', "Re-priced {$count} time entries from {$from} to {$to}");
     ccrm_te_respond(['repriced' => $count]);
+}
+
+if ($action === 'setProjectCostExclusion') {
+    if (!ccrm_is_admin($sessionUser) && !(ccrm_can($scope, 'financial', 'edit') && $canCosts)) {
+        ccrm_te_fail('forbidden', 403);
+    }
+    $projectId = trim((string)($body['projectId'] ?? ''));
+    $userId = trim((string)($body['userId'] ?? ''));
+    $month = trim((string)($body['month'] ?? ''));
+    $excluded = !empty($body['excluded']);
+    if ($projectId === '' || $userId === '' || !preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
+        ccrm_te_fail('bad_request', 400);
+    }
+    if (!ccrm_table_exists($pdo, 'project_labour_exclusions')) {
+        ccrm_te_fail('not_ready', 503);
+    }
+    if ($excluded) {
+        $pdo->prepare("INSERT IGNORE INTO `project_labour_exclusions` (`project_id`, `user_id`, `month`) VALUES (?, ?, ?)")
+            ->execute([$projectId, $userId, $month]);
+    } else {
+        $pdo->prepare("DELETE FROM `project_labour_exclusions` WHERE `project_id` = ? AND `user_id` = ? AND `month` = ?")
+            ->execute([$projectId, $userId, $month]);
+    }
+    ccrm_audit_log($pdo, $sessionUser, $excluded ? 'project_labour.exclude' : 'project_labour.include', "Project {$projectId}, user {$userId}, month {$month}");
+    ccrm_te_respond(['excluded' => $excluded]);
 }
 
 // D7.4: the presence answer. Only here, only with the session (time_entries.php has no token path, C9).

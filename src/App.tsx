@@ -2085,7 +2085,14 @@ ${log.payload || ''}
     const heldInvoices = (pendingDeletionRecords("invoicesOffers") as InvoiceOffer[])
       .filter((inv) => !next.some((o) => o.id === inv.id));
     ledgerStaleRef.current = heldInvoices.length > 0;
-    const nextRecords = reconcileInvoiceMovements(prev, heldInvoices.length ? [...next, ...heldInvoices] : next, prevRecords, undefined, invoiceStatusesRef.current);
+    const nextRecords = reconcileInvoiceMovements(
+      prev,
+      heldInvoices.length ? [...next, ...heldInvoices] : next,
+      prevRecords,
+      undefined,
+      invoiceStatusesRef.current,
+      { netMode: Boolean(companyBillingSettingsRef.current?.financeNetMode) },
+    );
     if (nextRecords !== prevRecords) {
       financialRecordsRef.current = nextRecords;
       setFinancialRecords(nextRecords);
@@ -3696,6 +3703,7 @@ ${log.payload || ''}
             invoiceStatuses={invoiceStatuses}
             leadStageGroups={leadStageGroups}
             leadStateParents={leadStateParents}
+            companyBillingSettings={companyBillingSettings}
           />
         );
       }
@@ -4399,6 +4407,7 @@ ${log.payload || ''}
             invoiceStatuses={invoiceStatuses}
             leadStageGroups={leadStageGroups}
             leadStateParents={leadStateParents}
+            companyBillingSettings={companyBillingSettings}
           />
         );
       case "whatsapp":
@@ -4478,6 +4487,7 @@ ${log.payload || ''}
             financialCategories={financialCategories} financialMode={financialMode} financialSimplifiedTable={financialSimplifiedTable}
             invoicesOffers={invoicesOffers}
             invoiceStatuses={invoiceStatuses}
+            companyBillingSettings={companyBillingSettings}
             tasks={tasks} taskStates={taskStates} employees={employees} tickets={tickets} ticketStatuses={ticketStatuses} ticketSettings={ticketSettings} offerStatuses={offerStatuses} canSeeFinancials={access.module("financial").view}
           />
         );

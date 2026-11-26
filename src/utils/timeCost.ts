@@ -93,6 +93,8 @@ export interface CostLeave {
   unpaidLeaveDays?: number | null;
   /** employees.hours_per_day; null or not positive = settings.hoursPerDay. */
   hoursPerDay?: number | null;
+  /** Actual monthly "Cena práce" from employee_salaries.labor_cost (employees only). */
+  laborCost?: number | null;
 }
 
 export const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -122,16 +124,23 @@ export const computeCostRate = (
   leave: CostLeave | null = null,
 ): CostRate => {
   if (!person) return NONE;
-  const amount = Number(person.salaryAmount);
-  if (!Number.isFinite(amount) || amount <= 0) return NONE;
-  const personHours = Number(leave?.hoursPerDay);
-  const hoursPerDay = Number.isFinite(personHours) && personHours > 0 ? personHours : settings.hoursPerDay;
-  if (!(hoursPerDay > 0)) return NONE;
-
   const kind = person.kind || "employee";
   if (kind === "ledger") return NONE;
   const isContractor = kind === "contractor";
   const salaryType = person.salaryType || (isContractor ? "hourly" : "monthly");
+  const actualLabor =
+    !isContractor && salaryType === "monthly" && Number.isFinite(Number(leave?.laborCost)) && Number(leave?.laborCost) > 0
+      ? Number(leave?.laborCost)
+      : null;
+
+  const rawAmount = Number(person.salaryAmount);
+  const amount = Number.isFinite(rawAmount) && rawAmount > 0 ? rawAmount : 0;
+  if (amount <= 0 && actualLabor === null) return NONE;
+
+  const personHours = Number(leave?.hoursPerDay);
+  const hoursPerDay = Number.isFinite(personHours) && personHours > 0 ? personHours : settings.hoursPerDay;
+  if (!(hoursPerDay > 0)) return NONE;
+
   const multiplier = isContractor ? 1 : settings.employerMultiplier > 0 ? settings.employerMultiplier : 1;
 
   if (salaryType === "hourly") {
@@ -149,21 +158,25 @@ export const computeCostRate = (
     const unpaid = wd > 0 ? Math.min(nonNegative(leave?.unpaidLeaveDays), wd) : 0;
     const paid = wd > 0 ? Math.min(nonNegative(leave?.paidLeaveDays), wd - unpaid) : 0;
     const left = wd - unpaid - paid;
-    // No leave: exactly today's arithmetic (amount / hours x multiplier).
-    const monthBase = unpaid > 0 ? (amount * (wd - unpaid)) / wd : amount;
     let hours = fullHours;
     if (unpaid > 0 || paid > 0) hours = fixed ? (settings.fixedHoursPerMonth * left) / wd : left * hoursPerDay;
     const fallback = !(hours > 0);
     if (fallback) hours = fullHours;
+
+    // When actual Cena práce is present, use it directly as final employer month cost.
+    const effMultiplier = actualLabor !== null ? 1 : multiplier;
+    const monthBase = actualLabor !== null ? actualLabor : unpaid > 0 ? (amount * (wd - unpaid)) / wd : amount;
+    const displayAmount = actualLabor !== null ? actualLabor : amount;
+
     return {
-      rate: round4((monthBase / hours) * multiplier),
+      rate: round4((monthBase / hours) * effMultiplier),
       source: isContractor ? "contractor_monthly" : "monthly",
       basisDays: fixed ? null : workingDays,
       basisHours: hours,
       manDay: round4((monthBase / hours) * hoursPerDay),
-      multiplier,
-      amount,
-      monthCost: round4(monthBase * multiplier),
+      multiplier: effMultiplier,
+      amount: displayAmount,
+      monthCost: round4(monthBase * effMultiplier),
       paidLeaveDays: paid,
       unpaidLeaveDays: unpaid,
       hoursPerDay,
@@ -181,6 +194,31 @@ export const computeCostRate = (
 export const computeWorkedCost = (workedMs: number | null | undefined, rate: number | null | undefined): number | null => {
   if (rate === null || rate === undefined || workedMs === null || workedMs === undefined) return null;
   return round4((workedMs / 3600000) * rate);
+};
+
+export const isDayAllocatedSource = (source: string | null | undefined): boolean =>
+  source === "daily" || source === "contractor_daily" || source === "monthly" || source === "contractor_monthly";
+
+/**
+ * Day-ratio allocation with an `hoursPerDay` floor for daily (MD) and monthly pay:
+ * if total worked time on that day exceeds `hoursPerDay`, each entry receives its share of 1 day's cost;
+ * if total worked time <= `hoursPerDay`, it behaves identically to `computeWorkedCost`.
+ * Hourly pay is always linear and ignores `dayTotalWorkedMs`.
+ */
+export const computeDayAllocatedCost = (
+  workedMs: number | null | undefined,
+  dayTotalWorkedMs: number | null | undefined,
+  rate: number | null | undefined,
+  source: string | null | undefined,
+  hoursPerDay: number = DEFAULT_COST_SETTINGS.hoursPerDay,
+): number | null => {
+  if (rate === null || rate === undefined || workedMs === null || workedMs === undefined) return null;
+  const h = hoursPerDay > 0 ? hoursPerDay : DEFAULT_COST_SETTINGS.hoursPerDay;
+  const capMs = h * 3_600_000;
+  if (isDayAllocatedSource(source) && capMs > 0 && dayTotalWorkedMs !== null && dayTotalWorkedMs !== undefined && dayTotalWorkedMs > capMs) {
+    return round4((workedMs / dayTotalWorkedMs) * h * rate);
+  }
+  return computeWorkedCost(workedMs, rate);
 };
 
 export interface ExplainContext {
@@ -260,7 +298,9 @@ export const explainRateCard = (c: RateCard, ctx: ExplainContext): string | null
   const h = Number(c.hoursPerDay) > 0 ? Number(c.hoursPerDay) : 8;
   const mult = Number(c.multiplier) > 0 && Number(c.multiplier) !== 1 ? ` × ${c.multiplier}` : "";
   const hUnit = t("h", "h", "ó");
-  const salary = unpaid > 0 ? `${money(c.salaryAmount)} × ${trimNum(wd - unpaid)}/${wd}` : money(c.salaryAmount);
+  const salary = unpaid > 0 && !(c.source === "monthly" && Number(c.multiplier) === 1)
+    ? `${money(c.salaryAmount)} × ${trimNum(wd - unpaid)}/${wd}`
+    : money(c.salaryAmount);
   const days = (() => {
     if (c.fallback || (paid <= 0 && unpaid <= 0)) return `${wd}`;
     const bits = [String(wd)];

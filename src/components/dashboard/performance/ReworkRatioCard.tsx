@@ -8,10 +8,12 @@ export const ReworkRatioCard = ({
   data,
   language,
   className = "",
+  onInfo,
 }: {
   data: ReworkRatioData | null;
   language: Language;
   className?: string;
+  onInfo?: () => void;
 }) => {
   const t = makeT(language);
   const title = t("Rework ratio", "Rework pomer", "Rework arány");
@@ -38,7 +40,7 @@ export const ReworkRatioCard = ({
   }
   return (
     <Card className={className}>
-      <CardTitle title={title} caption={caption} />
+      <CardTitle title={title} caption={caption} onInfo={onInfo} />
       <HeadlineValue
         value={percent(data.ratePct, language, 0)}
         unit={`${t("overall", "celkovo", "összesen")} · ${ofTotal(data.reopened, data.completed, "task", language)}`}
