@@ -73,7 +73,7 @@ import { ProjectEmployeesField } from "./projects/ProjectEmployeesField";
 import { ProjectLeftColumn } from "./projects/ProjectLeftColumn";
 import { ProjectOrdersTab, type ProjectOrderLinks } from "./projects/ProjectOrdersTab";
 import { ordersOfProject } from "../utils/projectOrders";
-import { fillEmptyContactFromLead } from "../utils/leadToProject";
+import { fillEmptyFromLead } from "../utils/leadToProject";
 import { ProjectNotesSection } from "./notes/ProjectNotesSection";
 import { isNoteActivity } from "../utils/noteActivity";
 import { NoteActivityRow } from "./notes/NoteActivityRow";
@@ -3046,10 +3046,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               // deliberately typed.
               const paired = leads.find(l => l.id === id);
               if (!projectName.trim() && paired?.name) setProjectName(paired.name);
-              // Likewise the contact: an empty phone / e-mail is filled from the lead, a typed one stays.
-              const contact = fillEmptyContactFromLead({ contactPhone, contactEmail }, paired);
-              setContactPhone(contact.contactPhone);
-              setContactEmail(contact.contactEmail);
+              // Likewise the contact, division and rating: an empty one is filled from the lead, one already set stays.
+              const filled = fillEmptyFromLead({ contactPhone, contactEmail, division, rating }, paired);
+              setContactPhone(filled.contactPhone);
+              setContactEmail(filled.contactEmail);
+              setDivision(filled.division || "");
+              setRating(filled.rating || 0);
             };
 
             if (!pairedLead || pickingClient) {

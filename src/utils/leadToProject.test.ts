@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildProjectFromLead, fillEmptyContactFromLead } from "./leadToProject.ts";
+import { buildProjectFromLead, fillEmptyFromLead } from "./leadToProject.ts";
 import type { Lead, ProjectAttribute } from "../types/index.ts";
 
 const lead = {
@@ -66,27 +66,53 @@ describe("buildProjectFromLead", () => {
   });
 });
 
-describe("fillEmptyContactFromLead", () => {
+describe("fillEmptyFromLead", () => {
   it("fills an empty phone and e-mail from the lead", () => {
-    const out = fillEmptyContactFromLead({ contactPhone: null, contactEmail: "  " }, lead);
+    const out = fillEmptyFromLead({ contactPhone: null, contactEmail: "  " }, lead);
     assert.equal(out.contactPhone, "+421 900 111 222");
     assert.equal(out.contactEmail, "info@acme.test");
   });
 
   it("never overwrites what the project already has", () => {
     const project = { contactPhone: "+1 555", contactEmail: "own@x.test" };
-    assert.equal(fillEmptyContactFromLead(project, lead), project);
+    assert.equal(fillEmptyFromLead(project, lead), project);
   });
 
   it("fills only the missing half", () => {
-    const out = fillEmptyContactFromLead({ contactPhone: "+1 555", contactEmail: undefined }, lead);
+    const out = fillEmptyFromLead({ contactPhone: "+1 555", contactEmail: undefined }, lead);
     assert.equal(out.contactPhone, "+1 555");
     assert.equal(out.contactEmail, "info@acme.test");
   });
 
   it("leaves the project alone when the lead has nothing to give", () => {
     const project = { contactPhone: null, contactEmail: null };
-    assert.equal(fillEmptyContactFromLead(project, { phone: "", email: "" }), project);
-    assert.equal(fillEmptyContactFromLead(project, null), project);
+    assert.equal(fillEmptyFromLead(project, { phone: "", email: "" }), project);
+    assert.equal(fillEmptyFromLead(project, null), project);
+  });
+
+  const rated = { ...lead, division: " Head office ", rating: 4 } as unknown as Lead;
+
+  it("fills an empty division and an unrated project from the lead", () => {
+    for (const empty of [{ division: null, rating: 0 }, { division: "  ", rating: undefined }, {}]) {
+      const out = fillEmptyFromLead({ contactPhone: "+1", contactEmail: "a@x.test", ...empty }, rated);
+      assert.equal(out.division, "Head office");
+      assert.equal(out.rating, 4);
+    }
+  });
+
+  it("never overwrites a division or rating the project already has", () => {
+    const project = { contactPhone: "+1", contactEmail: "a@x.test", division: "Branch Budapest", rating: 2 };
+    assert.equal(fillEmptyFromLead(project, rated), project);
+  });
+
+  it("fills only the missing one of division and rating", () => {
+    const out = fillEmptyFromLead({ contactPhone: "+1", contactEmail: "a@x.test", division: "Branch Budapest", rating: 0 }, rated);
+    assert.equal(out.division, "Branch Budapest");
+    assert.equal(out.rating, 4);
+  });
+
+  it("does not copy a lead's missing division or an unset rating", () => {
+    const project = { contactPhone: "+1", contactEmail: "a@x.test", division: null, rating: 0 };
+    assert.equal(fillEmptyFromLead(project, { ...lead, division: "", rating: 0 } as unknown as Lead), project);
   });
 });

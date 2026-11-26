@@ -52,7 +52,7 @@ import { isLeadAttributeMissing } from "../utils/leadAttributes";
 import { EntityNotes } from "./notes/EntityNotes";
 import { NoteActivityRow } from "./notes/NoteActivityRow";
 import { isNoteActivity } from "../utils/noteActivity";
-import { buildProjectFromLead, fillEmptyContactFromLead } from "../utils/leadToProject";
+import { buildProjectFromLead, fillEmptyFromLead } from "../utils/leadToProject";
 import { CustomAttributesGrid, renderCustomAttributeCell } from "./common/CustomAttributeControls";
 import { clampDeadline, todayStr } from "../utils/taskDeadline";
 import {
@@ -2223,7 +2223,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setProjects((prev) =>
             prev.map((p) =>
                 p.id === projectId
-                    ? { ...fillEmptyContactFromLead(p, activeLead), leadId: activeLead.id, clientId: activeLead.id }
+                    ? { ...fillEmptyFromLead(p, activeLead), leadId: activeLead.id, clientId: activeLead.id }
                     : p,
             ),
         );
