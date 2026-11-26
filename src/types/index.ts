@@ -157,6 +157,21 @@ export interface ProjectAutoCreateSettings {
   assignOwner: boolean;
 }
 
+export interface ClientContact {
+  id: string;
+  companyClientId?: string | null;
+  name: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string;
+  phone?: string;
+  contactRole?: string | null;
+  contactTags?: string[];
+  notes?: string;
+  archived?: boolean;
+  createdAt?: string;
+}
+
 export interface Lead {
   id: string;
   name: string;             // Client name

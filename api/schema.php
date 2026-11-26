@@ -807,6 +807,25 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX idx_cc_level (`level`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
+            // Client Contacts (separate table for company contact persons and standalone personal contacts; never mixes into leads/clients)
+            "CREATE TABLE IF NOT EXISTS `client_contacts` (
+              `id` VARCHAR(64) NOT NULL PRIMARY KEY,
+              `company_client_id` VARCHAR(50) NULL COMMENT 'leads.id of parent company client (NULL = standalone personal contact)',
+              `name` VARCHAR(150) NOT NULL,
+              `first_name` VARCHAR(100) NULL,
+              `last_name` VARCHAR(100) NULL,
+              `email` VARCHAR(255) NULL,
+              `phone` VARCHAR(64) NULL,
+              `contact_role` VARCHAR(120) NULL COMMENT 'Summary function string (e.g. CEO, Billing)',
+              `contact_tags` TEXT NULL COMMENT 'JSON array of contact function tags',
+              `notes` TEXT NULL,
+              `archived` TINYINT(1) NOT NULL DEFAULT 0,
+              `created_at` DATE NOT NULL,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_cc_company` (`company_client_id`),
+              INDEX `idx_cc_email` (`email`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
             // Offer Categories (3-level price-offer category tree, the customer tree's shape; offers carry one in invoices_offers.category_id)
             "CREATE TABLE IF NOT EXISTS `offer_categories` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,
@@ -2509,6 +2528,8 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_custom_calendars($pdo);
         ccrm_migrate_task_activities($pdo);
         ccrm_migrate_agency($pdo);
+        require_once __DIR__ . '/client_contacts_lib.php';
+        ccrm_migrate_client_contacts($pdo);
         ccrm_migrate_clickup($pdo);
         require_once __DIR__ . '/project_breakdown_migrations.php';
         ccrm_heal_project_breakdown_columns($pdo);
@@ -3827,7 +3848,7 @@ if (!function_exists('ccrm_schema_statements')) {
      */
     function ccrm_schema_fingerprint(): string {
         $parts = [];
-        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/project_breakdown_migrations.php', __DIR__ . '/task_activity_lib.php', __DIR__ . '/clickup_lib.php', __DIR__ . '/time_worked_ms_migration.php', __DIR__ . '/time_parallel_migration.php', __DIR__ . '/time_rate_months_migration.php', __DIR__ . '/time_pause_migration.php', __DIR__ . '/notes_migration.php'] as $file) {
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/project_breakdown_migrations.php', __DIR__ . '/task_activity_lib.php', __DIR__ . '/clickup_lib.php', __DIR__ . '/time_worked_ms_migration.php', __DIR__ . '/time_parallel_migration.php', __DIR__ . '/time_rate_months_migration.php', __DIR__ . '/time_pause_migration.php', __DIR__ . '/notes_migration.php', __DIR__ . '/client_contacts_lib.php'] as $file) {
             $parts[] = is_file($file) ? md5_file($file) : '-';
         }
         return md5(implode('|', $parts));

@@ -118,6 +118,22 @@ Written only by `php kprnq adjustment-clients --apply` (created on first use, no
 * `linked_ids` TEXT (JSON: lead ids given this `client_id`)
 * `migrated_at` DATETIME
 
+### `client_contacts`
+Separate table for company contact persons and standalone personal contacts (kept out of `leads` so contacts never pollute the Clients list or client pickers; ready for Newsletter datamining by `contact_tags`).
+* `id` VARCHAR(64) [PK]
+* `company_client_id` VARCHAR(50) [NULLable, indexed] (`leads.id` of parent company client; NULL = standalone personal contact)
+* `name` VARCHAR(150)
+* `first_name` VARCHAR(100) [NULLable]
+* `last_name` VARCHAR(100) [NULLable]
+* `email` VARCHAR(255) [NULLable, indexed]
+* `phone` VARCHAR(64) [NULLable]
+* `contact_role` VARCHAR(120) [NULLable] (summary function string, e.g. CEO, Billing)
+* `contact_tags` TEXT [NULLable] (JSON array of contact function tags)
+* `notes` TEXT [NULLable]
+* `archived` TINYINT(1) [DEFAULT 0]
+* `created_at` DATE
+* `updated_at` TIMESTAMP
+
 ### `lead_categories`
 Junction table mapping leads to business categories.
 * `lead_id` VARCHAR(50)

@@ -726,20 +726,21 @@ function mcp_core_tool_definitions(): array {
         mcp_crm_defs()['list_contacts'],
         [
             'name' => 'create_contact',
-            'description' => 'Create and link an individual contact person record (client_type = person) under a company client.',
+            'description' => 'Create a contact person in the separate client_contacts table (linked under a company client via client_id, or standalone when client_id is omitted). Does not add a row to the Clients list.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
-                    'client_id' => ['type' => 'string', 'description' => 'Parent company client/lead ID'],
+                    'client_id' => ['type' => 'string', 'description' => 'Optional parent company client/lead ID (omit for a standalone personal contact)'],
                     'name' => ['type' => 'string', 'description' => 'Contact person full name'],
                     'first_name' => ['type' => 'string', 'description' => 'Contact first name'],
                     'last_name' => ['type' => 'string', 'description' => 'Contact last name'],
                     'email' => ['type' => 'string', 'description' => 'Email'],
                     'phone' => ['type' => 'string', 'description' => 'Phone'],
                     'role' => ['type' => 'string', 'description' => 'Position or role at the company (legacy summary fallback)'],
-                    'function_tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Function / category tags for the contact (e.g. ["CEO", "Billing"])']
+                    'function_tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Function / category tags for the contact (e.g. ["CEO", "Billing"])'],
+                    'notes' => ['type' => 'string', 'description' => 'Optional notes']
                 ],
-                'required' => ['client_id', 'name']
+                'required' => ['name']
             ]
         ],
 

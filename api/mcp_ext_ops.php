@@ -150,6 +150,7 @@ function mcp_client_profiles(\PDO $pdo, array $opts = []): array {
         $isClient = $adjustment > 0;
         foreach ($leads as $l) { if (strpos($l['id'], 'client-') === 0) $isClient = true; }
         if (!$isClient) continue;
+        if (($base['client_type'] ?? '') === 'person' && trim((string)($base['company_client_id'] ?? '')) !== '') continue;
         if ($archived && empty($opts['include_archived'])) continue;
         $out[] = [
             'id' => $base['id'], 'name' => $base['name'], 'client_type' => $base['client_type'], 'owner' => $base['owner'],

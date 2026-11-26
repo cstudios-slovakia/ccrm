@@ -1,4 +1,4 @@
-export const VERSION = "1.14.16-Orange";
+export const VERSION = "1.14.17-Orange";
 // Release codename ("Orange"), used to name the RAG assistant. Kept as its own
 // export because RagAiView reads it at module scope — dropping it silently named
 // the assistant `undefined`.

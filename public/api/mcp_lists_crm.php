@@ -271,15 +271,31 @@ function mcp_profiles_activity(\PDO $pdo, array $profiles): array {
 }
 
 // ============================================================================
-// Contact function-tag helpers (leads.contact_tags JSON array + contact_role)
+// Client contacts table & function-tag helpers (`client_contacts`)
 // ============================================================================
 
 function mcp_ensure_contact_tags_column(\PDO $pdo): void {
     static $done = false;
     if ($done) return;
-    $cols = $pdo->query("SHOW COLUMNS FROM `leads` LIKE 'contact_tags'")->fetchAll(\PDO::FETCH_ASSOC);
-    if (!$cols) {
-        $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_tags` TEXT NULL AFTER `contact_role`");
+    $tbl = $pdo->query("SHOW TABLES LIKE 'client_contacts'")->fetchAll(\PDO::FETCH_ASSOC);
+    if (!$tbl) {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS `client_contacts` (
+          `id` VARCHAR(64) NOT NULL PRIMARY KEY,
+          `company_client_id` VARCHAR(50) NULL COMMENT 'leads.id of parent company client (NULL = standalone personal contact)',
+          `name` VARCHAR(150) NOT NULL,
+          `first_name` VARCHAR(100) NULL,
+          `last_name` VARCHAR(100) NULL,
+          `email` VARCHAR(255) NULL,
+          `phone` VARCHAR(64) NULL,
+          `contact_role` VARCHAR(120) NULL COMMENT 'Summary function string (e.g. CEO, Billing)',
+          `contact_tags` TEXT NULL COMMENT 'JSON array of contact function tags',
+          `notes` TEXT NULL,
+          `archived` TINYINT(1) NOT NULL DEFAULT 0,
+          `created_at` DATE NOT NULL,
+          `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX `idx_cc_company` (`company_client_id`),
+          INDEX `idx_cc_email` (`email`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     }
     $done = true;
 }
@@ -367,11 +383,9 @@ function mcp_list_contacts(\PDO $pdo, array $args): array {
 
     $rows = [];
     if ($clientId !== '') {
-        $stmt = $pdo->prepare('SELECT id, name, adjustment, contact_person, contact_role, contact_tags, email, phone, ' . mcp_moment_select('updated_at', 'updated_at') . ' FROM leads WHERE id = ?');
-        $stmt->execute([$clientId]);
-        $lead = $stmt->fetch(\PDO::FETCH_ASSOC);
-        // The record's kind needs its module, as everywhere else (the answer for "not readable" is the answer for "not there").
-        if (!$lead || !mcp_lead_module_visible($lead)) return [];
+        $scope = mcp_client_scope($pdo, $clientId);
+        if (!$scope || !mcp_lead_module_visible($scope['record'])) return [];
+        $lead = $scope['record'];
         $companyName = (string)$lead['name'];
         $rows[] = [
             'id' => $lead['id'],
@@ -383,61 +397,63 @@ function mcp_list_contacts(\PDO $pdo, array $args): array {
             'phone' => $lead['phone'],
             'role' => 'Primary Contact',
             'function_tags' => mcp_contact_tags_from_row($lead),
-            'updated_at' => mcp_format_moment($lead['updated_at__ts']),
+            'updated_at' => mcp_format_moment(isset($lead['updated_at']) ? strtotime((string)$lead['updated_at']) : null),
         ];
         $archSql = $includeArchived ? '' : ' AND archived = 0';
+        $scopeIds = $scope['ids'] ?: [$clientId];
+        $in = implode(',', array_fill(0, count($scopeIds), '?'));
         $linked = $pdo->prepare(
-            'SELECT id, name, contact_person, contact_first_name, contact_last_name, contact_role, contact_tags, email, phone, adjustment, archived, '
+            'SELECT id, company_client_id, name, first_name, last_name, contact_role, contact_tags, email, phone, notes, archived, '
             . mcp_moment_select('updated_at', 'updated_at')
-            . " FROM leads WHERE company_client_id = ?{$archSql} ORDER BY name ASC, id ASC"
+            . " FROM `client_contacts` WHERE company_client_id IN ({$in}){$archSql} ORDER BY name ASC, id ASC"
         );
-        $linked->execute([$clientId]);
+        $linked->execute($scopeIds);
         foreach ($linked->fetchAll(\PDO::FETCH_ASSOC) as $c) {
-            if (!mcp_lead_module_visible($c)) continue;
-            $tags = mcp_contact_tags_from_row($c);
-            $rows[] = [
-                'id' => $c['id'],
-                'is_primary' => false,
-                'company_client_id' => $clientId,
-                'company_name' => $companyName,
-                'name' => $c['contact_person'] ?: $c['name'],
-                'first_name' => $c['contact_first_name'],
-                'last_name' => $c['contact_last_name'],
-                'email' => $c['email'],
-                'phone' => $c['phone'],
-                'role' => $c['contact_role'] ?: ($tags ? implode(', ', $tags) : 'Contact'),
-                'function_tags' => $tags,
-                'archived' => !empty($c['archived']),
-                'updated_at' => mcp_format_moment($c['updated_at__ts']),
-            ];
-        }
-    } else {
-        $archSql = $includeArchived ? '' : ' AND c.archived = 0';
-        $stmt = $pdo->query(
-            'SELECT c.id, c.name, c.contact_person, c.contact_first_name, c.contact_last_name, '
-            . 'c.contact_role, c.contact_tags, c.email, c.phone, c.adjustment, c.archived, '
-            . 'c.company_client_id, p.name AS company_name, '
-            . mcp_moment_select('c.updated_at', 'updated_at')
-            . " FROM leads c LEFT JOIN leads p ON p.id = c.company_client_id"
-            . " WHERE c.client_type = 'person' AND c.company_client_id IS NOT NULL AND TRIM(c.company_client_id) != ''"
-            . $archSql
-            . " ORDER BY p.name ASC, c.name ASC, c.id ASC"
-        );
-        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $c) {
-            if (!mcp_lead_module_visible($c)) continue;
             $tags = mcp_contact_tags_from_row($c);
             $rows[] = [
                 'id' => $c['id'],
                 'is_primary' => false,
                 'company_client_id' => $c['company_client_id'],
-                'company_name' => $c['company_name'] ?? null,
-                'name' => $c['contact_person'] ?: $c['name'],
-                'first_name' => $c['contact_first_name'],
-                'last_name' => $c['contact_last_name'],
+                'company_name' => $companyName,
+                'name' => $c['name'],
+                'first_name' => $c['first_name'],
+                'last_name' => $c['last_name'],
                 'email' => $c['email'],
                 'phone' => $c['phone'],
                 'role' => $c['contact_role'] ?: ($tags ? implode(', ', $tags) : 'Contact'),
                 'function_tags' => $tags,
+                'notes' => $c['notes'],
+                'archived' => !empty($c['archived']),
+                'updated_at' => mcp_format_moment($c['updated_at__ts']),
+            ];
+        }
+    } else {
+        if (!mcp_can('clients')) return [];
+        $archSql = $includeArchived ? '' : ' WHERE c.archived = 0';
+        $stmt = $pdo->query(
+            'SELECT c.id, c.company_client_id, c.name, c.first_name, c.last_name, '
+            . 'c.contact_role, c.contact_tags, c.email, c.phone, c.notes, c.archived, '
+            . 'p.name AS company_name, '
+            . mcp_moment_select('c.updated_at', 'updated_at')
+            . " FROM `client_contacts` c LEFT JOIN `leads` p ON p.id = c.company_client_id"
+            . $archSql
+            . " ORDER BY p.name ASC, c.name ASC, c.id ASC"
+        );
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $c) {
+            $tags = mcp_contact_tags_from_row($c);
+            $rows[] = [
+                'id' => $c['id'],
+                'is_primary' => false,
+                'company_client_id' => $c['company_client_id'] ?: null,
+                'company_name' => $c['company_name'] ?? null,
+                'name' => $c['name'],
+                'first_name' => $c['first_name'],
+                'last_name' => $c['last_name'],
+                'email' => $c['email'],
+                'phone' => $c['phone'],
+                'role' => $c['contact_role'] ?: ($tags ? implode(', ', $tags) : 'Contact'),
+                'function_tags' => $tags,
+                'notes' => $c['notes'],
                 'archived' => !empty($c['archived']),
                 'updated_at' => mcp_format_moment($c['updated_at__ts']),
             ];

@@ -17,7 +17,7 @@ import type { TimeDeps } from "./components/timeTracking/shared";
 import { canEditTask as userMayEditTask } from "./utils/taskSelectors";
 import { QuickTaskModal, composerOriginFrom, type ComposerOrigin } from "./components/QuickTaskModal";
 import { TableFullscreenEnhancer } from "./components/ui/TableFullscreenEnhancer";
-import type { Lead, UserProfile, RolePermission, Task, RecurringTaskTemplate, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, ProjectAttribute, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, OfferCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order, Ticket, SupportContract, TicketStatusDef, TicketSystemSettings } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, RecurringTaskTemplate, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, ProjectAttribute, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, ClientContact, OfferCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order, Ticket, SupportContract, TicketStatusDef, TicketSystemSettings } from "./types";
 import { clearedSecretKeys } from "./utils/secretClears";
 import { findSelf, isDifferentSessionUser } from "./utils/sessionIdentity";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
@@ -285,6 +285,7 @@ function App() {
   const invoicesOffersRef = useRef<InvoiceOffer[]>([]);
   const aiCustomTemplatesRef = useRef<AiCustomTemplate[]>([]);
   const clientCategoriesRef = useRef<ClientCategory[]>([]);
+  const clientContactsRef = useRef<ClientContact[]>([]);
   const offerCategoriesRef = useRef<OfferCategory[]>([]);
   const financialTrendRef = useRef<FinancialTrendSettings>(EMPTY_FINANCIAL_TREND);
   const financialModeRef = useRef<FinancialOperatingMode>("connected");
@@ -717,6 +718,7 @@ function App() {
   const [invoicesOffers, setInvoicesOffers] = useState<InvoiceOffer[]>([]);
   const [aiCustomTemplates, setAiCustomTemplates] = useState<AiCustomTemplate[]>([]);
   const [clientCategories, setClientCategories] = useState<ClientCategory[]>([]);
+  const [clientContacts, setClientContacts] = useState<ClientContact[]>([]);
   const [offerCategories, setOfferCategories] = useState<OfferCategory[]>([]);
   /**
    * Manual weekly bank-balance anchors behind the finance trend chart. Shared
@@ -1300,6 +1302,7 @@ ${log.payload || ''}
   invoicesOffersRef.current = invoicesOffers;
   aiCustomTemplatesRef.current = aiCustomTemplates;
   clientCategoriesRef.current = clientCategories;
+  clientContactsRef.current = clientContacts;
   offerCategoriesRef.current = offerCategories;
   financialTrendRef.current = financialTrend;
   financialModeRef.current = financialMode;
@@ -1382,6 +1385,7 @@ ${log.payload || ''}
     const liveInvoicesOffers = nextInvoicesOffers ?? invoicesOffersRef.current;
     const liveAiCustomTemplates = nextAiCustomTemplates ?? aiCustomTemplatesRef.current;
     const liveClientCategories = nextClientCategories ?? clientCategoriesRef.current;
+    const liveClientContacts = clientContactsRef.current;
     const liveOfferCategories = nextOfferCategories ?? offerCategoriesRef.current;
     const liveEmployees = employeesRef.current;
     const liveEmployeeSalaries = employeeSalariesRef.current;
@@ -1415,6 +1419,7 @@ ${log.payload || ''}
       invoicesOffers: liveInvoicesOffers,
       aiCustomTemplates: liveAiCustomTemplates,
       clientCategories: liveClientCategories,
+      clientContacts: liveClientContacts,
       offerCategories: liveOfferCategories,
       employees: liveEmployees,
       employeeSalaries: liveEmployeeSalaries,
@@ -1527,6 +1532,7 @@ ${log.payload || ''}
       narrow("invoicesOffers", liveInvoicesOffers);
       narrow("aiCustomTemplates", liveAiCustomTemplates);
       narrow("clientCategories", liveClientCategories);
+      narrow("clientContacts", liveClientContacts);
       narrow("offerCategories", liveOfferCategories);
       narrow("employees", liveEmployees);
       narrow("employeeSalaries", liveEmployeeSalaries);
@@ -1645,7 +1651,7 @@ ${log.payload || ''}
               custom_dashboards: "customDashboards", warehouses: "warehouses",
               suppliers: "suppliers", warehouse_items: "warehouseItems",
               warehouse_batches: "warehouseBatches", warehouse_movements: "warehouseMovements",
-              financial_categories: "financialCategories", client_categories: "clientCategories", offer_categories: "offerCategories",
+              financial_categories: "financialCategories", client_categories: "clientCategories", client_contacts: "clientContacts", offer_categories: "offerCategories",
               financial_records: "financialRecords", invoices_offers: "invoicesOffers",
               ai_custom_templates: "aiCustomTemplates",
               employees: "employees", employee_salaries: "employeeSalaries",
@@ -2105,6 +2111,15 @@ ${log.payload || ''}
       const next = typeof newCats === "function" ? newCats(prev) : newCats;
       clientCategoriesRef.current = next;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateClientContactsAndSync = (newContacts: ClientContact[] | ((prev: ClientContact[]) => ClientContact[])) => {
+    setClientContacts(prev => {
+      const next = typeof newContacts === "function" ? newContacts(prev) : newContacts;
+      clientContactsRef.current = next;
+      pushStateToServer();
       return next;
     });
   };
@@ -3024,6 +3039,9 @@ ${log.payload || ''}
       if (data.clientCategories && Array.isArray(data.clientCategories)) {
         setClientCategories(sameOr(data.clientCategories));
       }
+      if (data.clientContacts && Array.isArray(data.clientContacts)) {
+        setClientContacts(sameOr(data.clientContacts));
+      }
       if (data.offerCategories && Array.isArray(data.offerCategories)) {
         setOfferCategories(sameOr(data.offerCategories));
       }
@@ -3196,6 +3214,7 @@ ${log.payload || ''}
         invoicesOffers: baselineOf(rawData.invoicesOffers ?? invoicesOffersRef.current),
         aiCustomTemplates: baselineOf(rawData.aiCustomTemplates ?? aiCustomTemplatesRef.current),
         clientCategories: baselineOf(rawData.clientCategories ?? clientCategoriesRef.current),
+        clientContacts: baselineOf(rawData.clientContacts ?? clientContactsRef.current),
         offerCategories: baselineOf(rawData.offerCategories ?? offerCategoriesRef.current),
         employees: baselineOf(rawData.employees ?? employeesRef.current),
         employeeSalaries: baselineOf(rawData.employeeSalaries ?? employeeSalariesRef.current),
@@ -3237,6 +3256,7 @@ ${log.payload || ''}
         invoicesOffers: data.invoicesOffers ?? invoicesOffersRef.current,
         aiCustomTemplates: data.aiCustomTemplates ?? aiCustomTemplatesRef.current,
         clientCategories: data.clientCategories ?? clientCategoriesRef.current,
+        clientContacts: data.clientContacts ?? clientContactsRef.current,
         offerCategories: data.offerCategories ?? offerCategoriesRef.current,
         employees: data.employees ?? employeesRef.current,
         employeeSalaries: data.employeeSalaries ?? employeeSalariesRef.current,
@@ -4151,6 +4171,8 @@ ${log.payload || ''}
             setFinancialCategories={updateFinancialCategoriesAndSync}
             clientCategories={clientCategories}
             setClientCategories={updateClientCategoriesAndSync}
+            clientContacts={clientContacts}
+            setClientContacts={updateClientContactsAndSync}
             currentUser={currentUser}
             users={users}
             projects={projects}
