@@ -1,0 +1,1 @@
+- **The loading screen no longer shows a grey square over the spinner**: on some browsers the native progress bar stayed visible and spun with the loader because one unsupported selector invalidated the whole rule that hides it.
