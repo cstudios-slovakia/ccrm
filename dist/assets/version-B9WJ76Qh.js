@@ -1,0 +1,1 @@
+var e=`1.14.21-Orange-CSS`,t=`1.14.21-Orange-CSS`.split(`-`)[1]||`Orange`;export{t as n,e as t};
