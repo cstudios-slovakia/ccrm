@@ -44,6 +44,8 @@ export interface NewTimeEntryRequest {
   billable?: boolean;
   /** The person the entry is for (a manager's Timesheet cell); defaults to the viewer. */
   userId?: string | null;
+  /** Passed when the server just refused a create with `task_required`. */
+  taskRequired?: boolean;
 }
 
 export const requestNewTimeEntry = (detail: NewTimeEntryRequest): void => {
@@ -69,6 +71,6 @@ export const recoverTaskRequired = (
 ): boolean => {
   if (!(e instanceof TimeApiError) || e.code !== "task_required") return false;
   notify(timeErrorMessage("task_required", t), "warning");
-  requestNewTimeEntry(request);
+  requestNewTimeEntry({ ...request, taskRequired: true });
   return true;
 };
