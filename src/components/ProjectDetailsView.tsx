@@ -52,7 +52,7 @@ import { ProjectPushTimelineItem, ProjectPushesFailedNote } from "./projects/Pro
 import { useProjectPushes } from "../hooks/useProjectPushes";
 import { isPushItem, mergePushesIntoTimeline } from "../utils/projectPushTimeline";
 import { displayEmployeeName } from "../utils/nameOrder";
-import { isProjectManagerRole } from "../utils/projectEmployees";
+import { projectManagerPickerNames } from "../utils/projectEmployees";
 import type { Task, Ticket, TicketStatusDefinition, TicketSettings, SupportContract } from "../types";
 import { DEFAULT_TICKET_STATUSES, DEFAULT_TICKET_SETTINGS } from "../utils/tickets";
 import { isDoneTaskState } from "../utils/projectTasks";
@@ -2602,74 +2602,50 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               );
             })()}
 
-            {/* Project Managers, edited in place. A project can carry several,
-                so the dropdown adds one at a time and the chosen ones sit above
-                it as the same coloured chips the lead view wears for its manager;
-                each chip's cross takes that manager off again. */}
+            {/* The one Project Manager, edited in place: only users with the Project Manager role are offered
+                (Settings -> Users), plus a name saved before that rule. Choosing someone who is among the
+                employees takes them off that list. */}
             <div>
-              <label className="block type-overline text-slate-400 mb-1">{t("Project Managers", "Projektoví manažéri", "Projektmenedzserek")}</label>
-              {selectedManagers.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {selectedManagers.map(name => {
+              <label className="block type-overline text-slate-400 mb-1">{t("Project Manager", "Projektový manažér", "Projektmenedzser")}</label>
+              {canEdit ? (() => {
+                const current = selectedManagers[0] || "";
+                const names = projectManagerPickerNames(users, current);
+                const colorOf = (name: string) => users.find(u => u.name === name)?.color || "#64748b";
+                return (
+                  <CustomSelect
+                    value={current}
+                    onChange={name => {
+                      setSelectedManagers(name ? [name] : []);
+                      if (name) setSelectedEmployees(prev => prev.filter(e => e !== name));
+                    }}
+                    placeholder={names.length === 0
+                      ? t("No user has the Project Manager role", "Žiadny používateľ nemá rolu projektového manažéra", "Egyik felhasználónak sincs projektmenedzser szerepköre")
+                      : t("Assign a manager...", "Priradiť manažéra...", "Menedzser kijelölése...")}
+                    options={[
+                      { value: "", label: t("Unassigned", "Nepriradený", "Nincs kijelölve") },
+                      ...names.map(name => ({
+                        value: name,
+                        label: displayEmployeeName(name),
+                        icon: <span className="h-2.5 w-2.5 rounded-full shrink-0 inline-block" style={{ backgroundColor: colorOf(name) }} />,
+                      })),
+                    ]}
+                  />
+                );
+              })() : selectedManagers.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedManagers.slice(0, 1).map(name => {
                     const color = users.find(u => u.name === name)?.color || "#64748b";
                     return (
-                      <span
-                        key={name}
-                        className={`inline-flex items-center gap-1 pl-2.5 py-1 rounded-full border type-overline shadow-sm ${canEdit ? "pr-1" : "pr-2.5"}`}
-                        style={{ backgroundColor: `${color}15`, color, borderColor: `${color}30` }}
-                      >
+                      <span key={name} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border type-overline shadow-sm" style={{ backgroundColor: `${color}15`, color, borderColor: `${color}30` }}>
                         <Icons.User className="h-3 w-3 shrink-0" />
                         <span className="truncate max-w-[10rem]">{displayEmployeeName(name)}</span>
-                        {canEdit && (
-                        <button
-                          type="button"
-                          onClick={() => setSelectedManagers(prev => prev.filter(m => m !== name))}
-                          className="ml-0.5 p-0.5 rounded-full hover:bg-black/10 transition-colors cursor-pointer"
-                          title={t("Remove", "Odobrať", "Eltávolítás")}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                        )}
                       </span>
                     );
                   })}
                 </div>
-              )}
-              {canEdit && (() => {
-                // Only users with the Project Manager role can be assigned (Settings -> Users).
-                const pms = users.filter(u => isProjectManagerRole(u.role));
-                const available = pms.filter(u => !selectedManagers.includes(u.name));
-                return (
-                  <CustomSelect
-                    value=""
-                    onChange={name => {
-                      if (name && !selectedManagers.includes(name)) setSelectedManagers(prev => [...prev, name]);
-                    }}
-                    disabled={available.length === 0}
-                    placeholder={
-                      pms.length === 0
-                        ? t("No user has the Project Manager role", "Žiadny používateľ nemá rolu projektového manažéra", "Egyik felhasználónak sincs projektmenedzser szerepköre")
-                        : available.length === 0
-                        ? t("All project managers are assigned", "Priradení sú všetci projektoví manažéri", "Minden projektmenedzser hozzá van rendelve")
-                        : selectedManagers.length > 0
-                          ? t("Add another manager...", "Pridať ďalšieho manažéra...", "További menedzser hozzáadása...")
-                          : t("Assign a manager...", "Priradiť manažéra...", "Menedzser kijelölése...")
-                    }
-                    options={available.map(u => ({
-                      value: u.name,
-                      label: displayEmployeeName(u.name),
-                      icon: <span className="h-2.5 w-2.5 rounded-full shrink-0 inline-block" style={{ backgroundColor: u.color || "#64748b" }} />,
-                    }))}
-                  />
-                );
-              })()}
-              {!canEdit && selectedManagers.length === 0 && (
+              ) : (
                 <p className="text-ui font-semibold text-slate-300 italic">
-                  {t(
-                    "Nobody is on this project yet.",
-                    "Na projekte zatiaľ nikto nie je priradený.",
-                    "Még senki sincs hozzárendelve a projekthez.",
-                  )}
+                  {t("No project manager yet.", "Zatiaľ bez projektového manažéra.", "Még nincs projektmenedzser.")}
                 </p>
               )}
             </div>

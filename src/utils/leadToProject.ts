@@ -3,7 +3,8 @@ import { buildProjectDataFromLead } from "./leadAttributes.ts";
 
 /**
  * The project a lead becomes ("Convert to project"): named after the lead, its phone and e-mail carried
- * over as the project's contact, its division and rating kept, the lead's owner as manager, and the custom fields copied by
+ * over as the project's contact, its division and rating kept, the lead's owner as manager and its assigned employees as the
+ * project's employees, and the custom fields copied by
  * `buildProjectDataFromLead`. Pure: the caller supplies the id and the starting status.
  */
 export function buildProjectFromLead(
@@ -22,6 +23,7 @@ export function buildProjectFromLead(
     division: (lead.division || "").trim() || null,
     ...(leadRating(lead) ? { rating: leadRating(lead) } : {}),
     managers: lead.owner ? [lead.owner] : [],
+    ...(lead.assignedEmployees?.length ? { employees: lead.assignedEmployees.filter((n) => n && n !== lead.owner) } : {}),
     contactPhone: (lead.phone || "").trim() || null,
     contactEmail: (lead.email || "").trim() || null,
     data: buildProjectDataFromLead(lead, leadAttributes, type.attributes || [], opts.defaultCurrency),

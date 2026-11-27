@@ -69,7 +69,7 @@ export const BUILTIN_COLUMN_LABELS: Record<BuiltinProjectColumnKey, [string, str
   name: ["Project", "Projekt", "Projekt"],
   type: ["Type", "Typ", "Típus"],
   client: ["Client", "Klient", "Ügyfél"],
-  managers: ["Managers", "Manažéri", "Menedzserek"],
+  managers: ["Project manager", "Projektový manažér", "Projektmenedzser"],
   employees: ["Employees", "Zamestnanci", "Munkatársak"],
   rating: ["Rating", "Hodnotenie", "Értékelés"],
   invoiceDate: ["Invoice date", "Termín fakturácie", "Számlázási határidő"],

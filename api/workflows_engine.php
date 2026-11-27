@@ -1172,6 +1172,15 @@ if (!function_exists('ccrm_execute_workflow')) {
                                 $pdo->prepare("INSERT IGNORE INTO `project_managers` (`project_id`, `user_id`) VALUES (?, ?)")
                                     ->execute([$projectId, $manager]);
                             }
+                            // The lead's assigned employees become the project's employees.
+                            $leadEmployees = json_decode((string)($leadRow['assigned_employees'] ?? ''), true);
+                            if (is_array($leadEmployees) && $leadEmployees && ccrm_table_exists($pdo, 'project_employees')) {
+                                $insEmp = $pdo->prepare("INSERT IGNORE INTO `project_employees` (`project_id`, `user_id`) VALUES (?, ?)");
+                                foreach ($leadEmployees as $emp) {
+                                    $emp = trim((string)$emp);
+                                    if ($emp !== '' && $emp !== $manager) $insEmp->execute([$projectId, $emp]);
+                                }
+                            }
 
                             // The per-type attribute row. Optional — sync.php's
                             // GET falls back to empty data when it is missing —

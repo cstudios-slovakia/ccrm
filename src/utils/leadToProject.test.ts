@@ -45,6 +45,12 @@ describe("buildProjectFromLead", () => {
     assert.equal(proj.data["pa-email"], "info@acme.test");
   });
 
+  it("makes the lead's assigned employees the project's employees, never the manager twice", () => {
+    const withTeam = buildProjectFromLead({ ...lead, assignedEmployees: ["Ján", "Eva", "Erik"] } as unknown as Lead, type, leadAttributes, { id: "p", status: "new" });
+    assert.deepEqual(withTeam.employees, ["Ján", "Erik"]);
+    assert.equal("employees" in proj, false);
+  });
+
   it("carries the lead's division and rating", () => {
     const withBoth = buildProjectFromLead({ ...lead, division: " Branch Budapest ", rating: 4 } as unknown as Lead, type, leadAttributes, { id: "p", status: "new" });
     assert.equal(withBoth.division, "Branch Budapest");
