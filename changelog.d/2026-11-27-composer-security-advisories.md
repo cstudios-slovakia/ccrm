@@ -1,0 +1,1 @@
+- **PHP dependency security advisories cleared** (`composer.json`, `composer.lock`): `web-auth/webauthn-lib` 5.3.9 -> 5.3.17 (floor raised to `^5.3.13`) and `symfony/serializer` 7.4.20 -> 7.4.24 with its Symfony companions, which closes the 11 advisories `composer audit` printed during `php kprnq update`. `composer audit` now reports none.

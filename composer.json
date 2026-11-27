@@ -12,7 +12,7 @@
     "require": {
         "php": ">=8.2",
         "composer-plugin-api": "^1.1 || ^2.0",
-        "web-auth/webauthn-lib": "^5.3"
+        "web-auth/webauthn-lib": "^5.3.13"
     },
     "config": {
         "platform": {
