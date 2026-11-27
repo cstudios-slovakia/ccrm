@@ -10,7 +10,7 @@ import type { WarehouseItem, Employee, UserProfile, RolePermission, UnifiedEntry
 import { DEFAULT_VAT_RATES, DEFAULT_STANDARD_VAT_RATE, getAvailableVatRates, sanitizeVatRates } from "../utils/vat";
 import { DEFAULT_SHIPPING_METHODS } from "../utils/shipping";
 import { DEFAULT_PAYMENT_METHODS, DEFAULT_STANDARD_PAYMENT_METHOD } from "../utils/payment";
-import { leadAssignmentPanel, resolveAssignmentPool, type LeadAssignmentPanel } from "../utils/leadAssignment";
+import { leadAssignableUserNames, leadAssignmentPanel, resolveAssignmentPool, type LeadAssignmentPanel } from "../utils/leadAssignment";
 import { normalizeSlaDays, type LeadStateSla } from "../utils/leadSla";
 import { listIdFor, nextListId, type ListIds } from "../utils/listIds";
 import { getTranslation, formatTranslation } from "../utils/translations";
@@ -135,7 +135,8 @@ const LeadAssignmentCard: React.FC<{
 }> = ({ users, leadAssignment, setLeadAssignment, canEdit, userLanguage }) => {
   const t = (en: string, sk: string, hu: string) =>
     userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
-  const userNames = users.map((u) => u.name).filter(Boolean);
+  // Project Managers only (everyone when nobody has the role): a lead's owner is its Project Manager.
+  const userNames = leadAssignableUserNames(users);
   const pool = resolveAssignmentPool(leadAssignment, userNames);
   const [panel, setPanel] = React.useState<LeadAssignmentPanel>(() =>
     leadAssignmentPanel(leadAssignment),

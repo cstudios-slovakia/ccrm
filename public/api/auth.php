@@ -763,9 +763,15 @@ if (!function_exists('ccrm_send_cors')) {
         if ($cfg['mode'] === 'off') {
             return [];
         }
+        // Project Managers only, since a lead's owner is its Project Manager; every user on an
+        // install where nobody has that role. Mirrors leadAssignableUserNames() in src/utils/leadAssignment.ts.
         try {
-            $stmt = $pdo->query("SELECT `name` FROM `users` ORDER BY `name` ASC");
+            $stmt = $pdo->query("SELECT `name` FROM `users` WHERE LOWER(TRIM(`role`)) = 'project manager' ORDER BY `name` ASC");
             $names = $stmt ? $stmt->fetchAll(\PDO::FETCH_COLUMN) : [];
+            if (!$names) {
+                $stmt = $pdo->query("SELECT `name` FROM `users` ORDER BY `name` ASC");
+                $names = $stmt ? $stmt->fetchAll(\PDO::FETCH_COLUMN) : [];
+            }
         } catch (\Throwable $e) {
             return [];
         }

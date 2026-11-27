@@ -136,7 +136,7 @@ import type {
     LeadAssignmentSettings,
 } from "../types";
 import { DOCUMENT_EVENT_TYPES } from "../types";
-import { DEFAULT_LEAD_ASSIGNMENT, isAutoAssignActive } from "../utils/leadAssignment";
+import { DEFAULT_LEAD_ASSIGNMENT, isAutoAssignActive, leadAssignableUserNames } from "../utils/leadAssignment";
 import { pairableProjects, projectsForLead } from "../utils/projectAutoCreate";
 import {
   defaultProjectStatus,
@@ -1180,7 +1180,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // one (Settings -> Users -> automatic lead assignment). The server makes the
     // pick on sync, so the create form deliberately leaves the owner blank and
     // says so, instead of quietly defaulting to whoever is first in the list.
-    const autoAssignActive = isAutoAssignActive(leadAssignment, projectManagers);
+    const autoAssignActive = isAutoAssignActive(leadAssignment, leadAssignableUserNames(_users));
 
     // Lead states flagged as "follow-up" in Settings, in the configured order.
     // Each becomes its own checkbox on the lead so several follow-up rounds can be
