@@ -1,7 +1,7 @@
 /**
  * Which screen the Dashboard section (`#dashboard`) shows.
  *
- * - `false` (current): the Performance Dashboard (`components/Dashboard.tsx`), which used to be the
+ * - `false` (the new edition): the Performance Dashboard (`components/Dashboard.tsx`), which used to be the
  *   separate "Analytics" section at `#overview`. It takes the Dashboard's place everywhere: the same
  *   menu slot (saved navigation layouts and role layouts keep working because the id stays
  *   `dashboard`), the start menu, Visible modules, default pages and the landing route. `#overview`
@@ -14,7 +14,20 @@
  * `__home__` custom dashboard of each company) is never read for display, rewritten or deleted
  * while this is `false`: it stays in the database exactly as it was and comes back as it was.
  */
-export const LEGACY_WIDGET_DASHBOARD: boolean = false;
+/**
+ * Which edition of the Dashboard and Performance Dashboard this branch ships.
+ *
+ * - `false` on `1.14-orange` (every customer): the legacy widget board at `#dashboard` and the
+ *   Performance Dashboard as it was on 1.14 before the new KPI overview (`LegacyPerformanceDashboard.tsx`).
+ * - `true` on `1.14-css` only (our own install): the Performance Dashboard with the KPI overview
+ *   (`Dashboard.tsx`, `dashboard/performance/*`) takes the Dashboard's place.
+ *
+ * This line is the only difference between the two branches. Merging `1.14-orange` into `1.14-css`
+ * never touches it; never merge `1.14-css` back into `1.14-orange`.
+ */
+export const NEW_DASHBOARD_EDITION: boolean = false;
+
+export const LEGACY_WIDGET_DASHBOARD: boolean = !NEW_DASHBOARD_EDITION;
 
 /** Route ids that exist only while the legacy widget board is active (hidden from every menu otherwise). */
 export const isRetiredSectionId = (id: string): boolean => !LEGACY_WIDGET_DASHBOARD && id === "overview";

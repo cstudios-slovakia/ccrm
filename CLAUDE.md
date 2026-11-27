@@ -186,4 +186,12 @@ When asked to "make newsletter phase N", follow its Part A.
 - The production server has **no build step**. The compiled frontend is built
   locally and committed to `dist/`, then published by `php kprnq update`.
 - A `tasks` row with `task_kind = 'recurring'` is a template; read tasks through `ccrm_sql_real_tasks()`. The guard test enforces it.
+- **Two 1.14 branches, one switch**: `1.14-orange` ships to every customer, `1.14-css` only to our
+  own install. They differ in one line, `NEW_DASHBOARD_EDITION` in `src/utils/dashboardSection.ts`
+  (`true` on `1.14-css`: the KPI Performance Dashboard; `false`: widget board plus
+  `LegacyPerformanceDashboard.tsx`). Work lands on `1.14-orange` and is merged into `1.14-css`, never
+  the other way. A `1.14-css` build is made after merging a `1.14-orange` build: it takes that build's
+  number with a `-CSS` suffix in `version.ts` (`1.14.21-Orange` -> `1.14.21-Orange-CSS`), runs
+  `npm run build` and commits `dist/` + `version.ts`. It has no fragments and no changelog section of
+  its own (the changelog comes with the merge), so it does not run `collect-changelog.mjs`.
 - **Agency & Workforce Leasing module**: one file owns the spec and phased plan: [`docs/AGENCY-MODULE.md`](docs/AGENCY-MODULE.md). Rented employees (`agency_workers`) are a permanent entity separate from `leads` (contacts).

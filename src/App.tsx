@@ -144,7 +144,7 @@ import { PRODUCT_NAME, normalizeSystemTitleOverride, resolveSystemTitle, resolve
 import { HoldToConfirmButton } from "./components/ui/HoldToConfirm";
 import { clearErrorLogsWithUndo } from "./utils/errorLogs";
 import { setNameOrderEmployees, setNameOrderLanguage } from "./utils/nameOrder";
-import { DASHBOARD_SECTION_ALIASES, DASHBOARD_SECTION_LABEL_KEY, LEGACY_WIDGET_DASHBOARD } from "./utils/dashboardSection";
+import { DASHBOARD_SECTION_ALIASES, DASHBOARD_SECTION_LABEL_KEY, LEGACY_WIDGET_DASHBOARD, NEW_DASHBOARD_EDITION } from "./utils/dashboardSection";
 
 /**
  * Routes whose whole purpose depends on OpenAI. Visiting one without a
@@ -198,7 +198,10 @@ const safeLazy = <T extends ComponentType<any>>(importFn: () => Promise<{ defaul
     }
   });
 
-const Dashboard = safeLazy(() => import("./components/Dashboard").then(m => ({ default: m.Dashboard })));
+// The edition switch picks the Performance Dashboard: the KPI overview, or the one every customer keeps.
+const Dashboard = safeLazy(() => NEW_DASHBOARD_EDITION
+  ? import("./components/Dashboard").then(m => ({ default: m.Dashboard }))
+  : import("./components/LegacyPerformanceDashboard").then(m => ({ default: m.Dashboard })));
 const SettingsView = safeLazy(() => import("./components/SettingsView").then(m => ({ default: m.SettingsView })));
 const LeadsDatagrid = safeLazy(() => import("./components/LeadsDatagrid").then(m => ({ default: m.LeadsDatagrid })));
 const ClientsView = safeLazy(() => import("./components/ClientsView").then(m => ({ default: m.ClientsView })));
