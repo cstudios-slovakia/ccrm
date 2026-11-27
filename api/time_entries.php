@@ -362,7 +362,8 @@ if ($method === 'GET') {
     // Hours of every user (a task's tracked time is not a private entry). Cost is
     // included only when every contributing row is one the caller may see — their
     // own always, anyone else's only with time_tracking_costs — so a partial sum
-    // is never presented as the project's labour.
+    // is never presented as the project's labour. An entry with no cost is not
+    // hidden, it simply costs nothing; `unpricedSeconds` says how much time that is.
     if ($action === 'totals') {
         $effProj = ccrm_tt_eff_project_expr();
         $effClient = ccrm_tt_eff_client_expr();
@@ -370,14 +371,12 @@ if ($method === 'GET') {
         $exclJoin = $hasExcl
             ? " LEFT JOIN `project_labour_exclusions` ple ON ple.`project_id` = ({$effProj}) AND ple.`user_id` = te.`user_id` AND ple.`month` = LEFT(te.`entry_date`, 7)"
             : '';
-        $costExpr = $hasExcl ? "COALESCE(SUM(CASE WHEN ple.`project_id` IS NULL THEN te.`cost` ELSE 0 END), 0)" : "COALESCE(SUM(te.`cost`), 0)";
-        $unpricedSecExpr = $hasExcl
-            ? "COALESCE(SUM(CASE WHEN ple.`project_id` IS NULL AND te.`cost` IS NULL THEN te.`duration_sec` ELSE 0 END), 0)"
-            : "COALESCE(SUM(CASE WHEN te.`cost` IS NULL THEN te.`duration_sec` ELSE 0 END), 0)";
+        $costExpr = $hasExcl ? "SUM(CASE WHEN ple.`project_id` IS NULL THEN te.`cost` ELSE 0 END)" : "SUM(te.`cost`)";
+        $unpricedExpr = $hasExcl ? "COALESCE(SUM(CASE WHEN ple.`project_id` IS NULL AND te.`cost` IS NULL THEN te.`duration_sec` ELSE 0 END), 0)" : "COALESCE(SUM(CASE WHEN te.`cost` IS NULL THEN te.`duration_sec` ELSE 0 END), 0)";
         $stmt = $pdo->query(
             "SELECT te.`task_id`, te.`ticket_id`, {$effProj} AS `eff_project_id`, {$effClient} AS `eff_client_id`, te.`user_id`,
                     COALESCE(SUM(te.`duration_sec`), 0) AS `sec`, COALESCE(SUM(te.`worked_ms`), 0) AS `worked`,
-                    {$costExpr} AS `cost`, {$unpricedSecExpr} AS `unpriced_sec`
+                    {$costExpr} AS `cost`, {$unpricedExpr} AS `unpriced`
              FROM `time_entries` te"
             . ccrm_tt_entity_joins()
             . $exclJoin
@@ -392,7 +391,7 @@ if ($method === 'GET') {
             $own = (string)$r['user_id'] === $callerId;
             $sec = (int)$r['sec'];
             $worked = (int)$r['worked'];
-            $unpricedSec = (int)($r['unpriced_sec'] ?? 0);
+            $unpriced = (int)$r['unpriced'];
             $cost = (float)$r['cost'];
             if ($r['task_id']) {
                 $byTask[$r['task_id']] = ($byTask[$r['task_id']] ?? 0) + $sec;
@@ -403,42 +402,41 @@ if ($method === 'GET') {
             $effP = ($r['eff_project_id'] ?? '') !== '' ? (string)$r['eff_project_id'] : null;
             if ($effP !== null) {
                 if (!isset($byProject[$effP])) {
-                    $byProject[$effP] = ['seconds' => 0, 'workedMs' => 0, 'cost' => 0.0, 'unpricedSeconds' => 0, 'canSeeAll' => true];
+                    $byProject[$effP] = ['seconds' => 0, 'workedMs' => 0, 'cost' => 0.0, 'unpricedSeconds' => 0, 'complete' => true];
                 }
                 $byProject[$effP]['seconds'] += $sec;
                 $byProject[$effP]['workedMs'] += $worked;
+                $byProject[$effP]['unpricedSeconds'] += $unpriced;
                 if ($own || $canCosts) {
+                    // An entry without a cost counts as no cost (unpaid time, no rate yet); SUM() skips it.
                     $byProject[$effP]['cost'] += $cost;
-                    $byProject[$effP]['unpricedSeconds'] += $unpricedSec;
                 } else {
-                    $byProject[$effP]['canSeeAll'] = false;
+                    $byProject[$effP]['complete'] = false;
                 }
             }
             $effC = ($r['eff_client_id'] ?? '') !== '' ? (string)$r['eff_client_id'] : null;
             if ($effC !== null) {
                 if (!isset($byClient[$effC])) {
-                    $byClient[$effC] = ['seconds' => 0, 'workedMs' => 0, 'cost' => 0.0, 'unpricedSeconds' => 0, 'canSeeAll' => true];
+                    $byClient[$effC] = ['seconds' => 0, 'workedMs' => 0, 'cost' => 0.0, 'unpricedSeconds' => 0, 'complete' => true];
                 }
                 $byClient[$effC]['seconds'] += $sec;
                 $byClient[$effC]['workedMs'] += $worked;
+                $byClient[$effC]['unpricedSeconds'] += $unpriced;
                 if ($own || $canCosts) {
                     $byClient[$effC]['cost'] += $cost;
-                    $byClient[$effC]['unpricedSeconds'] += $unpricedSec;
                 } else {
-                    $byClient[$effC]['canSeeAll'] = false;
+                    $byClient[$effC]['complete'] = false;
                 }
             }
         }
         foreach ($byProject as &$proj) {
-            $proj['cost'] = $proj['canSeeAll'] ? round($proj['cost'], 2) : null;
-            $proj['unpricedSeconds'] = $proj['canSeeAll'] ? $proj['unpricedSeconds'] : 0;
-            unset($proj['canSeeAll']);
+            $proj['cost'] = $proj['complete'] ? round($proj['cost'], 2) : null;
+            unset($proj['complete']);
         }
         unset($proj);
         foreach ($byClient as &$cli) {
-            $cli['cost'] = $cli['canSeeAll'] ? round($cli['cost'], 2) : null;
-            $cli['unpricedSeconds'] = $cli['canSeeAll'] ? $cli['unpricedSeconds'] : 0;
-            unset($cli['canSeeAll']);
+            $cli['cost'] = $cli['complete'] ? round($cli['cost'], 2) : null;
+            unset($cli['complete']);
         }
         unset($cli);
         // Billable work (C13, D3.2): duration x frozen billable rate (falling back to project billable_rate if the

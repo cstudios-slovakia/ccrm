@@ -89,8 +89,8 @@ $effProjExpr = "COALESCE(NULLIF(t.`related_project_id`, ''), NULLIF(te.`project_
 $exclJoin = $hasExcl
     ? "LEFT JOIN `project_labour_exclusions` ple ON ple.`project_id` = {$effProjExpr} AND ple.`user_id` = te.`user_id` AND ple.`month` = LEFT(te.`entry_date`, 7)"
     : '';
-$costSelect = $hasExcl ? "COALESCE(SUM(CASE WHEN ple.`project_id` IS NULL THEN te.`cost` ELSE 0 END), 0) AS `cost`" : "COALESCE(SUM(te.`cost`), 0) AS `cost`";
-$missingSelect = $hasExcl ? "SUM(CASE WHEN ple.`project_id` IS NULL AND te.`cost` IS NULL THEN 1 ELSE 0 END) AS `missing_cost`" : "SUM(te.`cost` IS NULL) AS `missing_cost`";
+$costSelect = $hasExcl ? "SUM(CASE WHEN ple.`project_id` IS NULL THEN te.`cost` ELSE 0 END) AS `cost`" : "SUM(te.`cost`) AS `cost`";
+$unpricedSelect = $hasExcl ? "COALESCE(SUM(CASE WHEN ple.`project_id` IS NULL AND te.`cost` IS NULL THEN te.`duration_sec` ELSE 0 END), 0) AS `unpriced_sec`" : "COALESCE(SUM(CASE WHEN te.`cost` IS NULL THEN te.`duration_sec` ELSE 0 END), 0) AS `unpriced_sec`";
 
 $sql = "
     SELECT
@@ -100,7 +100,7 @@ $sql = "
         COALESCE(SUM(te.`duration_sec`), 0) AS `sec`,
         COALESCE(SUM(CASE WHEN te.`billable` = 1 THEN te.`duration_sec` ELSE 0 END), 0) AS `billable_sec`,
         {$costSelect},
-        {$missingSelect}
+        {$unpricedSelect}
     FROM `time_entries` te
     LEFT JOIN `tasks` t ON t.`id` = te.`task_id` AND /* recurring-template: lookup task project */ 1 = 1
     LEFT JOIN `tickets` tk ON tk.`id` = te.`ticket_id`
@@ -121,19 +121,21 @@ try {
         $sec = (int)$r['sec'];
         $billSec = (int)$r['billable_sec'];
         $own = $uid !== '' && $uid === $callerId;
-        $missing = (int)($r['missing_cost'] ?? 0);
+        $unpriced = (int)($r['unpriced_sec'] ?? 0);
 
         if (!isset($byProject[$pid])) {
             $byProject[$pid] = [
                 'seconds' => 0,
                 'billableSeconds' => 0,
                 'cost' => 0.0,
+                'unpricedSeconds' => 0,
                 'complete' => true,
                 'people' => [],
             ];
         }
         $byProject[$pid]['seconds'] += $sec;
         $byProject[$pid]['billableSeconds'] += $billSec;
+        $byProject[$pid]['unpricedSeconds'] += $unpriced;
 
         $personKey = $uid . '|' . ($empId ?? '');
         if (!isset($byProject[$pid]['people'][$personKey])) {
@@ -144,19 +146,16 @@ try {
                 'billableSeconds' => 0,
                 'cost' => 0.0,
                 'canSeeCost' => $own || $canCosts,
-                'hasMissingCost' => false,
             ];
         }
         $pRef = &$byProject[$pid]['people'][$personKey];
         $pRef['seconds'] += $sec;
         $pRef['billableSeconds'] += $billSec;
         if ($own || $canCosts) {
+            // An entry without a cost counts as no cost (SUM() skips it); `unpricedSeconds` reports it.
             $c = (float)($r['cost'] ?? 0);
             $pRef['cost'] += $c;
             $byProject[$pid]['cost'] += $c;
-            if ($missing > 0) {
-                $pRef['hasMissingCost'] = true;
-            }
         } else {
             $byProject[$pid]['complete'] = false;
         }
@@ -175,7 +174,7 @@ try {
                 'billableSeconds' => $p['billableSeconds'],
             ];
             if ($p['canSeeCost']) {
-                $row['cost'] = $p['hasMissingCost'] ? null : round((float)$p['cost'], 2);
+                $row['cost'] = round((float)$p['cost'], 2);
             }
             $peopleOut[] = $row;
         }

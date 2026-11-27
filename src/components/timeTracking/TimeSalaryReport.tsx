@@ -15,6 +15,7 @@ import {
 import { entrySeconds, formatDuration, todayIso } from "../../utils/timeTracking.ts";
 import { shiftMonthAnchor } from "../../utils/timeTeam.ts";
 import { MoneyText } from "./MoneyText";
+import { useMaskedMoney, useMoneyPresent } from "./MoneyShield";
 import { RangeNav } from "./RangeNav";
 import { WorkedTotal } from "./WorkedLine";
 import type { TimeDeps } from "./shared";
@@ -31,7 +32,8 @@ export function TimeSalaryReport({ deps }: { deps: TimeDeps }) {
   const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-GB";
   const [y, m] = month.split("-").map(Number);
   const monthLabel = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(locale, { month: "long", year: "numeric", timeZone: "UTC" });
-  const moneyStr = (n: number) => formatMoney(n, deps.currency, deps.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const moneyStr = useMaskedMoney((n: number) => formatMoney(n, deps.currency, deps.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  useMoneyPresent(true);
 
   const report = useMemo(() => {
     const employeeByUser = new Map(deps.employees.filter((e) => e.userId).map((e) => [e.userId as string, e]));

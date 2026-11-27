@@ -700,7 +700,7 @@ function taskRowHtml(tk: any, items: any[], ccrmUrl: string, today: string): str
         ${runningItem
           ? `<span class="item-elapsed" data-start="${esc(runningItem.startAt)}">0:00:00</span>
              <button class="mini-btn stop stop-task-btn" type="button" data-id="${esc(runningItem.id)}" title="${esc(t("Stop", "Zastaviť", "Leállítás"))}">${SQUARE}</button>`
-          : `<button class="mini-btn play start-task-btn" type="button" data-task-id="${esc(tk.id)}" data-project-id="${esc(tk.projectId || "")}" data-title="${esc(tk.title || "")}" title="${esc(t("Start timer", "Spustiť časovač", "Időzítő indítása"))}">${PLAY}</button>`}
+          : `<button class="mini-btn play start-task-btn" type="button" data-task-id="${esc(tk.id)}" data-project-id="${esc(tk.projectId || "")}" data-project-name="${esc(tk.projectName || "")}" data-title="${esc(tk.title || "")}" title="${esc(t("Start timer", "Spustiť časovač", "Időzítő indítása"))}">${PLAY}</button>`}
         <a class="icon-link" href="${esc(ccrmUrl)}/#tasks" target="_blank" rel="noopener" title="${esc(t("Open in CRM", "Otvoriť v CRM", "Megnyitás a CRM-ben"))}">↗</a>
       </div>
     </div>`;
@@ -865,7 +865,9 @@ function wireTasksView(items: any[], ccrmUrl: string, opts: Parameters<typeof re
         if (!taskId) return;
         void start({
           taskId,
-          ...(projectId ? { projectId } : {}),
+          taskTitle: description,
+          projectId,
+          projectName: btn.dataset.projectName || "",
           description,
         });
       });

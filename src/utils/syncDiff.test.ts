@@ -112,3 +112,17 @@ test("a project save carries the GitHub pairing only when this tab changed it", 
   assert.deepEqual(omitUnchangedGithubPairing([fresh], baseline), [fresh]);
   assert.deepEqual(omitUnchangedGithubPairing([renamed], undefined), [renamed]);
 });
+
+test("an order whose project link is set, changed or cleared goes out in the next push", () => {
+  const server = [
+    { id: "o1", orderNumber: "OBJ-1", projectId: null },
+    { id: "o2", orderNumber: "OBJ-2", projectId: "p1" },
+    { id: "o3", orderNumber: "OBJ-3", projectId: "p1" },
+  ];
+  const baseline = baselineOf(server);
+  // The same moves the order editor and the project's Orders tab make: a spread copy with the new link.
+  const local = [{ ...server[0], projectId: "p2" }, { ...server[1], projectId: null }, server[2]];
+  const { changed, deletedIds } = diffRecords(local, baseline);
+  assert.deepEqual(changed.map((o) => [o.id, o.projectId]), [["o1", "p2"], ["o2", null]]);
+  assert.deepEqual(deletedIds, []);
+});

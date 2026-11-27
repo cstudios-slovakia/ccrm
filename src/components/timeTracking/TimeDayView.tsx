@@ -29,6 +29,7 @@ import { RoleBadge } from "./RoleBadge";
 import { UnsortedInbox } from "./UnsortedInbox";
 import { scopeParam } from "./TimeListView";
 import { useEntriesFocus, useViewingAsOptional, viewingFromScope } from "./ViewingAsContext";
+import { useMoneyPresent } from "./MoneyShield";
 import { initials, useMoney, useTimeLookups, type TimeDeps } from "./shared";
 import { recoverTaskRequired } from "./timeCreateBridge";
 
@@ -67,6 +68,7 @@ export function TimeDayView({ deps, scope, recentProjectIds, secondsByProject, o
   const wholeTeam = viewScope === "all";
   /* END-PHASE4-VIEWING-AS */
   const { entries } = useTimeEntries({ from: stripStart, to: stripEnd, userId: scopeParam(viewScope) });
+  useMoneyPresent(entries.some((e) => typeof e.cost === "number"));
   const byDay = useMemo(() => groupByDay(entries), [entries]);
   const calendar = tt.calendarFor(tt.workCountry);
   useEffect(() => {

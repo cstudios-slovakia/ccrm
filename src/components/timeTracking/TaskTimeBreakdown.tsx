@@ -60,6 +60,11 @@ export function TaskTimeBreakdown({ taskId, users }: { taskId?: string; users: U
           <span className="text-ui font-semibold tabular-nums text-gray-900" data-testid="task-time-cost">{money(figure.total)}</span>
         </div>
       )}
+      {figure.total !== null && figure.unpricedSeconds > 0 && (
+        <p className="type-meta text-amber-700" data-testid="task-time-unpriced">
+          {formatDuration(figure.unpricedSeconds)} {t("without a cost rate, not included", "bez nákladovej sadzby, nezahrnuté", "költségdíj nélkül, nincs beleszámítva")}
+        </p>
+      )}
       {figure.total === null && figure.own !== null && others && (
         <div className="flex items-baseline justify-between gap-3">
           <span className="type-overline text-gray-500">{t("Your cost", "Váš náklad", "Az Ön költsége")}</span>

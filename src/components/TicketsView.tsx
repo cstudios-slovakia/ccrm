@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { SectionIcon } from "./icons/SectionIcon";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { collectTicketAttachments, mergeTicketAttachments } from "../utils/ticketAttachments";
@@ -110,6 +110,9 @@ import {
   isRichTextEmpty,
 } from "./ui/TicketRichHtmlEditor";
 import { useListFilter } from "../hooks/useListFilter";
+import { FacetedMultiSelect } from "./ui/FacetedMultiSelect";
+import { PinnedFilterChips } from "./ui/PinnedFilterChips";
+import { useTicketFacets, type TicketKpiBucket } from "./tickets/useTicketFacets";
 import { useTicketTimeEntries } from "../hooks/useTimeEntries";
 import { useTimeTracking } from "../hooks/useTimeTracking";
 import { createEntry, deleteEntry, listProjectUsage, updateEntry, type UsageEntry } from "../utils/timeTrackingApi";
@@ -346,13 +349,7 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
   // Filters & view state
   const [boardEl, setBoardEl] = useState<HTMLElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [kpiBucket, setKpiBucket] = useListFilter<
-    "all_open" | "unassigned" | "waiting_client" | "sla_risk" | "resolved" | "all"
-  >("tickets.bucket", "all_open");
-  const [statusFilter, setStatusFilter] = useListFilter<string>("tickets.status", "all");
-  const [priorityFilter, setPriorityFilter] = useListFilter<string>("tickets.priority", "all");
-  const [projectFilter, setProjectFilter] = useListFilter<string>("tickets.project", "all");
-  const [assigneeFilter, setAssigneeFilter] = useListFilter<string>("tickets.assignee", "all");
+  const [kpiBucket, setKpiBucket] = useListFilter<TicketKpiBucket>("tickets.bucket", "all_open");
   const [archiveScope, setArchiveScope] = useListFilter<"active" | "archived">("tickets.archive", "active");
   const [viewMode, setViewMode] = useListFilter<"table" | "board">("tickets.viewMode", "table");
 
@@ -575,83 +572,44 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
     };
   }, [tickets, ticketStatuses]);
 
-  // Filtered Tickets
-  const filteredTickets = useMemo(() => {
-    return tickets
-      .filter((tk) => {
-        const isArch = Boolean(tk.archived || tk.isArchived);
-        if (archiveScope === "active" && isArch) return false;
-        if (archiveScope === "archived" && !isArch) return false;
-
-        // KPI Bucket filter (when statusFilter === 'all')
-        // In Kanban board mode, show all status columns (including Resolved/Closed) when on the default "all_open" bucket
-        if (statusFilter === "all" && archiveScope === "active") {
-          const closed = isClosedTicketStatus(tk.status, ticketStatuses);
-          if (kpiBucket === "all_open" && closed && viewMode !== "board")
-            return false;
-          if (
-            kpiBucket === "unassigned" &&
-            (closed || (tk.assignedUsers && tk.assignedUsers.length > 0))
-          )
-            return false;
-          if (kpiBucket === "waiting_client" && tk.status !== "waiting_client")
-            return false;
-          if (kpiBucket === "sla_risk") {
-            const sla = evaluateTicketSla(tk, ticketStatuses);
-            if (sla.state !== "warning" && sla.state !== "breached") return false;
-          }
-          if (kpiBucket === "resolved" && !closed && viewMode !== "board")
-            return false;
-        }
-
-        if (statusFilter !== "all" && tk.status !== statusFilter) return false;
-        if (priorityFilter !== "all" && tk.priority !== priorityFilter)
-          return false;
-        if (projectFilter !== "all" && tk.projectId !== projectFilter)
-          return false;
-        if (assigneeFilter !== "all") {
-          if (assigneeFilter === "__unassigned__") {
-            if (tk.assignedUsers && tk.assignedUsers.length > 0) return false;
-          } else if (!(tk.assignedUsers || []).includes(assigneeFilter)) {
-            return false;
-          }
-        }
-
-        if (searchQuery.trim()) {
-          const q = searchQuery.toLowerCase();
-          const projName = (getProjectName(tk.projectId) || "").toLowerCase();
-          const clientName = (getClientForTicket(tk)?.name || "").toLowerCase();
-          const matches =
-            tk.ticketNumber.toLowerCase().includes(q) ||
-            tk.subject.toLowerCase().includes(q) ||
-            (tk.reporterEmail || "").toLowerCase().includes(q) ||
-            (tk.reporterName || "").toLowerCase().includes(q) ||
-            projName.includes(q) ||
-            clientName.includes(q);
-          if (!matches) return false;
-        }
-
-        return true;
-      })
-      .sort((a, b) =>
-        (b.updatedAt || b.createdAt || "").localeCompare(
-          a.updatedAt || a.createdAt || "",
-        ),
+  // Filtered Tickets: faceted status / priority / project / assignee (see useTicketFacets).
+  const matchesSearch = useCallback(
+    (tk: Ticket) => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        tk.ticketNumber.toLowerCase().includes(q) ||
+        tk.subject.toLowerCase().includes(q) ||
+        (tk.reporterEmail || "").toLowerCase().includes(q) ||
+        (tk.reporterName || "").toLowerCase().includes(q) ||
+        (getProjectName(tk.projectId) || "").toLowerCase().includes(q) ||
+        (getClientForTicket(tk)?.name || "").toLowerCase().includes(q)
       );
-  }, [
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [searchQuery, projects, leads],
+  );
+  const facets = useTicketFacets({
     tickets,
+    ticketStatuses,
+    statusOptions: orderedStatuses.map((s) => {
+      const sKey = s.key || s.id;
+      return {
+        value: sKey,
+        label: ticketStatusLabel(sKey, userLanguage, ticketStatuses),
+        color: s.color || ticketStatusColor(sKey, ticketStatuses),
+      };
+    }),
+    priorityOptions: [...priorityOptions].reverse().map((o) => ({ value: o.value, label: o.label })),
+    projectOptions: projects.map((p) => ({ value: p.id, label: getProjectName(p.id) || p.id })),
+    agentOptions: users.map((u) => ({ value: u.name, label: u.name })),
+    unassignedLabel: t("Unassigned", "Nepriradené", "Nincs felelős"),
     archiveScope,
-    statusFilter,
     kpiBucket,
     viewMode,
-    priorityFilter,
-    projectFilter,
-    assigneeFilter,
-    searchQuery,
-    ticketStatuses,
-    projects,
-    leads,
-  ]);
+    matchesSearch,
+  });
+  const filteredTickets = facets.filteredTickets;
 
   // Kanban drag-and-drop state
   const [draggedTicketId, setDraggedTicketId] = useState<string | null>(null);
@@ -2357,8 +2315,8 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => {
-                          setProjectFilter(pairedProject.id);
-                          setStatusFilter("all");
+                          facets.setSelection("project", [pairedProject.id]);
+                          facets.setSelection("status", []);
                           setKpiBucket("all");
                           handleSelectTicket(null);
                         }}
@@ -4305,13 +4263,13 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
             },
           ] as const
         ).map((card) => {
-          const active = statusFilter === "all" && kpiBucket === card.key;
+          const active = facets.selection.status.length === 0 && kpiBucket === card.key;
           return (
             <button
               key={card.key}
               type="button"
               onClick={() => {
-                setStatusFilter("all");
+                facets.setSelection("status", []);
                 setKpiBucket(card.key);
               }}
               className={`p-3.5 rounded-lg border text-left transition-all cursor-pointer ${
@@ -4331,6 +4289,13 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
         })}
       </div>
 
+      <PinnedFilterChips
+        options={facets.options.status}
+        pinned={facets.pinnedStatuses}
+        selected={facets.selection.status}
+        onChange={(next) => facets.setSelection("status", next)}
+      />
+
       {/* Filter Bar */}
       <div className="flex flex-col ws-sm:flex-row ws-sm:flex-wrap items-stretch ws-sm:items-center gap-2.5 p-3 rounded-lg border border-gray-200 bg-white shadow-xs">
         <div className="relative flex-1 min-w-50">
@@ -4348,102 +4313,25 @@ export const TicketsView: React.FC<TicketsViewProps> = ({
           />
         </div>
 
-        <div className="w-40">
-          <CustomSelect
-            value={statusFilter}
-            onChange={(v) => setStatusFilter(v)}
-            options={[
-              {
-                value: "all",
-                label: t("All Statuses", "Všetky stavy", "Minden állapot"),
-              },
-              ...orderedStatuses.map((s) => {
-                const sKey = s.key || s.id;
-                const dotColor = s.color || ticketStatusColor(sKey, ticketStatuses);
-                return {
-                  value: sKey,
-                  label: ticketStatusLabel(
-                    sKey,
-                    userLanguage,
-                    ticketStatuses,
-                  ),
-                  icon: (
-                    <span
-                      className="h-2 w-2 rounded-full shrink-0 inline-block"
-                      style={{ backgroundColor: dotColor }}
-                    />
-                  ),
-                };
-              }),
-            ]}
+        {(
+          [
+            ["status", t("All Statuses", "Všetky stavy", "Minden állapot")],
+            ["priority", t("All Priorities", "Všetky priority", "Minden prioritás")],
+            ["project", t("All Projects", "Všetky projekty", "Minden projekt")],
+            ["assignee", t("All Agents", "Všetci agenti", "Minden felelős")],
+          ] as const
+        ).map(([id, allLabel]) => (
+          <FacetedMultiSelect
+            key={id}
+            className="h-9 !py-1"
+            options={facets.options[id]}
+            selected={facets.selection[id]}
+            onChange={(next) => facets.setSelection(id, next)}
+            allLabel={allLabel}
+            pinned={id === "status" ? facets.pinnedStatuses : undefined}
+            onTogglePin={id === "status" ? facets.togglePinnedStatus : undefined}
           />
-        </div>
-
-        <div className="w-36">
-          <CustomSelect
-            value={priorityFilter}
-            onChange={(v) => setPriorityFilter(v)}
-            options={[
-              {
-                value: "all",
-                label: t(
-                  "All Priorities",
-                  "Všetky priority",
-                  "Minden prioritás",
-                ),
-              },
-              ...[...priorityOptions].reverse(),
-            ]}
-          />
-        </div>
-
-        <div className="w-44">
-          <CustomSelect
-            value={projectFilter}
-            onChange={(v) => setProjectFilter(v)}
-            options={[
-              {
-                value: "all",
-                label: t("All Projects", "Všetky projekty", "Minden projekt"),
-              },
-              ...projects.map((p) => ({
-                value: p.id,
-                label: getProjectName(p.id) || p.id,
-              })),
-            ]}
-          />
-        </div>
-
-        <div className="w-40">
-          <CustomSelect
-            value={assigneeFilter}
-            onChange={(v) => setAssigneeFilter(v)}
-            options={[
-              {
-                value: "all",
-                label: t("All Agents", "Všetci agenti", "Minden felelős"),
-              },
-              {
-                value: "__unassigned__",
-                label: t("Unassigned", "Nepriradené", "Nincs felelős"),
-              },
-              ...users.map((u) => ({ value: u.name, label: u.name })),
-            ]}
-          />
-        </div>
-
-        {projectFilter !== "all" && (
-          <button
-            type="button"
-            onClick={() => setProjectFilter("all")}
-            style={entityAccentStyle("projects")}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-entity-subtle border border-entity-border text-entity-text text-micro font-semibold cursor-pointer"
-          >
-            <Briefcase className="w-3.5 h-3.5" />
-            <span>{getProjectName(projectFilter) || projectFilter}</span>
-            <X className="w-3 h-3" />
-          </button>
-        )}
+        ))}
 
         <div className="flex items-center gap-1.5 ml-auto">
           <button

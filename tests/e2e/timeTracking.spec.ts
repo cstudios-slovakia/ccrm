@@ -187,6 +187,8 @@ test.describe('Time tracking', () => {
       await page.getByRole('button', { name: /Skôr|Earlier|Korábbi/ }).click();
     }
     await page.locator('[data-testid="day-chip"][data-date="2026-05-12"]').click();
+    // Amounts start hidden; one click on the toolbar eye reveals every amount of the open section.
+    await page.getByTestId('money-reveal').click();
     await row(page, 'Návrh cenovej ponuky').getByTestId('time-entry-title').click();
     await expect(page.getByTestId('entry-rate-basis')).toContainText('20');
     await expect(page.getByTestId('entry-cost-panel')).toContainText('27,04');
@@ -251,6 +253,12 @@ test.describe('Time tracking', () => {
     await expect(page.getByTestId('entry-drawer')).toBeVisible();
     await expect(page.getByTestId('entry-title')).toHaveValue('Riadok bez úlohy');
     await expect(page.getByTestId('entry-duration')).toHaveValue('1:30');
+    // The page believed the rule was off (it was switched on behind its back): the refusal makes it re-read the rule, so the Task
+    // field reads as required, like "Projekt *", and says a ticket also counts.
+    const taskLabel = page.getByTestId('entry-drawer').locator('span.type-label', { hasText: /^(Úloha|Task|Feladat)/ });
+    await expect(taskLabel).toContainText('*');
+    await expect(taskLabel).not.toContainText(/voliteľné|optional|nem kötelező/);
+    await expect(page.getByTestId('entry-task-or-ticket')).toBeVisible();
     // Saving it still without a task is refused again and keeps the drawer open.
     await page.getByTestId('entry-save').click();
     await expect(page.getByTestId('entry-drawer')).toBeVisible();
@@ -262,6 +270,74 @@ test.describe('Time tracking', () => {
     await page.getByTestId('entry-save').click();
     await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
   });
+
+  test('the rule switched on in Settings: the new-entry drawer marks the Task field required, and off it says optional', async ({ page }) => {
+    await startSession(page);
+    await gotoView(page, '#settings/time-tracking');
+    await expect(page.getByTestId('tt-settings')).toBeVisible();
+    await page.getByTestId('tt-requireTask').click();
+    await page.getByTestId('tt-save').click();
+    await expect(page.getByTestId('tt-save')).toBeDisabled();
+    await gotoView(page, '#time-tracking/day');
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('ccrm-time-new-entry', { detail: {} })));
+    const taskLabel = page.getByTestId('entry-drawer').locator('span.type-label', { hasText: /^(Úloha|Task|Feladat)/ });
+    await expect(taskLabel).toContainText('*');
+    await expect(taskLabel).not.toContainText(/voliteľné|optional|nem kötelező/);
+    await page.getByTestId('entry-drawer').getByRole('button', { name: /Zrušiť|Cancel|Mégse/ }).first().click();
+    await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+    // The server does not enforce the rule on an old entry that never had a task, so its field stays optional...
+    await row(page, 'Návrh cenovej ponuky').getByTestId('time-entry-title').first().click();
+    await expect(taskLabel).toContainText(/voliteľné|optional|nem kötelező/);
+    await expect(taskLabel).not.toContainText('*');
+    await page.getByTestId('entry-drawer').getByRole('button', { name: /Zrušiť|Cancel|Mégse/ }).first().click();
+    await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+    // ...while an entry linked to a task would lose it on save, so its field is required.
+    await page.getByTestId('time-entry-title').filter({ hasText: 'Objednať krytinu' }).first().click();
+    await expect(taskLabel).toContainText('*');
+    await page.getByTestId('entry-drawer').getByRole('button', { name: /Zrušiť|Cancel|Mégse/ }).first().click();
+    await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+
+    await gotoView(page, '#settings/time-tracking');
+    await page.getByTestId('tt-requireTask').click();
+    await page.getByTestId('tt-save').click();
+    await expect(page.getByTestId('tt-save')).toBeDisabled();
+    await gotoView(page, '#time-tracking/day');
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('ccrm-time-new-entry', { detail: {} })));
+    await expect(taskLabel).toContainText(/voliteľné|optional|nem kötelező/);
+    await expect(taskLabel).not.toContainText('*');
+  });
+
+  // The date, start, end and duration fields share one row; at every View size and drawer width they stay inside the drawer.
+  for (const size of ['compact', 'normal', 'big'] as const) {
+    for (const [width, height] of [[1440, 900], [640, 900], [375, 800]] as const) {
+      test(`entry drawer: date, start, end and duration fit inside it (${size}, ${width} px, new and existing entry)`, async ({ page }) => {
+        await page.setViewportSize({ width, height });
+        await page.addInitScript((sz) => localStorage.setItem('ccrm_view_size', sz), size);
+        await startSession(page);
+        await gotoView(page, '#time-tracking/day');
+        const fits = async () => {
+          await expect(page.getByTestId('entry-duration')).toBeVisible();
+          const m = await page.evaluate(() => {
+            const scroller = document.querySelector('[data-testid="entry-when-row"]')!.closest('.overflow-y-auto') as HTMLElement;
+            const edge = scroller.getBoundingClientRect().right;
+            const worst = ['entry-date', 'entry-start', 'entry-end', 'entry-duration']
+              .map((id) => (document.querySelector(`[data-testid="${id}"]`) as HTMLElement).getBoundingClientRect().right)
+              .reduce((a, b) => Math.max(a, b), 0);
+            return { overflow: scroller.scrollWidth - scroller.clientWidth, past: worst - edge, doc: document.documentElement.scrollWidth - window.innerWidth };
+          });
+          expect(m.overflow, 'drawer scrolls sideways').toBeLessThanOrEqual(0);
+          expect(m.past, 'a field runs past the drawer edge').toBeLessThanOrEqual(0);
+          expect(m.doc, 'page scrolls sideways').toBeLessThanOrEqual(0);
+        };
+        await page.evaluate(() => window.dispatchEvent(new CustomEvent('ccrm-time-new-entry', { detail: {} })));
+        await fits();
+        await page.getByTestId('entry-drawer').getByRole('button', { name: /Zrušiť|Cancel|Mégse/ }).first().click();
+        await expect(page.getByTestId('entry-drawer')).toHaveCount(0);
+        await row(page, 'Návrh cenovej ponuky').getByTestId('time-entry-title').first().click();
+        await fits();
+      });
+    }
+  }
 
   test('team view: a freelancer is costed at a flat rate, a user with no employee record shows "no rate"', async ({ page }) => {
     await startSession(page, { extraUsers: [FREELANCER] });

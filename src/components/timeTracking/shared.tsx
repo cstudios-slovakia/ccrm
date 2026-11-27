@@ -9,6 +9,7 @@ import { resolveTaskProject } from "../../utils/timeLinks.ts";
 import { type TimeEntry } from "../../utils/timeTracking.ts";
 import { deleteEntry, restoreEntry, timeErrorMessage, TimeApiError } from "../../utils/timeTrackingApi.ts";
 import { formatMoney } from "../../utils/currency";
+import { useMaskedMoney } from "./MoneyShield";
 import type { NewProjectInput } from "./ProjectPicker";
 
 /** What the module needs from the rest of the app. Built once in App and passed down. */
@@ -78,7 +79,7 @@ export const describeTimeLock = (
 
 /** Whole-currency amount with two decimals. */
 export const useMoney = (deps: Pick<TimeDeps, "currency" | "language">) =>
-  useCallback((n: number) => formatMoney(n, deps.currency, deps.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), [deps.currency, deps.language]);
+  useMaskedMoney(useCallback((n: number) => formatMoney(n, deps.currency, deps.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), [deps.currency, deps.language]));
 
 /** Resolve names and the §7.1 project for a task, with the finished-status rule applied. */
 export const useTimeLookups = (deps: TimeDeps) => {

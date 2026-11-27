@@ -91,6 +91,9 @@ import { deleteTaskState } from "./settings/deleteTaskState";
 import { TaskStateTimerActionSelect, TaskStateTimerActionsHint } from "./settings/TaskStateTimerActionSelect";
 import { clearErrorLogsWithUndo } from "../utils/errorLogs";
 import { useUserPref } from "../utils/userPrefs";
+import { buildRows, indentItem, indentParent, canOutdent, moveItem, outdentItem, parentOptions } from "../utils/subStatusTree";
+import { LEAD_STATE_GROUPS, leadTreeItems, leadTreeMaps } from "../utils/leadStateTree";
+import { SubStatusIndentButtons, SubStatusMarker, SubStatusParentSelect, subStatusNoParentToast } from "./settings/SubStatusControls";
 import { PROJECT_AUTO_CREATE_ENABLED } from "../utils/featureFlags";
 import { LayoutTemplate, BadgeCheck } from "lucide-react";
 import {
@@ -1055,47 +1058,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     e.target.value = "";
   };
 
+  const applyLeadTree = (next: ReturnType<typeof leadTreeItems> | null) => {
+    if (!next) return;
+    const m = leadTreeMaps(next);
+    setLeadStates(m.states);
+    setLeadStageGroups(m.groups);
+    setLeadStateParents(m.parents);
+  };
+  const leadTree = () => leadTreeItems(leadStates, leadStageGroups, leadStateParents);
+
   const handleToggleIndent = (stateName: string, indent: boolean) => {
     if (getPermission("pipeline_stages") !== "edit") return;
     const key = stateName.toLowerCase();
-    
-    if (indent) {
-      // Find the closest preceding major state in the same group!
-      const currentGroup = leadStageGroups[key] || "in_progress";
-      const idx = leadStates.indexOf(stateName);
-      
-      let parentCandidate = "";
-      for (let i = idx - 1; i >= 0; i--) {
-        const sName = leadStates[i];
-        const sKey = sName.toLowerCase();
-        if ((leadStageGroups[sKey] || "in_progress") === currentGroup && !leadStateParents[sKey]) {
-          parentCandidate = sKey;
-          break;
-        }
-      }
-      
-      if (parentCandidate) {
-        setLeadStateParents(prev => ({
-          ...prev,
-          [key]: parentCandidate
-        }));
-      } else {
-        (window as any).showToast(
-          userLanguage === "sk" 
-            ? "Na vytvorenie podstavu musí predchádzať hlavný stav v rovnakej skupine!" 
-            : userLanguage === "hu" 
-              ? "Az al-állapot létrehozásához egy fő állapotnak kell megelőznie ugyanabban a csoportban!" 
-              : "A major state must precede in the same group to establish a substate!"
-        );
-      }
-    } else {
-      // Outdent: remove parent association
-      setLeadStateParents(prev => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
-    }
+    if (!indent) return applyLeadTree(outdentItem(leadTree(), LEAD_STATE_GROUPS, key));
+    const next = indentItem(leadTree(), LEAD_STATE_GROUPS, key);
+    if (next) applyLeadTree(next);
+    else (window as any).showToast(subStatusNoParentToast(userLanguage));
   };
 
   // Drag and drop states for statuses
@@ -1224,56 +1202,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleMoveStatusToIndex = (statusName: string, targetIdx: number) => {
     if (getPermission("pipeline_stages") !== "edit") return;
-    
-    // Construct the items array exactly as rendered in the current order
-    const items: ({ type: "divider"; id: "new" | "in_progress" | "closed" } | { type: "status"; name: string })[] = [];
-    
-    items.push({ type: "divider", id: "new" });
-    leadStates.forEach(state => {
-      if ((leadStageGroups[state.toLowerCase()] || "in_progress") === "new") {
-        items.push({ type: "status", name: state });
-      }
-    });
-
-    items.push({ type: "divider", id: "in_progress" });
-    leadStates.forEach(state => {
-      if ((leadStageGroups[state.toLowerCase()] || "in_progress") === "in_progress") {
-        items.push({ type: "status", name: state });
-      }
-    });
-
-    items.push({ type: "divider", id: "closed" });
-    leadStates.forEach(state => {
-      if ((leadStageGroups[state.toLowerCase()] || "in_progress") === "closed") {
-        items.push({ type: "status", name: state });
-      }
-    });
-
-    // Remove the dragged status from the items copy
-    const draggedItemIdx = items.findIndex(item => item.type === "status" && item.name.toLowerCase() === statusName.toLowerCase());
-    if (draggedItemIdx === -1) return;
-    const [draggedItem] = items.splice(draggedItemIdx, 1);
-
-    // Insert the dragged status at the target index
-    items.splice(targetIdx, 0, draggedItem);
-
-    // Walk the list to reconstruct the new order and groupings
-    const newLeadStates: string[] = [];
-    const newStageGroups: Record<string, "new" | "in_progress" | "closed"> = {};
-    let currentGroup: "new" | "in_progress" | "closed" = "new";
-
-    items.forEach(item => {
-      if (item.type === "divider") {
-        currentGroup = item.id;
-      } else {
-        newLeadStates.push(item.name);
-        newStageGroups[item.name.toLowerCase()] = currentGroup;
-      }
-    });
-
-    // Save states
-    setLeadStates(newLeadStates);
-    setLeadStageGroups(newStageGroups);
+    // Shared sub-status drop rule (utils/subStatusTree.ts), same as the project statuses.
+    applyLeadTree(moveItem(leadTree(), LEAD_STATE_GROUPS, statusName.toLowerCase(), targetIdx));
   };
   
   // User creation states
@@ -2528,11 +2458,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setLeadStates([...leadStates, val]);
     setLeadStateColors(prev => ({
       ...prev,
-      [val]: "#6366f1" // default modern indigo
+      [val]: (newStateParent && prev[newStateParent]) || "#6366f1" // a sub-state starts in its main state's colour; else indigo
     }));
     setLeadStageGroups(prev => ({
       ...prev,
-      [val]: "in_progress" // default dynamic grouping
+      [val]: (newStateParent && leadStageGroups[newStateParent]) || "in_progress" // a sub-state joins its main state group
     }));
     if (newStateParent) {
       setLeadStateParents(prev => ({
@@ -5105,44 +5035,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </thead>
                           <tbody>
                             {(() => {
-                              // Dynamically build list items hierarchically
-                              const items: ({ type: "divider"; id: "new" | "in_progress" | "closed"; name: string; color: string; desc: string } | { type: "status"; name: string })[] = [];
-                              
-                              const groupsList: ("new" | "in_progress" | "closed")[] = ["new", "in_progress", "closed"];
-                              groupsList.forEach(group => {
-                                const labelKey = group === "new" ? "settings.states.group.new" : group === "in_progress" ? "settings.states.group.in_progress" : "settings.states.group.closed";
-                                const descKey = group === "new" ? "settings.states.group.new.desc" : group === "in_progress" ? "settings.states.group.in_progress.desc" : "settings.states.group.closed.desc";
-                                const divColor = group === "new" ? "#3b82f6" : group === "in_progress" ? "#6366f1" : "#10b981";
-                                
-                                items.push({ 
-                                  type: "divider", 
-                                  id: group, 
-                                  name: getTranslation(userLanguage, labelKey), 
-                                  color: divColor, 
-                                  desc: getTranslation(userLanguage, descKey) 
-                                });
-        
-                                const groupStates = leadStates.filter(state => (leadStageGroups[state.toLowerCase()] || "in_progress") === group);
-                                // Separate major states from substates
-                                const majorStates = groupStates.filter(state => !leadStateParents[state.toLowerCase()]);
-                                
-                                majorStates.forEach(major => {
-                                  items.push({ type: "status", name: major });
-                                  // Add children directly below it
-                                  groupStates.forEach(sub => {
-                                    if (leadStateParents[sub.toLowerCase()] === major.toLowerCase()) {
-                                      items.push({ type: "status", name: sub });
-                                    }
-                                  });
-                                });
-                                
-                                // Fallback: in case there are orphaned substates without a major parent in this group
-                                groupStates.forEach(sub => {
-                                  if (leadStateParents[sub.toLowerCase()] && !majorStates.map(m => m.toLowerCase()).includes(leadStateParents[sub.toLowerCase()])) {
-                                    items.push({ type: "status", name: sub });
-                                  }
-                                });
-                              });
+                              // Dividers and states in tree order (shared with the project statuses)
+                              const groupMeta = {
+                                new: { label: "settings.states.group.new", desc: "settings.states.group.new.desc", color: "#3b82f6" },
+                                in_progress: { label: "settings.states.group.in_progress", desc: "settings.states.group.in_progress.desc", color: "#6366f1" },
+                                closed: { label: "settings.states.group.closed", desc: "settings.states.group.closed.desc", color: "#10b981" },
+                              } as const;
+                              const items = buildRows(leadTree(), LEAD_STATE_GROUPS).map((r) =>
+                                r.type === "divider"
+                                  ? { type: "divider" as const, id: r.group as keyof typeof groupMeta, name: getTranslation(userLanguage, groupMeta[r.group as keyof typeof groupMeta].label), color: groupMeta[r.group as keyof typeof groupMeta].color, desc: getTranslation(userLanguage, groupMeta[r.group as keyof typeof groupMeta].desc) }
+                                  : { type: "status" as const, name: r.item.name },
+                              );
         
                               return items.map((item, idx) => {
                                 if (item.type === "divider") {
@@ -5229,26 +5132,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                         {getPermission("pipeline_stages") === "edit" ? (
                                           <>
                                             <GripVertical className="h-4 w-4 text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing inline-block" />
-                                            <div className="flex items-center gap-1 select-none shrink-0">
-                                              <button
-                                                type="button"
-                                                onClick={() => handleToggleIndent(state, true)}
-                                                disabled={isSub}
-                                                className="text-micro text-gray-400 hover:text-entity-text disabled:opacity-20 cursor-pointer p-0.5 font-bold hover:scale-110 active:scale-90 transition-all"
-                                                title={t("Indent as Substate", "Odsadiť ako podstav", "Behúzás alállapotként")}
-                                              >
-                                                ➔
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => handleToggleIndent(state, false)}
-                                                disabled={!isSub}
-                                                className="text-micro text-gray-400 hover:text-entity-text disabled:opacity-20 cursor-pointer p-0.5 font-bold hover:scale-110 active:scale-90 transition-all"
-                                                title={t("Outdent to Major State", "Vysunúť na hlavný stav", "Kihúzás fő állapottá")}
-                                              >
-                                                ⬅
-                                              </button>
-                                            </div>
+                                            <SubStatusIndentButtons
+                                              lang={userLanguage}
+                                              canIndent={indentParent(leadTree(), LEAD_STATE_GROUPS, state.toLowerCase()) !== null}
+                                              canOutdent={canOutdent(leadTree(), state.toLowerCase())}
+                                              onIndent={() => handleToggleIndent(state, true)}
+                                              onOutdent={() => handleToggleIndent(state, false)}
+                                            />
                                           </>
                                         ) : (
                                           <Lock className="h-3 w-3 text-gray-300 inline-block" />
@@ -5277,7 +5167,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     <td className={`py-3 px-4 align-middle transition-all duration-200 ${isSub ? "pl-10" : ""}`}>
                                       <div className="flex items-center gap-1.5">
                                         {isSub && (
-                                          <span className="text-gray-400 font-extrabold text-body ml-2 mr-1 select-none">↳</span>
+                                          <SubStatusMarker />
                                         )}
                                         <InlineRenameName
                                           value={state}
@@ -5435,16 +5325,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             placeholder={getTranslation(userLanguage, "settings.states.placeholder")}
                             className="flex-1 min-w-37.5 px-4 py-2.5 rounded-md bg-white border border-gray-200 text-ui text-gray-800 font-bold focus:outline-none focus:border-entity-border"
                           />
-                          <div className="max-w-37.5">
-                            <CustomSelect
-                              value={newStateParent}
-                              onChange={(v) => setNewStateParent(v)}
-                              options={[
-                                { value: "", label: userLanguage === "sk" ? "-- Hlavný stav --" : userLanguage === "hu" ? "-- Fő állapot --" : "-- Major State --" },
-                                ...leadStates.filter(s => !leadStateParents[s.toLowerCase()]).map(s => ({ value: s.toLowerCase(), label: s.toUpperCase() })),
-                              ]}
-                            />
-                          </div>
+                          <SubStatusParentSelect
+                            lang={userLanguage}
+                            value={newStateParent}
+                            onChange={setNewStateParent}
+                            options={parentOptions(leadTree()).map(i => ({ value: i.key, label: i.name.toUpperCase(), color: leadStateColors[i.key] }))}
+                          />
                           <button
                             type="submit"
                             disabled={!newState.trim()}

@@ -58,3 +58,13 @@ export function ratingFilterOptions(
     { value: "none", label: t("Not rated", "Bez hodnotenia", "Nincs értékelve") },
   ];
 }
+
+/**
+ * Every rating-dropdown option a row belongs to ("4", "min3" and "min4" for a 4-star
+ * row), for the faceted list filters. Same meaning as `matchesRatingFilter`.
+ */
+export function ratingFacetValues(rating: number | null | undefined): string[] {
+  const value = ratingValue(rating);
+  if (value === 0) return ["none"];
+  return [String(value), ...(value >= 4 ? ["min4"] : []), ...(value >= 3 ? ["min3"] : [])];
+}

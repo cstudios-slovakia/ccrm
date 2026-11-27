@@ -23,6 +23,7 @@ export const LeadListViewMenu: React.FC<LeadListViewMenuProps> = props => (
   <ListViewMenu<LeadSortKey, ResolvedLeadColumn>
     {...props}
     accent="blue"
+    widthsListKey="leads"
     lockedColumnKey={LOCKED_LEAD_COLUMN}
     lockedTitle={props.t("The client name always leads the row.", "Názov klienta je vždy prvý v riadku.", "Az ügyfél neve mindig a sor élén áll.")}
     moveColumn={moveLeadColumn}

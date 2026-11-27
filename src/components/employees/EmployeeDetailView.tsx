@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { displayEmployeeName } from "../../utils/nameOrder";
 import {
   Mail,
   Phone,
@@ -820,7 +821,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             {employee.name ? employee.name.split(" ").map(n => n[0]).slice(0, 2).join("").toUpperCase() : "EM"}
           </div>
         }
-        title={employee.name}
+        title={displayEmployeeName(employee.name)}
         badges={
           <>
             <span
@@ -887,7 +888,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     <h3 className="text-ui font-bold text-gray-900 leading-tight truncate">
                       {t("Edit Employee", "Upraviť zamestnanca", "Alkalmazott szerkesztése")}
                     </h3>
-                    <p className="text-micro text-gray-400 truncate">{employee.name}</p>
+                    <p className="text-micro text-gray-400 truncate">{displayEmployeeName(employee.name)}</p>
                   </div>
                 </div>
 
@@ -1360,7 +1361,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h2 className="text-title font-bold text-gray-900 truncate">
-                        {employee.name}
+                        {displayEmployeeName(employee.name)}
                       </h2>
                       <span
                         className={`px-2 py-0.5 text-micro font-bold rounded-full ${

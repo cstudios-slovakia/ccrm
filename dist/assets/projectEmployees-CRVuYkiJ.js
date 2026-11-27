@@ -1,0 +1,1 @@
+var e=e=>(e||``).trim().toLowerCase()===`project manager`,t=e=>Array.from(new Set(e.map(e=>(e.name||``).trim()).filter(Boolean))),n=n=>t((n??[]).filter(t=>e(t.role))),r=n=>t((n??[]).filter(t=>!e(t.role)));export{r as n,n as r,e as t};

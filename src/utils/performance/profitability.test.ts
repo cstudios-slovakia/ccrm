@@ -5,7 +5,7 @@ import { DEFAULT_INVOICE_STATUS_DEFS } from "../offerStatuses.ts";
 import type { TimeEntry } from "../timeTracking.ts";
 import {
   computeProfitability,
-  isLabourCostHidden,
+  labourCostHiddenProjectIds,
   projectExpenseCosts,
   projectHasRecentExpense,
   projectInvoicedAmount,
@@ -46,6 +46,7 @@ test("rows: active first, then inactive with recent costs; each block by invoice
     costs: 6000,
     profit: -1000,
     costRatioPct: 120,
+    costsHidden: false,
   });
 });
 
@@ -57,7 +58,7 @@ test("totals row", () => {
     costsByProject: new Map([["a", 500]]),
     recentCostProjectIds: [],
   });
-  assert.deepEqual(data.total, { projects: 2, invoiced: 4000, costs: 500, profit: 3500, costRatioPct: 12.5 });
+  assert.deepEqual(data.total, { projects: 2, invoiced: 4000, costs: 500, profit: 3500, costRatioPct: 12.5, costsHidden: false });
 });
 
 test("zero denominators: nothing invoiced means no ratio, an empty list means an empty total", () => {
@@ -73,7 +74,7 @@ test("zero denominators: nothing invoiced means no ratio, an empty list means an
   assert.equal(data.total.costRatioPct, null);
 
   const empty = computeProfitability({ ...base, projects: [], invoicedByProject: {}, costsByProject: {}, recentCostProjectIds: [] });
-  assert.deepEqual(empty, { rows: [], total: { projects: 0, invoiced: 0, costs: 0, profit: 0, costRatioPct: null } });
+  assert.deepEqual(empty, { rows: [], total: { projects: 0, invoiced: 0, costs: 0, profit: 0, costRatioPct: null, costsHidden: false } });
 });
 
 /* ------------------------------------------------------------------ builders */
@@ -169,16 +170,31 @@ test("projectInvoicedAmount: the ledger when it has records, else the lead's liv
   assert.equal(projectInvoicedAmount({ ...common, project: project("p1"), financialRecords: [] }), 0);
 });
 
-test("labour cost is hidden when a listed project has tracked time with a withheld cost", () => {
+test("labour cost is hidden for the listed projects that have tracked time with a withheld cost", () => {
   const totals = {
     a: { seconds: 3600, cost: 50 },
     b: { seconds: 7200, cost: null },
     c: { seconds: 0, cost: null },
   };
-  assert.equal(isLabourCostHidden(["a", "b"], totals), true);
-  assert.equal(isLabourCostHidden(["a"], totals), false);
+  assert.deepEqual([...labourCostHiddenProjectIds(["a", "b"], totals)], ["b"]);
+  assert.equal(labourCostHiddenProjectIds(["a"], totals).size, 0);
   // No tracked time, so nothing to withhold.
-  assert.equal(isLabourCostHidden(["c", "unknown"], totals), false);
+  assert.equal(labourCostHiddenProjectIds(["c", "unknown"], totals).size, 0);
   // Time tracking is off.
-  assert.equal(isLabourCostHidden(["b"], null), false);
+  assert.equal(labourCostHiddenProjectIds(["b"], null).size, 0);
+});
+
+test("a project with hidden labour keeps its invoiced amount; its row and the totals flag the hidden costs", () => {
+  const data = computeProfitability({
+    ...base,
+    projects: [project("a"), project("b")],
+    invoicedByProject: { a: 1000, b: 2000 },
+    costsByProject: { a: 100, b: 200 },
+    recentCostProjectIds: [],
+    hiddenCostProjectIds: new Set(["b"]),
+  });
+  assert.deepEqual(data.rows.map((r) => [r.projectId, r.invoiced, r.costsHidden]), [["b", 2000, true], ["a", 1000, false]]);
+  assert.equal(data.total.invoiced, 3000);
+  assert.equal(data.total.costsHidden, true);
+  assert.equal(computeProfitability({ ...base, projects: [project("a")], invoicedByProject: { a: 1 }, costsByProject: {}, recentCostProjectIds: [] }).total.costsHidden, false);
 });

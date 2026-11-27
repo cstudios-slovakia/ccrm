@@ -313,11 +313,11 @@ default; managers can pick *Whole team* or one person.
 | 11 | Team work and expenses | Tab **Team**: person × week/month matrix of hours and cost |
 | 12 | Chrome extension | Module ⋯ menu → "Chrome extension" (also linked from Personal settings), plus the popup |
 | — | Header | `Header.tsx`: the global running-timer pill |
-| — | Sidebar | `Sidebar.tsx`: module icon `Timer`, teal |
+| — | Sidebar | `Sidebar.tsx`: module icon `Timer`, rust (section palette) |
 
 ### Visual mapping
 
-- Module colour **teal-600** (`#0d9488`). Active sidebar item: `bg-teal-600 text-white shadow-lg shadow-teal-600/30 border border-teal-500/20`.
+- Module colour **rust** (`#9a3412`), from the section palette (`src/utils/sectionPalette.ts`, one hue per section); the owner kept it over the canvas's teal (parity pass 2, Q30). The sidebar item takes it through `applySectionVisual`; the `#0d9488` in `Sidebar.tsx` is only the fallback the palette overrides.
 - Primary actions and Start: `bg-primary` (`#4f6edb`). Running state and Stop: `rose-600`. Billable: `emerald-*`. "Assign project" and Unsorted: `amber-*`. Cost figures in the Team matrix: `violet-700`.
 - Cards: `Surface` (rounded-3xl, white, `border-slate-200/80`); insets `Surface tone="inset"`.
 - Durations and money always use `tabular-nums`.

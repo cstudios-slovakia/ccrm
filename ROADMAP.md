@@ -217,6 +217,25 @@ Effort: S (small, <1h) · M (medium) · L (large / architectural)
 
 ---
 
+## Feature ideas — to consider (not committed)
+
+Possible future work, noted so it is not forgotten. Nothing here is planned or
+scheduled yet; each needs a decision before it is built.
+
+- [ ] 🔵 **Make project managers and project employees mean something** (noted
+  2026-11-24). Today both are information only: shown, filtered, sorted and used
+  in the dashboards' "manager" column. They grant no access and send no
+  notifications. Ideas:
+  - a role scope "own projects": people see / edit only, or first, the projects
+    where they are PM or employee;
+  - the time-tracking project picker and task assignee lists suggest the
+    project's team first;
+  - the team is notified about status changes and new tasks on its projects;
+  - only the PM changes the project's settings and team, while employees log
+    time and work on tasks. (M–L)
+
+---
+
 ## 5. Completed (remediation log)
 
 Branch `fable-audit`. Newest first.

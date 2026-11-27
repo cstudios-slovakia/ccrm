@@ -104,6 +104,7 @@ import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { useListFilter } from "../hooks/useListFilter";
 import { PRODUCT_NAME } from "../utils/brand";
 
+import { ResizableTh } from "./ui/ResizableTh";
 interface WarehouseViewProps {
   systemLanguage: Language;
   systemCurrency: string | null;
@@ -5116,14 +5117,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               <table className="w-full text-left text-ui text-gray-600 min-w-210">
                 <thead className="table-page-sticky-head border-b border-gray-200/80 type-overline text-gray-500">
                   <tr>
-                    <th className="sticky z-10 bg-gray-50 py-3 px-4">{t("Product & SKU", "Tovar & SKU", "Termék & Cikkszám")}</th>
-                    <th className="sticky z-10 bg-gray-50 py-3 px-4">{t("Category & Location", "Kategória & Pozícia", "Kategória & Hely")}</th>
-                    <th className="sticky z-10 bg-gray-50 py-3 px-4 text-right">{t("Physical Stock", "Fyzický stav", "Fizikai készlet")}</th>
-                    <th className="sticky z-10 bg-gray-50 py-3 px-4 text-right">{t("Reserved", "Rezervované", "Foglalt")}</th>
-                    <th className="sticky z-10 bg-gray-50 py-3 px-4 text-right">{t("Available", "K dispozícii", "Elérhető")}</th>
-                    <th className="sticky z-10 bg-gray-50 py-3 px-4 text-right">{t("WAP Purchase", "Nákup (WAP)", "Beszerzés (WAP)")}</th>
-                    <th className="sticky z-10 bg-gray-50 py-3 px-4 text-right">{t("Default Sell", "Predajná cena", "Eladási ár")}</th>
-                    <th className="sticky z-10 bg-gray-50 py-3 px-4 text-center">{t("Margin %", "Marža %", "Árrés %")}</th>
+                    <ResizableTh listKey="warehouse-items" colKey="product-sku" className="sticky z-10 bg-gray-50 py-3 px-4">{t("Product & SKU", "Tovar & SKU", "Termék & Cikkszám")}</ResizableTh>
+                    <ResizableTh listKey="warehouse-items" colKey="category-location" className="sticky z-10 bg-gray-50 py-3 px-4">{t("Category & Location", "Kategória & Pozícia", "Kategória & Hely")}</ResizableTh>
+                    <ResizableTh listKey="warehouse-items" colKey="physical-stock" className="sticky z-10 bg-gray-50 py-3 px-4 text-right">{t("Physical Stock", "Fyzický stav", "Fizikai készlet")}</ResizableTh>
+                    <ResizableTh listKey="warehouse-items" colKey="reserved" className="sticky z-10 bg-gray-50 py-3 px-4 text-right">{t("Reserved", "Rezervované", "Foglalt")}</ResizableTh>
+                    <ResizableTh listKey="warehouse-items" colKey="available" className="sticky z-10 bg-gray-50 py-3 px-4 text-right">{t("Available", "K dispozícii", "Elérhető")}</ResizableTh>
+                    <ResizableTh listKey="warehouse-items" colKey="wap-purchase" className="sticky z-10 bg-gray-50 py-3 px-4 text-right">{t("WAP Purchase", "Nákup (WAP)", "Beszerzés (WAP)")}</ResizableTh>
+                    <ResizableTh listKey="warehouse-items" colKey="default-sell" className="sticky z-10 bg-gray-50 py-3 px-4 text-right">{t("Default Sell", "Predajná cena", "Eladási ár")}</ResizableTh>
+                    <ResizableTh listKey="warehouse-items" colKey="margin" className="sticky z-10 bg-gray-50 py-3 px-4 text-center">{t("Margin %", "Marža %", "Árrés %")}</ResizableTh>
                     <th className="sticky right-0 z-30 bg-gray-50 py-3 px-4 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                   </tr>
                 </thead>

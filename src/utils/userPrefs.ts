@@ -214,6 +214,9 @@ export interface UserPrefs {
   projectDefaultTab: string | null;
   /** Lead detail view: the tab it opens on ("timeline" | "tasks"). `null` = timeline. */
   leadDefaultTab: string | null;
+  /** Notes tab (leads, projects …): note blocks as a grid or a list, and oldest or newest first. */
+  notesView: "grid" | "list";
+  notesSort: "oldest" | "newest";
   /** Pinned/favorited entities across projects, clients, leads, and custom entries. */
   favorites: FavoriteItem[];
   /**
@@ -258,6 +261,10 @@ export interface UserPrefs {
    */
   settingsRecents: string[];
   listFilters: Record<string, unknown>;
+  /** Dragged column widths in px, keyed list -> column (see hooks/useColumnWidths.ts). A column without an entry keeps its auto width. */
+  columnWidths: Record<string, Record<string, number>>;
+  /** Statuses (and other filter options) pinned as one-click chips above a list, keyed "<screen>.<filter>" like `listFilters`. */
+  pinnedFilterOptions: Record<string, string[]>;
   /** Pinned calendar lenses shown next to Tasks in the #tasks calendar switcher. */
   taskCalendarFavorites: string[];
   /** Last selected calendar lens in #tasks ("tasks", "work", "payments", ..., or "custom:<id>"). */
@@ -315,6 +322,8 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   defaultPage: null,
   projectDefaultTab: null,
   leadDefaultTab: null,
+  notesView: "grid",
+  notesSort: "oldest",
   favorites: [],
   recentClientIds: [],
   moduleWizardPending: false,
@@ -322,6 +331,8 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   settingsLayout: "tiles",
   settingsRecents: [],
   listFilters: {},
+  columnWidths: {},
+  pinnedFilterOptions: {},
   taskCalendarFavorites: ["work", "payments"],
   taskCalendarActiveLens: "tasks",
   taskCalendarExpanded: false,

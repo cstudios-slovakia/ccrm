@@ -117,6 +117,7 @@ import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { detachFromRule, dueChargeMovements, storedChargeKeys } from "../utils/recurringRuleDeletion";
 import { useListFilter } from "../hooks/useListFilter";
 
+import { ResizableTh } from "./ui/ResizableTh";
 // Trend graph forecast horizons. `futureWeeks` is the number of whole weeks the
 // projection runs past the current one — 13 weeks is the usual "3 months".
 // `0` is "off": no future periods at all, only history and the current one.
@@ -7520,12 +7521,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         />
                       </th>
                     )}
-                    <th className="py-3 px-4 w-32.5">{t("Date", "Dátum", "Dátum")}</th>
-                    <th className="py-3 px-4 min-w-55">{t("Title & Reference", "Názov & Referencia", "Megnevezés & Hivatkozás")}</th>
-                    <th className="py-3 px-4 min-w-55">{t("Category Hierarchy", "Hierarchia kategórie", "Kategória hierarchia")}</th>
-                    <th className="py-3 px-4 min-w-42.5">{t("Link / Scope", "Prepojenie / Rozsah", "Kapcsolat / Hatókör")}</th>
-                    <th className="py-3 px-4 w-40">{t("Payment Status", "Stav úhrady", "Fizetési állapot")}</th>
-                    <th className="py-3 px-4 w-37.5 text-right">{t("Value", "Suma / Hodnota", "Összeg / Érték")}</th>
+                    <ResizableTh listKey="fin-movements" colKey="date" className="py-3 px-4 w-32.5">{t("Date", "Dátum", "Dátum")}</ResizableTh>
+                    <ResizableTh listKey="fin-movements" colKey="title-reference" className="py-3 px-4 min-w-55">{t("Title & Reference", "Názov & Referencia", "Megnevezés & Hivatkozás")}</ResizableTh>
+                    <ResizableTh listKey="fin-movements" colKey="category-hierarchy" className="py-3 px-4 min-w-55">{t("Category Hierarchy", "Hierarchia kategórie", "Kategória hierarchia")}</ResizableTh>
+                    <ResizableTh listKey="fin-movements" colKey="link-scope" className="py-3 px-4 min-w-42.5">{t("Link / Scope", "Prepojenie / Rozsah", "Kapcsolat / Hatókör")}</ResizableTh>
+                    <ResizableTh listKey="fin-movements" colKey="payment-status" className="py-3 px-4 w-40">{t("Payment Status", "Stav úhrady", "Fizetési állapot")}</ResizableTh>
+                    <ResizableTh listKey="fin-movements" colKey="value" className="py-3 px-4 w-37.5 text-right">{t("Value", "Suma / Hodnota", "Összeg / Érték")}</ResizableTh>
                     <th className="py-3 px-4 w-22.5 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                   </tr>
                 </thead>
@@ -8554,11 +8555,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               <table className="w-full text-left text-ui border-collapse">
                 <thead className="table-page-sticky-head text-gray-500 type-overline border-b border-gray-200">
                   <tr>
-                    <th className="sticky z-10 bg-gray-50 py-3 px-4 min-w-55">{t("Recurring Movement & Description", "Pravidelný pohyb & Popis", "Rendszeres tétel & Leírás")}</th>
-                    <th className="sticky z-10 bg-gray-50 py-3 px-4 min-w-55">{t("Cadence & Next Due", "Frekvencia & Ďalšia platba", "Gyakoriság & Esedékesség")}</th>
-                    <th className="sticky z-10 bg-gray-50 py-3 px-4 min-w-50">{t("Category Path", "Hierarchia kategórie", "Kategória útvonal")}</th>
-                    <th className="sticky z-10 bg-gray-50 py-3 px-4 min-w-37.5">{t("Linked Entity", "Prepojenie", "Kapcsolódó elem")}</th>
-                    <th className="sticky z-10 bg-gray-50 py-3 px-4 w-40 text-right">{t("Cost / Month", "Suma / Mesiac", "Összeg / Hó")}</th>
+                    <ResizableTh listKey="fin-recurring" colKey="recurring-movement-description" className="sticky z-10 bg-gray-50 py-3 px-4 min-w-55">{t("Recurring Movement & Description", "Pravidelný pohyb & Popis", "Rendszeres tétel & Leírás")}</ResizableTh>
+                    <ResizableTh listKey="fin-recurring" colKey="cadence-next-due" className="sticky z-10 bg-gray-50 py-3 px-4 min-w-55">{t("Cadence & Next Due", "Frekvencia & Ďalšia platba", "Gyakoriság & Esedékesség")}</ResizableTh>
+                    <ResizableTh listKey="fin-recurring" colKey="category-path" className="sticky z-10 bg-gray-50 py-3 px-4 min-w-50">{t("Category Path", "Hierarchia kategórie", "Kategória útvonal")}</ResizableTh>
+                    <ResizableTh listKey="fin-recurring" colKey="linked-entity" className="sticky z-10 bg-gray-50 py-3 px-4 min-w-37.5">{t("Linked Entity", "Prepojenie", "Kapcsolódó elem")}</ResizableTh>
+                    <ResizableTh listKey="fin-recurring" colKey="cost-month" className="sticky z-10 bg-gray-50 py-3 px-4 w-40 text-right">{t("Cost / Month", "Suma / Mesiac", "Összeg / Hó")}</ResizableTh>
                     <th className="sticky z-10 bg-gray-50 py-3 px-4 w-27.5 text-center">{t("Status", "Stav", "Állapot")}</th>
                     <th className="sticky right-0 z-30 bg-gray-50 py-3 px-4 w-27.5 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                   </tr>

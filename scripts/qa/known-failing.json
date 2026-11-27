@@ -27,16 +27,6 @@
       "reason": "Dragging a project row does not change the order on CI. Same family as the employees drag."
     },
     {
-      "file": "projectStatuses.spec.ts",
-      "title": "statuses are added, renamed and removed in settings, and the projects list follows",
-      "reason": "The projects list still shows the five built-in statuses after the settings edits. Known to fail on 95b760dc too."
-    },
-    {
-      "file": "projectStatuses.spec.ts",
-      "title": "one click settles the rest of the value as a paid income row",
-      "reason": "The 'mark rest as paid' button is not found on project-1 finances. Known to fail on 95b760dc too."
-    },
-    {
       "file": "draftExits.spec.ts",
       "title": "a background pull does not wipe a product card being edited",
       "reason": "The product name input is not found after unlocking the card (input[value=...]:enabled)."

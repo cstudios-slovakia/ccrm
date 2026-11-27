@@ -25,14 +25,15 @@ test.describe('Tasks → client filter', () => {
     await expect(filter).toBeVisible();
     await expect(page.getByText(TASK_TITLE).first()).toBeVisible();
 
-    // Another client's filter hides Silvia's task…
+    // Another client's filter hides Silvia's task (options are role="option", their name ends with the count)…
     await filter.getByRole('button').first().click();
-    await page.getByText('Novák Stavby s.r.o.', { exact: true }).click();
+    await page.getByRole('option', { name: /^Novák Stavby s\.r\.o\./ }).click();
     await expect(page.getByText(TASK_TITLE)).toHaveCount(0);
 
-    // …and Silvia's own brings it back.
-    await filter.getByRole('button').first().click();
-    await page.getByText('Silvia', { exact: true }).click();
+    // …clearing the selection brings it back, and so does ticking Silvia's own.
+    await page.getByRole('button', { name: 'Zrušiť výber' }).click();
+    await expect(page.getByText(TASK_TITLE).first()).toBeVisible();
+    await page.getByRole('option', { name: /^Silvia/ }).click();
     await expect(page.getByText(TASK_TITLE).first()).toBeVisible();
   });
 

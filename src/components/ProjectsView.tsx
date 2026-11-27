@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { displayEmployeeName } from "../utils/nameOrder";
+import { projectEmployeeUserNames, projectManagerUserNames } from "../utils/projectEmployees";
 import { SectionIcon } from "./icons/SectionIcon";
 import { EntityBadge } from "./tremor/EntityBadge";
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
@@ -6,7 +8,7 @@ import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { createPortal } from "react-dom";
 import * as Icons from "lucide-react";
 import { Plus, Trash2, Settings, Search, Users, User, Edit3, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, ListTree, FolderTree, Move, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal, Archive, ArchiveRestore, CheckSquare, Square, MinusSquare, X, PanelRightOpen } from "lucide-react";
-import type { Employee, EmployeeSalary, Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory, Ticket, TicketStatusDefinition, TicketSettings, SupportContract, CompanyBillingSettings } from "../types";
+import type { Employee, EmployeeSalary, Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory, Ticket, TicketStatusDefinition, TicketSettings, SupportContract, CompanyBillingSettings } from "../types";
 import type { EmployeeRights } from "../utils/employeeRights";
 import { useProjectsBreakdownState } from "./projects/useProjectsBreakdownState";
 import { ProjectDetailsView } from "./ProjectDetailsView";
@@ -17,7 +19,7 @@ import { ProjectListViewMenu } from "./ProjectListViewMenu";
 import { CustomSelect } from "./ui/CustomSelect";
 import { StarRating } from "./ui/StarRating";
 import { FavoriteHeartButton } from "./ui/FavoriteHeartButton";
-import { getTranslation, type Language } from "../utils/translations";
+import { type Language } from "../utils/translations";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
 import { readableOn } from "../utils/accentColor";
@@ -50,7 +52,11 @@ import { useDragAutoScroll } from "../hooks/useDragAutoScroll";
 import { useGridFlip } from "../hooks/useGridFlip";
 import { applyManualOrder, isAttributeSortKey, newestFirst, nextProjectSort, normalizeProjectSort, sortProjects, storedManualOrder } from "../utils/projectSort";
 import type { ProjectSort, ProjectSortKey } from "../utils/projectSort";
-import { matchesRatingFilter, ratingFilterOptions, ratingValue } from "../utils/rating";
+import { ratingValue } from "../utils/rating";
+import { useProjectFacets } from "./projects/useProjectFacets";
+import { ProjectFacetSelect } from "./projects/ProjectFacetSelect";
+import type { ProjectOrderLinks } from "./projects/ProjectOrdersTab";
+import { PinnedFilterChips } from "./ui/PinnedFilterChips";
 import {
   BUILTIN_COLUMN_LABELS,
   asAttributeList,
@@ -71,6 +77,7 @@ import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { archiveRecordsWithUndo, deleteRecordsWithUndo } from "../utils/recordActions";
 import { useListFilter } from "../hooks/useListFilter";
 
+import { ResizableTh } from "./ui/ResizableTh";
 /*
   The summary strip's chips. Each tone is written out in full because Tailwind
   only ships the class names it can literally see — a class assembled at runtime
@@ -109,15 +116,6 @@ const STAT_CHIP_TONES = {
   },
 } as const;
 
-/*
-  The status dropdown in the filter bar. The chips above it do the same job and
-  carry the counts as well, so it is hidden rather than deleted — everything it
-  needs is still wired up, and one constant brings it back.
-*/
-const SHOW_STATUS_DROPDOWN = false;
-
-/** The "no manager assigned" row in the manager filter. Not a real name. */
-const UNASSIGNED_MANAGER = "__unassigned__";
 
 interface ProjectsViewProps {
   initialSelectedProjectId?: string;
@@ -181,6 +179,8 @@ interface ProjectsViewProps {
   employees?: Employee[];
   employeeSalaries?: EmployeeSalary[];
   employeeRights?: EmployeeRights;
+  /** The workspace orders, when the user may see them: the project card then has an Orders tab. */
+  orderLinks?: ProjectOrderLinks;
   clickupConnected?: boolean;
 }
 
@@ -224,6 +224,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   employees,
   employeeSalaries,
   employeeRights,
+  orderLinks,
   clickupConnected = false,
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
@@ -237,44 +238,6 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const [activeSubTab, setActiveSubTab] = useState<"list" | "settings">("list");
   const [searchQuery, setSearchQuery] = useState("");
 
-  /* Multi-status selection preference, same as the leads list (leadsVisibleStates).
-     null = never chosen by user, defaults to only open / active statuses (leaves out closed). */
-  const [visibleStatuses, setVisibleStatuses] = useUserPref("projectsVisibleStatuses");
-  const allProjectStatuses = useMemo(() => projectStatusOrder(projectStatuses), [projectStatuses]);
-  const defaultOpenStatuses = useMemo(() => openProjectStatuses(projectStatuses), [projectStatuses]);
-
-  const resolvedVisibleStatuses = useMemo<ProjectStatus[]>(() => {
-    if (visibleStatuses === null) {
-      // By default, only non-closed statuses are visible (same as leads)
-      return defaultOpenStatuses;
-    }
-    return visibleStatuses.filter((s): s is ProjectStatus => allProjectStatuses.includes(s as ProjectStatus));
-  }, [visibleStatuses, defaultOpenStatuses, allProjectStatuses]);
-
-  const toggleStatusVisibility = useCallback((status: ProjectStatus, solo = false) => {
-    if (solo) {
-      setVisibleStatuses([status]);
-      return;
-    }
-    const currentList =
-      visibleStatuses === null
-        ? defaultOpenStatuses
-        : visibleStatuses;
-
-    let next: string[];
-    if (currentList.includes(status)) {
-      next = currentList.filter(s => s !== status);
-    } else {
-      next = [...currentList, status];
-    }
-    setVisibleStatuses(next);
-  }, [visibleStatuses, defaultOpenStatuses, setVisibleStatuses]);
-
-  const [selectedTypeFilter, setSelectedTypeFilter] = useListFilter("projects.type", "all");
-  const [selectedDivisionFilter, setSelectedDivisionFilter] = useListFilter("projects.division", "all");
-  const [selectedManagerFilter, setSelectedManagerFilter] = useListFilter("projects.manager", "all");
-  /* Star priority, same options as the leads list — see utils/rating.ts. */
-  const [selectedRatingFilter, setSelectedRatingFilter] = useListFilter("projects.rating", "all");
   const [selectedArchiveFilter, setSelectedArchiveFilter] = useListFilter<"active" | "archived" | "all">("projects.archive", "active");
   /* Its own dimension rather than another status: a project can be late in any
      status, so "overdue" cannot live in the status dropdown. */
@@ -361,76 +324,34 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     return ids;
   }, [projects, projectTypes, projectStatuses, today, selectedArchiveFilter]);
 
-  // Counts behind the summary strip. One chip per real project status, so the
-  // strip and the (now hidden) status dropdown can never offer different lists.
-  const visibleProjectsForStats = useMemo(() => {
-    return projects.filter(p => {
-      const isArchived = Boolean(p.archived);
-      return selectedArchiveFilter === "all"
-        ? true
-        : selectedArchiveFilter === "archived"
-        ? isArchived
-        : !isArchived;
-    });
-  }, [projects, selectedArchiveFilter]);
-
-  const totalProjects = visibleProjectsForStats.length;
-  const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    visibleProjectsForStats.forEach(p => { counts[p.status] = (counts[p.status] || 0) + 1; });
-    return counts;
-  }, [visibleProjectsForStats]);
   const overdueCount = overdueIds.size;
 
   /* Who the list can be narrowed to. Projects store manager NAMES, not ids (see
      ProjectDetailsView), so the options are names too: everyone who is already
      managing something, plus every user who could be given a project. */
-  const managerOptions = useMemo(() => {
-    const names = new Set<string>();
-    projects.forEach(p => (p.managers || []).forEach(m => { if (m) names.add(m); }));
-    users.forEach(u => { if (u.name) names.add(u.name); });
-    return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [projects, users]);
+  const managerOptions = useMemo(() => projectManagerUserNames(users).sort((a, b) => a.localeCompare(b)), [users]);
 
-  const filteredProjects = useMemo(() => {
-    return projects.filter(p => {
-      const pType = projectTypes.find(t => t.id === p.projectTypeId);
-      const lead = leads.find(l => l.id === p.leadId);
-      const leadName = lead?.name || "";
-      const needle = searchQuery.toLowerCase();
-      const matchesSearch =
-        // The project's own name is searched alongside the lead's — a project
-        // named "Roof replacement" is no longer findable only by its client.
-        (p.name || "").toLowerCase().includes(needle) ||
-        leadName.toLowerCase().includes(needle) ||
-        p.id.toLowerCase().includes(needle) ||
-        (pType?.name || "").toLowerCase().includes(needle);
-      
-      const statusKey = (p.status || defaultProjectStatus(projectStatuses)) as ProjectStatus;
-      const matchesStatus = resolvedVisibleStatuses.includes(statusKey);
-      const matchesType = selectedTypeFilter === "all" || p.projectTypeId === selectedTypeFilter;
-      const matchesDivision =
-        selectedDivisionFilter === "all" ||
-        (selectedDivisionFilter === "none" && !p.division) ||
-        (p.division || "").toLowerCase() === selectedDivisionFilter.toLowerCase();
-      const matchesManager =
-        selectedManagerFilter === "all" ||
-        (selectedManagerFilter === UNASSIGNED_MANAGER
-          ? !(p.managers && p.managers.length > 0)
-          : (p.managers || []).includes(selectedManagerFilter));
-      const matchesOverdue = !overdueOnly || overdueIds.has(p.id);
-      const matchesRating = matchesRatingFilter(p.rating, selectedRatingFilter);
-      const isArchived = Boolean(p.archived);
-      const matchesArchive =
-        selectedArchiveFilter === "all"
-          ? true
-          : selectedArchiveFilter === "archived"
-          ? isArchived
-          : !isArchived;
+  // The Employees filter: every user who is not a Project Manager (see utils/projectEmployees.ts).
+  const employeeOptions = useMemo(() => projectEmployeeUserNames(users).sort((a, b) => a.localeCompare(b)), [users]);
 
-      return matchesSearch && matchesStatus && matchesType && matchesDivision && matchesManager && matchesOverdue && matchesRating && matchesArchive;
-    });
-  }, [projects, projectTypes, leads, searchQuery, resolvedVisibleStatuses, selectedTypeFilter, selectedDivisionFilter, selectedManagerFilter, selectedRatingFilter, selectedArchiveFilter, overdueOnly, overdueIds]);
+  /* Status, type, division, manager and rating: multi-select and faceted (each one's
+     counts follow the others). See projects/useProjectFacets.ts. */
+  const facets = useProjectFacets({
+    projects,
+    projectTypes,
+    leads,
+    projectStatuses,
+    divisions,
+    managerNames: managerOptions,
+    employeeNames: employeeOptions,
+    searchQuery,
+    overdueOnly,
+    overdueIds,
+    archive: selectedArchiveFilter,
+    t,
+    userLanguage,
+  });
+  const filteredProjects = facets.filteredProjects;
 
   const breakdownState = useProjectsBreakdownState({
     enabled: viewMode === "breakdown",
@@ -749,53 +670,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
     return activeStatuses.map((status) => {
       // Collect projects in this status matching other non-status filters
-      const projectsInStatus = projects.filter((p) => {
-        if (p.status !== status) return false;
-        const pType = projectTypes.find((t) => t.id === p.projectTypeId);
-        const lead = leads.find((l) => l.id === p.leadId);
-        const leadName = lead?.name || "";
-        const needle = searchQuery.toLowerCase();
-        const matchesSearch =
-          !needle ||
-          (p.name || "").toLowerCase().includes(needle) ||
-          leadName.toLowerCase().includes(needle) ||
-          p.id.toLowerCase().includes(needle) ||
-          (pType?.name || "").toLowerCase().includes(needle);
-
-        const matchesType =
-          selectedTypeFilter === "all" || p.projectTypeId === selectedTypeFilter;
-        const matchesDivision =
-          selectedDivisionFilter === "all" ||
-          (selectedDivisionFilter === "none" && !p.division) ||
-          (p.division || "").toLowerCase() === selectedDivisionFilter.toLowerCase();
-        const matchesManager =
-          selectedManagerFilter === "all" ||
-          (selectedManagerFilter === UNASSIGNED_MANAGER
-            ? !(p.managers && p.managers.length > 0)
-            : (p.managers || []).includes(selectedManagerFilter));
-        const matchesOverdue = !overdueOnly || overdueIds.has(p.id);
-        const matchesRating = matchesRatingFilter(
-          p.rating,
-          selectedRatingFilter
-        );
-        const isArchived = Boolean(p.archived);
-        const matchesArchive =
-          selectedArchiveFilter === "all"
-            ? true
-            : selectedArchiveFilter === "archived"
-            ? isArchived
-            : !isArchived;
-
-        return (
-          matchesSearch &&
-          matchesType &&
-          matchesDivision &&
-          matchesManager &&
-          matchesOverdue &&
-          matchesRating &&
-          matchesArchive
-        );
-      });
+      const projectsInStatus = projects.filter((p) => p.status === status && facets.passesOtherThanStatus(p));
 
       let statusInvoicableVal = 0;
       let statusTotalBudgetValue = 0;
@@ -843,14 +718,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     projectStatuses,
     leads,
     financialRecords,
-    searchQuery,
-    selectedTypeFilter,
-    selectedDivisionFilter,
-    selectedManagerFilter,
-    selectedRatingFilter,
-    selectedArchiveFilter,
-    overdueOnly,
-    overdueIds,
+    facets.passesOtherThanStatus,
     defaultCurrency,
     t,
   ]);
@@ -867,11 +735,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
      would change the table's shape mid-search, as a query narrowed the list to
      one type and back. */
   const layoutType = useMemo(() => {
-    if (selectedTypeFilter !== "all") {
-      return projectTypes.find(pt => pt.id === selectedTypeFilter) || null;
+    const picked = facets.selection.type;
+    if (picked.length === 1) {
+      return projectTypes.find(pt => pt.id === picked[0]) || null;
     }
-    return projectTypes.length === 1 ? projectTypes[0] : null;
-  }, [selectedTypeFilter, projectTypes]);
+    if (picked.length === 0 && projectTypes.length === 1) return projectTypes[0];
+    return null;
+  }, [facets.selection.type, projectTypes]);
 
   /* A list of mixed types keeps its own built-in-only layout, per user; a list
      of one type follows that type's layout, shared by everyone. Both are edited
@@ -957,6 +827,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         client: leads.find(l => l.id === p.leadId)?.name || "",
         type: pType?.name || "",
         managers: (p.managers || []).join(", "),
+        employees: (p.employees || []).join(", "),
         // Unrated travels as null, not 0 — see ProjectSortValues.rating.
         rating: ratingValue(p.rating) || null,
         deadline: evaluateProjectDeadline(p, pType, today, projectStatuses)?.deadline ?? null,
@@ -1305,6 +1176,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     { value: "client", label: t("Client", "Klient", "Ügyfél") },
     { value: "type", label: t("Type", "Typ", "Típus") },
     { value: "managers", label: t("Managers", "Manažéri", "Menedzserek") },
+    { value: "employees", label: t("Employees", "Zamestnanci", "Munkatársak") },
     { value: "rating", label: t("Rating", "Hodnotenie", "Értékelés") },
     { value: "invoiceDate", label: t("Invoice date", "Termín fakturácie", "Számlázási határidő") },
     { value: "deadline", label: t("Deadline", "Termín dokončenia", "Határidő") },
@@ -1556,8 +1428,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       case "managers":
         return p.managers && p.managers.length > 0
           ? (
-            <span className="block truncate max-w-[14rem] text-ui font-semibold text-slate-500" title={p.managers.join(", ")}>
-              {p.managers.join(", ")}
+            <span className="block truncate max-w-[14rem] text-ui font-semibold text-slate-500" title={p.managers.map(n => displayEmployeeName(n)).join(", ")}>
+              {p.managers.map(n => displayEmployeeName(n)).join(", ")}
+            </span>
+          )
+          : emptyCell;
+      case "employees":
+        return p.employees && p.employees.length > 0
+          ? (
+            <span className="block truncate max-w-[14rem] text-ui font-semibold text-slate-500" title={p.employees.map(n => displayEmployeeName(n)).join(", ")}>
+              {p.employees.map(n => displayEmployeeName(n)).join(", ")}
             </span>
           )
           : emptyCell;
@@ -1749,6 +1629,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         ticketSettings={ticketSettings}
         supportContracts={supportContracts}
         setSupportContracts={setSupportContracts}
+        orderLinks={orderLinks}
         clickupConnected={clickupConnected}
         onClose={() => {
           setEditingProject(null);
@@ -1872,132 +1753,15 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             onExcludedKeysChange={setEquationExcluded}
           />
 
-          {/* Summary strip — and the status filter itself. It used to show four
-              hand-picked chips next to a dropdown carrying the real list, so
-              two controls filtered the same thing and disagreed about what the
-              statuses were. The chips are now the whole list, straight from
-              the statuses configured in settings, and the dropdown below is hidden.
-
-              "Overdue" is deliberately not among them: it is not a status — a
-              project can be late in any of them — so it sits apart, as the red
-              flag it is. */}
-          {/* Summary strip — and the status filter itself. It used to show four
-              hand-picked chips next to a dropdown carrying the real list, so
-              two controls filtered the same thing and disagreed about what the
-              statuses were. The chips are now the whole list, straight from
-              the statuses configured in settings, and the dropdown below is hidden.
-
-              "Overdue" is deliberately not among them: it is not a status — a
-              project can be late in any of them — so it sits apart, as the red
-              flag it is. */}
-          <div className="w-full flex items-center gap-2 overflow-x-auto scrollbar-none flex-nowrap ws-sm:flex-wrap select-none pb-1 ws-sm:pb-0">
-            {/* All toggle button */}
-            {(() => {
-              const isAllVisible =
-                allProjectStatuses.length > 0 &&
-                allProjectStatuses.every((s) => resolvedVisibleStatuses.includes(s));
-
-              return (
-                <button
-                  key="all"
-                  type="button"
-                  aria-pressed={isAllVisible}
-                  onClick={() => {
-                    if (isAllVisible) {
-                      setVisibleStatuses(defaultOpenStatuses);
-                    } else {
-                      setVisibleStatuses(allProjectStatuses);
-                    }
-                  }}
-                  title={
-                    isAllVisible
-                      ? t(
-                          "Showing all statuses. Click to show active only.",
-                          "Zobrazené všetky stavy. Kliknutím zobrazíte iba aktívne.",
-                          "Minden állapot látható. Kattintson csak az aktívak megjelenítéséhez.",
-                        )
-                      : t(
-                          "Click to show all statuses (including closed).",
-                          "Kliknutím zobrazíte všetky stavy (vrátane uzavretých).",
-                          "Kattintson az összes állapot megjelenítéséhez (beleértve a lezártakat is).",
-                        )
-                  }
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md border shadow-2xs transition-all cursor-pointer shrink-0 ${
-                    isAllVisible
-                      ? STAT_CHIP_TONES.slate.active
-                      : "bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-800"
-                  }`}
-                >
-                  <span
-                    className={`font-heading font-bold text-title-sm leading-none tabular-nums ${
-                      isAllVisible ? "text-white" : "text-slate-800"
-                    }`}
-                  >
-                    {totalProjects}
-                  </span>
-                  <span className="type-overline leading-none">
-                    {t("All", "Všetky", "Összes")}
-                  </span>
-                </button>
-              );
-            })()}
-
-            {/* Individual status chips — toggleable like the leads view */}
-            {allProjectStatuses.map((value) => {
-              const active = resolvedVisibleStatuses.includes(value);
-              const color = projectStatusColor(value, projectStatuses);
-              const count = statusCounts[value] || 0;
-              const label = projectStatusLabel(value, t, projectStatuses);
-
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={(e) => {
-                    toggleStatusVisibility(value, e.altKey || e.metaKey);
-                  }}
-                  title={
-                    active
-                      ? t(
-                          "Active — click to hide (Alt+Click to solo)",
-                          "Aktívny — kliknutím skryjete (Alt+Klik pre sólo)",
-                          "Aktív — kattintson az elrejtéshez (Alt+Kattintás csak ennek)",
-                        )
-                      : t(
-                          "Hidden — click to show (Alt+Click to solo)",
-                          "Skrytý — kliknutím zobrazíte (Alt+Klik pre sólo)",
-                          "Rejtett — kattintson a megjelenítéshez (Alt+Kattintás csak ennek)",
-                        )
-                  }
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md border shadow-2xs transition-all cursor-pointer shrink-0 ${
-                    active
-                      ? ""
-                      : "bg-gray-50 border-gray-200 text-gray-500 opacity-70 hover:opacity-100 hover:border-gray-300 hover:text-gray-700 hover:bg-white"
-                  }`}
-                  style={active ? { backgroundColor: color, borderColor: color, color: readableOn(color) } : undefined}
-                >
-                  <span
-                    className={`font-heading font-bold text-title-sm leading-none tabular-nums ${
-                      active ? "" : "text-slate-400"
-                    }`}
-                  >
-                    {count}
-                  </span>
-                  <span
-                    className={`type-overline leading-none ${
-                      active ? "" : "text-slate-400"
-                    }`}
-                  >
-                    {label}
-                  </span>
-                </button>
-              );
-            })}
-
-            {/* The red flag, on its own side of a divider: late projects, and
-                how many of them still owe an explanation. */}
-            <span className="h-6 w-px bg-slate-200 mx-0.5 hidden ws-sm:block shrink-0" />
+          {/* Pinned statuses (star in the status dropdown) as one-click chips, with the
+              "Overdue" flag beside them. Overdue is not a status — a project can be late
+              in any of them — so it stays its own chip. */}
+          <PinnedFilterChips
+            options={facets.options.status}
+            pinned={facets.pinnedStatuses}
+            selected={facets.selection.status}
+            onChange={(next) => facets.setSelection("status", next)}
+          >
             <button
               type="button"
               aria-pressed={overdueOnly}
@@ -2033,7 +1797,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 </span>
               )}
             </button>
-          </div>
+          </PinnedFilterChips>
 
           {/* One filter bar, one row. On mobile, search and switcher are on top, and dropdown filters are side scrollable. */}
           <div className="relative z-20 flex flex-col ws-sm:flex-row ws-sm:flex-wrap ws-sm:items-center gap-2 ws-sm:gap-2.5 p-2 ws-sm:p-2.5 rounded-lg border border-gray-200 bg-white shadow-xs">
@@ -2106,80 +1870,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
             {/* Filter Dropdowns — side scrollable on mobile (< sm), inline flex on desktop (sm:) */}
             <div className="w-full ws-sm:w-auto flex items-center gap-2 overflow-x-auto scrollbar-none flex-nowrap ws-sm:flex-wrap pb-0.5 ws-sm:pb-0">
-              {/* Status — hidden by default */}
-              {SHOW_STATUS_DROPDOWN && (
-                <div className="w-32.5 shrink-0">
-                  <CustomSelect
-                    className="h-10"
-                    value={resolvedVisibleStatuses.length === 1 ? resolvedVisibleStatuses[0] : "all"}
-                    onChange={(v) => {
-                      if (v === "all") {
-                        setVisibleStatuses(allProjectStatuses);
-                      } else {
-                        setVisibleStatuses([v as ProjectStatus]);
-                      }
-                    }}
-                    options={[
-                      { value: "all", label: t("All Statuses", "Všetky stavy", "Minden állapot") },
-                      ...projectStatusOptions(t, projectStatuses),
-                    ]}
-                  />
+              {(["status", "type", "division", "manager", "employee", "rating"] as const).map((id) => (
+                <div key={id} className="shrink-0">
+                  <ProjectFacetSelect facets={facets} id={id} />
                 </div>
-              )}
-
-              {/* Type */}
-              <div className="w-32.5 shrink-0">
-                <CustomSelect
-                  className="h-10"
-                  value={selectedTypeFilter}
-                  onChange={(v) => setSelectedTypeFilter(v)}
-                  options={[
-                    { value: "all", label: t("All Types", "Všetky typy", "Minden típus") },
-                    ...projectTypes.map(pt => ({ value: pt.id, label: pt.name })),
-                  ]}
-                />
-              </div>
-
-              {/* Division */}
-              <div className="w-35 shrink-0">
-                <CustomSelect
-                  className="h-10"
-                  icon={<Icons.Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
-                  value={selectedDivisionFilter}
-                  onChange={(v) => setSelectedDivisionFilter(v)}
-                  options={[
-                    { value: "all", label: getTranslation(userLanguage, "filters.all_divisions") },
-                    { value: "none", label: getTranslation(userLanguage, "filters.no_division") },
-                    ...divisions.map(d => ({ value: d.toLowerCase(), label: d })),
-                  ]}
-                />
-              </div>
-
-              {/* Manager */}
-              <div className="w-36.25 shrink-0">
-                <CustomSelect
-                  className="h-10"
-                  icon={<Users className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
-                  value={selectedManagerFilter}
-                  onChange={(v) => setSelectedManagerFilter(v)}
-                  options={[
-                    { value: "all", label: t("All managers", "Všetci manažéri", "Minden menedzser") },
-                    ...managerOptions.map(name => ({ value: name, label: name })),
-                    { value: UNASSIGNED_MANAGER, label: t("Unassigned", "Bez manažéra", "Nincs menedzser") },
-                  ]}
-                />
-              </div>
-
-              {/* Star priority */}
-              <div className="w-33.75 shrink-0">
-                <CustomSelect
-                  className="h-10"
-                  icon={<Star className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
-                  value={selectedRatingFilter}
-                  onChange={(v) => setSelectedRatingFilter(v)}
-                  options={ratingFilterOptions(t)}
-                />
-              </div>
+              ))}
 
               {/* Archive Filter */}
               <div className="w-35 shrink-0">
@@ -2325,17 +2020,17 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                         // The structure is never sorted, so its headers are plain labels.
                         if (isStructure) {
                           return (
-                            <th
-                              key={col.key}
+                            <ResizableTh key={col.key} listKey="projects"
+                              colKey={col.key}
                               className="bg-gray-50 px-4 py-3 type-overline text-gray-500 whitespace-nowrap border-b border-gray-200"
                             >
                               {columnLabel(col)}
-                            </th>
+                            </ResizableTh>
                           );
                         }
                         return (
-                          <th
-                            key={col.key}
+                          <ResizableTh key={col.key} listKey="projects"
+                            colKey={col.key}
                             aria-sort={active ? (effectiveSort.direction === "asc" ? "ascending" : "descending") : "none"}
                             className="bg-gray-50 px-4 py-3 type-overline text-gray-500 whitespace-nowrap border-b border-gray-200"
                           >
@@ -2353,7 +2048,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                 }`}
                               />
                             </button>
-                          </th>
+                          </ResizableTh>
                         );
                       })}
                       <th className="sticky right-0 bg-gray-50 z-30 px-4 py-3 w-28 text-right shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.04)] border-l border-b border-gray-200" />

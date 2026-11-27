@@ -32,10 +32,31 @@ export type LeadEventType =
   // date/time stay editable afterwards.
   | "status_change"
   | "whatsapp"
+  // The trace a note leaves ("Note added / edited / deleted" + a snippet). Notes themselves are their
+  // own entity (see Note); this entry is read-only on the timeline. Built by utils/noteActivity.ts.
+  | "note_activity"
   // Written when a proforma is issued from Invoicing. It is not a hand-loggable
   // document type, so it is not in DOCUMENT_EVENT_TYPES.
   | "proforma_invoice"
   | DocumentEventType;
+
+/** The kinds of record a note can be attached to. A new module adds its kind here and in api/notes.php. */
+export type NoteEntityType = "lead" | "project";
+
+/** A free-text note on one record: its own entity, managed only from the record's Notes tab. */
+export interface Note {
+  id: string;
+  entityType: NoteEntityType;
+  entityId: string;
+  content: string;
+  /** The user who wrote it; null for a note migrated from an entry nobody signed. */
+  author: string | null;
+  /** Voice recording of a note migrated from the old lead timeline; new notes never have one. */
+  audioFile: string | null;
+  /** Local wall-clock "YYYY-MM-DD HH:MM:SS", like timeline timestamps. */
+  createdAt: string;
+  updatedAt: string;
+}
 
 // One file attached to a timeline event. Events can carry several (e.g. a batch
 // of advance invoices logged in one go).
@@ -835,6 +856,11 @@ export interface Project {
    */
   rating?: number;
   managers: string[]; // employee ids or names
+  /**
+   * Employees assigned to the project besides its managers (one PM, many employees). Same id kind as
+   * `managers`; stored in `project_employees`. Absent from a sync payload means "unchanged".
+   */
+  employees?: string[];
   data: Record<string, any>; // keyed by attribute.id
   /**
    * Invoice date as "YYYY-MM-DD", or null when none is set ("Termín fakturácie").
@@ -892,6 +918,8 @@ export interface Project {
    * Absent on save means "unchanged", so an older client cannot wipe it.
    */
   contactPhone?: string | null;
+  /** E-mail of the project's contact, as typed; copied from the lead on conversion. Absent on save means "unchanged". */
+  contactEmail?: string | null;
   /**
    * Acceptance criteria of the project; a removed one stays in the list (soft removal, `removedAt`).
    * Stored whole in `projects.acceptance_criteria_json`; absent from a payload means "unchanged".
@@ -1664,6 +1692,7 @@ export interface Order {
   customerType: CustomerType;
   clientId?: string | null;   // References Lead.id for registered sales clients
   supplierId?: string | null; // References Supplier.id for purchase orders
+  projectId?: string | null;  // References Project.id: the project this order belongs to
   guest?: GuestCustomer;
 
   // Delivery & Billing

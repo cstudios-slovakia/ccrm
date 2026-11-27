@@ -26,6 +26,7 @@ import { reinsertAt } from "../utils/undoableList";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { PRODUCT_NAME } from "../utils/brand";
 import { CronSetupInstructions } from "./CronSetupInstructions";
+import { projectManagerUserNames } from "../utils/projectEmployees";
 
 const SYSTEM_COLORS = [
   { name: "Purple", hex: "#7e22ce" },
@@ -3325,6 +3326,11 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                another one — the workflow will say so when it runs. */
                             const typeId: string = node.data.project_type_id || "";
                             const typeOptions = projectTypes.map((pt) => ({ value: pt.id, label: pt.name }));
+                            /* Only users with the Project Manager role are offered; a name saved
+                               before that rule stays listed so the node does not change silently. */
+                            const savedManager: string = node.data.manager || "";
+                            const pmNames = projectManagerUserNames(users);
+                            if (savedManager && savedManager !== "__none__" && !pmNames.includes(savedManager)) pmNames.push(savedManager);
                             if (typeId && !projectTypes.some((pt) => pt.id === typeId)) {
                               typeOptions.push({ value: typeId, label: `⚠ ${typeId}` });
                             }
@@ -3405,10 +3411,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                       options={[
                                         { value: "", label: t("The lead's owner", "Zodpovedný za lead", "A lead felelőse") },
                                         { value: "__none__", label: t("Unassigned", "Nepriradené", "Nincs felelős") },
-                                        ...(userNames.length
-                                          ? [{ value: "__users__", label: t("Users", "Používatelia", "Felhasználók"), disabled: true }]
+                                        ...(pmNames.length
+                                          ? [{ value: "__users__", label: t("Project managers", "Projektoví manažéri", "Projektmenedzserek"), disabled: true }]
                                           : []),
-                                        ...userNames.map((name) => ({ value: name, label: name })),
+                                        ...pmNames.map((name) => ({ value: name, label: name })),
                                       ]}
                                     />
                                   </div>

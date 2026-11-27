@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTimeTracking } from "./useTimeTracking";
 import type { TimeEntry } from "../utils/timeTracking.ts";
 import { listEntries, type ListParams } from "../utils/timeTrackingApi.ts";
+import { withoutFixedPayMoneyList } from "../utils/timeMoney.ts";
 
 /**
  * Entries of a date range (and optionally one person / the whole team), refetched whenever
@@ -10,8 +11,8 @@ import { listEntries, type ListParams } from "../utils/timeTrackingApi.ts";
  */
 /** `null` means "do not fetch" (the caller does not need entries right now): the list is empty. */
 export function useTimeEntries(params: ListParams | null): { entries: TimeEntry[]; loading: boolean; error: boolean } {
-  const { version, enabled } = useTimeTracking();
-  const [entries, setEntries] = useState<TimeEntry[]>([]);
+  const { version, enabled, userId, viewer } = useTimeTracking();
+  const [loaded, setLoaded] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const seq = useRef(0);
@@ -21,7 +22,7 @@ export function useTimeEntries(params: ListParams | null): { entries: TimeEntry[
     if (!enabled) return;
     const mine = ++seq.current;
     if (params === null) {
-      setEntries([]);
+      setLoaded([]);
       setError(false);
       setLoading(false);
       return;
@@ -30,7 +31,7 @@ export function useTimeEntries(params: ListParams | null): { entries: TimeEntry[
     listEntries(params)
       .then((res) => {
         if (mine !== seq.current) return;
-        setEntries(res.entries);
+        setLoaded(res.entries);
         setError(false);
       })
       .catch(() => {
@@ -42,6 +43,8 @@ export function useTimeEntries(params: ListParams | null): { entries: TimeEntry[
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, version, enabled]);
 
+  // Own pay that does not move with tracked hours shows no money anywhere (people with the costs permission keep it).
+  const entries = useMemo(() => withoutFixedPayMoneyList(loaded, userId || "", viewer.canCosts) as TimeEntry[], [loaded, userId, viewer.canCosts]);
   return { entries, loading, error };
 }
 

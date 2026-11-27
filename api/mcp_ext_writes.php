@@ -119,12 +119,14 @@ function mcp_create_project_row(\PDO $pdo, array $a): string {
     $division = isset($a['division']) && trim((string)$a['division']) !== '' ? mb_substr(trim((string)$a['division']), 0, 100) : null;
     $contactPhone = isset($a['contact_phone']) ? trim((string)preg_replace('/[\x00-\x1F\x7F]/u', '', (string)$a['contact_phone'])) : '';
     $contactPhone = $contactPhone === '' ? null : mb_substr($contactPhone, 0, 50);
+    $contactEmail = isset($a['contact_email']) ? trim((string)preg_replace('/[\x00-\x1F\x7F]/u', '', (string)$a['contact_email'])) : '';
+    $contactEmail = $contactEmail === '' ? null : mb_substr($contactEmail, 0, 190);
 
     $id = 'proj_' . bin2hex(random_bytes(8));
     $pdo->prepare(
-        "INSERT INTO projects (id, project_type_id, name, lead_id, client_id, budget, value, division, contact_phone, start_date, invoice_date, completion_deadline, status, finished_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())"
-    )->execute([$id, $typeId, $name, $clientId, $clientId, $budget, $value, $division, $contactPhone, $start, $invoiceDate, $completionDeadline, $status, mcp_finished_at_for_status($pdo, $status, null)]);
+        "INSERT INTO projects (id, project_type_id, name, lead_id, client_id, budget, value, division, contact_phone, contact_email, start_date, invoice_date, completion_deadline, status, finished_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())"
+    )->execute([$id, $typeId, $name, $clientId, $clientId, $budget, $value, $division, $contactPhone, $contactEmail, $start, $invoiceDate, $completionDeadline, $status, mcp_finished_at_for_status($pdo, $status, null)]);
     if (!empty($a['managers']) && is_array($a['managers']) && function_exists('mcp_crm_plus_sync_project_managers')) {
         mcp_crm_plus_sync_project_managers($pdo, $id, $a['managers']);
     }
@@ -176,6 +178,10 @@ function mcp_do_update_project(\PDO $pdo, array $user, array $args): array {
     if (array_key_exists('contact_phone', $args)) {
         $cp = trim((string)preg_replace('/[\x00-\x1F\x7F]/u', '', (string)$args['contact_phone']));
         $add('contact_phone', $cp === '' ? null : mb_substr($cp, 0, 50));
+    }
+    if (array_key_exists('contact_email', $args)) {
+        $ce = trim((string)preg_replace('/[\x00-\x1F\x7F]/u', '', (string)$args['contact_email']));
+        $add('contact_email', $ce === '' ? null : mb_substr($ce, 0, 190));
     }
     if (array_key_exists('archived', $args)) $add('archived', !empty($args['archived']) ? 1 : 0);
     if (array_key_exists('acceptance_criteria', $args)) {
@@ -233,7 +239,7 @@ function mcp_do_update_project(\PDO $pdo, array $user, array $args): array {
         ccrm_scope_apply_action($pdo, $id, $scopeAction, (string)($user['name'] ?? ''));
     }
     mcp_audit($pdo, $user, 'project_update', "Updated project $id");
-    $out = ['success' => true, 'id' => $id, 'updated_fields' => array_values(array_intersect(array_keys($args), ['name', 'status', 'budget', 'value', 'start_date', 'invoice_date', 'completion_deadline', 'delay_reason', 'rating', 'division', 'contact_phone', 'archived', 'managers', 'custom_fields', 'acceptance_criteria', 'scope_action']))];
+    $out = ['success' => true, 'id' => $id, 'updated_fields' => array_values(array_intersect(array_keys($args), ['name', 'status', 'budget', 'value', 'start_date', 'invoice_date', 'completion_deadline', 'delay_reason', 'rating', 'division', 'contact_phone', 'contact_email', 'archived', 'managers', 'custom_fields', 'acceptance_criteria', 'scope_action']))];
     if (array_key_exists('acceptance_criteria', $args) || $scopeAction !== null) {
         $fresh = $pdo->prepare("SELECT acceptance_criteria_json, scope_approved_at, scope_approved_by FROM projects WHERE id = ?");
         $fresh->execute([$id]);

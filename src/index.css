@@ -2341,9 +2341,18 @@ tr[data-lead-hover] .lead-hover-strip-label {
   initial-value: , progress-dash 3s ease-in-out infinite;
 }
 
+/* One rule per engine: a selector list is dropped whole when any one selector is
+   unknown to the browser (Chrome ignores ::slider-fill), which left the native grey
+   bar visible and spinning on the dev server. */
 progress.loading-spinner:indeterminate::-webkit-progress-bar,
-progress.loading-spinner:indeterminate::-webkit-progress-value,
-progress.loading-spinner:indeterminate::-moz-progress-bar,
+progress.loading-spinner:indeterminate::-webkit-progress-value {
+  display: none;
+  background: none;
+}
+progress.loading-spinner:indeterminate::-moz-progress-bar {
+  display: none;
+  background: none;
+}
 progress.loading-spinner:indeterminate::slider-fill {
   display: none;
   background: none;
@@ -2428,3 +2437,7 @@ progress.loading-spinner:indeterminate {
   }
 }
 
+
+/* Resizable list columns: once a width is stored the table is fixed-layout and cells truncate. */
+table[data-col-resized] { table-layout: fixed; }
+table[data-col-resized] td { overflow: hidden; text-overflow: ellipsis; }

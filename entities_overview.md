@@ -144,7 +144,7 @@ Junction table mapping leads to business categories.
 Interaction history logged against leads (emails, call logs, meetings).
 * `id` VARCHAR(50) [PK]
 * `lead_id` VARCHAR(50)
-* `type` VARCHAR(50) (e.g., note, phone, email, offer, appointment, status_change, whatsapp)
+* `type` ENUM (e.g., note, phone, email, offer, appointment, status_change, whatsapp, note_activity). Hand-written lead notes are no longer entries of this table: they live in `notes`, and each one left a `note_activity` entry behind (title "Note added / edited / deleted", content = a one-line snippet; written by the browser through the lead's normal save, read-only on the timeline). `note` is still used by system entries (public-form inquiries, WhatsApp, MCP).
 * `timestamp` DATETIME
 * `title` VARCHAR(255)
 * `content` TEXT
@@ -152,6 +152,19 @@ Interaction history logged against leads (emails, call logs, meetings).
 * `external_url` VARCHAR(255) [NULLable] (deep link path into the external system, e.g. /c/<id>?m=<id>)
 * `task_id` VARCHAR(50) [NULLable, indexed `idx_event_task`] (the task a "Comment on task: <title>" note belongs to; written by the MCP `add_task_comment` tool, NULL for every other entry. No foreign key: the note stays on the client timeline when the task goes. The app never sends it, so `sync.php` carries it over by event id when it rewrites a lead's timeline. Older comments are linked by title in `ccrm_migrate_timeline_task_link()`, only where one task of that client has the title.)
 * `created_at` TIMESTAMP
+
+### `notes`
+Free-text notes attached to one record of any module. Generic by design: a new module (orders, ...) only needs a line in `ccrm_notes_module()` in `api/notes.php`. Read and written by `api/notes.php` only (never by `sync.php`, so no column healing; the endpoint creates the table when it is missing). No foreign key: a deleted record's notes stay behind, and a restore brings them back.
+* `id` VARCHAR(64) [PK] (`note-<random>`; a migrated note is `note-<id of the timeline entry it came from>`)
+* `entity_type` VARCHAR(32) (`lead` or `project`; a client is a `lead` row)
+* `entity_id` VARCHAR(100)
+* `content` TEXT (plain text, line breaks kept)
+* `author` VARCHAR(100) [NULLable] (the session user; NULL for a migrated note nobody signed)
+* `audio_file` VARCHAR(255) [NULLable] (voice recording of a note migrated from the old lead timeline; no new note gets one)
+* `created_at`, `updated_at` DATETIME (the browser's local wall-clock time, like timeline timestamps)
+* Index `idx_note_entity` (`entity_type`, `entity_id`, `created_at`)
+
+Every note create, edit and delete leaves a `note_activity` entry on the record's timeline (lead: `timeline_events`, project: `proj_timeline_<typeId>` with `type = 'note_activity'`), added by the browser through the record's normal save. Migration (`api/notes_migration.php`, idempotent): lead entries of type `note` whose title is the log form's ("Internal Note Added" and translations, no `task_id`) and every project timeline entry of type `note` without a custom event type are copied into `notes` and converted to `note_activity` entries.
 
 ---
 
@@ -370,6 +383,7 @@ Individual instances of active project lifecycles.
 * `ticket_public_hash` VARCHAR(64) [UNIQUE] (Random token for public `#public-tickets/<hash>` status page)
 * `ticket_widget_config_json` TEXT [NULLable] (JSON config for floating widget color, position, greeting, language)
 * `contact_phone` VARCHAR(50) [NULLable] (phone of the project contact as typed; WAAI pairs WhatsApp chats to the project by it; written by the app's save only when the payload carries `contactPhone`)
+* `contact_email` VARCHAR(190) [NULLable] (e-mail of the project contact as typed; copied from the lead when the lead is converted to a project; written by the app's save only when the payload carries `contactEmail`, `""` clears it; returned by the sync GET as `contactEmail`)
 * `acceptance_criteria_json` TEXT [NULLable] (the project's acceptance criteria as JSON `[{"id","title","done","createdAt","createdBy","removedAt","removedBy"}]`, `createdAt` / `removedAt` UTC ISO 8601 with `Z`; a removed criterion stays in the array with `removedAt` set (soft removal); `NULL` = none. Written by the app's save only when the payload carries `acceptanceCriteria` (a client that omits the key leaves the stored list alone) and merged into the stored list by the server (`ccrm_scope_merge_criteria()` in `api/project_scope.php`): a new id gets the server's time and the session user as `createdAt` / `createdBy`, a stored criterion keeps its stamps, a removal is stamped by the server and cannot be undone, and a stored criterion missing from the client's list is kept. Returned by the sync GET as `acceptanceCriteria`. Criteria created after `scope_approved_at` are scope creep, read by the dashboard's "Scope creep" widget)
 * `scope_approved_at` DATETIME [NULLable] (when the scope was approved, stored in UTC; `NULL` = not approved. Never written by the sync upsert: a `scopeApprovedAt` / `scopeApprovedBy` in a project payload is ignored (a stale tab would clear or restore it). Written only by the one-shot action `POST /api/project_scope_action.php { projectId, action: "approve" | "withdraw" }` through `ccrm_scope_apply_action()` in `api/project_scope.php`: approve (only when not approved) stamps the server's time and the session user, withdraw clears both and is a reset (a later approval stamps a new instant, so criteria added in between become original scope); returned by the sync GET as `scopeApprovedAt`, a UTC ISO string with `Z`)
 * `scope_approved_by` VARCHAR(100) [NULLable] (name of the user who approved the scope, taken from the session by the approval action; written together with `scope_approved_at`, returned as `scopeApprovedBy`)
@@ -382,6 +396,12 @@ Individual instances of active project lifecycles.
 ### `project_managers`
 Junction table mapping project managers to projects.
 * `project_id` VARCHAR(50)
+* `user_id` VARCHAR(50)
+* Primary Key: (`project_id`, `user_id`)
+
+### `project_employees`
+Junction table mapping the employees assigned to a project (besides its managers; one PM, many employees). Same shape as `project_managers`; `user_id` is the same id kind as there. Rewritten per project by the app's save only when the payload carries `employees` (an omitted key means unchanged); a real change moves `projects.updated_at` (`api/sync_child_bumps.php`, kind `employees`). Healed in `sync.php` before the transaction. Returned by the sync GET as `employees`.
+* `project_id` VARCHAR(50) [FK `projects.id`, ON DELETE CASCADE]
 * `user_id` VARCHAR(50)
 * Primary Key: (`project_id`, `user_id`)
 
@@ -742,6 +762,13 @@ Price offers, proformas and invoices in one table (`type`), with their line item
 * `category_id` VARCHAR(50) [NULLable] (References `offer_categories.id`; the category a price offer is filed under, NULL = none. Not a foreign key: deleting a category (with its subtree) makes the app set `category_id` to NULL on its offers and push them alongside. A client that sends no `categoryId` leaves the stored value untouched)
 
 The `OFFER_STATUSES` setting (in `system_settings`) is a JSON list of `{key, label?, color, group, legacy?}`, normalized by `ccrm_normalize_offer_statuses()` (PHP) and `normalizeOfferStatusDefs()` (`src/utils/offerStatuses.ts`). Unset means the six built-ins; `invoiced` is built in as a `legacy` status (won, kept for offers that carry it, not offered in a picker).
+
+### `orders`
+Sales and purchase orders, with their lines in `order_items`. Only the columns that carry rules are listed here; see `api/schema.php` for the rest.
+* `id` VARCHAR(50) [PK]
+* `client_id` VARCHAR(50) [NULLable] (References `leads.id`; a client or a lead)
+* `supplier_id` VARCHAR(50) [NULLable] (References `suppliers.id` for purchase orders)
+* `project_id` VARCHAR(50) [NULLable, indexed `idx_orders_project`] (References `projects.id`: the project the order belongs to, NULL = none. Not a foreign key: a project's Orders tab lists every order with its id, newest `order_date` first, and no order is marked as current. Deleting a project leaves the id behind; the app treats an id with no project as unlinked)
 
 ---
 

@@ -29,7 +29,7 @@ import { issuedInvoiceStatus, type OfferStatusDef } from "../utils/offerStatuses
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
 import { ClientCategoryBadge, ClientCategoryManager, ClientCategorySelect } from "./ClientCategories";
-import { clientCategoryFilterIds, clientCategoryPath } from "../utils/clientCategoryTree";
+import { clientCategoryPath } from "../utils/clientCategoryTree";
 import { cn } from "../utils/cn";
 import { FavoriteHeartButton } from "./ui/FavoriteHeartButton";
 import { BlockEditor } from "./BlockEditor";
@@ -99,8 +99,11 @@ export { FinancialReportView };
 import { StickyHScrollbar } from "./ui/StickyHScrollbar";
 import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { useListFilter } from "../hooks/useListFilter";
+import { useClientFacets } from "./clients/useClientFacets";
+import { FacetedMultiSelect } from "./ui/FacetedMultiSelect";
 import { PRODUCT_NAME } from "../utils/brand";
 
+import { ResizableTh } from "./ui/ResizableTh";
 export type ClientSortKey = "name" | "phone" | "email" | "city" | "clientType" | "owner" | "leadsCount" | "totalValue";
 export type ClientSortDirection = "asc" | "desc";
 
@@ -183,9 +186,6 @@ interface ClientsViewProps {
   agencyRights?: AgencyRights;
 }
 
-/** The "without a category" row of the category filter. Not a real category id. */
-const NO_CLIENT_CATEGORY = "__none__";
-
 
 export const ClientsView: React.FC<ClientsViewProps> = ({
   newsletterEnabled = false,
@@ -255,16 +255,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
   const [tableWrapRef, tableWrapEl] = useStickyTableHead();
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedType, setSelectedType] = useListFilter("clients.type", "all");
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
-  const [filterCity, setFilterCity] = useListFilter("clients.city", "");
-  const [filterPM, setFilterPM] = useListFilter("clients.manager", "");
   const [currentPage, setCurrentPage] = useState(1);
   // Active clients or the archive — the two never share the list, so a
   // restore is always one tab away, the way archived tasks work.
   const [clientArchiveScope, setClientArchiveScope] = useListFilter<"active" | "archived">("clients.archive", "active");
-  // "" = every category, NO_CLIENT_CATEGORY = clients filed under none.
-  const [filterClientCategory, setFilterClientCategory] = useListFilter("clients.category", "");
   // The categories manager takes the list's place while it is open.
   const [clientsSubView, setClientsSubView] = useState<"list" | "settings">("list");
 
@@ -324,10 +319,6 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     );
   };
 
-  // Reset pagination to page 1 on filter or sort changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, selectedType, filterCity, filterPM, clientArchiveScope, filterClientCategory, sortConfig]);
   
   // State hook to toggle detail card edit mode
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -987,6 +978,21 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       return hasClientRecord || hasAdjustment;
     });
   }, [allClientProfiles]);
+
+  // Type, city, manager and category: multi-select and faceted (see clients/useClientFacets.ts).
+  const facets = useClientFacets({
+    clients: clientProfiles,
+    categories: clientCategories,
+    managerNames: projectManagers,
+    searchQuery,
+    archive: clientArchiveScope,
+    t,
+  });
+  // Reset pagination to page 1 on filter or sort changes
+  const facetKey = JSON.stringify(facets.selection);
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, facetKey, clientArchiveScope, sortConfig]);
 
   // Business / Partner companies available for attaching client-side person contacts.
   const companyClientProfiles = useMemo(
@@ -2984,21 +2990,6 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     alert(t("Document attached successfully!", "Dokument bol úspešne pripojený!", "A dokumentum sikeresen csatolva!"));
   };
 
-  // Extract unique cities dynamically from the active customer registry
-  const uniqueCities = useMemo(() => {
-    const cities = new Set(clientProfiles.map(c => c.city).filter(Boolean));
-    return Array.from(cities).sort();
-  }, [clientProfiles]);
-
-  // Picking a main category also finds the clients filed under its subcategories.
-  const categoryFilterIds = useMemo(
-    () =>
-      filterClientCategory && filterClientCategory !== NO_CLIENT_CATEGORY
-        ? clientCategoryFilterIds(clientCategories, filterClientCategory)
-        : null,
-    [clientCategories, filterClientCategory]
-  );
-
   const archivedClientsCount = useMemo(() => clientProfiles.filter(c => c.archived).length, [clientProfiles]);
 
   // Clients filed directly under each category, for the counts in the manager.
@@ -3012,33 +3003,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   // Filter & sort clients list
   const processedClients = useMemo(() => {
-    const filtered = clientProfiles
-      .filter(client => {
-        const matchesSearch = 
-          searchQuery === "" ||
-          client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          client.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          client.owner.toLowerCase().includes(searchQuery.toLowerCase());
-        
-        const matchesType = selectedType === "all" || client.clientType === selectedType;
-
-        const matchesCity = filterCity === "" || client.city.toLowerCase() === filterCity.toLowerCase();
-        
-        const matchesPM = filterPM === "" || client.owner.toLowerCase() === filterPM.toLowerCase();
-
-        const matchesArchive = clientArchiveScope === "archived" ? client.archived : !client.archived;
-
-        // A category id that no longer exists counts as no category.
-        const hasKnownCategory = !!client.clientCategoryId && clientCategories.some(c => c.id === client.clientCategoryId);
-        const matchesCategory =
-          filterClientCategory === ""
-            ? true
-            : filterClientCategory === NO_CLIENT_CATEGORY
-              ? !hasKnownCategory
-              : !!client.clientCategoryId && !!categoryFilterIds?.has(client.clientCategoryId);
-
-        return matchesSearch && matchesType && matchesCity && matchesPM && matchesArchive && matchesCategory;
-      });
+    const filtered = facets.filteredClients;
 
     if (!sortConfig) return filtered;
 
@@ -3099,7 +3064,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
       return collator.compare(String(valA), String(valB)) * sign;
     });
-  }, [clientProfiles, searchQuery, selectedType, filterCity, filterPM, clientArchiveScope, filterClientCategory, categoryFilterIds, clientCategories, sortConfig]);
+  }, [facets.filteredClients, sortConfig]);
 
   // Paginated subset of clients
   const paginatedClients = useMemo(() => {
@@ -3142,7 +3107,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // Deleted categories take their clients with them only as far as the filing:
   // the clients stay, uncategorised.
   const handleClientCategoriesDeleted = (ids: Set<string>) => {
-    if (filterClientCategory && ids.has(filterClientCategory)) setFilterClientCategory("");
+    if (facets.selection.category.some(id => ids.has(id))) facets.setSelection("category", facets.selection.category.filter(id => !ids.has(id)));
     // How each client was filed, so the category's Undo can file it back.
     const filed = new Map(
       leads.filter(l => l.clientCategoryId && ids.has(l.clientCategoryId)).map(l => [l.id, l.clientCategoryId as string])
@@ -3286,6 +3251,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           }}
           backLabel={t("Back to Client", "Späť na klienta", "Vissza az ügyfélhez")}
           companyBillingSettings={companyBillingSettings}
+          projects={projects}
         />
       );
     }
@@ -6116,21 +6082,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
           {/* Client Type Selector */}
           <div className="relative w-full ws-sm:w-45 shrink-0">
-            <div className="h-10 flex items-center gap-2 bg-white border border-gray-300 text-gray-700 rounded-md px-3 hover:border-gray-400 transition-colors">
-              <Users className="h-4 w-4 text-gray-400 shrink-0" />
-              <CustomSelect
-                value={selectedType}
-                onChange={(v) => setSelectedType(v)}
-                unstyled
-                className="bg-transparent type-overline text-gray-700 focus:outline-none cursor-pointer w-full justify-between select-none"
-                options={[
-                  { value: "all", label: t("All Types", "Všetky typy", "Minden típus") },
-                  { value: "person", label: t("Person", "Osoba", "Személy") },
-                  { value: "business", label: t("Business", "Firma", "Cég") },
-                  { value: "partner", label: t("Partner", "Partner", "Partner") },
-                ]}
-              />
-            </div>
+            <FacetedMultiSelect className="h-10 w-full" icon={<Users className="h-4 w-4 text-gray-400 shrink-0" />} options={facets.options.type} selected={facets.selection.type} onChange={(v) => facets.setSelection("type", v)} allLabel={facets.allLabels.type} />
           </div>
 
           {/* Toggle Filters Drawer Button */}
@@ -6154,48 +6106,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           <div className="overflow-hidden">
             <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-4 pb-1">
               
-              {/* City Location Filter */}
-              <div className="space-y-1.5">
-                <label className="type-overline text-slate-500 pl-0.5">{t("Filter by City Location", "Filtrovať podľa mesta", "Szűrés város szerint")}</label>
-                <CustomSelect
-                  value={filterCity}
-                  onChange={(v) => setFilterCity(v)}
-                  placeholder={getTranslation(systemLanguage, "clients.filter.city")}
-                  options={[
-                    { value: "", label: getTranslation(systemLanguage, "clients.filter.city") },
-                    ...uniqueCities.map(city => ({ value: city, label: city })),
-                  ]}
-                />
-              </div>
-
-              {/* Account PM Manager Filter */}
-              <div className="space-y-1.5">
-                <label className="type-overline text-slate-500 pl-0.5">{t("Filter by Account Manager (PM)", "Filtrovať podľa manažéra (PM)", "Szűrés ügyfélmenedzser szerint (PM)")}</label>
-                <CustomSelect
-                  value={filterPM}
-                  onChange={(v) => setFilterPM(v)}
-                  placeholder={getTranslation(systemLanguage, "clients.filter.pm")}
-                  options={[
-                    { value: "", label: getTranslation(systemLanguage, "clients.filter.pm") },
-                    ...projectManagers.map(pm => ({ value: pm, label: pm })),
-                  ]}
-                />
-              </div>
-
-              {/* Customer category — a main category also matches its subcategories */}
-              <div className="space-y-1.5">
-                <label className="type-overline text-slate-500 pl-0.5">{t("Filter by Client Category", "Filtrovať podľa kategórie klienta", "Szűrés ügyfélkategória szerint")}</label>
-                <ClientCategorySelect
-                  value={filterClientCategory}
-                  onChange={setFilterClientCategory}
-                  categories={clientCategories}
-                  t={t}
-                  leadingOptions={[
-                    { value: "", label: t("All categories", "Všetky kategórie", "Minden kategória") },
-                    { value: NO_CLIENT_CATEGORY, label: t("Without a category", "Bez kategórie", "Kategória nélkül") },
-                  ]}
-                />
-              </div>
+              {([
+                ["city", t("Filter by City Location", "Filtrovať podľa mesta", "Szűrés város szerint")],
+                ["manager", t("Filter by Account Manager (PM)", "Filtrovať podľa manažéra (PM)", "Szűrés ügyfélmenedzser szerint (PM)")],
+                // A main category also matches its subcategories.
+                ["category", t("Filter by Client Category", "Filtrovať podľa kategórie klienta", "Szűrés ügyfélkategória szerint")],
+              ] as const).map(([id, label]) => (
+                <div key={id} className="space-y-1.5">
+                  <label className="type-overline text-slate-500 pl-0.5">{label}</label>
+                  <FacetedMultiSelect className="h-10 w-full" options={facets.options[id]} selected={facets.selection[id]} onChange={(v) => facets.setSelection(id, v)} allLabel={facets.allLabels[id]} />
+                </div>
+              ))}
 
             </div>
           </div>
@@ -6298,7 +6219,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           <table className="w-full border-collapse text-left block ws-lg:table">
             <thead className="hidden ws-lg:table-header-group table-page-sticky-head">
               <tr className="bg-gray-50/90 text-gray-500 type-overline select-none">
-                <th
+                <ResizableTh listKey="clients" colKey="name"
                   className={`sticky bg-gray-50/95 z-10 py-3 px-6 border-b border-gray-200 transition-colors ${sortConfig?.key === "name" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "name" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
@@ -6312,8 +6233,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <span>{getTranslation(systemLanguage, "leads.table.client")}</span>
                     {renderSortIcon("name")}
                   </button>
-                </th>
-                <th
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="phone"
                   className={`sticky bg-gray-50/95 z-10 py-3 px-4 border-b border-gray-200 transition-colors ${sortConfig?.key === "phone" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "phone" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
@@ -6327,8 +6248,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <span>{t("Contact Phone", "Kontaktný telefón", "Kapcsolattartó telefon")}</span>
                     {renderSortIcon("phone")}
                   </button>
-                </th>
-                <th
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="email"
                   className={`sticky bg-gray-50/95 z-10 py-3 px-4 border-b border-gray-200 transition-colors ${sortConfig?.key === "email" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "email" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
@@ -6342,8 +6263,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <span>{getTranslation(systemLanguage, "login.email")}</span>
                     {renderSortIcon("email")}
                   </button>
-                </th>
-                <th
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="city"
                   className={`sticky bg-gray-50/95 z-10 py-3 px-4 border-b border-gray-200 transition-colors ${sortConfig?.key === "city" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "city" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
@@ -6357,8 +6278,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <span>{getTranslation(systemLanguage, "leads.table.city")}</span>
                     {renderSortIcon("city")}
                   </button>
-                </th>
-                <th
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="clientType"
                   className={`sticky bg-gray-50/95 z-10 py-3 px-4 border-b border-gray-200 transition-colors ${sortConfig?.key === "clientType" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "clientType" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
@@ -6372,8 +6293,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <span>{getTranslation(systemLanguage, "leads.table.type")}</span>
                     {renderSortIcon("clientType")}
                   </button>
-                </th>
-                <th
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="owner"
                   className={`sticky bg-gray-50/95 z-10 py-3 px-4 border-b border-gray-200 transition-colors ${sortConfig?.key === "owner" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "owner" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
@@ -6387,8 +6308,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <span>{getTranslation(systemLanguage, "leads.table.pm")}</span>
                     {renderSortIcon("owner")}
                   </button>
-                </th>
-                <th
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="leadsCount"
                   className={`sticky bg-gray-50/95 z-10 py-3 px-4 text-center border-b border-gray-200 transition-colors ${sortConfig?.key === "leadsCount" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "leadsCount" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
@@ -6402,8 +6323,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <span>{getTranslation(systemLanguage, "clients.card.leads_count")}</span>
                     {renderSortIcon("leadsCount")}
                   </button>
-                </th>
-                <th
+                </ResizableTh>
+                <ResizableTh listKey="clients" colKey="totalValue"
                   className={`sticky bg-gray-50/95 z-10 py-3 px-6 text-right border-b border-gray-200 transition-colors ${sortConfig?.key === "totalValue" ? "bg-entity-subtle/40" : ""}`}
                   aria-sort={sortConfig?.key === "totalValue" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 >
@@ -6417,7 +6338,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <span>{getTranslation(systemLanguage, "clients.card.total_value")}</span>
                     {renderSortIcon("totalValue")}
                   </button>
-                </th>
+                </ResizableTh>
                 <th className="sticky right-0 bg-gray-50/95 z-20 py-3 px-4 border-b border-l border-gray-200 w-12">
                   <span className="sr-only">{t("Actions", "Akcie", "Műveletek")}</span>
                 </th>

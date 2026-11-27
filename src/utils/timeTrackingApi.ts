@@ -135,7 +135,7 @@ export interface ListParams {
 export interface TimeTotals {
   byTask: Record<string, number>;
   byTicket: Record<string, number>;
-  byProject: Record<string, { seconds: number; workedMs?: number; cost: number | null; /** Active non-excluded seconds with no hourly cost rate. */ unpricedSeconds?: number; /** Hours x billable rate (information only); null without time_tracking_costs. */ billableValue?: number | null; billableComplete?: boolean }>;
+  byProject: Record<string, { seconds: number; workedMs?: number; /** Null only when the viewer may not see every entry's cost; an entry without a cost counts as no cost. */ cost: number | null; /** Tracked time of entries that have no cost (no rate, unpaid): in `seconds`, not in `cost`. */ unpricedSeconds?: number; /** Hours x billable rate (information only); null without time_tracking_costs. */ billableValue?: number | null; billableComplete?: boolean }>;
   byClient?: Record<string, { seconds: number; workedMs?: number; cost: number | null; unpricedSeconds?: number }>;
   /** Worked milliseconds per user per entry date (overlaps counted once). */
   workedByUserDay?: Record<string, Record<string, number>>;
@@ -328,18 +328,7 @@ export const startTimer = async (input: EntryInput, mode?: StartMode): Promise<S
 
 /** Stops one entry; without `id` the single running one (409 `ambiguous` while several run). */
 /** `reason: 'status'`: fired by a task status change (D10.2), the entry records end_reason 'status'. */
-export type TeamRunningEntry = TimeEntry & { userName?: string };
-
-/** Every currently running timer across the team (requires `time_tracking_team`). */
-export const fetchTeamRunning = async (): Promise<{ running: TeamRunningEntry[]; serverNow: string }> => {
-  const body = await get({ action: "team_running" });
-  return {
-    running: Array.isArray(body.running) ? (body.running as TeamRunningEntry[]) : [],
-    serverNow: typeof body.serverNow === "string" ? body.serverNow : new Date().toISOString(),
-  };
-};
-
-export const stopTimer = async (opts: { id?: string; projectId?: string | null; reason?: "status"; note?: string | null } = {}): Promise<TimeEntry> =>
+export const stopTimer = async (opts: { id?: string; projectId?: string | null; reason?: "status" } = {}): Promise<TimeEntry> =>
   (await post("stop", opts)).entry as TimeEntry;
 
 /** Stops every running entry of the caller; resolves the stopped ones (empty when nothing ran). */

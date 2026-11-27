@@ -889,12 +889,8 @@ function ccrm_ttx_pause(\PDO $pdo, array $user, array $body, array $settings, ar
             $pdo->rollBack();
             return ['ok' => false, 'code' => 'not_running', 'status' => 409];
         }
-        $stillRunning = ccrm_tt_running_rows($pdo, $userId, true);
-        if ($stillRunning) {
-            ccrm_tt_presence_touch($pdo, $userId, $nowUtc);
-        } else {
-            ccrm_tt_presence_clear($pdo, $userId);
-        }
+        // One of several stopped: anchor = now; the last one: the anchor is cleared (C6).
+        ccrm_tt_presence_touch($pdo, $userId, $nowUtc);
         $pdo->commit();
     } catch (\Throwable $e) {
         if ($pdo->inTransaction()) {

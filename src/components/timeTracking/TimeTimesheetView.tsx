@@ -25,6 +25,7 @@ import { TimeApiError, createEntry, timeErrorMessage, updateEntry } from "../../
 import { recoverTaskRequired } from "./timeCreateBridge";
 import { AssignProjectChip } from "./AssignProjectChip";
 import { MoneyText } from "./MoneyText";
+import { useMoneyPresent } from "./MoneyShield";
 import { ProjectLabel } from "./ProjectLabel";
 import { ProjectPicker } from "./ProjectPicker";
 import { RangeNav } from "./RangeNav";
@@ -94,6 +95,7 @@ export function TimeTimesheetView({ deps, scope, recentProjectIds, secondsByProj
   );
   const totalCost = useMemo(() => timesheetCostTotal(rowCosts), [rowCosts]);
   const showCost = tt.viewer.canCosts || rowCosts.some((c) => c.bag) || !!totalCost.bag;
+  useMoneyPresent(rowCosts.some((c) => c.bag) || !!totalCost.bag);
   const cols = 9 + (showCost ? 1 : 0);
   const locale = deps.language === "sk" ? "sk-SK" : deps.language === "hu" ? "hu-HU" : "en-GB";
   const today = todayIso(new Date(nowMs));

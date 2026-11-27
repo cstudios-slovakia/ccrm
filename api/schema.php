@@ -126,7 +126,7 @@ if (!function_exists('ccrm_schema_statements')) {
             "CREATE TABLE IF NOT EXISTS `timeline_events` (
               `id` VARCHAR(50) NOT NULL,
               `lead_id` VARCHAR(50) NOT NULL,
-              `type` ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change', 'whatsapp') NOT NULL DEFAULT 'note',
+              `type` ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change', 'whatsapp', 'note_activity') NOT NULL DEFAULT 'note',
               `timestamp` DATETIME NOT NULL,
               `title` VARCHAR(255) NOT NULL,
               `content` TEXT NULL,
@@ -148,6 +148,22 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX idx_event_timestamp (`timestamp`),
               INDEX idx_event_type (`type`),
               INDEX idx_event_task (`task_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Notes: free-text notes attached to one record of any module (leads, projects, later orders).
+            // No foreign key on purpose: `entity_type` + `entity_id` name the record, and a deleted record's
+            // notes stay behind so a restore brings them back. Written by api/notes.php, never by sync.php.
+            "CREATE TABLE IF NOT EXISTS `notes` (
+              `id` VARCHAR(64) NOT NULL,
+              `entity_type` VARCHAR(32) NOT NULL COMMENT 'lead | project (more modules later)',
+              `entity_id` VARCHAR(100) NOT NULL,
+              `content` TEXT NOT NULL,
+              `author` VARCHAR(100) NULL COMMENT 'CRM user who wrote the note; NULL for a note migrated from an entry nobody signed',
+              `audio_file` VARCHAR(255) NULL COMMENT 'Voice recording of a note migrated from the old lead timeline; no new note gets one',
+              `created_at` DATETIME NOT NULL COMMENT 'Local wall-clock time, like timeline timestamps',
+              `updated_at` DATETIME NOT NULL,
+              PRIMARY KEY (`id`),
+              INDEX idx_note_entity (`entity_type`, `entity_id`, `created_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Tasks
@@ -457,6 +473,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `billable_rate` DECIMAL(10,2) NULL COMMENT 'Default billable hourly rate for time entries',
               `is_internal` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Internal work: excluded from client billing',
               `contact_phone` VARCHAR(50) NULL COMMENT 'Phone of the project contact; WhatsApp chats are paired to the project by it',
+              `contact_email` VARCHAR(190) NULL COMMENT 'E-mail of the project contact; copied from the lead on conversion',
               `acceptance_criteria_json` TEXT NULL COMMENT 'Acceptance criteria, JSON [{id,title,done,createdAt,createdBy,removedAt,removedBy}]; a removed one stays (soft removal); NULL = none',
               `scope_approved_at` DATETIME NULL COMMENT 'When the scope was approved (UTC); criteria created after it are scope creep; NULL = not approved',
               `scope_approved_by` VARCHAR(100) NULL COMMENT 'Name of the user who approved the scope',
@@ -470,6 +487,14 @@ if (!function_exists('ccrm_schema_statements')) {
 
             // Project Managers (Junction table)
             "CREATE TABLE IF NOT EXISTS `project_managers` (
+              `project_id` VARCHAR(50) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              PRIMARY KEY (`project_id`, `user_id`),
+              FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Project employees (Junction table): the people working on a project besides its managers.
+            "CREATE TABLE IF NOT EXISTS `project_employees` (
               `project_id` VARCHAR(50) NOT NULL,
               `user_id` VARCHAR(50) NOT NULL,
               PRIMARY KEY (`project_id`, `user_id`),
@@ -1180,6 +1205,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `customer_type` ENUM('client', 'guest') NOT NULL DEFAULT 'client' COMMENT 'client = registrovaný lead/klient, guest = nákup bez registrácie',
               `client_id` VARCHAR(50) NULL COMMENT 'References leads.id for registered sales clients',
               `supplier_id` VARCHAR(50) NULL COMMENT 'References suppliers.id for purchase orders',
+              `project_id` VARCHAR(50) NULL COMMENT 'References projects.id: the project this order belongs to',
               `guest_name` VARCHAR(255) NULL,
               `guest_email` VARCHAR(255) NULL,
               `guest_phone` VARCHAR(50) NULL,
@@ -1231,6 +1257,7 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX idx_orders_customer_type (`customer_type`),
               INDEX idx_orders_client (`client_id`),
               INDEX idx_orders_supplier (`supplier_id`),
+              INDEX idx_orders_project (`project_id`),
               INDEX idx_orders_date (`order_date`),
               INDEX idx_orders_payment_status (`payment_status`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
@@ -2068,6 +2095,12 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'leads', 'ai_summary')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `ai_summary` TEXT NULL AFTER `country`");
         }
+        if (!ccrm_column_exists($pdo, 'orders', 'project_id')) {
+            $pdo->exec("ALTER TABLE `orders` ADD COLUMN `project_id` VARCHAR(50) NULL COMMENT 'References projects.id: the project this order belongs to' AFTER `supplier_id`");
+        }
+        if (!ccrm_index_exists($pdo, 'orders', 'idx_orders_project')) {
+            try { $pdo->exec("ALTER TABLE `orders` ADD INDEX `idx_orders_project` (`project_id`)"); } catch (\Throwable $e) {}
+        }
         if (!ccrm_column_exists($pdo, 'orders', 'invoice_id')) {
             $pdo->exec("ALTER TABLE `orders` ADD COLUMN `invoice_id` VARCHAR(50) NULL AFTER `payment_reference`");
         }
@@ -2481,6 +2514,7 @@ if (!function_exists('ccrm_schema_statements')) {
             'scope_approved_by' => "VARCHAR(100) NULL COMMENT 'Name of the user who approved the scope'",
             'github_repo' => "VARCHAR(200) NULL COMMENT 'Paired GitHub repository, owner/name; pushes to it are stored in project_pushes'",
             'github_branch' => "VARCHAR(200) NULL COMMENT 'Server branch whose pushes count; NULL = the repository default branch'",
+            'contact_email' => "VARCHAR(190) NULL COMMENT 'E-mail of the project contact; copied from the lead on conversion'",
         ] as $scopeCol => $scopeDef) {
             if (ccrm_table_exists($pdo, 'projects') && !ccrm_column_exists($pdo, 'projects', $scopeCol)) {
                 $pdo->exec("ALTER TABLE `projects` ADD COLUMN `{$scopeCol}` {$scopeDef}");
@@ -2500,6 +2534,7 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_task_activities($pdo);
         ccrm_migrate_task_files($pdo);
         ccrm_migrate_agency($pdo);
+        require_once __DIR__ . '/client_contacts_lib.php';
         ccrm_migrate_client_contacts($pdo);
         ccrm_migrate_clickup($pdo);
         require_once __DIR__ . '/project_breakdown_migrations.php';
@@ -2872,6 +2907,8 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_time_rate_months($pdo);
         require_once __DIR__ . '/time_pause_migration.php'; // listed in ccrm_schema_fingerprint()
         ccrm_migrate_time_pause($pdo);
+        require_once __DIR__ . '/notes_migration.php'; // listed in ccrm_schema_fingerprint(); after the timeline ENUM was widened
+        ccrm_migrate_notes($pdo);
         require_once __DIR__ . '/ticket_time_migration.php';
         ccrm_migrate_ticket_time_entries($pdo);
         if (!ccrm_table_exists($pdo, 'project_labour_exclusions')) {
@@ -3135,12 +3172,12 @@ if (!function_exists('ccrm_schema_statements')) {
         if ($columnType === false || $columnType === null) {
             return; // timeline_events not provisioned yet — CREATE TABLE covers it.
         }
-        $required = ['order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change', 'whatsapp'];
+        $required = ['order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change', 'whatsapp', 'note_activity'];
         foreach ($required as $value) {
             if (strpos($columnType, "'" . $value . "'") === false) {
                 $pdo->exec(
                     "ALTER TABLE `timeline_events` MODIFY COLUMN `type`
-                     ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change', 'whatsapp')
+                     ENUM('phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change', 'whatsapp', 'note_activity')
                      NOT NULL DEFAULT 'note'"
                 );
                 return;
@@ -3914,7 +3951,7 @@ if (!function_exists('ccrm_schema_statements')) {
      */
     function ccrm_schema_fingerprint(): string {
         $parts = [];
-        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/project_breakdown_migrations.php', __DIR__ . '/task_activity_lib.php', __DIR__ . '/task_files_lib.php', __DIR__ . '/clickup_lib.php', __DIR__ . '/time_worked_ms_migration.php', __DIR__ . '/time_parallel_migration.php', __DIR__ . '/time_rate_months_migration.php', __DIR__ . '/time_pause_migration.php'] as $file) {
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/project_breakdown_migrations.php', __DIR__ . '/task_activity_lib.php', __DIR__ . '/task_files_lib.php', __DIR__ . '/clickup_lib.php', __DIR__ . '/time_worked_ms_migration.php', __DIR__ . '/time_parallel_migration.php', __DIR__ . '/time_rate_months_migration.php', __DIR__ . '/time_pause_migration.php', __DIR__ . '/notes_migration.php', __DIR__ . '/client_contacts_lib.php'] as $file) {
             $parts[] = is_file($file) ? md5_file($file) : '-';
         }
         return md5(implode('|', $parts));

@@ -33,7 +33,7 @@ export const PageHeader = ({ icon, title, subtitle, badge, actions, className = 
         {badge}
       </div>
     </div>
-    {actions && <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">{actions}</div>}
+    {actions && <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full ws-md:ml-auto ws-md:justify-end">{actions}</div>}
   </div>
 );
 
@@ -65,8 +65,9 @@ export const EntityHeader = ({
   actions,
   className = "",
 }: EntityHeaderProps) => (
-  <div className={`flex flex-col ws-md:flex-row ws-md:items-center gap-4 border-b border-gray-200 pb-4 ${className}`}>
-    <div className="flex min-w-0 flex-1 items-center gap-3">
+  <div className={`flex flex-col ws-md:flex-row ws-md:flex-wrap ws-md:items-center gap-4 border-b border-gray-200 pb-4 ${className}`}>
+    {/* The title keeps at least 20rem; when the actions do not fit beside it they wrap to their own row. */}
+    <div className="flex min-w-0 flex-1 ws-md:basis-80 items-center gap-3">
       {onBack && (
         <button
           type="button"
@@ -90,7 +91,7 @@ export const EntityHeader = ({
       </div>
     </div>
     {(primaryAction || actions) && (
-      <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
+      <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full ws-md:ml-auto ws-md:justify-end">
         {actions}
         {primaryAction}
       </div>

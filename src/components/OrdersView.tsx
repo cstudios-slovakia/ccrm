@@ -29,6 +29,7 @@ import {
 import type {
   Order,
   Lead,
+  Project,
   WarehouseItem,
   Warehouse,
   WarehouseMovement,
@@ -59,11 +60,15 @@ import { formatMoney } from "../utils/currency";
 import { formatDateLocalized, todayLocal, todayLocalPlusDays, nowLocalStamp } from "../utils/localTime";
 import { markInvoiceMovementPaid } from "../utils/invoiceFinanceBridge";
 import { nextDocumentNumber } from "../utils/documentNumbering";
-import { PageHeader, StatGrid, StatTile, Tabs, EmptyState } from "./layout";
+import { PageHeader, StatGrid, StatTile, EmptyState } from "./layout";
 import { CustomSelect } from "./ui/CustomSelect";
-import { useListFilter } from "../hooks/useListFilter";
+import { useOrderFacets } from "./orders/useOrderFacets";
+import { FacetedMultiSelect } from "./ui/FacetedMultiSelect";
+import { PinnedFilterChips } from "./ui/PinnedFilterChips";
 import { PRODUCT_NAME, getSystemTitle } from "../utils/brand";
+import { OrderProjectBadge } from "./orders/OrderProjectLink";
 
+import { ResizableTh } from "./ui/ResizableTh";
 export interface OrdersViewProps {
   orders: Order[];
   setOrders: React.Dispatch<React.SetStateAction<Order[]>>;
@@ -94,12 +99,14 @@ export interface OrdersViewProps {
    * Open the editor on a new draft for a customer (`#orders/new?customer=…&from=…`).
    * `key` identifies the request so the draft is built once, not on every sync poll.
    */
-  newOrderRequest?: { customerId: string | null; from: string | null; key: string };
+  newOrderRequest?: { customerId: string | null; projectId?: string | null; from: string | null; key: string };
+  /** Offers the order editor's "Project" field and shows an order's project in the list. */
+  projects?: Project[];
 }
 
 /** Where a new order may send the user back to: a client or lead page, nothing else. */
 const safeReturnRoute = (from: string | null | undefined): string | null =>
-  from && /^(clients\/|client-|leads\/|lead-)/.test(from) ? from : null;
+  from && /^(clients\/|client-|leads\/|lead-|projects\/|project-)/.test(from) ? from : null;
 
 export const OrdersView: React.FC<OrdersViewProps> = ({
   orders,
@@ -125,7 +132,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   onOpenSettings,
   companyBillingSettings,
   initialSelectedOrderId,
-  newOrderRequest
+  newOrderRequest,
+  projects
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
@@ -135,9 +143,6 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const canDelete = canEdit && getPermission("orders.delete") === "edit";
 
   const [tableWrapRef, tableWrapEl] = useStickyTableHead();
-  const [activeGroupFilter, setActiveGroupFilter] = useListFilter<string>("orders.group", "all");
-  const [customerTypeFilter, setCustomerTypeFilter] = useListFilter<string>("orders.customerType", "all");
-  const [paymentStatusFilter, setPaymentStatusFilter] = useListFilter<string>("orders.paymentStatus", "all");
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedTrackingId, setCopiedTrackingId] = useState<string | null>(null);
 
@@ -154,7 +159,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   // then would wipe what the user has typed.
   useEffect(() => {
     if (!newOrderRequest || !canEdit || handledNewOrderKeyRef.current === newOrderRequest.key) return;
-    const { customerId, from, key } = newOrderRequest;
+    const { customerId, projectId, from, key } = newOrderRequest;
     const origin = customerId ? leads.find(l => l.id === customerId) ?? null : null;
     // The record may simply not have loaded yet; only give up on it once leads exist.
     if (customerId && !origin && leads.length === 0) return;
@@ -176,7 +181,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     });
     newOrderOriginRef.current = { orderId: draft.id, originId: origin?.id ?? null };
     setReturnRoute(safeReturnRoute(from));
-    setEditingOrder(draft);
+    setEditingOrder(projectId ? { ...draft, projectId } : draft);
   }, [newOrderRequest, canEdit, leads, orders, orderStatuses, companyBillingSettings, systemCurrency]);
 
   // Auto-open order if requested via deep link / initialSelectedOrderId
@@ -186,6 +191,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         o => o.id === initialSelectedOrderId || o.orderNumber === initialSelectedOrderId
       );
       if (match) {
+        // `#orders/<id>?from=<page>`: closing the order goes back to that page (a project's Orders tab).
+        setReturnRoute(safeReturnRoute(new URLSearchParams(window.location.hash.split("?")[1] || "").get("from")));
         setEditingOrder(JSON.parse(JSON.stringify(match)));
       }
     }
@@ -489,40 +496,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     setOrders(prev => prev.map(o => o.id === order.id ? updated : o));
   };
 
-  // Filtered orders list
-  const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
-      // Group filter
-      if (activeGroupFilter !== "all") {
-        const def = orderStatuses.find(s => s.key === order.status);
-        if (!def || def.group !== activeGroupFilter) return false;
-      }
-
-      // Customer filter
-      if (customerTypeFilter === "client" && order.customerType !== "client") return false;
-      if (customerTypeFilter === "guest" && order.customerType !== "guest") return false;
-
-      // Payment filter
-      if (paymentStatusFilter === "paid" && order.paymentStatus !== "paid") return false;
-      if (paymentStatusFilter === "unpaid" && order.paymentStatus === "paid") return false;
-
-      // Search query
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const num = (order.orderNumber || "").toLowerCase();
-        const clientName = (order.billing?.name || order.guest?.name || order.guest?.company || "").toLowerCase();
-        const email = (order.guest?.email || "").toLowerCase();
-        const phone = (order.guest?.phone || order.delivery?.phone || "").toLowerCase();
-        const tracking = (order.shippingTrackingNumber || "").toLowerCase();
-        const city = (order.delivery?.city || "").toLowerCase();
-
-        const fullStr = `${num} ${clientName} ${email} ${phone} ${tracking} ${city}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        if (!fullStr.includes(q)) return false;
-      }
-
-      return true;
-    });
-  }, [orders, activeGroupFilter, customerTypeFilter, paymentStatusFilter, searchQuery, orderStatuses]);
+  // Status, customer, payment and project: multi-select and faceted (see orders/useOrderFacets.ts).
+  const facets = useOrderFacets({ orders, orderStatuses, projects, searchQuery, t, productName: PRODUCT_NAME });
+  const filteredOrders = facets.filteredOrders;
 
   // Key metrics
   const stats = useMemo(() => {
@@ -677,9 +653,12 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         canDelete={canDelete}
         onOpenClient={onOpenClient}
         companyBillingSettings={companyBillingSettings}
+        projects={projects}
         backLabel={returnRoute
           ? returnRoute.startsWith("lead")
             ? t("Back to lead", "Späť na lead", "Vissza a leadhez")
+            : returnRoute.startsWith("project")
+            ? t("Back to project", "Späť na projekt", "Vissza a projekthez")
             : t("Back to client", "Späť na klienta", "Vissza az ügyfélhez")
           : undefined}
       />
@@ -771,18 +750,12 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         />
       </StatGrid>
 
-      {/* 3. LIFECYCLE TABS */}
-      <Tabs
-        value={activeGroupFilter}
-        onChange={setActiveGroupFilter}
-        items={[
-          { key: "all", label: t("All orders", "Všetky objednávky", "Minden rendelés"), count: orders.length },
-          { key: "new", label: t("New", "Nové", "Új"), count: stats.newCount },
-          { key: "processing", label: t("Processing", "Príprava", "Feldolgozás"), count: stats.processingCount },
-          { key: "shipped", label: t("Shipped", "V preprave", "Úton"), count: stats.shippedCount },
-          { key: "delivered", label: t("Delivered", "Doručené", "Kézbesítve"), count: stats.deliveredCount },
-          { key: "cancelled", label: t("Cancelled", "Storno", "Törölve"), count: stats.cancelledCount }
-        ]}
+      {/* 3. PINNED STATUSES (star in the status dropdown) as one-click chips */}
+      <PinnedFilterChips
+        options={facets.options.status}
+        pinned={facets.pinnedStatuses}
+        selected={facets.selection.status}
+        onChange={next => facets.setSelection("status", next)}
       />
 
       {/* 4. SEARCH & FILTERS BAR */}
@@ -807,29 +780,19 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
           )}
         </div>
 
-        <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-2 w-full ws-xl:w-auto">
-          <CustomSelect
-            size="sm"
-            value={customerTypeFilter}
-            onChange={setCustomerTypeFilter}
-            className="w-full"
-            options={[
-              { value: "all", label: t("All customers", "Všetci zákazníci", "Minden vevő") },
-              { value: "client", label: t("Registered clients only", `Iba klienti ${PRODUCT_NAME}`, `Csak ${PRODUCT_NAME} ügyfelek`) },
-              { value: "guest", label: t("Guests only (E-shop)", "Iba hostia (E-shop)", "Csak vendég vásárlók") }
-            ]}
-          />
-          <CustomSelect
-            size="sm"
-            value={paymentStatusFilter}
-            onChange={setPaymentStatusFilter}
-            className="w-full"
-            options={[
-              { value: "all", label: t("All payments", "Všetky platby", "Minden fizetés") },
-              { value: "paid", label: t("Paid only", "Iba zaplatené", "Csak fizetett") },
-              { value: "unpaid", label: t("Unpaid only", "Iba nezaplatené", "Csak kifizetetlen") }
-            ]}
-          />
+        <div className="grid grid-cols-1 ws-sm:grid-cols-4 gap-2 w-full ws-xl:w-auto">
+          {(["status", "customerType", "payment", "project"] as const).map(id => (
+            <FacetedMultiSelect
+              key={id}
+              className="h-10 w-full"
+              options={facets.options[id]}
+              selected={facets.selection[id]}
+              onChange={next => facets.setSelection(id, next)}
+              allLabel={facets.allLabels[id]}
+              pinned={id === "status" ? facets.pinnedStatuses : undefined}
+              onTogglePin={id === "status" ? facets.togglePinnedStatus : undefined}
+            />
+          ))}
         </div>
       </div>
 
@@ -839,13 +802,13 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
           <table className="w-full text-left text-ui border-collapse min-w-220">
             <thead className="table-page-sticky-head">
               <tr className="bg-gray-50 text-gray-500 type-overline border-b border-gray-200">
-                <th className="p-4">{t("Order no.", "Číslo objednávky", "Rendelésszám")}</th>
-                <th className="p-4">{t("Customer", "Zákazník", "Ügyfél")}</th>
-                <th className="p-4">{t("Delivery & Tracking", "Doprava a trasovanie", "Szállítás és nyomon követés")}</th>
-                <th className="p-4">{t("Items", "Položky", "Tételek")}</th>
-                <th className="p-4">{t("Payment", "Platba", "Fizetés")}</th>
-                <th className="p-4 text-right">{t("Total gross", "Celkom s DPH", "Összesen")}</th>
-                <th className="p-4 text-center">{t("Status", "Stav", "Állapot")}</th>
+                <ResizableTh listKey="orders" colKey="order-no." className="p-4">{t("Order no.", "Číslo objednávky", "Rendelésszám")}</ResizableTh>
+                <ResizableTh listKey="orders" colKey="customer" className="p-4">{t("Customer", "Zákazník", "Ügyfél")}</ResizableTh>
+                <ResizableTh listKey="orders" colKey="delivery-tracking" className="p-4">{t("Delivery & Tracking", "Doprava a trasovanie", "Szállítás és nyomon követés")}</ResizableTh>
+                <ResizableTh listKey="orders" colKey="items" className="p-4">{t("Items", "Položky", "Tételek")}</ResizableTh>
+                <ResizableTh listKey="orders" colKey="payment" className="p-4">{t("Payment", "Platba", "Fizetés")}</ResizableTh>
+                <ResizableTh listKey="orders" colKey="total-gross" className="p-4 text-right">{t("Total gross", "Celkom s DPH", "Összesen")}</ResizableTh>
+                <ResizableTh listKey="orders" colKey="status" className="p-4 text-center">{t("Status", "Stav", "Állapot")}</ResizableTh>
                 <th className="p-4 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
               </tr>
             </thead>
@@ -899,6 +862,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                             </span>
                           )}
                         </div>
+                        <OrderProjectBadge order={order} projects={projects} leads={leads} language={userLanguage} />
                         <div className="flex items-center gap-1.5 mt-1">
                           {order.customerType === "client" ? (
                             <EntityBadge

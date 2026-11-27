@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type PointerEvent } from "react";
 import { Surface } from "../layout";
 import { useTimeEntries } from "../../hooks/useTimeEntries";
+import { useMoneyPresent } from "./MoneyShield";
 import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { holidayName } from "../../utils/holidays.ts";
 import { isAdminRoleName } from "../../utils/permissions";
@@ -104,6 +105,7 @@ export function TimeCalendarView({ deps, scope, recentProjectIds, secondsByProje
   const range = queryRange(zoom, anchor);
   const scopeUserId = scope !== "me" && scope !== "all" ? scope : undefined;
   const { entries: loaded } = useTimeEntries({ from: range.from, to: range.to, userId: scopeParam(scope) });
+  useMoneyPresent(loaded.some((e) => typeof e.cost === "number"));
   const entries = useMemo(() => {
     // Every running entry of the set is drawn live: replaced in place, or added when the list predates it.
     let out = loaded;

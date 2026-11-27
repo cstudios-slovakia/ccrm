@@ -1,4 +1,5 @@
 import { StatGrid } from "../layout";
+import { displayEmployeeName } from "../../utils/nameOrder";
 import { SectionIcon } from "../icons/SectionIcon";
 import { SECTION_VISUALS } from "../../utils/sectionVisuals";
 import React, { useState, useMemo, useRef, useEffect } from "react";
@@ -46,6 +47,7 @@ import { StickyHScrollbar } from "../ui/StickyHScrollbar";
 import { useStickyTableHead } from "../../hooks/useStickyTableHead";
 import { useListFilter } from "../../hooks/useListFilter";
 
+import { ResizableTh } from "../ui/ResizableTh";
 interface EmployeeListViewProps {
   employees: Employee[];
   salaries: EmployeeSalary[];
@@ -659,13 +661,13 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
             <table className="w-full text-left text-ui border-collapse">
               <thead className="table-page-sticky-head">
                 <tr className="border-b border-gray-200/80 bg-gray-50 text-gray-500 type-overline">
-                  <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Employee", "Zamestnanec", "Alkalmazott")}</th>
-                  <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Contact", "Kontakt", "Elérhetőség")}</th>
-                  {rights.salaries && <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Salary & Terms", "Mzda a podmienky", "Bér és feltételek")}</th>}
-                  {rights.salaries && <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Last Month", "Minulý mesiac", "Előző hónap")}</th>}
-                  <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Time Tracking", "Meranie času", "Időkövetés")}</th>
-                  {rights.files && <th className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Contracts", "Zmluvy", "Szerződések")}</th>}
-                  <th className="sticky z-10 bg-gray-50 py-3.5 px-4 text-center">{t("Status", "Stav", "Állapot")}</th>
+                  <ResizableTh listKey="employees" colKey="employee" className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Employee", "Zamestnanec", "Alkalmazott")}</ResizableTh>
+                  <ResizableTh listKey="employees" colKey="contact" className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Contact", "Kontakt", "Elérhetőség")}</ResizableTh>
+                  {rights.salaries && <ResizableTh listKey="employees" colKey="salary-terms" className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Salary & Terms", "Mzda a podmienky", "Bér és feltételek")}</ResizableTh>}
+                  {rights.salaries && <ResizableTh listKey="employees" colKey="last-month" className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Last Month", "Minulý mesiac", "Előző hónap")}</ResizableTh>}
+                  <ResizableTh listKey="employees" colKey="time-tracking" className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Time Tracking", "Meranie času", "Időkövetés")}</ResizableTh>
+                  {rights.files && <ResizableTh listKey="employees" colKey="contracts" className="sticky z-10 bg-gray-50 py-3.5 px-4">{t("Contracts", "Zmluvy", "Szerződések")}</ResizableTh>}
+                  <ResizableTh listKey="employees" colKey="status" className="sticky z-10 bg-gray-50 py-3.5 px-4 text-center">{t("Status", "Stav", "Állapot")}</ResizableTh>
                   <th className="sticky right-0 z-30 py-3.5 px-4 text-right bg-gray-50 border-l border-gray-200/80">{t("Actions", "Akcie", "Műveletek")}</th>
                 </tr>
               </thead>
@@ -717,7 +719,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                               }}
                               className="font-heading font-bold text-gray-900 block group-hover:text-[#c29b62] transition truncate text-body"
                             >
-                              {emp.name}
+                              {displayEmployeeName(emp.name)}
                             </a>
                             <div className="flex items-center gap-2 mt-0.5">
                               {employeeKind(emp) !== "employee" && (
@@ -910,7 +912,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                           }}
                           className="font-heading font-bold text-body text-gray-900 group-hover:text-[#c29b62] transition truncate block"
                         >
-                          {emp.name}
+                          {displayEmployeeName(emp.name)}
                         </a>
                         {emp.position || emp.department ? (
                           <span className="text-caption font-medium text-gray-500 truncate block">

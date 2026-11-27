@@ -86,6 +86,8 @@ export function ProjectTimeOverview({
 
   const budgetPct = budgetUsedPercent(budgetSeconds, project.hoursBudget);
   const hasCost = Object.keys(report.totals.cost).length > 0;
+  // Time whose entries carry no cost (no rate, unpaid): shown, but not part of the labour cost.
+  const unpricedSec = report.lines.reduce((sum, l) => sum + (Object.keys(l.cost).length === 0 ? l.seconds : 0), 0);
   const hasValue = Object.keys(report.totals.billableValue).length > 0;
   const people = new Set(report.lines.map((l) => l.userId)).size;
   const maxTaskSec = Math.max(1, ...taskRows.map((r) => r.seconds));
@@ -98,7 +100,13 @@ export function ProjectTimeOverview({
           value={<span className="tabular-nums">{formatDuration(report.totals.seconds)}</span>}
           delta={t(`${people} people · ${report.lines.length} entries`, `${people} ľudí · ${report.lines.length} záznamov`, `${people} fő · ${report.lines.length} bejegyzés`)}
         />
-        {canCosts && <StatTile label={t("Labour cost", "Náklady na prácu", "Munkaköltség")} value={<span className="tabular-nums">{hasCost ? money(report.totals.cost) : "—"}</span>} />}
+        {canCosts && (
+          <StatTile
+            label={t("Labour cost", "Náklady na prácu", "Munkaköltség")}
+            value={<span className="tabular-nums">{hasCost ? money(report.totals.cost) : "—"}</span>}
+            delta={unpricedSec > 0 ? t(`${formatDuration(unpricedSec)} without a cost rate`, `${formatDuration(unpricedSec)} bez nákladovej sadzby`, `${formatDuration(unpricedSec)} költségdíj nélkül`) : undefined}
+          />
+        )}
         {canCosts && <StatTile label={t("Billable value", "Fakturovateľná hodnota", "Számlázható érték")} value={<span className="tabular-nums">{hasValue ? money(report.totals.billableValue) : "—"}</span>} />}
         {budgetPct != null ? (
           <StatTile

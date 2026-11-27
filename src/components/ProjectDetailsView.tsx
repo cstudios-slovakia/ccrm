@@ -35,7 +35,8 @@ import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { useTimeTracking } from "../hooks/useTimeTracking";
 import { ProjectTimeTab } from "./timeTracking/ProjectTimeTab";
 import { formatDuration } from "../utils/timeTracking.ts";
-import { ProjectTimeCostRows, ProjectTimeFinanceLines, useProjectTimeCosts } from "./timeTracking/ProjectTimeFinanceLines";
+import { LabourHiddenNote, ProjectTimeCostRows, ProjectTimeFinanceLines, useProjectTimeCosts } from "./timeTracking/ProjectTimeFinanceLines";
+import { isLabourCostWithheld } from "../utils/performance/profitability";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
@@ -50,6 +51,8 @@ import { ProjectGithubFields } from "./projects/ProjectGithubFields";
 import { ProjectPushTimelineItem, ProjectPushesFailedNote } from "./projects/ProjectPushTimelineItem";
 import { useProjectPushes } from "../hooks/useProjectPushes";
 import { isPushItem, mergePushesIntoTimeline } from "../utils/projectPushTimeline";
+import { displayEmployeeName } from "../utils/nameOrder";
+import { isProjectManagerRole } from "../utils/projectEmployees";
 import type { Task, Ticket, TicketStatusDefinition, TicketSettings, SupportContract } from "../types";
 import { DEFAULT_TICKET_STATUSES, DEFAULT_TICKET_SETTINGS } from "../utils/tickets";
 import { isDoneTaskState } from "../utils/projectTasks";
@@ -64,12 +67,24 @@ import { runUndoable } from "../utils/undoable";
 import { reinsertAt, removeByIds } from "../utils/undoableList";
 import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { WhatsAppChip } from "./WhatsAppChip";
+import { findTimelineEventIssue, resolveTimelineEventTitle, timelineEventTypeOptions, type TimelineEventIssue } from "../utils/timelineEventForm";
+import { ProjectContactEmail } from "./projects/ProjectContactEmail";
+import { ProjectEmployeesField } from "./projects/ProjectEmployeesField";
+import { ProjectLeftColumn } from "./projects/ProjectLeftColumn";
+import { ProjectOrdersTab, type ProjectOrderLinks } from "./projects/ProjectOrdersTab";
+import { ordersOfProject } from "../utils/projectOrders";
+import { fillEmptyContactFromLead } from "../utils/leadToProject";
+import { ProjectNotesSection } from "./notes/ProjectNotesSection";
+import { isNoteActivity } from "../utils/noteActivity";
+import { NoteActivityRow } from "./notes/NoteActivityRow";
+import { isLeadHistoryItem, leadHistoryItems, mergeLeadHistory } from "../utils/leadHistoryTimeline";
+import { LeadHistoryTimelineItem, LeadHistoryToggle } from "./projects/LeadHistoryTimeline";
 import { ProjectClickUpListsBar } from "./projects/ProjectClickUpListsBar";
 
 /** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
-type RightTab = "timeline" | "criteria" | "tasks" | "time" | "gantt" | "finances" | "files" | "tickets";
+type RightTab = "timeline" | "notes" | "criteria" | "tasks" | "time" | "gantt" | "finances" | "files" | "tickets" | "orders";
 const isRightTab = (value: string | null): value is RightTab =>
-  value === "timeline" || value === "criteria" || value === "tasks" || value === "time" || value === "gantt" || value === "finances" || value === "files" || value === "tickets";
+  value === "timeline" || value === "notes" || value === "criteria" || value === "tasks" || value === "time" || value === "gantt" || value === "finances" || value === "files" || value === "tickets" || value === "orders";
 
 interface ProjectDetailsViewProps {
   project: Project | null;
@@ -131,6 +146,8 @@ interface ProjectDetailsViewProps {
   currentUser?: UserProfile;
   /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
   mailConfigured?: boolean;
+  /** The orders of the workspace, when the user may see them (Orders tab). Absent: no Orders tab. */
+  orderLinks?: ProjectOrderLinks;
   divisions?: string[];
   divisionColors?: Record<string, string>;
   /**
@@ -178,6 +195,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   taskAccess = FULL_TASK_ACCESS,
   currentUser,
   mailConfigured,
+  orderLinks,
   divisions = [],
   divisionColors = {},
   layoutMode = "full",
@@ -354,6 +372,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [division, setDivision] = useState("");
   /* Phone of the project's contact. WAAI pairs WhatsApp chats to the project by it. */
   const [contactPhone, setContactPhone] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
   /* GitHub pairing: repository ("owner/name") and server branch; pushes to it are stored by the webhook. */
   const [githubRepo, setGithubRepo] = useState("");
   const [githubBranch, setGithubBranch] = useState("");
@@ -364,6 +383,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [associatedLeadId, setAssociatedLeadId] = useState("");
   const [associatedClientId, setAssociatedClientId] = useState("");
   const [selectedManagers, setSelectedManagers] = useState<string[]>([]);
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   // The paired lead is shown as the same green client card the lead view has;
   // the picker only comes back while re-pairing.
   const [pickingClient, setPickingClient] = useState(false);
@@ -407,6 +427,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     if (tab === "timeline") return projectType.hasTimeline;
     if (tab === "gantt") return projectType.hasGantt;
     if (tab === "tasks") return !!(setTasks && taskAccess.view);
+    if (tab === "orders") return !!orderLinks && !isNew;
     return true;
   };
 
@@ -429,7 +450,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // GitHub pushes of a paired project: read-only items woven into the timeline (not part of the saved project).
   const showsTimeline = layoutMode === "sidebar" || activeRightTab === "timeline";
   const projectPushes = useProjectPushes(project?.id ?? "", showsTimeline && !isNew && !!project?.githubRepo && !!projectType?.hasTimeline);
-  const timelineEntries = useMemo(() => mergePushesIntoTimeline(timeline, projectPushes.pushes), [timeline, projectPushes.pushes]);
+  // The paired lead's history, read-only and live (never copied into the project); a switch hides it.
+  const [showLeadHistory, setShowLeadHistory] = useState(true);
+  const leadHistory = useMemo(() => leadHistoryItems(leads.find(l => l.id === associatedLeadId)?.timeline), [leads, associatedLeadId]);
+  const timelineEntries = useMemo(() => mergeLeadHistory(mergePushesIntoTimeline(timeline, projectPushes.pushes), showLeadHistory ? leadHistory : []), [timeline, projectPushes.pushes, showLeadHistory, leadHistory]);
 
   const handleRightTabChange = (tab: RightTab) => {
     setActiveRightTab(tab);
@@ -495,7 +519,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   // Timeline Event Form
   const [newTeTitle, setNewTeTitle] = useState("");
-  const [newTeType, setNewTeType] = useState("note");
+  const [newTeType, setNewTeType] = useState("phone");
+  /* Why "Add event" did nothing: shown under the field it concerns (id "title" or an attribute id). */
+  const [teIssue, setTeIssue] = useState<TimelineEventIssue | null>(null);
   const [newTeContent, setNewTeContent] = useState("");
   const [newTeTime, setNewTeTime] = useState("");
   const [timelineEventData, setTimelineEventData] = useState<Record<string, any>>({});
@@ -554,6 +580,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     status: p.status || "active",
     division: p.division || "",
     contactPhone: p.contactPhone || "",
+    contactEmail: p.contactEmail || "",
     githubRepo: p.githubRepo || "",
     githubBranch: p.githubBranch || "",
     clickupLists: Array.isArray(p.clickupLists) ? p.clickupLists : [],
@@ -561,6 +588,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     leadId: p.leadId || "",
     clientId: p.clientId || "",
     managers: p.managers || [],
+    employees: p.employees || [],
     data: p.data || {},
     customFileFields: Array.isArray(p.customFileFields) ? p.customFileFields : [],
     timeline: p.timeline || [],
@@ -588,6 +616,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       status,
       division: division || null,
       contactPhone: contactPhone.trim() || null,
+      contactEmail: contactEmail.trim() || null,
       githubRepo: githubRepo || null,
       githubBranch: githubBranch || null,
       clickupLists,
@@ -595,6 +624,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       leadId: associatedLeadId || null,
       clientId: associatedClientId || null,
       managers: selectedManagers,
+      employees: selectedEmployees,
       data: dynamicData,
       customFileFields,
       timeline,
@@ -677,6 +707,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     setStatus(s.status);
     setDivision(s.division);
     setContactPhone(s.contactPhone);
+    setContactEmail(s.contactEmail);
     setGithubRepo(s.githubRepo);
     setGithubBranch(s.githubBranch);
     setClickupLists(s.clickupLists);
@@ -684,6 +715,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     setAssociatedLeadId(s.leadId);
     setAssociatedClientId(s.clientId);
     setSelectedManagers(s.managers);
+    setSelectedEmployees(s.employees);
     setDynamicData(s.data);
     setCustomFileFields(s.customFileFields);
     setTimeline(s.timeline);
@@ -705,6 +737,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     status,
     division,
     contactPhone,
+    contactEmail,
     githubRepo,
     githubBranch,
     clickupLists,
@@ -712,6 +745,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     leadId: associatedLeadId,
     clientId: associatedClientId,
     managers: selectedManagers,
+    employees: selectedEmployees,
     data: dynamicData,
     customFileFields,
     timeline,
@@ -759,6 +793,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     language: userLanguage,
     onChanged: timeTracking.bump,
   });
+  // Labour is part of costs, profit and margin: without the permission to see it those are not shown at all.
+  const labourHidden = timeTracking.enabled && isLabourCostWithheld(timeTracking.totals.byProject[project?.id ?? ""]);
 
   const revenueAnalysis = useMemo(() => {
     let totalPlannedIncome = 0;
@@ -1554,23 +1590,26 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // Timeline Handlers
   const handleAddTimelineEvent = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canEdit || !newTeTitle.trim()) return;
+    if (!canEdit) return;
 
-    // Validate required timeline attributes
+    // Nothing to log, or a required attribute left empty: say so under the field, never silently.
     const selectedTeType = projectType.timelineEventTypes?.find(t => t.id === newTeType);
     const activeTimelineAttributes = selectedTeType ? selectedTeType.attributes : [];
-    for (const attr of activeTimelineAttributes) {
-      if (attr.required) {
-        const val = timelineEventData[attr.id];
-        const missing = attr.type === "money"
+    const issue = findTimelineEventIssue({
+      title: newTeTitle,
+      content: newTeContent,
+      attributes: activeTimelineAttributes,
+      isEmpty: id => {
+        const val = timelineEventData[id];
+        return activeTimelineAttributes.find(a => a.id === id)?.type === "money"
           ? isMoneyValueEmpty(val, defaultCurrency)
           : (val === undefined || val === null || val === "" || (Array.isArray(val) && val.length === 0));
-        if (missing) {
-          alert(`"${attr.name}" ${t("is required.", "je povinné.", "megadása kötelező.")}`);
-          return;
-        }
-      }
-    }
+      },
+    }, t);
+    setTeIssue(issue);
+    if (issue) return;
+    // Details without a title are logged under the selected event type's name.
+    const teTypeLabel = timelineEventTypeOptions(projectType.timelineEventTypes, t).find(o => o.value === newTeType)?.label ?? "";
 
     const isCustom = projectType.timelineEventTypes && projectType.timelineEventTypes.length > 0;
     const newEvent: ProjectTimelineEvent = {
@@ -1578,7 +1617,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       type: isCustom ? "custom" : newTeType,
       eventType: isCustom ? newTeType : undefined,
       timestamp: newTeTime || nowLocalStamp(),
-      title: newTeTitle.trim(),
+      title: resolveTimelineEventTitle(newTeTitle, newTeContent, teTypeLabel),
       content: newTeContent.trim(),
       data: timelineEventData
     };
@@ -2003,7 +2042,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   const mainView = (
-    <div className={isSidebar ? "relative w-full max-w-2xl ws-lg:max-w-3xl bg-gray-50 flex flex-col h-full shadow-2xl border-l border-gray-200 transition-transform duration-200 ease-out transform " + (isClosing ? "translate-x-full" : "translate-x-0") : "w-full flex flex-col h-auto ws-lg:h-[calc(100vh-11rem)] animate-fade-in text-left"}>
+    <div className={isSidebar ? "relative w-full max-w-2xl ws-lg:max-w-3xl bg-gray-50 flex flex-col h-full shadow-2xl border-l border-gray-200 transition-transform duration-200 ease-out transform " + (isClosing ? "translate-x-full" : "translate-x-0") : "w-full flex flex-col animate-fade-in text-left"}>
 
       {/* Entity header / Sidebar header */}
       {isSidebar ? (
@@ -2182,14 +2221,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       )}
 
       {/* Workspace Body */}
-      <div className={isSidebar ? "flex-1 overflow-y-auto p-4 ws-sm:p-6 space-y-4 scrollbar-thin text-left" : "flex-1 ws-lg:overflow-hidden grid grid-cols-1 ws-lg:grid-cols-12 gap-6 pt-6 min-h-0"}>
+      <div className={isSidebar ? "flex-1 overflow-y-auto p-4 ws-sm:p-6 space-y-4 scrollbar-thin text-left" : "grid grid-cols-1 ws-lg:grid-cols-12 gap-6 pt-6 items-start"}>
         
         {/* LEFT COLUMN: the project's own card, its custom attributes, then
             the paired client at the bottom. The project card is edited in
             place and every change saves itself; the attributes card keeps an
             Edit mode of its own. */}
-        <div className={isSidebar ? "space-y-4 text-left" : "ws-lg:col-span-4 flex flex-col h-auto ws-lg:h-full min-h-0 ws-lg:overflow-y-auto gap-4 ws-lg:pr-1 scrollbar-thin text-left"}>
-
+        <ProjectLeftColumn isSidebar={isSidebar}>
 
           {/* PROJECT CARD DETAILS */}
           <div className="shrink-0 bg-white border border-gray-200 rounded-lg p-5 shadow-xs">
@@ -2314,6 +2352,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </p>
               )}
             </div>
+
+            <ProjectContactEmail userLanguage={userLanguage} value={contactEmail} canEdit={canEdit} onChange={setContactEmail} />
 
             <ProjectGithubFields userLanguage={userLanguage} repo={githubRepo} branch={githubBranch} canEdit={canEdit} onRepoChange={setGithubRepo} onBranchChange={setGithubBranch} />
 
@@ -2579,7 +2619,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         style={{ backgroundColor: `${color}15`, color, borderColor: `${color}30` }}
                       >
                         <Icons.User className="h-3 w-3 shrink-0" />
-                        <span className="truncate max-w-[10rem]">{name}</span>
+                        <span className="truncate max-w-[10rem]">{displayEmployeeName(name)}</span>
                         {canEdit && (
                         <button
                           type="button"
@@ -2596,7 +2636,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </div>
               )}
               {canEdit && (() => {
-                const available = users.filter(u => !selectedManagers.includes(u.name));
+                // Only users with the Project Manager role can be assigned (Settings -> Users).
+                const pms = users.filter(u => isProjectManagerRole(u.role));
+                const available = pms.filter(u => !selectedManagers.includes(u.name));
                 return (
                   <CustomSelect
                     value=""
@@ -2605,15 +2647,17 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     }}
                     disabled={available.length === 0}
                     placeholder={
-                      available.length === 0
-                        ? t("Everyone is assigned", "Priradení sú všetci", "Mindenki hozzá van rendelve")
+                      pms.length === 0
+                        ? t("No user has the Project Manager role", "Žiadny používateľ nemá rolu projektového manažéra", "Egyik felhasználónak sincs projektmenedzser szerepköre")
+                        : available.length === 0
+                        ? t("All project managers are assigned", "Priradení sú všetci projektoví manažéri", "Minden projektmenedzser hozzá van rendelve")
                         : selectedManagers.length > 0
                           ? t("Add another manager...", "Pridať ďalšieho manažéra...", "További menedzser hozzáadása...")
                           : t("Assign a manager...", "Priradiť manažéra...", "Menedzser kijelölése...")
                     }
                     options={available.map(u => ({
                       value: u.name,
-                      label: u.name,
+                      label: displayEmployeeName(u.name),
                       icon: <span className="h-2.5 w-2.5 rounded-full shrink-0 inline-block" style={{ backgroundColor: u.color || "#64748b" }} />,
                     }))}
                   />
@@ -2629,6 +2673,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </p>
               )}
             </div>
+
+            <ProjectEmployeesField userLanguage={userLanguage} users={users} value={selectedEmployees} managers={selectedManagers} canEdit={canEdit} onChange={setSelectedEmployees} />
 
           </div>
           </div>
@@ -2998,10 +3044,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               // Pairing a lead names the project after it, but only while it
               // has no name yet — re-pairing never overwrites what somebody
               // deliberately typed.
-              if (!projectName.trim()) {
-                const paired = leads.find(l => l.id === id);
-                if (paired?.name) setProjectName(paired.name);
-              }
+              const paired = leads.find(l => l.id === id);
+              if (!projectName.trim() && paired?.name) setProjectName(paired.name);
+              // Likewise the contact: an empty phone / e-mail is filled from the lead, a typed one stays.
+              const contact = fillEmptyContactFromLead({ contactPhone, contactEmail }, paired);
+              setContactPhone(contact.contactPhone);
+              setContactEmail(contact.contactEmail);
             };
 
             if (!pairedLead || pickingClient) {
@@ -3202,10 +3250,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               </div>
             );
           })()}
-        </div>
+        </ProjectLeftColumn>
 
         {/* RIGHT COLUMN: Timeline & Gantt Tabs */}
-        <div className={isSidebar ? "space-y-4 text-left" : "ws-lg:col-span-8 flex flex-col h-auto ws-lg:h-full ws-lg:overflow-hidden bg-white border border-gray-200 rounded-lg p-4 ws-sm:p-5 shadow-xs text-left"}>
+        <div className={isSidebar ? "space-y-4 text-left" : "ws-lg:col-span-8 flex flex-col bg-white border border-gray-200 rounded-lg p-4 ws-sm:p-5 shadow-xs text-left"}>
           {/* Tab bar: icon, label, optional badge; scrolls sideways rather than wrapping. */}
           {!isSidebar && (
             <Tabs<RightTab>
@@ -3220,6 +3268,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               }}
               items={[
                 { key: "timeline", hidden: !projectType.hasTimeline, icon: <Icons.Clock />, label: t("Timeline", "Časová os", "Idővonal") },
+                { key: "notes", hidden: isNew, icon: <Icons.NotebookPen />, label: t("Notes", "Poznámky", "Jegyzetek") },
                 { key: "criteria", icon: <Icons.ClipboardCheck />, label: t("Acceptance criteria", "Akceptačné kritériá", "Elfogadási kritériumok") },
                 {
                   key: "tasks",
@@ -3237,7 +3286,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   label: t("Finances", "Financie", "Pénzügyek"),
                   badge: (
                     <span className={`px-1.5 rounded-full text-micro font-semibold tabular-nums ${revenueAnalysis.realProfit >= 0 ? "bg-emerald-500/15 text-emerald-700" : "bg-rose-500/15 text-rose-700"}`}>
-                      {money(revenueAnalysis.realProfit)}
+                      {labourHidden ? "—" : money(revenueAnalysis.realProfit)}
                     </span>
                   ),
                 },
@@ -3249,6 +3298,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <span className="px-1.5 rounded-full text-micro font-semibold tabular-nums bg-rose-500/20 text-rose-600">{missingFileCount}</span>
                   ) : undefined,
                 },
+                { key: "orders", hidden: !orderLinks || isNew, icon: <Icons.ShoppingCart />, label: t("Orders", "Objednávky", "Rendelések"), count: orderLinks ? ordersOfProject(orderLinks.orders, project.id).length || undefined : undefined },
                 {
                   key: "tickets",
                   hidden: !(projectType.hasTickets || project.ticketWidgetEnabled),
@@ -3264,6 +3314,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 },
               ]}
             />
+          )}
+
+          {activeRightTab === "orders" && orderLinks && !isNew && (
+            <ProjectOrdersTab project={project} links={orderLinks} leads={leads} language={userLanguage} currency={currencyCode || "EUR"} />
           )}
 
           {/* TAB CONTENT: Tickets & Floating Widget */}
@@ -3349,30 +3403,25 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 
                 <form onSubmit={handleAddTimelineEvent} className="space-y-3.5 text-ui font-semibold">
                   <div>
-                    <label className="block type-overline text-slate-400 mb-1">{t("Event Title", "Názov udalosti", "Esemény címe")}</label>
+                    <label className="block type-overline text-slate-400 mb-1">
+                      {t("Event Title", "Názov udalosti", "Esemény címe")}
+                                          </label>
                     <input
                       value={newTeTitle}
-                      onChange={e => setNewTeTitle(e.target.value)}
+                      onChange={e => { setNewTeTitle(e.target.value); setTeIssue(null); }}
+                      aria-invalid={teIssue?.field === "title"}
                       placeholder={t("e.g. Site survey completed", "napr. Zameranie dokončené", "pl. Helyszíni felmérés kész")}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white aria-[invalid=true]:border-rose-400"
                     />
+                    {teIssue?.field === "title" && <p role="alert" className="mt-1 text-caption font-semibold text-rose-600">{teIssue.message}</p>}
                   </div>
 
                   <div>
                     <label className="block type-overline text-slate-400 mb-1">{t("Event Type", "Typ", "Típus")}</label>
                     <CustomSelect
                       value={newTeType}
-                      onChange={v => setNewTeType(v)}
-                      options={
-                        projectType.timelineEventTypes && projectType.timelineEventTypes.length > 0
-                          ? projectType.timelineEventTypes.map(et => ({ value: et.id, label: et.name }))
-                          : [
-                              { value: "note", label: t("Internal Note", "Interná poznámka", "Belső jegyzet") },
-                              { value: "phone", label: t("Phone Call", "Telefonát", "Telefonhívás") },
-                              { value: "email", label: t("Email Dispatch", "Odoslaný e-mail", "E-mail") },
-                              { value: "appointment", label: t("Meeting / Appointment", "Stretnutie", "Találkozó") },
-                            ]
-                      }
+                      onChange={v => { setNewTeType(v); setTeIssue(null); }}
+                      options={timelineEventTypeOptions(projectType.timelineEventTypes, t)}
                     />
                   </div>
 
@@ -3387,10 +3436,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block type-overline text-slate-400 mb-1">{t("Content details...", "Podrobnosti", "Részletek")}</label>
+                    <label className="block type-overline text-slate-400 mb-1">
+                      {t("Content details...", "Podrobnosti", "Részletek")}
+                                          </label>
                     <textarea
                       value={newTeContent}
-                      onChange={e => setNewTeContent(e.target.value)}
+                      onChange={e => { setNewTeContent(e.target.value); setTeIssue(null); }}
                       rows={3}
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white resize-none"
                     />
@@ -3404,6 +3455,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       const val = timelineEventData[attr.id] ?? "";
                       const updateVal = (newVal: any) => {
                         setTimelineEventData(prev => ({ ...prev, [attr.id]: newVal }));
+                        setTeIssue(null);
                       };
 
                       return (
@@ -3592,6 +3644,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                               </div>
                             </div>
                           )}
+                          {teIssue?.field === attr.id && <p role="alert" className="mt-1 text-caption font-semibold text-rose-600">{teIssue.message}</p>}
                         </div>
                       );
                     });
@@ -3610,12 +3663,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
               {/* Timeline Events List */}
               <div className="flex-1 ws-lg:overflow-y-auto space-y-3.5 ws-lg:pr-1 scrollbar-thin">
+                {leadHistory.length > 0 && <LeadHistoryToggle count={leadHistory.length} shown={showLeadHistory} onChange={setShowLeadHistory} language={userLanguage} />}
                 {timelineEntries.length === 0 ? (
                   <div className="h-full min-h-50 flex items-center justify-center border border-dashed border-gray-200 rounded-lg p-6 text-gray-400 text-ui">
                     {t("No events logged for this project yet.", "Zatiaľ neboli zaznamenané žiadne udalosti.", "Még nincsenek események rögzítve.")}
                   </div>
                 ) : (
-                  timelineEntries.map(event => isPushItem(event) ? <ProjectPushTimelineItem key={event.id} item={event} language={userLanguage} /> : (
+                  timelineEntries.map(event => isLeadHistoryItem(event) ? <LeadHistoryTimelineItem key={event.id} item={event} leadName={pairedLead?.name} language={userLanguage} /> : isPushItem(event) ? <ProjectPushTimelineItem key={event.id} item={event} language={userLanguage} /> : isNoteActivity(event) ? <NoteActivityRow key={event.id} title={event.title} content={event.content} timestamp={event.timestamp} language={userLanguage} /> : (
                     <div key={event.id} className="p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-2xs text-ui font-medium relative group flex gap-3.5 animate-fade-in">
                       <div className="p-2 rounded-md bg-white border border-gray-200 shrink-0 self-start shadow-2xs">
                         {getTimelineIcon(event.type, event.eventType)}
@@ -4162,6 +4216,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             </div>
           )}
 
+          {(isSidebar || activeRightTab === "notes") && !isNew && wrapSection("notes", <Icons.NotebookPen className="h-4 w-4 text-yellow-600" />, t("Notes", "Poznámky", "Jegyzetek"), null,
+            <ProjectNotesSection projectId={project.id} language={userLanguage} author={currentUser?.name} canEdit={canEdit} canDelete={canDelete} onActivity={trace => setTimeline(prev => [trace, ...prev])} />)}
+
           {/* TAB CONTENT: Files — the type's default files, then this project's own */}
           {(isSidebar || activeRightTab === "files") && wrapSection(
             "files",
@@ -4265,7 +4322,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             <Coins className="h-4 w-4 text-emerald-600" />,
             t("Finances", "Financie", "Pénzügyek"),
             <span className={`px-2 py-0.5 rounded-full text-micro font-semibold tabular-nums ${revenueAnalysis.realProfit >= 0 ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-rose-50 text-rose-700 border border-rose-200"}`}>
-              {money(revenueAnalysis.realProfit)}
+              {labourHidden ? "—" : money(revenueAnalysis.realProfit)}
             </span>,
             <div className={`flex-1 ${isSidebar ? "space-y-6" : "ws-lg:overflow-y-auto space-y-6 scrollbar-thin ws-lg:pr-1"} animate-in fade-in duration-150 text-left`}>
               {/* 0. Top Row: Project Value & Invoicable + Project Cost Budget */}
@@ -4590,7 +4647,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     ))}
                   </div>
 
-                  {!budgetAnalysis ? (
+                  {budgetAnalysis && labourHidden ? (
+                    <LabourHiddenNote language={userLanguage} className="text-caption text-slate-500" />
+                  ) : !budgetAnalysis ? (
                     <p className="text-caption text-slate-500">
                       {t(
                         "No budget set yet. Set one to see how the project's costs compare with it. (The \"Planned\" figures below are the sums of the planned amounts on invoices and expenses.)",
@@ -4651,11 +4710,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <TrendingDown className="h-4 w-4 text-rose-500" />
                   </div>
                   <div className="text-title font-bold text-slate-900 mt-1">
-                    {money(revenueAnalysis.totalRealExpenses)}
+                    {labourHidden ? "—" : money(revenueAnalysis.totalRealExpenses)}
                   </div>
                   <div className="text-caption text-slate-500 mt-0.5">
                     {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.totalPlannedExpenses)}</strong>
-                    <ProjectTimeFinanceLines language={userLanguage} money={money} labourCost={revenueAnalysis.labourCost} unpricedSeconds={unpricedSeconds} billableValue={timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.billableValue : null} billableComplete={timeTracking.totals.byProject[project?.id ?? ""]?.billableComplete} />
+                    <ProjectTimeFinanceLines language={userLanguage} money={money} labourCost={revenueAnalysis.labourCost} labourHidden={labourHidden} unpricedSeconds={unpricedSeconds} billableValue={timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.billableValue : null} billableComplete={timeTracking.totals.byProject[project?.id ?? ""]?.billableComplete} />
                   </div>
                 </div>
 
@@ -4666,7 +4725,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <DollarSign className="h-4 w-4 text-indigo-500" />
                   </div>
                   <div className={`text-title font-bold mt-1 ${revenueAnalysis.realProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                    {money(revenueAnalysis.realProfit)}
+                    {labourHidden ? "—" : money(revenueAnalysis.realProfit)}
                   </div>
                   <div className="text-caption text-slate-500 mt-0.5">
                     {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.plannedProfit)}</strong>
@@ -4680,7 +4739,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <Coins className="h-4 w-4 text-amber-500" />
                   </div>
                   <div className={`text-title font-bold mt-1 ${revenueAnalysis.realMarginPct >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                    {revenueAnalysis.realMarginPct.toFixed(1)}%
+                    {labourHidden ? "—" : `${revenueAnalysis.realMarginPct.toFixed(1)}%`}
                   </div>
                   <div className="text-caption text-slate-500 mt-0.5">
                     {t("Planned:", "Plán:", "Terv:")} <strong>{revenueAnalysis.plannedMarginPct.toFixed(1)}%</strong>
