@@ -1,5 +1,6 @@
 import "./popup.css";
 import { EXTENSION_VERSION, badgeLabel, hostOnly } from "../../../src/utils/timeTrackerRules.ts";
+import { applyMarkdownFormat, renderBasicMarkdown } from "../../../src/utils/basicMarkdown.ts";
 import { TrackerError, trackerCall } from "./client.ts";
 import { loadLocal, saveLocal, type ExtensionPrefs, type QueueItem } from "./storage.ts";
 import { PRODUCT_NAME, errorMessage, t } from "./i18n.ts";
@@ -20,11 +21,16 @@ let startFormExpanded = false;
 let editingEntryId: string | null = null;
 let startModeChoice: "switch" | "parallel" = "switch";
 let activeTab: "time" | "tasks" = "time";
+let pinnedTab: "time" | "tasks" | null = null;
+let tabInitialized = false;
 let taskFilter: "mine" | "all" = "mine";
 let taskSearch = "";
 let panelTasks: any[] = [];
 const collapsedBuckets = new Set<string>(["tomorrow", "upcoming"]);
 let bucketTouched = false;
+let stoppingItem: any | null = null;
+let stopReportDraft = "";
+let stopReportPreview = false;
 
 const initials = (name: string) =>
   name
@@ -39,6 +45,7 @@ const PAUSE = `<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true
 const SQUARE = `<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><rect x="2" y="2" width="8" height="8" rx="1.5" fill="currentColor"/></svg>`;
 const GEAR = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M9.4 1.6a1.4 1.4 0 0 0-2.8 0l-.2.9a5.2 5.2 0 0 0-1.2.7l-.9-.3a1.4 1.4 0 0 0-1.4 2.4l.7.6a5.4 5.4 0 0 0 0 1.4l-.7.6a1.4 1.4 0 0 0 1.4 2.4l.9-.3c.4.3.8.5 1.2.7l.2.9a1.4 1.4 0 0 0 2.8 0l.2-.9c.4-.2.8-.4 1.2-.7l.9.3a1.4 1.4 0 0 0 1.4-2.4l-.7-.6a5.4 5.4 0 0 0 0-1.4l.7-.6a1.4 1.4 0 0 0-1.4-2.4l-.9.3a5.2 5.2 0 0 0-1.2-.7l-.2-.9zM8 10a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg>`;
 const EDIT = `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M11.8 2.2a1.4 1.4 0 0 1 2 2L5.7 12.3 2.5 13l.7-3.2 8.6-7.6z"/></svg>`;
+const PIN = `<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M9.8 1.8a.8.8 0 0 0-1.1 0L6.6 3.9l-2.3.7a.8.8 0 0 0-.3 1.3l2.1 2.1-3.3 4.2a.6.6 0 0 0 .8.8l4.2-3.3 2.1 2.1a.8.8 0 0 0 1.3-.3l.7-2.3 2.1-2.1a.8.8 0 0 0 0-1.1L9.8 1.8z"/></svg>`;
 
 interface Capabilities {
   parallelAllowed: boolean;
@@ -192,6 +199,11 @@ async function connect(): Promise<void> {
 async function showTracker(): Promise<void> {
   const state = await loadLocal();
   signedInName = state.userName || "";
+  pinnedTab = state.prefs.pinnedTab ?? null;
+  if (!tabInitialized) {
+    activeTab = pinnedTab ?? (state.prefs.lastTab === "tasks" ? "tasks" : "time");
+    tabInitialized = true;
+  }
   if (state.prefs.defaultStartMode === "parallel") startModeChoice = "parallel";
   if (!state.deviceKey || !state.ccrmUrl) {
     settingsOpen = false;
@@ -495,6 +507,7 @@ function renderMainView(opts: {
     ${offline ? `<p class="amber note">${esc(t("Offline. Changes queue until back online.", "Offline. Zmeny sa odošlú po pripojení.", "Offline. A módosítások sorba állnak."))}</p>` : ""}
     <div id="notice" class="notice note"></div>
     ${extrasTop(extras) ? `<div class="body" style="padding-bottom:0">${extrasTop(extras)}</div>` : ""}
+    ${stoppingItem ? `<div class="body" style="padding-bottom:0">${stopReportCardHtml()}</div>` : ""}
     ${viewTab === "tasks"
       ? `${tasksViewHtml(items, ccrmUrl, extras)}`
       : `${runningHtml}
@@ -525,19 +538,37 @@ function renderMainView(opts: {
   app.querySelector("#tab-time")?.addEventListener("click", () => {
     if (activeTab === "time") return;
     activeTab = "time";
+    void saveLocal({ prefs: { lastTab: "time" } as any });
     renderMainView(opts);
   });
   app.querySelector("#tab-tasks")?.addEventListener("click", () => {
     if (activeTab === "tasks") return;
     activeTab = "tasks";
+    void saveLocal({ prefs: { lastTab: "tasks" } as any });
     renderMainView(opts);
+  });
+  app.querySelectorAll<HTMLElement>(".pin-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const target = btn.dataset.pinTab === "tasks" ? "tasks" : "time";
+      const nextPinned = pinnedTab === target ? null : target;
+      pinnedTab = nextPinned;
+      if (nextPinned) activeTab = nextPinned;
+      void saveLocal({ prefs: { pinnedTab: nextPinned, lastTab: activeTab } as any });
+      renderMainView(opts);
+    });
   });
 
   app.querySelectorAll<HTMLElement>(".stop-item").forEach((btn) => {
     btn.addEventListener("click", () => {
       const id = btn.dataset.id || "";
       const item = items.find((it) => String(it.id || "") === id) || items[0];
-      if (item) void stop(item);
+      if (!item) return;
+      stoppingItem = item;
+      stopReportDraft = String(item.note || "");
+      stopReportPreview = false;
+      renderMainView(opts);
+      (app.querySelector("#stop-report-text") as HTMLTextAreaElement | null)?.focus();
     });
   });
 
@@ -585,8 +616,9 @@ function renderMainView(opts: {
     void showTracker();
   });
 
+  if (stoppingItem) wireStopReport(opts);
   if (viewTab === "tasks") {
-    wireTasksView(items, ccrmUrl);
+    wireTasksView(items, ccrmUrl, opts);
   } else {
     if (showStartForm) wireStartForm();
     wireContinue(recent);
@@ -598,16 +630,28 @@ function renderMainView(opts: {
 function panelTabsHtml(runningCount: number): string {
   const mineCount = panelTasks.filter((tk) => tk.mine).length;
   const openCount = panelTasks.length;
+  const timePinned = pinnedTab === "time";
+  const tasksPinned = pinnedTab === "tasks";
+  const pinLabel = (pinned: boolean) =>
+    pinned
+      ? t("Unpin tab", "Odopnúť kartu", "Fül rögzítésének feloldása")
+      : t("Pin as default tab", "Pripnúť ako predvolenú kartu", "Rögzítés alapértelmezett fülként");
   return `
     <div class="panel-tabs" role="tablist" aria-label="${esc(t("Panel section", "Sekcia panela", "Panel szakasz"))}">
-      <button id="tab-time" class="panel-tab ${activeTab === "time" ? "active" : ""}" type="button" role="tab" aria-selected="${activeTab === "time"}">
-        ${esc(t("Time", "Čas", "Idő"))}
-        ${runningCount > 0 ? `<span class="tab-badge">${esc(runningCount)}</span>` : ""}
-      </button>
-      <button id="tab-tasks" class="panel-tab ${activeTab === "tasks" ? "active" : ""}" type="button" role="tab" aria-selected="${activeTab === "tasks"}">
-        ${esc(t("Tasks", "Úlohy", "Feladatok"))}
-        ${openCount > 0 ? `<span class="tab-badge">${esc(taskFilter === "mine" ? mineCount : openCount)}</span>` : ""}
-      </button>
+      <div class="panel-tab-wrap ${activeTab === "time" ? "active" : ""}">
+        <button id="tab-time" class="panel-tab" type="button" role="tab" aria-selected="${activeTab === "time"}">
+          ${esc(t("Time", "Čas", "Idő"))}
+          ${runningCount > 0 ? `<span class="tab-badge">${esc(runningCount)}</span>` : ""}
+        </button>
+        <button class="pin-btn ${timePinned ? "pinned" : ""}" type="button" data-pin-tab="time" aria-pressed="${timePinned}" title="${esc(pinLabel(timePinned))}" aria-label="${esc(pinLabel(timePinned))}">${PIN}</button>
+      </div>
+      <div class="panel-tab-wrap ${activeTab === "tasks" ? "active" : ""}">
+        <button id="tab-tasks" class="panel-tab" type="button" role="tab" aria-selected="${activeTab === "tasks"}">
+          ${esc(t("Tasks", "Úlohy", "Feladatok"))}
+          ${openCount > 0 ? `<span class="tab-badge">${esc(taskFilter === "mine" ? mineCount : openCount)}</span>` : ""}
+        </button>
+        <button class="pin-btn ${tasksPinned ? "pinned" : ""}" type="button" data-pin-tab="tasks" aria-pressed="${tasksPinned}" title="${esc(pinLabel(tasksPinned))}" aria-label="${esc(pinLabel(tasksPinned))}">${PIN}</button>
+      </div>
     </div>`;
 }
 
@@ -724,7 +768,80 @@ function tasksViewHtml(items: any[], ccrmUrl: string, extras: Extras): string {
     </div>`;
 }
 
-function wireTasksView(items: any[], ccrmUrl: string): void {
+function stopReportCardHtml(): string {
+  const title = stoppingItem?.title || t("Running timer", "Bežiaci časovač", "Futó időzítő");
+  const previewHtml = renderBasicMarkdown(stopReportDraft);
+  return `
+    <div class="stop-report-card" role="region" aria-label="${esc(t("Work report", "Report práce", "Munkajelentés"))}">
+      <div class="spread">
+        <span class="section-label" style="color:#be123c">${esc(t("Type in what you did!", "Napíšte, čo ste robili!", "Írja le, mit csinált!"))}</span>
+        <button id="cancel-stop-report" class="tiny" type="button">${esc(t("Cancel", "Zrušiť", "Mégse"))}</button>
+      </div>
+      <span class="muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(title)}</span>
+      <div class="md-box">
+        <div class="md-bar">
+          <div class="md-tools">
+            ${!stopReportPreview ? `
+              <button class="md-btn" type="button" data-md="bold" title="${esc(t("Bold (**text**)", "Tučné (**text**)", "Félkövér"))}">B</button>
+              <button class="md-btn" type="button" data-md="italic" title="${esc(t("Italic (*text*)", "Kurzíva (*text*)", "Dőlt"))}"><em>I</em></button>
+              <button class="md-btn" type="button" data-md="bullet" title="${esc(t("Bullet list (- item)", "Odrážky (- položka)", "Felsorolás"))}">•</button>
+              <button class="md-btn" type="button" data-md="code" title="${esc(t("Code (`code`)", "Kód (`kód`)", "Kód"))}">&lt;/&gt;</button>
+            ` : `<span class="muted" style="font-size:10.5px">${esc(t("Preview", "Náhľad", "Előnézet"))}</span>`}
+          </div>
+          <button id="toggle-stop-preview" class="md-btn ${stopReportPreview ? "active" : ""}" type="button">${esc(stopReportPreview ? t("Edit", "Upraviť", "Szerk.") : t("Preview", "Náhľad", "Előnézet"))}</button>
+        </div>
+        ${stopReportPreview
+          ? `<div class="md-preview">${previewHtml || `<span class="muted">${esc(t("Nothing to preview.", "Zatiaľ nič na náhľad.", "Nincs előnézet."))}</span>`}</div>`
+          : `<textarea id="stop-report-text" class="md-textarea" maxlength="1000" placeholder="${esc(t("What was done? (**bold**, *italic*, - bullets, `code`)", "Čo bolo urobené? (**tučné**, *kurzíva*, - odrážky, `kód`)", "Mi készült el? (**félkövér**, *dőlt*, - lista, `kód`)"))}">${esc(stopReportDraft)}</textarea>`}
+      </div>
+      <div class="row">
+        <button id="confirm-stop-report" class="stop wide" type="button">${SQUARE} ${esc(stopReportDraft.trim() ? t("Stop & save report", "Zastaviť a uložiť", "Leállítás és mentés") : t("Stop timer", "Zastaviť časovač", "Időzítő leállítása"))}</button>
+      </div>
+    </div>`;
+}
+
+function wireStopReport(opts: Parameters<typeof renderMainView>[0]): void {
+  const area = app.querySelector("#stop-report-text") as HTMLTextAreaElement | null;
+  area?.addEventListener("input", () => {
+    stopReportDraft = area.value;
+    const btn = app.querySelector("#confirm-stop-report");
+    if (btn) {
+      btn.innerHTML = `${SQUARE} ${esc(stopReportDraft.trim() ? t("Stop & save report", "Zastaviť a uložiť", "Leállítás és mentés") : t("Stop timer", "Zastaviť časovač", "Időzítő leállítása"))}`;
+    }
+  });
+  area?.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      if (stoppingItem) void stop(stoppingItem, stopReportDraft);
+    }
+  });
+  app.querySelectorAll<HTMLElement>("[data-md]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (!area) return;
+      const kind = btn.dataset.md as "bold" | "italic" | "code" | "bullet";
+      const res = applyMarkdownFormat(area.value, area.selectionStart ?? area.value.length, area.selectionEnd ?? area.value.length, kind);
+      area.value = res.value;
+      stopReportDraft = res.value;
+      area.focus();
+      area.setSelectionRange(res.selectionStart, res.selectionEnd);
+    });
+  });
+  app.querySelector("#toggle-stop-preview")?.addEventListener("click", () => {
+    stopReportPreview = !stopReportPreview;
+    renderMainView(opts);
+  });
+  app.querySelector("#cancel-stop-report")?.addEventListener("click", () => {
+    stoppingItem = null;
+    stopReportDraft = "";
+    stopReportPreview = false;
+    renderMainView(opts);
+  });
+  app.querySelector("#confirm-stop-report")?.addEventListener("click", () => {
+    if (stoppingItem) void stop(stoppingItem, stopReportDraft);
+  });
+}
+
+function wireTasksView(items: any[], ccrmUrl: string, opts: Parameters<typeof renderMainView>[0]): void {
   const bindTaskCards = () => {
     app.querySelectorAll<HTMLElement>(".bucket-head").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -757,7 +874,12 @@ function wireTasksView(items: any[], ccrmUrl: string): void {
       btn.addEventListener("click", () => {
         const id = btn.dataset.id || "";
         const item = items.find((it) => String(it.id || "") === id) || items[0];
-        if (item) void stop(item);
+        if (!item) return;
+        stoppingItem = item;
+        stopReportDraft = String(item.note || "");
+        stopReportPreview = false;
+        renderMainView(opts);
+        (app.querySelector("#stop-report-text") as HTMLTextAreaElement | null)?.focus();
       });
     });
   };
@@ -1225,12 +1347,18 @@ async function start(input: {
   }
 }
 
-async function stop(entry: any): Promise<void> {
+async function stop(entry: any, reportNote?: string): Promise<void> {
   const state = await loadLocal();
   const at = new Date().toISOString();
   const body: Record<string, unknown> = {};
   if (entry?.id) body.id = entry.id;
+  if (reportNote !== undefined) {
+    body.note = reportNote.trim() || null;
+  }
   if (!navigator.onLine) {
+    stoppingItem = null;
+    stopReportDraft = "";
+    stopReportPreview = false;
     await enqueue({ kind: "stop", at, body }, null);
     await showTracker();
     return;
@@ -1239,6 +1367,9 @@ async function stop(entry: any): Promise<void> {
     await trackerCall(state.ccrmUrl, state.deviceKey, "POST", "stop", { ...body, stoppedAt: at });
     await saveLocal({ optimistic: null });
     editingEntryId = null;
+    stoppingItem = null;
+    stopReportDraft = "";
+    stopReportPreview = false;
     await refreshBadge();
     await showTracker();
   } catch (error) {

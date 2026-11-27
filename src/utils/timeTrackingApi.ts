@@ -135,8 +135,8 @@ export interface ListParams {
 export interface TimeTotals {
   byTask: Record<string, number>;
   byTicket: Record<string, number>;
-  byProject: Record<string, { seconds: number; workedMs?: number; cost: number | null; /** Hours x billable rate (information only); null without time_tracking_costs. */ billableValue?: number | null; billableComplete?: boolean }>;
-  byClient?: Record<string, { seconds: number; workedMs?: number; cost: number | null }>;
+  byProject: Record<string, { seconds: number; workedMs?: number; cost: number | null; /** Active non-excluded seconds with no hourly cost rate. */ unpricedSeconds?: number; /** Hours x billable rate (information only); null without time_tracking_costs. */ billableValue?: number | null; billableComplete?: boolean }>;
+  byClient?: Record<string, { seconds: number; workedMs?: number; cost: number | null; unpricedSeconds?: number }>;
   /** Worked milliseconds per user per entry date (overlaps counted once). */
   workedByUserDay?: Record<string, Record<string, number>>;
 }
@@ -328,7 +328,18 @@ export const startTimer = async (input: EntryInput, mode?: StartMode): Promise<S
 
 /** Stops one entry; without `id` the single running one (409 `ambiguous` while several run). */
 /** `reason: 'status'`: fired by a task status change (D10.2), the entry records end_reason 'status'. */
-export const stopTimer = async (opts: { id?: string; projectId?: string | null; reason?: "status" } = {}): Promise<TimeEntry> =>
+export type TeamRunningEntry = TimeEntry & { userName?: string };
+
+/** Every currently running timer across the team (requires `time_tracking_team`). */
+export const fetchTeamRunning = async (): Promise<{ running: TeamRunningEntry[]; serverNow: string }> => {
+  const body = await get({ action: "team_running" });
+  return {
+    running: Array.isArray(body.running) ? (body.running as TeamRunningEntry[]) : [],
+    serverNow: typeof body.serverNow === "string" ? body.serverNow : new Date().toISOString(),
+  };
+};
+
+export const stopTimer = async (opts: { id?: string; projectId?: string | null; reason?: "status"; note?: string | null } = {}): Promise<TimeEntry> =>
   (await post("stop", opts)).entry as TimeEntry;
 
 /** Stops every running entry of the caller; resolves the stopped ones (empty when nothing ran). */
@@ -394,6 +405,34 @@ export const restoreEntry = async (id: string): Promise<TimeEntry> => (await pos
 export const repriceEntries = async (from: string, to: string, userIds?: string[]): Promise<{ repriced: number }> => {
   const body = await post("reprice", { from, to, userIds });
   return { repriced: Number(body.repriced) || 0 };
+};
+
+export interface ProjectCostItem {
+  month: string;
+  userId: string;
+  userName: string;
+  salaryType: "monthly" | "daily" | "hourly" | string | null;
+  seconds: number;
+  workedMs: number;
+  cost: number | null;
+  unpricedSeconds?: number;
+  canSeeCost: boolean;
+  complete: boolean;
+  excluded: boolean;
+}
+
+export const getProjectCosts = async (projectId: string): Promise<ProjectCostItem[]> => {
+  const body = await get({ action: "projectCosts", projectId });
+  return Array.isArray(body.items) ? (body.items as ProjectCostItem[]) : [];
+};
+
+export const setProjectCostExclusion = async (input: {
+  projectId: string;
+  userId: string;
+  month: string;
+  excluded: boolean;
+}): Promise<void> => {
+  await post("setProjectCostExclusion", input);
 };
 
 export interface HolidaysResponse {

@@ -105,6 +105,8 @@ test.describe('Time tracking', () => {
 
     // "Require a project before Stop" (explicitly enabled above): the picker opens instead of the stop failing.
     await page.getByTestId('timer-stop').click();
+    await expect(page.getByTestId('stop-report-popover')).toBeVisible();
+    await page.getByTestId('stop-report-submit').click();
     await expect(page.getByTestId('project-request-dialog')).toBeVisible();
     await page.getByTestId('project-request-dialog').getByTestId('project-option').first().click();
     await expect(page.getByTestId('timer-start')).toBeVisible();
@@ -383,6 +385,8 @@ test.describe('Time tracking', () => {
     await page.getByTestId('timer-start').click();
     await expect(page.getByTestId('timer-note')).toHaveValue('Prvý popis');
     await page.getByTestId('timer-stop').click();
+    await expect(page.getByTestId('stop-report-popover')).toBeVisible();
+    await page.getByTestId('stop-report-submit').click();
     await expect(page.getByTestId('project-request-dialog')).toHaveCount(0);
     await expect(row(page, 'Popisná práca').getByTestId('time-entry-note')).toHaveText('Prvý popis');
 
@@ -628,6 +632,8 @@ test.describe('Time tracking', () => {
     await expect(page.getByTestId('timer-derived-entity')).toContainText('Silvia');
 
     await page.getByTestId('timer-stop').click();
+    await expect(page.getByTestId('stop-report-popover')).toBeVisible();
+    await page.getByTestId('stop-report-submit').click();
     await expect(page.getByTestId('project-request-dialog')).toHaveCount(0);
     await expect(row(page, 'Zavolať klientke Silvii').getByTestId('entry-client-chip')).toContainText('Silvia');
 

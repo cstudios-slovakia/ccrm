@@ -1,0 +1,2 @@
+- **Time tracking work reports, top-bar team timers & pinnable extension tabs** (`StopReportDialog.tsx`, `HeaderTeamTimers.tsx`, `EntryRow.tsx`, `extensions/chrome-time-tracker/`): added a Markdown work-report popover when stopping a timer, a top-bar live team timers popover showing active workers and tasks, worker attribution on time entries, and pinnable tabs in the Chrome Time Tracker extension.
+- **Tests**: `basicMarkdown.test.ts`, `timeCost.test.ts`.

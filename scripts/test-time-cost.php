@@ -19,7 +19,10 @@ $fixtures = json_decode((string)file_get_contents(__DIR__ . '/fixtures/time-cost
 foreach ($fixtures['cases'] as $case) {
     $settings = $case['settings'] ?? $fixtures['settings'];
     $r = ccrm_tc_cost_rate($case['person'], (int)$case['workingDays'], $settings, $case['leave'] ?? []);
-    $cost = ccrm_tc_worked_cost(isset($case['workedMs']) ? (int)$case['workedMs'] : (int)$case['durationSec'] * 1000, $r['rate']);
+    $workedMs = isset($case['workedMs']) ? (int)$case['workedMs'] : (int)$case['durationSec'] * 1000;
+    $cost = array_key_exists('dayTotalWorkedMs', $case)
+        ? ccrm_tc_day_allocated_cost($workedMs, (int)$case['dayTotalWorkedMs'], $r['rate'], $r['source'], (float)($r['hoursPerDay'] ?? $settings['hoursPerDay']))
+        : ccrm_tc_worked_cost($workedMs, $r['rate']);
     $e = $case['expect'];
     $ok = $r['rate'] === ($e['rate'] === null ? null : (float)$e['rate'])
         && $r['source'] === $e['source']

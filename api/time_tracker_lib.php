@@ -603,6 +603,10 @@ function ccrm_ttx_stop(\PDO $pdo, array $user, array $device, array $body, array
                 $pdo->beginTransaction();
                 ccrm_tt_lock_user($pdo, $userId);
                 ccrm_tt_clear_pause($pdo, (string)$row['id'], 'user');
+                if (array_key_exists('note', $body)) {
+                    $pdo->prepare("UPDATE `time_entries` SET `note` = ? WHERE `id` = ?")
+                        ->execute([ccrm_tt_clean_note($body['note']), (string)$row['id']]);
+                }
                 $pdo->commit();
             } catch (\Throwable $e) {
                 if ($pdo->inTransaction()) {
@@ -671,6 +675,10 @@ function ccrm_ttx_stop(\PDO $pdo, array $user, array $device, array $body, array
         }
         if ($current !== null) {
             ccrm_ttx_close_row($pdo, $current, $endUtc, $settings, $projectId, (string)$device['id'], 'user');
+            if (array_key_exists('note', $body)) {
+                $pdo->prepare("UPDATE `time_entries` SET `note` = ? WHERE `id` = ?")
+                    ->execute([ccrm_tt_clean_note($body['note']), (string)$current['id']]);
+            }
             ccrm_tt_settle_rows($pdo, [$current]); // running until now: covers the stopped interval
             ccrm_tt_presence_touch($pdo, $userId, ccrm_tt_now_utc()); // one of several: anchor = now; the last: NULL (TT2 C6)
         }

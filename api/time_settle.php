@@ -210,12 +210,39 @@ if (!function_exists('ccrm_tt_settle')) {
             return;
         }
         ccrm_ts_in_tx($pdo, function () use ($pdo, $userId, $date, $force, $ownIds) {
-            ccrm_ts_settle_hours($pdo, $userId, $date, $date, $force, array_flip(array_map('strval', $ownIds)));
+            $own = array_flip(array_map('strval', $ownIds));
+            $newlySettled = [];
+            ccrm_ts_settle_hours($pdo, $userId, $date, $date, $force, $own, $newlySettled);
+            ccrm_ts_settle_day_costs($pdo, $userId, [$date], $force, $own, $newlySettled);
         });
     }
 
     function ccrm_ts_columns(): string {
         return "`id`, `user_id`, `employee_id`, `entry_date`, `start_at`, `end_at`, `duration_sec`, `worked_ms`, `cost`, `cost_rate`, `cost_rate_source`, `cost_rate_basis_days`, `approval_status`";
+    }
+
+    function ccrm_ts_hours_per_day(\PDO $pdo, string $userId): float {
+        $h = 0.0;
+        if ($userId !== '') {
+            try {
+                $stmt = $pdo->prepare("SELECT `hours_per_day` FROM `employees` WHERE `user_id` = ? LIMIT 1");
+                $stmt->execute([$userId]);
+                $v = $stmt->fetchColumn();
+                if (is_numeric($v) && (float)$v > 0) {
+                    $h = (float)$v;
+                }
+            } catch (\Throwable $e) {
+                $h = 0.0;
+            }
+        }
+        if (!($h > 0)) {
+            if (!function_exists('ccrm_tt_load_settings')) {
+                require_once __DIR__ . '/time_entries_lib.php';
+            }
+            $s = ccrm_tt_load_settings($pdo);
+            $h = is_numeric($s['hoursPerDay'] ?? null) && (float)$s['hoursPerDay'] > 0 ? (float)$s['hoursPerDay'] : 8.0;
+        }
+        return $h;
     }
 
     function ccrm_ts_settle_window(\PDO $pdo, string $userId, int $fromMs, int $toMs, bool $force, array $ownIds): void {
@@ -228,6 +255,22 @@ if (!function_exists('ccrm_tt_settle')) {
             }
         }
 
+        $newlySettled = [];
+        $touchedDates = [];
+        $fromDate = ccrm_ts_local_date($fromMs);
+        $toDate = ccrm_ts_local_date($toMs);
+        $touchedDates[$fromDate] = true;
+        $touchedDates[$toDate] = true;
+        if ($fromDate < $toDate) {
+            $dStmt = $pdo->prepare("SELECT DISTINCT `entry_date` FROM `time_entries`
+                                    WHERE `user_id` = ? AND `entry_date` BETWEEN ? AND ?
+                                      AND `deleted_at` IS NULL AND (`start_at` IS NULL OR `end_at` IS NOT NULL)");
+            $dStmt->execute([$userId, $fromDate, $toDate]);
+            foreach ($dStmt->fetchAll(\PDO::FETCH_COLUMN) as $d) {
+                $touchedDates[(string)$d] = true;
+            }
+        }
+
         $s1 = ccrm_ts_timed_rows($pdo, $userId, $fromMs, $toMs, true, false, ccrm_ts_columns(), $ownIds);
         if ($s1) {
             $spanFrom = $fromMs;
@@ -235,6 +278,9 @@ if (!function_exists('ccrm_tt_settle')) {
             foreach ($s1 as $r) {
                 $spanFrom = min($spanFrom, $r['_iv'][0]);
                 $spanTo = max($spanTo, $r['_iv'][1]);
+                if (!empty($r['entry_date'])) {
+                    $touchedDates[substr((string)$r['entry_date'], 0, 10)] = true;
+                }
             }
             $inputs = [];
             foreach (ccrm_ts_timed_rows($pdo, $userId, $spanFrom, $spanTo, false, false, "`id`, `start_at`, `end_at`, `duration_sec`", $ownIds) as $r) {
@@ -242,24 +288,25 @@ if (!function_exists('ccrm_tt_settle')) {
             }
             $worked = ccrm_ta_allocate($inputs);
             foreach ($s1 as $r) {
-                ccrm_ts_write($pdo, $r, (int)($worked[(string)$r['id']] ?? 0), $force, $own);
+                ccrm_ts_write($pdo, $r, (int)($worked[(string)$r['id']] ?? 0), $force, $own, $newlySettled);
             }
         }
-        ccrm_ts_settle_hours($pdo, $userId, ccrm_ts_local_date($fromMs), ccrm_ts_local_date($toMs), $force, $own);
+        ccrm_ts_settle_hours($pdo, $userId, $fromDate, $toDate, $force, $own, $newlySettled);
+        ccrm_ts_settle_day_costs($pdo, $userId, array_keys($touchedDates), $force, $own, $newlySettled);
     }
 
-    function ccrm_ts_settle_hours(\PDO $pdo, string $userId, string $fromDate, string $toDate, bool $force, array $own): void {
+    function ccrm_ts_settle_hours(\PDO $pdo, string $userId, string $fromDate, string $toDate, bool $force, array $own, array &$newlySettled = []): void {
         $hours = $pdo->prepare("SELECT " . ccrm_ts_columns() . " FROM `time_entries`
                                  WHERE `user_id` = ? AND `entry_date` >= ? AND `entry_date` <= ?
                                    AND `deleted_at` IS NULL AND `start_at` IS NULL");
         $hours->execute([$userId, $fromDate, $toDate]);
         foreach ($hours->fetchAll(\PDO::FETCH_ASSOC) as $r) {
-            ccrm_ts_write($pdo, $r, $r['duration_sec'] === null ? null : ccrm_ta_worked_ms_hours_only($r['duration_sec']), $force, $own);
+            ccrm_ts_write($pdo, $r, $r['duration_sec'] === null ? null : ccrm_ta_worked_ms_hours_only($r['duration_sec']), $force, $own, $newlySettled);
         }
     }
 
-    /** Price one row from worked time and write it when anything changed and it may be written. */
-    function ccrm_ts_write(\PDO $pdo, array $r, ?int $workedMs, bool $force, array $own): void {
+    /** Write worked_ms and frozen rate metadata when anything changed and it may be written; cost follows in the day pass. */
+    function ccrm_ts_write(\PDO $pdo, array $r, ?int $workedMs, bool $force, array $own, array &$newlySettled = []): void {
         $rate = $r['cost_rate'] === null ? null : (float)$r['cost_rate'];
         $freeze = null;
         if ($rate === null) {
@@ -269,8 +316,7 @@ if (!function_exists('ccrm_tt_settle')) {
                 $freeze = $p;
             }
         }
-        $cost = ccrm_tc_worked_cost($workedMs, $rate);
-        $changed = !ccrm_ts_same($r['worked_ms'], $workedMs, 0) || !ccrm_ts_same($r['cost'], $cost, 4);
+        $changed = !ccrm_ts_same($r['worked_ms'], $workedMs, 0);
         $refreeze = $freeze !== null && (
             $rate !== null // it had no rate and now gets one
             || (string)($r['employee_id'] ?? '') !== (string)($freeze['employee_id'] ?? '')
@@ -289,13 +335,69 @@ if (!function_exists('ccrm_tt_settle')) {
                 return;
             }
         }
+        if ($r['worked_ms'] === null) {
+            $newlySettled[(string)$r['id']] = true;
+        }
         if ($refreeze) {
-            $pdo->prepare("UPDATE `time_entries` SET `worked_ms` = ?, `cost` = ?, `employee_id` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ? WHERE `id` = ?")
-                ->execute([$workedMs, $cost, $freeze['employee_id'], $freeze['cost_rate'], $freeze['cost_rate_source'], $freeze['cost_rate_basis_days'], $r['id']]);
+            $pdo->prepare("UPDATE `time_entries` SET `worked_ms` = ?, `employee_id` = ?, `cost_rate` = ?, `cost_rate_source` = ?, `cost_rate_basis_days` = ? WHERE `id` = ?")
+                ->execute([$workedMs, $freeze['employee_id'], $freeze['cost_rate'], $freeze['cost_rate_source'], $freeze['cost_rate_basis_days'], $r['id']]);
             return;
         }
-        $pdo->prepare("UPDATE `time_entries` SET `worked_ms` = ?, `cost` = ? WHERE `id` = ?")
-            ->execute([$workedMs, $cost, $r['id']]);
+        $pdo->prepare("UPDATE `time_entries` SET `worked_ms` = ? WHERE `id` = ?")
+            ->execute([$workedMs, $r['id']]);
+    }
+
+    /**
+     * Recompute `cost` per touched (user, entry_date) using day-ratio allocation for MD and monthly
+     * workers (hourly workers stay linear).
+     */
+    function ccrm_ts_settle_day_costs(\PDO $pdo, string $userId, array $dates, bool $force, array $own, array $newlySettled = []): void {
+        $validDates = [];
+        foreach ($dates as $d) {
+            $d = substr((string)$d, 0, 10);
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
+                $validDates[$d] = true;
+            }
+        }
+        if (!$validDates) {
+            return;
+        }
+        $hoursPerDay = ccrm_ts_hours_per_day($pdo, $userId);
+        $sel = $pdo->prepare("SELECT " . ccrm_ts_columns() . " FROM `time_entries`
+                              WHERE `user_id` = ? AND `entry_date` = ?
+                                AND `deleted_at` IS NULL AND (`start_at` IS NULL OR `end_at` IS NOT NULL)");
+        $upd = $pdo->prepare("UPDATE `time_entries` SET `cost` = ? WHERE `id` = ?");
+        foreach (array_keys($validDates) as $date) {
+            $sel->execute([$userId, $date]);
+            $dayRows = $sel->fetchAll(\PDO::FETCH_ASSOC);
+            if (!$dayRows) {
+                continue;
+            }
+            $dayTotalWorkedMs = 0;
+            foreach ($dayRows as $dr) {
+                if ($dr['worked_ms'] !== null) {
+                    $dayTotalWorkedMs += max(0, (int)$dr['worked_ms']);
+                }
+            }
+            foreach ($dayRows as $dr) {
+                $workedMs = $dr['worked_ms'] === null ? null : (int)$dr['worked_ms'];
+                $rate = $dr['cost_rate'] === null ? null : (float)$dr['cost_rate'];
+                $newCost = ccrm_tc_day_allocated_cost($workedMs, $dayTotalWorkedMs, $rate, (string)($dr['cost_rate_source'] ?? ''), $hoursPerDay);
+                if (ccrm_ts_same($dr['cost'], $newCost, 4)) {
+                    continue;
+                }
+                $id = (string)$dr['id'];
+                if (!$force && !isset($own[$id]) && !isset($newlySettled[$id]) && $dr['cost'] !== null) {
+                    if (!function_exists('ccrm_tt_row_lock_reason')) {
+                        require_once __DIR__ . '/time_locks.php';
+                    }
+                    if (ccrm_tt_row_lock_reason($pdo, $dr) !== null) {
+                        continue;
+                    }
+                }
+                $upd->execute([$newCost, $dr['id']]);
+            }
+        }
     }
 
     /**
@@ -357,6 +459,10 @@ if (!function_exists('ccrm_tt_settle')) {
                 $iv[1] = max($iv[1], (int)ccrm_ts_ms($row['end_at']));
             }
             $timed[$userId][] = $iv;
+            $rowDate = substr((string)($row['entry_date'] ?? ''), 0, 10);
+            if ($rowDate !== '' && $rowDate !== ccrm_ts_local_date($iv[0])) {
+                $dates[$userId][$rowDate] = true;
+            }
         }
         foreach ($timed as $userId => $ivs) {
             usort($ivs, fn($a, $b) => $a[0] <=> $b[0]);

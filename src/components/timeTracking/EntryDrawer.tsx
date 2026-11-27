@@ -5,6 +5,7 @@ import { useTimeTracking } from "../../hooks/useTimeTracking";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
 import { CustomSelect } from "../ui/CustomSelect";
 import { Switch } from "../ui/Switch";
+import { MarkdownReportEditor } from "./StopReportDialog";
 import { resolveWorkCountry, type HolidayCountry } from "../../utils/holidays.ts";
 import { clientForTask, matchOpenTasks, matchOpenTickets } from "../../utils/timeLinks.ts";
 import { isClosedTicketStatus } from "../../utils/tickets";
@@ -298,20 +299,19 @@ export function EntryDrawer({ entry, deps, recentProjectIds, secondsByProject, o
             {entry.legacyNote && <span className="type-meta text-gray-500">{entry.legacyNote}</span>}
           </label>
 
-          {/* Description */}
-          <label className="grid gap-1">
-            <span className="type-label text-gray-600">{t("Description", "Popis", "Leírás")}</span>
-            <textarea
+          {/* Description / Work report (Markdown) */}
+          <div className="grid gap-1">
+            <span className="type-label text-gray-600">{t("Description / Report", "Popis / Report", "Leírás / Jelentés")}</span>
+            <MarkdownReportEditor
               value={note}
-              onChange={(e) => setNote(e.target.value)}
+              onChange={setNote}
               readOnly={readOnly}
-              rows={3}
-              maxLength={1000}
-              placeholder={t("What did you work on? (optional)", "Čo ste robili? (voliteľné)", "Min dolgozott? (nem kötelező)")}
-              data-testid="entry-note"
-              className="resize-y rounded-md border border-gray-200 px-3 py-2 text-ui outline-none focus:border-entity read-only:bg-gray-50"
+              rows={4}
+              placeholder={t("What did you work on? Supports **bold**, *italic*, `- bullets`, `code`… (optional)", "Čo ste robili? Podporuje **tučné**, *kurzívu*, `- odrážky`, `kód`… (voliteľné)", "Min dolgozott? Támogatja: **félkövér**, *dőlt*, `- felsorolás`, `kód`… (nem kötelező)")}
+              testId="entry-note"
+              t={t}
             />
-          </label>
+          </div>
 
           {/* Task link (primary entity) */}
           <div className="grid gap-1">

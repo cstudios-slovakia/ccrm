@@ -20,6 +20,7 @@ import { ProjectLabel } from "./ProjectLabel";
 import { ProjectPicker } from "./ProjectPicker";
 import { projectClientName } from "./projectClient";
 import { RoundTimerButton, roundButtonClass, roundButtonRadius } from "./RoundTimerButton";
+import { StopReportPopover } from "./StopReportDialog";
 import { TimerContainer } from "./TimerContainer";
 import { canRenameTitle, renameHint, useTimeLookups, type TimeDeps } from "./shared";
 
@@ -99,6 +100,7 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
   const [note, setNote] = useState("");
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [reportTarget, setReportTarget] = useState<TimeEntry | null>(null);
   // Manual mode
   const [date, setDate] = useState(todayIso());
   const [from, setFrom] = useState("");
@@ -185,13 +187,6 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
       setTicket(null);
       setProjectId(null);
     }
-  };
-
-  const onStop = async () => {
-    if (busy) return;
-    setBusy(true);
-    await tt.stop(running?.id);
-    setBusy(false);
   };
 
   const saveRunning = async (patch: Parameters<typeof updateEntry>[1]) => {
@@ -516,9 +511,31 @@ function SingleTimerBar({ deps, recentProjectIds, secondsByProject, footer, addi
             </button>
           )}
           {running ? (
-            <CycleRing swap radius={roundButtonRadius("lg")} buttonClass={roundButtonClass("lg")}>
-              <RoundTimerButton kind="stop" label={t("Stop timer", "Zastaviť časovač", "Időzítő leállítása")} onClick={onStop} disabled={busy} data-testid="timer-stop" />
-            </CycleRing>
+            <div className="relative">
+              <CycleRing swap radius={roundButtonRadius("lg")} buttonClass={roundButtonClass("lg")}>
+                <RoundTimerButton
+                  kind="stop"
+                  label={t("Stop timer", "Zastaviť časovač", "Időzítő leállítása")}
+                  onClick={() => setReportTarget((curr) => (curr?.id === running.id ? null : running))}
+                  disabled={busy}
+                  data-testid="timer-stop"
+                />
+              </CycleRing>
+              <StopReportPopover
+                entry={reportTarget}
+                onClose={() => setReportTarget(null)}
+                t={t}
+                onConfirm={async (reportNote) => {
+                  if (!reportTarget) return;
+                  setBusy(true);
+                  try {
+                    await tt.stop(reportTarget.id, { note: reportNote.trim() || null });
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              />
+            </div>
           ) : (
             <RoundTimerButton kind="start" label={t("Start timer", "Spustiť časovač", "Időzítő indítása")} onClick={onStart} disabled={busy} data-testid="timer-start" />
           )}

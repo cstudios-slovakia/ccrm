@@ -10,6 +10,7 @@ import {
   type TimeEntry,
 } from "../../utils/timeTracking.ts";
 import { AssignProjectChip } from "./AssignProjectChip";
+import { stripBasicMarkdown } from "../../utils/basicMarkdown";
 import { ClockDigits } from "./ClockDigits";
 import { ProjectLabel } from "./ProjectLabel";
 import { RoundTimerButton } from "./RoundTimerButton";
@@ -92,8 +93,18 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
         </button>
       )}
       {showPerson && (
-        <span title={person?.name} className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-micro font-bold text-white" style={{ backgroundColor: person?.color || "#64748b" }}>
-          {initials(person?.name || "?")}
+        <span
+          title={person?.name}
+          data-testid="time-entry-person"
+          className="inline-flex shrink-0 items-center gap-2 ws-sm:w-36"
+        >
+          <span
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-micro font-bold text-white"
+            style={{ backgroundColor: person?.color || "#64748b" }}
+          >
+            {initials(person?.name || "?")}
+          </span>
+          <span className="truncate text-ui font-medium text-gray-700">{person?.name || "—"}</span>
         </span>
       )}
       <button type="button" onClick={() => onOpen(entry)} className="min-w-0 flex-1 basis-40 text-left cursor-pointer" data-testid="time-entry-title">
@@ -108,7 +119,7 @@ export function EntryRow({ entry, members, expanded, onToggleGroup, nested, deps
           )}
           {entry.running && <RunningBadge />}
         </span>
-        {entry.note && <span className="block truncate type-meta text-gray-500" data-testid="time-entry-note">{entry.note}</span>}
+        {entry.note && <span className="block truncate type-meta text-gray-500" data-testid="time-entry-note">{stripBasicMarkdown(entry.note)}</span>}
         {entry.legacyNote && <span className="block truncate type-meta text-gray-400">{entry.legacyNote}</span>}
         {entry.recordedByUserId !== entry.userId && (
           <span className="block type-meta text-gray-400" data-testid="time-entry-recorded-by">
