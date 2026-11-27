@@ -16,6 +16,7 @@ require_once __DIR__ . '/employee_name.php';
 require_once __DIR__ . '/contact_name.php';
 require_once __DIR__ . '/payroll_lib.php';
 require_once __DIR__ . '/task_activity_lib.php';
+require_once __DIR__ . '/task_files_lib.php';
 require_once __DIR__ . '/clickup_lib.php';
 
 if (!function_exists('ccrm_schema_statements')) {
@@ -100,6 +101,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `client_category_id` VARCHAR(50) NULL COMMENT 'client_categories.id - not a foreign key, the app clears it when a category is deleted',
               `company_client_id` VARCHAR(50) NULL COMMENT 'leads.id of parent company for person client-side contacts (never rented workers)',
               `contact_role` VARCHAR(120) NULL COMMENT 'Role at company for attached person contacts (e.g. HR, Site Manager)',
+              `contact_tags` TEXT NULL COMMENT 'JSON array of contact function tags',
               `ticket_allowed_emails` TEXT NULL COMMENT 'JSON array of whitelisted sender emails/domains for support tickets',
               `custom_fields_json` LONGTEXT NULL COMMENT 'JSON map of custom lead attribute values keyed by attribute id',
               `archived` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Archived from the client register',
@@ -184,6 +186,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `first_started_at` DATETIME NULL COMMENT 'First time task left initial unstarted state or was completed',
               `reopened_count` INT NOT NULL DEFAULT 0 COMMENT 'How many times task was reopened from a done state',
               `comment_count` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Denormalized active comment count in task_activities',
+              `file_count` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'Denormalized active file count in task_files',
               `reactions_json` VARCHAR(1000) NULL COMMENT 'Task emoji reactions map {emoji: [userName]}',
               `category` VARCHAR(32) NULL COMMENT 'Task category; NULL = none, bug = Bug (a string so more categories need no migration)',
               `reopens_json` TEXT NULL COMMENT 'Every reopening of a finished task, JSON [{at: UTC ISO, by: name|null}] oldest first; NULL = never reopened; written only by the server',
@@ -779,6 +782,25 @@ if (!function_exists('ccrm_schema_statements')) {
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               INDEX idx_cc_parent (`parent_id`),
               INDEX idx_cc_level (`level`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Client Contacts (separate table for company contact persons and standalone personal contacts; never mixes into leads/clients)
+            "CREATE TABLE IF NOT EXISTS `client_contacts` (
+              `id` VARCHAR(64) NOT NULL PRIMARY KEY,
+              `company_client_id` VARCHAR(50) NULL COMMENT 'leads.id of parent company client (NULL = standalone personal contact)',
+              `name` VARCHAR(150) NOT NULL,
+              `first_name` VARCHAR(100) NULL,
+              `last_name` VARCHAR(100) NULL,
+              `email` VARCHAR(255) NULL,
+              `phone` VARCHAR(64) NULL,
+              `contact_role` VARCHAR(120) NULL COMMENT 'Summary function string (e.g. CEO, Billing)',
+              `contact_tags` TEXT NULL COMMENT 'JSON array of contact function tags',
+              `notes` TEXT NULL,
+              `archived` TINYINT(1) NOT NULL DEFAULT 0,
+              `created_at` DATE NOT NULL,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX `idx_cc_company` (`company_client_id`),
+              INDEX `idx_cc_email` (`email`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Offer Categories (3-level price-offer category tree, the customer tree's shape; offers carry one in invoices_offers.category_id)
@@ -1629,6 +1651,9 @@ if (!function_exists('ccrm_schema_statements')) {
             // ClickUp-style task activity, chat messages, and state-change timeline
             "CREATE TABLE IF NOT EXISTS `task_activities` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, `task_id` VARCHAR(50) NOT NULL, `kind` ENUM('comment', 'state_change') NOT NULL DEFAULT 'comment', `event_type` VARCHAR(32) NULL, `author_name` VARCHAR(100) NOT NULL DEFAULT '', `body` TEXT NULL, `meta_json` TEXT NULL, `reactions_json` VARCHAR(1000) NULL, `deleted_at` DATETIME NULL, `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3), INDEX `idx_ta_task_id` (`task_id`, `id`), INDEX `idx_ta_task_updated` (`task_id`, `updated_at`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
+            // Private task attachments (images, docs, archives, and source code)
+            "CREATE TABLE IF NOT EXISTS `task_files` (`id` VARCHAR(64) NOT NULL PRIMARY KEY, `task_id` VARCHAR(50) NOT NULL, `file_name` VARCHAR(255) NOT NULL, `mime_type` VARCHAR(120) NOT NULL DEFAULT 'application/octet-stream', `size_bytes` INT UNSIGNED NOT NULL DEFAULT 0, `storage_name` VARCHAR(160) NOT NULL, `is_image` TINYINT(1) NOT NULL DEFAULT 0, `image_width` INT UNSIGNED NULL, `image_height` INT UNSIGNED NULL, `uploaded_by` VARCHAR(100) NOT NULL DEFAULT '', `deleted_at` DATETIME NULL, `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), INDEX `idx_tf_task_active` (`task_id`, `deleted_at`, `created_at`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
             // Agency & Workforce Leasing module tables (opt-in module; separate from `leads`)
             "CREATE TABLE IF NOT EXISTS `agency_workers` (
               `id` VARCHAR(100) NOT NULL PRIMARY KEY,
@@ -1782,6 +1807,15 @@ if (!function_exists('ccrm_schema_statements')) {
               UNIQUE KEY `uq_agency_pay_worker_period` (`worker_id`, `period_ym`),
               INDEX `idx_agency_pay_period` (`period_ym`),
               INDEX `idx_agency_pay_company` (`company_client_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Per-(project, user, month) exclusions for time-tracking labour costs
+            "CREATE TABLE IF NOT EXISTS `project_labour_exclusions` (
+              `project_id` VARCHAR(50) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              `month` CHAR(7) NOT NULL COMMENT 'YYYY-MM',
+              PRIMARY KEY (`project_id`, `user_id`, `month`),
+              INDEX `idx_ple_project` (`project_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }
@@ -2464,13 +2498,112 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_weekly_plan($pdo);
         ccrm_migrate_custom_calendars($pdo);
         ccrm_migrate_task_activities($pdo);
+        ccrm_migrate_task_files($pdo);
         ccrm_migrate_agency($pdo);
+        ccrm_migrate_client_contacts($pdo);
         ccrm_migrate_clickup($pdo);
         require_once __DIR__ . '/project_breakdown_migrations.php';
         ccrm_heal_project_breakdown_columns($pdo);
         ccrm_backfill_project_breakdown_metrics($pdo);
         if (ccrm_table_exists($pdo, 'leads') && !ccrm_column_exists($pdo, 'leads', 'custom_fields_json')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `custom_fields_json` LONGTEXT NULL COMMENT 'JSON map of custom lead attribute values keyed by attribute id' AFTER `ticket_allowed_emails`");
+        }
+    }
+
+    /**
+     * Ensure `client_contacts` exists and move legacy company-attached person rows out of `leads`
+     * into `client_contacts` so contacts never pollute the Clients list or client pickers.
+     */
+    if (!function_exists('ccrm_migrate_client_contacts')) {
+        function ccrm_migrate_client_contacts(PDO $pdo): void {
+            try {
+                if (!ccrm_table_exists($pdo, 'client_contacts')) {
+                    $pdo->exec("CREATE TABLE IF NOT EXISTS `client_contacts` (
+                      `id` VARCHAR(64) NOT NULL PRIMARY KEY,
+                      `company_client_id` VARCHAR(50) NULL COMMENT 'leads.id of parent company client (NULL = standalone personal contact)',
+                      `name` VARCHAR(150) NOT NULL,
+                      `first_name` VARCHAR(100) NULL,
+                      `last_name` VARCHAR(100) NULL,
+                      `email` VARCHAR(255) NULL,
+                      `phone` VARCHAR(64) NULL,
+                      `contact_role` VARCHAR(120) NULL COMMENT 'Summary function string (e.g. CEO, Billing)',
+                      `contact_tags` TEXT NULL COMMENT 'JSON array of contact function tags',
+                      `notes` TEXT NULL,
+                      `archived` TINYINT(1) NOT NULL DEFAULT 0,
+                      `created_at` DATE NOT NULL,
+                      `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                      INDEX `idx_cc_company` (`company_client_id`),
+                      INDEX `idx_cc_email` (`email`)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+                }
+                if (!ccrm_table_exists($pdo, 'leads') || !ccrm_column_exists($pdo, 'leads', 'company_client_id')) {
+                    return;
+                }
+                $hasTagsCol = ccrm_column_exists($pdo, 'leads', 'contact_tags');
+                $tagsSel = $hasTagsCol ? '`contact_tags`' : 'NULL AS `contact_tags`';
+                $rows = $pdo->query(
+                    "SELECT `id`, `company_client_id`, `name`, `contact_first_name`, `contact_last_name`, `email`, `phone`, `contact_role`, {$tagsSel}, `interest_note`, `archived`, `created_at` "
+                    . "FROM `leads` WHERE `client_type` = 'person' AND `company_client_id` IS NOT NULL AND TRIM(`company_client_id`) != ''"
+                )->fetchAll(PDO::FETCH_ASSOC);
+                if (!$rows) return;
+
+                $refChecks = [
+                    ['projects', 'client_id'],
+                    ['projects', 'lead_id'],
+                    ['tasks', 'related_lead_id'],
+                    ['invoices_offers', 'lead_id'],
+                    ['tickets', 'client_id'],
+                    ['orders', 'client_id'],
+                    ['financial_records', 'client_id'],
+                ];
+                $activeChecks = [];
+                foreach ($refChecks as [$tbl, $col]) {
+                    if (ccrm_table_exists($pdo, $tbl) && ccrm_column_exists($pdo, $tbl, $col)) {
+                        $activeChecks[] = $pdo->prepare("SELECT 1 FROM `{$tbl}` WHERE `{$col}` = ? LIMIT 1");
+                    }
+                }
+
+                $ins = $pdo->prepare(
+                    "INSERT IGNORE INTO `client_contacts` (`id`, `company_client_id`, `name`, `first_name`, `last_name`, `email`, `phone`, `contact_role`, `contact_tags`, `notes`, `archived`, `created_at`) "
+                    . "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                );
+                $delTimeline = ccrm_table_exists($pdo, 'timeline_events')
+                    ? $pdo->prepare("DELETE FROM `timeline_events` WHERE `lead_id` = ?")
+                    : null;
+                $delLead = $pdo->prepare("DELETE FROM `leads` WHERE `id` = ?");
+
+                foreach ($rows as $r) {
+                    $id = (string)$r['id'];
+                    $hasRefs = false;
+                    foreach ($activeChecks as $chk) {
+                        $chk->execute([$id]);
+                        if ($chk->fetchColumn()) {
+                            $hasRefs = true;
+                            break;
+                        }
+                    }
+                    $ins->execute([
+                        $id,
+                        trim((string)$r['company_client_id']) ?: null,
+                        (string)($r['name'] ?? ''),
+                        ($r['contact_first_name'] ?? '') !== '' ? (string)$r['contact_first_name'] : null,
+                        ($r['contact_last_name'] ?? '') !== '' ? (string)$r['contact_last_name'] : null,
+                        ($r['email'] ?? '') !== '' ? (string)$r['email'] : null,
+                        ($r['phone'] ?? '') !== '' ? (string)$r['phone'] : null,
+                        ($r['contact_role'] ?? '') !== '' ? (string)$r['contact_role'] : null,
+                        ($r['contact_tags'] ?? '') !== '' ? (string)$r['contact_tags'] : null,
+                        ($r['interest_note'] ?? '') !== '' ? (string)$r['interest_note'] : null,
+                        !empty($r['archived']) ? 1 : 0,
+                        !empty($r['created_at']) ? (string)$r['created_at'] : date('Y-m-d'),
+                    ]);
+                    if (!$hasRefs) {
+                        if ($delTimeline) $delTimeline->execute([$id]);
+                        $delLead->execute([$id]);
+                    }
+                }
+            } catch (\Throwable $e) {
+                error_log('CCRM ccrm_migrate_client_contacts failed: ' . $e->getMessage());
+            }
         }
     }
 
@@ -2486,6 +2619,9 @@ if (!function_exists('ccrm_schema_statements')) {
                 }
                 if (!ccrm_column_exists($pdo, 'leads', 'contact_role')) {
                     $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_role` VARCHAR(120) NULL AFTER `company_client_id`");
+                }
+                if (!ccrm_column_exists($pdo, 'leads', 'contact_tags')) {
+                    $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_tags` TEXT NULL AFTER `contact_role`");
                 }
                 if (!ccrm_index_exists($pdo, 'leads', 'idx_lead_company_client')) {
                     try { $pdo->exec("ALTER TABLE `leads` ADD INDEX `idx_lead_company_client` (`company_client_id`)"); } catch (\Throwable $e) {}
@@ -2738,6 +2874,15 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_time_pause($pdo);
         require_once __DIR__ . '/ticket_time_migration.php';
         ccrm_migrate_ticket_time_entries($pdo);
+        if (!ccrm_table_exists($pdo, 'project_labour_exclusions')) {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `project_labour_exclusions` (
+              `project_id` VARCHAR(50) NOT NULL,
+              `user_id` VARCHAR(50) NOT NULL,
+              `month` CHAR(7) NOT NULL COMMENT 'YYYY-MM',
+              PRIMARY KEY (`project_id`, `user_id`, `month`),
+              INDEX `idx_ple_project` (`project_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        }
     }
 
     /**
@@ -3769,7 +3914,7 @@ if (!function_exists('ccrm_schema_statements')) {
      */
     function ccrm_schema_fingerprint(): string {
         $parts = [];
-        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/project_breakdown_migrations.php', __DIR__ . '/task_activity_lib.php', __DIR__ . '/clickup_lib.php', __DIR__ . '/time_worked_ms_migration.php', __DIR__ . '/time_parallel_migration.php', __DIR__ . '/time_rate_months_migration.php', __DIR__ . '/time_pause_migration.php'] as $file) {
+        foreach ([__FILE__, __DIR__ . '/employee_name.php', __DIR__ . '/contact_name.php', __DIR__ . '/lead_client_backfill.php', __DIR__ . '/ticket_time_migration.php', __DIR__ . '/payroll_lib.php', __DIR__ . '/timeline_task_link.php', __DIR__ . '/schema_defaults.php', __DIR__ . '/project_breakdown_migrations.php', __DIR__ . '/task_activity_lib.php', __DIR__ . '/task_files_lib.php', __DIR__ . '/clickup_lib.php', __DIR__ . '/time_worked_ms_migration.php', __DIR__ . '/time_parallel_migration.php', __DIR__ . '/time_rate_months_migration.php', __DIR__ . '/time_pause_migration.php'] as $file) {
             $parts[] = is_file($file) ? md5_file($file) : '-';
         }
         return md5(implode('|', $parts));

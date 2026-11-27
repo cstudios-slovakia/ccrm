@@ -103,6 +103,7 @@ Main table representing potential deals, customers, and client accounts.
 * `price_level_id` VARCHAR(50) [NULLable] (the price level - an `id` of the `PRICE_LEVELS` setting - this client buys on; NULL = the items' default sell prices)
 * `company_client_id` VARCHAR(50) [NULLable, indexed] (for person clients: optional parent Business/Partner company `leads.id` where they act as a client-side contact; rented agency employees never live in `leads`)
 * `contact_role` VARCHAR(120) [NULLable] (role/title of an attached person contact at their company, e.g. HR Manager)
+* `contact_tags` TEXT [NULLable] (JSON array of function tags for an attached person contact, e.g. ["CEO","Billing"])
 * `contact_person` VARCHAR(100)
 * `contact_first_name` VARCHAR(100) [NULLable] (the contact person's first name as typed; synced as `contactFirstName`. `{{first_name}}` of the newsletter reads this, never `contact_person`. Rule shared by `composeContactName()` and `ccrm_compose_contact_name()`: when either part is filled, `contact_person` = first + ' ' + last; both empty keeps `contact_person`. Rows that predate the column were split once by `ccrm_backfill_contact_names()`, flag `CONTACT_NAME_BACKFILL` in `system_settings`)
 * `contact_last_name` VARCHAR(100) [NULLable] (the contact person's last name as typed; synced as `contactLastName`)
@@ -116,6 +117,22 @@ Written only by `php kprnq adjustment-clients --apply` (created on first use, no
 * `moved_from` TEXT (JSON: lead ids the adjustment was taken from)
 * `linked_ids` TEXT (JSON: lead ids given this `client_id`)
 * `migrated_at` DATETIME
+
+### `client_contacts`
+Separate table for company contact persons and standalone personal contacts (kept out of `leads` so contacts never pollute the Clients list or client pickers; ready for Newsletter datamining by `contact_tags`).
+* `id` VARCHAR(64) [PK]
+* `company_client_id` VARCHAR(50) [NULLable, indexed] (`leads.id` of parent company client; NULL = standalone personal contact)
+* `name` VARCHAR(150)
+* `first_name` VARCHAR(100) [NULLable]
+* `last_name` VARCHAR(100) [NULLable]
+* `email` VARCHAR(255) [NULLable, indexed]
+* `phone` VARCHAR(64) [NULLable]
+* `contact_role` VARCHAR(120) [NULLable] (summary function string, e.g. CEO, Billing)
+* `contact_tags` TEXT [NULLable] (JSON array of contact function tags)
+* `notes` TEXT [NULLable]
+* `archived` TINYINT(1) [DEFAULT 0]
+* `created_at` DATE
+* `updated_at` TIMESTAMP
 
 ### `lead_categories`
 Junction table mapping leads to business categories.
@@ -177,9 +194,25 @@ General system and operational tasks.
 * `recurring_source_id` VARCHAR(50) [NULLable] (Occurrence only: template id; indexed as `idx_task_recurring_source`)
 * `recurring_occurrence_date` DATE [NULLable] (Occurrence only: the unshifted scheduled date; `(recurring_source_id, recurring_occurrence_date)` unique)
 * `comment_count` INT UNSIGNED NOT NULL DEFAULT 0 (denormalized active comment count maintained by `api/task_activity.php` so list/board queries need no JOIN; does not bump `updated_at`)
+* `file_count` INT UNSIGNED NOT NULL DEFAULT 0 (denormalized active file count maintained by `api/task_files.php` so list/board queries need no JOIN; does not bump `updated_at`)
 * `reactions_json` VARCHAR(1000) [NULLable] (map `{ "<emoji>": ["User A", ...] }` for task-level reactions maintained by `api/task_activity.php`; does not bump `updated_at`)
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP(3) (indexed as `idx_task_updated`; the machine API's feed pages by it)
+
+### `task_files`
+Private task attachments (images, documents, archives, and source-code/development files) stored outside public web paths (`uploads/_task_files/tf_<hex>.bin`) and served through authenticated `api/task_files.php` with task visibility checks. Excluded from `sync.php` GET to keep 5-second sync zero-bloat.
+* `id` VARCHAR(64) [PK]
+* `task_id` VARCHAR(50) (references `tasks.id`; indexed with `(task_id, deleted_at, created_at)`)
+* `file_name` VARCHAR(255)
+* `mime_type` VARCHAR(120)
+* `size_bytes` INT UNSIGNED NOT NULL DEFAULT 0
+* `storage_name` VARCHAR(160)
+* `is_image` TINYINT(1) NOT NULL DEFAULT 0
+* `image_width` INT UNSIGNED [NULLable]
+* `image_height` INT UNSIGNED [NULLable]
+* `uploaded_by` VARCHAR(100)
+* `deleted_at` DATETIME [NULLable]
+* `created_at` DATETIME(3)
 
 ### `task_activities`
 ClickUp-style chronological stream of chat messages (with optional WebP/image attachments) and structured field/state-change audit entries per task (`api/task_activity.php`). Excluded from `sync.php` GET and `CHECKSUM TABLE` to keep 5-second sync zero-bloat.
@@ -951,6 +984,12 @@ Time tracking rate card (docs/TIME-TRACKING-V2.md D4.3): the hourly cost rate of
 * `inputs_hash` CHAR(40) (sha1 of the inputs)
 * `frozen_at` DATETIME [NULLable] (UTC; set when the month froze)
 * `updated_at` TIMESTAMP
+
+### `project_labour_exclusions`
+Per-project, per-employee, per-month exclusion flags for time-tracking labour costs (e.g. fixed-agreement workers whose costs are tracked outside time tracking). Managed via `public/api/time_entries.php?action=setProjectCostExclusion`; subtracted from Project Finances, `#projects` Costs, Profitability, and Project Breakdown while leaving time-tracking hours and payroll untouched.
+* `project_id` VARCHAR(50) [PK part]
+* `user_id` VARCHAR(50) [PK part]
+* `month` CHAR(7) [PK part] (`YYYY-MM`)
 
 ### `weekly_plan_cards`
 Standalone planning cards displayed on the Weekly Plan board (by day date and vertical position). Cards are independent of `tasks` (no automatic sync), while their `refs_json` can reference projects, leads, clients, employees, tickets, tasks, and `#tags`.

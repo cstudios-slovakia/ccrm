@@ -25,8 +25,9 @@ import {
   isMoneyValueEmpty,
   parseMoneyValue,
 } from "../utils/currency";
-import { projectBilling, resolveProjectValue } from "../utils/projectBilling";
-import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "../utils/financialRecordMerge";
+import { projectBilling, resolveProjectValueWithSource } from "../utils/projectBilling";
+import { mergeFinancialRecord, derivePaidDate } from "../utils/financialRecordMerge";
+import { ProjectFinancialModal } from "./projects/ProjectFinancialModal";
 import { isRealMovement, movementAmounts, recurringOwnRowCharge } from "../utils/financialOverviewTable";
 import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
 import { evaluateProjectDeadline, finishedAtForStatus, projectDisplayName, projectMissedDeadline, projectPipelineSegments, projectStartDate, projectStatusBadgeStyle, projectStatusDotStyle, projectStatusOptions, projectTypeHasInvoiceDate } from "../utils/projects";
@@ -34,7 +35,7 @@ import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { useTimeTracking } from "../hooks/useTimeTracking";
 import { ProjectTimeTab } from "./timeTracking/ProjectTimeTab";
 import { formatDuration } from "../utils/timeTracking.ts";
-import { ProjectTimeFinanceLines } from "./timeTracking/ProjectTimeFinanceLines";
+import { ProjectTimeCostRows, ProjectTimeFinanceLines, useProjectTimeCosts } from "./timeTracking/ProjectTimeFinanceLines";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
@@ -489,6 +490,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [finFormStatus, setFinFormStatus] = useState<FinancialStatus>("pending");
   const [finFormIssueDate, setFinFormIssueDate] = useState(todayLocal());
   const [finFormDueDate, setFinFormDueDate] = useState("");
+  const [finFormPaidDate, setFinFormPaidDate] = useState("");
   const [finFormDescription, setFinFormDescription] = useState("");
 
   // Timeline Event Form
@@ -747,7 +749,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     return projectFinancials.filter((r) => r.type === "expense");
   }, [projectFinancials]);
   const timeTracking = useTimeTracking();
-  const labourCost = timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.cost ?? null : null;
+  const { visibleItems: visibleCostItems, labourCost, unpricedSeconds, toggleExclusion: handleToggleLabourExclusion } = useProjectTimeCosts({
+    projectId: project?.id,
+    enabled: timeTracking.enabled,
+    canCosts: timeTracking.viewer.canCosts,
+    totalsCost: timeTracking.totals.byProject[project?.id ?? ""]?.cost ?? null,
+    totalsUnpricedSeconds: timeTracking.totals.byProject[project?.id ?? ""]?.unpricedSeconds ?? 0,
+    version: timeTracking.version,
+    language: userLanguage,
+    onChanged: timeTracking.bump,
+  });
 
   const revenueAnalysis = useMemo(() => {
     let totalPlannedIncome = 0;
@@ -845,10 +856,17 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const pairedLead = useMemo(() => leads.find((l) => l.id === associatedLeadId), [leads, associatedLeadId]);
   const firstMoneyAttr = useMemo(() => (projectType?.attributes || []).find((a) => a.type === "money"), [projectType]);
 
-  const projectTotalValue = useMemo(
-    () => resolveProjectValue({ value: project?.value, data: dynamicData, leadId: project?.leadId }, projectType ?? undefined, pairedLead, defaultCurrency).value,
-    [project?.value, project?.leadId, dynamicData, projectType, pairedLead, defaultCurrency],
+  const projectValueInfo = useMemo(
+    () => resolveProjectValueWithSource(
+      { id: project?.id, value: project?.value, data: dynamicData, leadId: project?.leadId, archived: project?.archived, projectTypeId: project?.projectTypeId, createdAt: project?.createdAt },
+      projectType ?? undefined,
+      pairedLead,
+      defaultCurrency,
+      { siblingProjects: projects, netMode: Boolean(companyBillingSettings?.financeNetMode) },
+    ),
+    [project?.id, project?.value, project?.leadId, project?.archived, project?.projectTypeId, project?.createdAt, dynamicData, projectType, pairedLead, defaultCurrency, projects, companyBillingSettings?.financeNetMode],
   );
+  const projectTotalValue = projectValueInfo.value;
 
   /* Value, money received, invoiced-but-unpaid and not-yet-invoiced, split by
      Finance's own rules (cancelled rows excluded, partly paid rows split). */
@@ -863,33 +881,37 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   /* Writes the project value everywhere it lives: the paired lead, the project's
      data (and its first money attribute) and the project row itself. */
-  const saveProjectValue = (amount: number) => {
+  const saveProjectValue = (amount: number, clearToNull = false) => {
     const rounded = Math.round(amount * 100) / 100;
 
-    // 1. Update paired lead if linked
-    if (associatedLeadId && setLeads) {
+    // 1. Update paired lead only when no other active project shares this lead
+    const hasSharedSibling = Boolean(
+      associatedLeadId && projects.some((p) => !p.archived && p.leadId === associatedLeadId && p.id !== project?.id)
+    );
+    if (associatedLeadId && setLeads && !clearToNull && !hasSharedSibling) {
       setLeads((prevLeads: Lead[]) =>
         prevLeads.map((l) => (l.id === associatedLeadId ? { ...l, value: rounded } : l))
       );
     }
 
     // 2. Update dynamicData (and money custom attribute if present)
-    const nextDynamic: Record<string, any> = { ...dynamicData, _projectValue: rounded };
+    const nextDynamic: Record<string, any> = { ...dynamicData, _projectValue: clearToNull ? null : rounded };
     if (firstMoneyAttr) {
-      nextDynamic[firstMoneyAttr.id] = { amount: rounded, currency: defaultCurrency };
+      nextDynamic[firstMoneyAttr.id] = clearToNull ? null : { amount: rounded, currency: defaultCurrency };
     }
     setDynamicData(nextDynamic);
-    // Lives on the project, written directly to the database
-    handleSave({ value: rounded > 0 ? rounded : null, data: nextDynamic });
+    // Explicit 0 is persisted so this project does not fall back to a shared lead's value.
+    handleSave({ value: clearToNull ? null : rounded, data: nextDynamic });
   };
 
   const handleSaveContractValue = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canEdit || contractValueDraft === null) return;
     const raw = contractValueDraft.replace(/\s/g, "").replace(",", ".");
-    const value = raw === "" ? 0 : Number(raw);
+    const isBlank = raw === "";
+    const value = isBlank ? 0 : Number(raw);
     if (!Number.isFinite(value) || value < 0) return;
-    saveProjectValue(value);
+    saveProjectValue(value, isBlank);
     setContractValueDraft(null);
   };
 
@@ -983,6 +1005,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       setFinFormStatus(record.status);
       setFinFormIssueDate(record.issueDate || todayLocal());
       setFinFormDueDate(record.dueDate || "");
+      setFinFormPaidDate(record.paidDate || "");
       setFinFormDescription(record.description || "");
     } else {
       setFinEditingRecord(null);
@@ -995,6 +1018,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       setFinFormStatus(type === "income" ? "pending" : "planned");
       setFinFormIssueDate(todayLocal());
       setFinFormDueDate("");
+      setFinFormPaidDate("");
       setFinFormDescription("");
     }
     setIsFinModalOpen(true);
@@ -1004,19 +1028,22 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     e.preventDefault();
     if (!canEditFinance || !finFormTitle.trim() || !project) return;
 
+    const planned = Number(finFormAmountPlanned) || 0;
+    const rawReal = Number(finFormAmountReal) || 0;
+    const isSettledStatus = finFormStatus === "paid" || finFormStatus === "partially_paid";
     const formValues: Partial<FinancialRecord> & Pick<FinancialRecord, "id"> = {
       id: finEditingRecord?.id || `fr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       title: finFormTitle.trim(),
       description: finFormDescription.trim() || null,
       categoryId: finFormCategoryId || null,
-      amountPlanned: Number(finFormAmountPlanned) || 0,
-      amountReal: Number(finFormAmountReal) || 0,
+      amountPlanned: planned,
+      amountReal: finFormStatus === "paid" && rawReal === 0 && planned > 0 ? planned : rawReal,
       currency: currencyCode || "EUR",
       status: finFormStatus,
       issueDate: finFormIssueDate,
       dueDate: finFormDueDate || null,
       invoiceNumber: finFormInvoiceNumber.trim() || null,
-      paidDate: derivePaidDate(finEditingRecord, finFormStatus)
+      paidDate: isSettledStatus ? (finFormPaidDate || derivePaidDate(finEditingRecord, finFormStatus)) : null
     };
 
     // Only recompute the category breadcrumb when the category actually
@@ -4252,7 +4279,22 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         {t("Project Value & Invoicable", "Hodnota projektu a fakturácia", "Projekt értéke és számlázható")}
                       </span>
                       {billing.value > 0 && contractValueDraft === null && (
-                        <span className="text-body font-bold text-slate-900">{money(billing.value)}</span>
+                        <>
+                          <span className="text-body font-bold text-slate-900">{money(billing.value)}</span>
+                          {projectValueInfo.inheritedFromLead && (
+                            <span
+                              data-testid="project-value-inherited-badge"
+                              title={t(
+                                "Inherited from the linked lead. Click Edit Value to set a project-specific amount.",
+                                "Zdedené z prepojeného leadu. Kliknutím na Upraviť hodnotu nastavíte sumu pre tento projekt.",
+                                "A kapcsolódó leadből örökölve. Kattintson az Érték módosítása gombra egyedi projektérték megadásához.",
+                              )}
+                              className="px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200/80 text-micro font-semibold text-amber-700"
+                            >
+                              {t("From lead", "Z leadu", "Leadből")}
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
 
@@ -4613,7 +4655,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
                   <div className="text-caption text-slate-500 mt-0.5">
                     {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.totalPlannedExpenses)}</strong>
-                    <ProjectTimeFinanceLines language={userLanguage} money={money} labourCost={revenueAnalysis.labourCost} billableValue={timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.billableValue : null} billableComplete={timeTracking.totals.byProject[project?.id ?? ""]?.billableComplete} />
+                    <ProjectTimeFinanceLines language={userLanguage} money={money} labourCost={revenueAnalysis.labourCost} unpricedSeconds={unpricedSeconds} billableValue={timeTracking.enabled ? timeTracking.totals.byProject[project?.id ?? ""]?.billableValue : null} billableComplete={timeTracking.totals.byProject[project?.id ?? ""]?.billableComplete} />
                   </div>
                 </div>
 
@@ -4742,7 +4784,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <div className="flex items-center gap-2">
                     <TrendingDown className="h-4 w-4 text-rose-600" />
                     <span className="text-ui font-bold text-slate-900">
-                      {t("Direct Project Costs & Materials", "Priame náklady a materiál projektu", "Közvetlen projektköltségek és anyagok")} ({projectExpenses.length})
+                      {t("Direct Project Costs & Materials", "Priame náklady a materiál projektu", "Közvetlen projektköltségek és anyagok")} ({projectExpenses.length + visibleCostItems.filter((i) => !i.excluded).length})
                     </span>
                   </div>
                   {canEditFinance && (
@@ -4757,7 +4799,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   )}
                 </div>
 
-                {projectExpenses.length === 0 ? (
+                {projectExpenses.length === 0 && visibleCostItems.length === 0 ? (
                   <div className="py-6 text-center text-ui text-slate-400 font-medium">
                     {t("No expenses logged for this project yet.", "K tomuto projektu zatiaľ neboli zaevidované žiadne výdavky.", "Még nincsenek kiadások rögzítve.")}
                   </div>
@@ -4819,6 +4861,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             </td>
                           </tr>
                         ))}
+                        <ProjectTimeCostRows
+                          items={visibleCostItems}
+                          language={userLanguage}
+                          money={money}
+                          canToggle={canEditFinance && timeTracking.viewer.canCosts}
+                          onToggle={(item) => void handleToggleLabourExclusion(item)}
+                        />
                       </tbody>
                     </table>
                   </div>
@@ -4860,157 +4909,32 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
           {/* PROJECT FINANCIAL MODAL */}
           {isFinModalOpen && (
-            <div className="fixed inset-0 z-[100005] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-              <div className="bg-white rounded-lg border border-gray-200 shadow-lg max-w-lg w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
-                <div className="flex items-center justify-between border-b border-gray-200 pb-3">
-                  <div className="flex items-center gap-2">
-                    {finFormType === "income" ? <TrendingUp className="h-5 w-5 text-emerald-600" /> : <TrendingDown className="h-5 w-5 text-rose-600" />}
-                    <h3 className="text-body font-semibold text-gray-900">
-                      {finEditingRecord
-                        ? (finFormType === "income" ? t("Edit Project Invoice", "Upraviť faktúru projektu", "Számla szerkesztése") : t("Edit Project Expense", "Upraviť výdavok projektu", "Kiadás szerkesztése"))
-                        : (finFormType === "income" ? t("Issue Project Invoice", "Vystaviť faktúru pre projekt", "Számla kiállítása projekthez") : t("Add Project Expense", "Pridať výdavok k projektu", "Új kiadás hozzáadása"))}
-                    </h3>
-                  </div>
-                  <button onClick={() => setIsFinModalOpen(false)} className="p-1 text-gray-400 hover:text-gray-600 cursor-pointer">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-
-                <form onSubmit={handleSaveProjectFinancial} className="space-y-3.5 text-ui font-medium text-left">
-                  <div>
-                    <label className="block type-overline text-gray-500 mb-1">{t("Title / Description *", "Názov / Popis *", "Megnevezés *")}</label>
-                    <input
-                      required
-                      value={finFormTitle}
-                      onChange={(e) => setFinFormTitle(e.target.value)}
-                      placeholder={finFormType === "income" ? t("e.g. Advance invoice 50%...", "napr. Zálohová faktúra 50%...", "pl. Előlegszámla 50%...") : t("e.g. Material purchase, rental...", "napr. Nákup materiálu, prenájom...", "pl. Anyagbeszerzés, bérlet...")}
-                      className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white focus:outline-none focus:border-entity-solid focus:ring-2 focus:ring-entity-ring font-medium"
-                    />
-                  </div>
-
-                  {finFormType === "income" && (
-                    <div>
-                      <label className="block type-overline text-gray-500 mb-1">{t("Invoice Number", "Číslo faktúry", "Számlaszám")}</label>
-                      <input
-                        value={finFormInvoiceNumber}
-                        onChange={(e) => setFinFormInvoiceNumber(e.target.value)}
-                        placeholder="FA-2026-0001"
-                        className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white font-mono"
-                      />
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block type-overline text-gray-500 mb-1">{t("Planned Amount (€) *", "Plánovaná suma (€) *", "Tervezett összeg (€) *")}</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        required
-                        value={finFormAmountPlanned}
-                        onChange={(e) => setFinFormAmountPlanned(e.target.value ? parseFloat(e.target.value) : "")}
-                        placeholder="0.00"
-                        className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white font-semibold"
-                      />
-                    </div>
-                    <div>
-                      <label className="block type-overline text-gray-500 mb-1">{t("Real / Paid Amount (€)", "Skutočná suma (€)", "Valós összeg (€)")}</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={finFormAmountReal}
-                        onChange={(e) => setFinFormAmountReal(e.target.value ? parseFloat(e.target.value) : "")}
-                        placeholder="0.00"
-                        className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white font-semibold text-emerald-600"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block type-overline text-gray-500 mb-1">{t("Category", "Kategória", "Kategória")}</label>
-                      <select
-                        value={finFormCategoryId}
-                        onChange={(e) => setFinFormCategoryId(e.target.value)}
-                        className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white"
-                      >
-                        <option value="">{t("-- Select Category --", "-- Vyberte kategóriu --", "-- Válasszon --")}</option>
-                        {financialCategories
-                          .filter((c) => c.type === finFormType)
-                          .map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.level === 1 ? `● ${c.name}` : `  ↳ ${c.name}`}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block type-overline text-gray-500 mb-1">{t("Status", "Stav", "Állapot")}</label>
-                      <select
-                        value={finFormStatus}
-                        onChange={(e) => setFinFormStatus(e.target.value as any)}
-                        className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white"
-                      >
-                        {FINANCIAL_STATUS_OPTIONS.map((s) => (
-                          <option key={s} value={s}>
-                            {s === "planned"
-                              ? t("Planned", "Plánované", "Tervezett")
-                              : s === "pending"
-                              ? t("Pending", "Čaká na úhradu", "Függő")
-                              : s === "partially_paid"
-                              ? t("Partially Paid", "Čiastočne uhradené", "Részben fizetve")
-                              : s === "paid"
-                              ? t("Paid", "Uhradené", "Fizetve")
-                              : s === "overdue"
-                              ? t("Overdue", "Po splatnosti", "Lejárt")
-                              : t("Cancelled", "Zrušené", "Törölve")}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block type-overline text-gray-500 mb-1">{t("Issue Date", "Dátum vystavenia", "Kiállítás dátuma")}</label>
-                      <input
-                        type="date"
-                        required
-                        value={finFormIssueDate}
-                        onChange={(e) => setFinFormIssueDate(e.target.value)}
-                        className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block type-overline text-gray-500 mb-1">{t("Due Date", "Dátum splatnosti", "Esedékesség")}</label>
-                      <input
-                        type="date"
-                        value={finFormDueDate}
-                        onChange={(e) => setFinFormDueDate(e.target.value)}
-                        className="w-full px-3 py-2 rounded-md border border-gray-300 bg-white"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-200">
-                    <button
-                      type="button"
-                      onClick={() => setIsFinModalOpen(false)}
-                      className="px-4 py-2 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 cursor-pointer"
-                    >
-                      {t("Cancel", "Zrušiť", "Mégsem")}
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-4 py-2 bg-entity-solid hover:bg-entity-solid-hover text-white rounded-md font-semibold cursor-pointer shadow-xs"
-                    >
-                      {t("Save", "Uložiť", "Mentés")}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
+            <ProjectFinancialModal
+              finEditingRecord={finEditingRecord}
+              finFormType={finFormType}
+              finFormTitle={finFormTitle}
+              setFinFormTitle={setFinFormTitle}
+              finFormInvoiceNumber={finFormInvoiceNumber}
+              setFinFormInvoiceNumber={setFinFormInvoiceNumber}
+              finFormAmountPlanned={finFormAmountPlanned}
+              setFinFormAmountPlanned={setFinFormAmountPlanned}
+              finFormAmountReal={finFormAmountReal}
+              setFinFormAmountReal={setFinFormAmountReal}
+              finFormCategoryId={finFormCategoryId}
+              setFinFormCategoryId={setFinFormCategoryId}
+              finFormStatus={finFormStatus}
+              setFinFormStatus={setFinFormStatus}
+              finFormIssueDate={finFormIssueDate}
+              setFinFormIssueDate={setFinFormIssueDate}
+              finFormDueDate={finFormDueDate}
+              setFinFormDueDate={setFinFormDueDate}
+              finFormPaidDate={finFormPaidDate}
+              setFinFormPaidDate={setFinFormPaidDate}
+              financialCategories={financialCategories}
+              onClose={() => setIsFinModalOpen(false)}
+              onSubmit={handleSaveProjectFinancial}
+              t={t}
+            />
           )}
 
         </div>

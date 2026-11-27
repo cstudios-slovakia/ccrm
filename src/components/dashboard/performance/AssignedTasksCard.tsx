@@ -7,10 +7,12 @@ export const AssignedTasksCard = ({
   data,
   language,
   className = "",
+  onInfo,
 }: {
   data: AssignedTasksData;
   language: Language;
   className?: string;
+  onInfo?: () => void;
 }) => {
   const t = makeT(language);
   const overdueWord = t("overdue", "po termíne", "lejárt");
@@ -19,6 +21,7 @@ export const AssignedTasksCard = ({
       <CardTitle
         title={t("Assigned tasks", "Pridelené úlohy", "Kiosztott feladatok")}
         caption={t("Open tasks by employee", "Otvorené úlohy podľa zamestnanca", "Nyitott feladatok munkatársanként")}
+        onInfo={onInfo}
         legend={
           <>
             <LegendItem swatch="bg-entity-solid" label={t("On time", "V termíne", "Határidőn belül")} />

@@ -404,8 +404,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
     // 2. If order was already paid, ensure financial record is marked paid
     if (order.paymentStatus === "paid" && setFinancialRecords) {
+      const paidAmt = companyBillingSettings?.financeNetMode ? order.totalNetAmount : order.totalGrossAmount;
       setFinancialRecords(prev =>
-        markInvoiceMovementPaid(prev, newInvoiceId, order.totalGrossAmount, order.paidAt || order.orderDate || todayLocal())
+        markInvoiceMovementPaid(prev, newInvoiceId, paidAmt, order.paidAt || order.orderDate || todayLocal())
       );
     }
 

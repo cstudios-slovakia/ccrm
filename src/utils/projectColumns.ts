@@ -96,6 +96,8 @@ export interface ProjectMoneyFigures {
   currency: string;
   /** False for a project with no value at all — its cells are empty and add nothing. */
   hasValue: boolean;
+  /** True when the project's contract value was inherited from its linked lead. */
+  inheritedFromLead?: boolean;
 }
 
 /**

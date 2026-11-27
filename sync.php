@@ -514,6 +514,11 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         $dbRole = ($db['contact_role'] ?? '') !== '' ? (string)$db['contact_role'] : null;
         if ($incRole !== $dbRole) return false;
     }
+    if (array_key_exists('contactTags', $inc)) {
+        $incTags = is_array($inc['contactTags']) ? array_values(array_filter(array_map('trim', $inc['contactTags']))) : [];
+        $dbTags = (!empty($db['contact_tags'])) ? (json_decode($db['contact_tags'], true) ?: []) : [];
+        if ($incTags !== $dbTags) return false;
+    }
 
     if (array_key_exists('ticketAllowedEmails', $inc)) {
         $incEmails = is_array($inc['ticketAllowedEmails']) ? array_values(array_filter(array_map('trim', $inc['ticketAllowedEmails']))) : [];
@@ -924,6 +929,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'clientCategoryId' => $row['client_category_id'] ?? null,
                 'companyClientId' => ($row['company_client_id'] ?? '') !== '' ? $row['company_client_id'] : null,
                 'contactRole' => ($row['contact_role'] ?? '') !== '' ? $row['contact_role'] : null,
+                'contactTags' => (!empty($row['contact_tags']) && is_array($ct = json_decode($row['contact_tags'], true))) ? array_values(array_filter(array_map(fn($x) => trim((string)$x), $ct))) : [],
                 // Ticket-module data riding on the lead row: withheld without `tickets`.
                 'ticketAllowedEmails' => (ccrm_can($scope, 'tickets') && !empty($row['ticket_allowed_emails'])) ? (json_decode($row['ticket_allowed_emails'], true) ?: []) : [],
                 'data' => (!empty($row['custom_fields_json']) && is_array($cf = json_decode($row['custom_fields_json'], true))) ? (object)$cf : (object)[],
@@ -1030,6 +1036,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'recurringSourceId' => $row['recurring_source_id'] ?? null,
                 'recurringOccurrenceDate' => $row['recurring_occurrence_date'] ?? null,
                 'commentCount' => (int)($row['comment_count'] ?? 0),
+                'fileCount' => (int)($row['file_count'] ?? 0),
                 'reactions' => (!empty($row['reactions_json']) && is_array($rx = json_decode((string)$row['reactions_json'], true))) ? $rx : null,
                 'assignedUsers' => $assignedUsers,
                 'tags' => $tagsByTask[$taskId] ?? []
@@ -1814,6 +1821,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // 3.8. Fetch Financial Categories and Records, Invoices & Price Offers
     $financialCategories = [];
     $clientCategories = [];
+    $clientContacts = [];
     $offerCategories = [];
     $financialRecords = [];
     $invoicesOffers = [];
@@ -1852,6 +1860,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'icon' => $row['icon'],
                     'createdAt' => $row['created_at'],
                     'updatedAt' => $row['updated_at'],
+                ];
+            }
+        }
+
+        // Company & standalone personal contacts (separate from `leads` so contacts never pollute the Clients list)
+        if ((ccrm_can($scope, 'clients') || ccrm_can($scope, 'leads')) && $pdo->query("SHOW TABLES LIKE 'client_contacts'")->rowCount() > 0) {
+            $cctStmt = $pdo->query("SELECT * FROM `client_contacts` ORDER BY `name` ASC, `id` ASC");
+            while ($row = $cctStmt->fetch()) {
+                $tags = (!empty($row['contact_tags']) && is_array($ct = json_decode($row['contact_tags'], true)))
+                    ? array_values(array_filter(array_map(fn($x) => trim((string)$x), $ct)))
+                    : [];
+                $clientContacts[] = [
+                    'id' => $row['id'],
+                    'companyClientId' => ($row['company_client_id'] ?? '') !== '' ? $row['company_client_id'] : null,
+                    'name' => $row['name'] ?? '',
+                    'firstName' => ($row['first_name'] ?? '') !== '' ? $row['first_name'] : null,
+                    'lastName' => ($row['last_name'] ?? '') !== '' ? $row['last_name'] : null,
+                    'email' => $row['email'] ?? '',
+                    'phone' => $row['phone'] ?? '',
+                    'contactRole' => ($row['contact_role'] ?? '') !== '' ? $row['contact_role'] : null,
+                    'contactTags' => $tags,
+                    'notes' => $row['notes'] ?? '',
+                    'archived' => intval($row['archived'] ?? 0) === 1,
+                    'createdAt' => $row['created_at'] ?? '',
                 ];
             }
         }
@@ -2455,6 +2487,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     if (!ccrm_can($scope, 'clients') && !ccrm_can($scope, 'leads')) {
         $restricted[] = 'clientCategories';
+        $restricted[] = 'clientContacts';
     }
 
     if (!ccrm_can($scope, 'invoices')) {
@@ -2693,6 +2726,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'warehouseMovements' => $warehouseMovements,
         'financialCategories' => $financialCategories,
         'clientCategories' => $clientCategories,
+        'clientContacts' => $clientContacts,
         'offerCategories' => $offerCategories,
         'financialRecords' => $financialRecords,
         'invoicesOffers' => $invoicesOffers,
@@ -2930,7 +2964,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'leads', 'meetingNotes', 'users', 'customDashboards', 'projects', 'projectTypes',
             'warehouses', 'suppliers', 'warehouseItems', 'warehouseStock', 'warehouseBatches',
             'warehouseMovements', 'financialCategories', 'financialRecords', 'invoicesOffers',
-            'aiCustomTemplates', 'clientCategories', 'offerCategories', 'employees', 'employeeSalaries', 'employeeVacations',
+            'aiCustomTemplates', 'clientCategories', 'clientContacts', 'offerCategories', 'employees', 'employeeSalaries', 'employeeVacations',
             'orders', 'supportContracts', 'tickets', 'recurringTasks',
         ] as $entity) {
             if (!isset($payload[$entity]) && ccrm_explicit_deleted_ids($explicitDeletes, $entity)) {
@@ -3113,6 +3147,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             require_once __DIR__ . '/api/task_activity_lib.php';
             ccrm_migrate_task_activities($pdo);
+            require_once __DIR__ . '/api/task_files_lib.php';
+            ccrm_migrate_task_files($pdo);
         }
         if ((isset($payload['tasks']) && is_array($payload['tasks'])) || (isset($payload['projects']) && is_array($payload['projects']))) {
             ccrm_heal_clickup_columns($pdo);
@@ -3271,6 +3307,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Tombstone table (deleted_records): same rule as a column heal. Outside the transaction (DDL
         // commits); ccrm_record_deleted() is fail-soft on top, so a push never 500s over it.
         if (!ccrm_table_exists($pdo, 'deleted_records')) ccrm_migrate_deleted_records($pdo);
+        if (!ccrm_table_exists($pdo, 'client_contacts')) ccrm_migrate_client_contacts($pdo);
 
         if (isset($payload['leads']) && is_array($payload['leads']) && !$ccrm_skip_writes('leads', 'leads')) {
             if (!ccrm_column_exists($pdo, 'leads', 'company_client_id')) {
@@ -3278,6 +3315,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if (!ccrm_column_exists($pdo, 'leads', 'contact_role')) {
                 $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_role` VARCHAR(120) NULL AFTER `company_client_id`");
+            }
+            if (!ccrm_column_exists($pdo, 'leads', 'contact_tags')) {
+                $pdo->exec("ALTER TABLE `leads` ADD COLUMN `contact_tags` TEXT NULL AFTER `contact_role`");
             }
             if (!ccrm_column_exists($pdo, 'leads', 'custom_fields_json')) {
                 $pdo->exec("ALTER TABLE `leads` ADD COLUMN `custom_fields_json` LONGTEXT NULL COMMENT 'JSON map of custom lead attribute values keyed by attribute id' AFTER `ticket_allowed_emails`");
@@ -4147,7 +4187,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : null;
 
                 // Total project / contract value from which invoices are billed.
-                $projValue = (isset($p['value']) && is_numeric($p['value']) && (float)$p['value'] > 0)
+                // Explicit 0 is preserved so a project sharing a lead does not fall back to lead.value.
+                $projValue = (isset($p['value']) && is_numeric($p['value']) && (float)$p['value'] >= 0)
                     ? round(min((float)$p['value'], 999999999999.99), 2)
                     : null;
 
@@ -4698,6 +4739,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (array_key_exists('contactRole', $l)) {
                     $pdo->prepare("UPDATE `leads` SET `contact_role` = ? WHERE `id` = ?")
                         ->execute([($l['contactRole'] ?? '') !== '' ? trim((string)$l['contactRole']) : null, $leadId]);
+                }
+                if (array_key_exists('contactTags', $l)) {
+                    $cleanTags = is_array($l['contactTags'])
+                        ? array_values(array_unique(array_filter(array_map(fn($x) => trim((string)$x), $l['contactTags']))))
+                        : [];
+                    $pdo->prepare("UPDATE `leads` SET `contact_tags` = ? WHERE `id` = ?")
+                        ->execute([$cleanTags ? json_encode($cleanTags, JSON_UNESCAPED_UNICODE) : null, $leadId]);
                 }
                 // Custom Lead fields (`leads.custom_fields_json`): only touch when `data` is supplied
                 // so partial callers (`ClientsView`, legacy bundles) never clear stored values.
@@ -6160,6 +6208,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $ccToDelete = $isDeltaSync ? $deletionsFor('clientCategories', $existingCcIds) : array_diff($existingCcIds, $processedCcIds);
             if (!empty($ccToDelete) && !$ccrm_skip_deletes('clients', 'clientCategories')) {
                 ccrm_delete_omitted($pdo, 'client_categories', $ccToDelete, null, [], false, $isDeltaSync);
+            }
+        }
+
+        // 4.13d. Synchronize Client Contacts (company contact persons + standalone personal contacts).
+        if (isset($payload['clientContacts']) && is_array($payload['clientContacts']) && !$ccrm_skip_writes('clients', 'clientContacts')) {
+            $stmt = $pdo->query("SELECT `id` FROM `client_contacts`");
+            $existingCctIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedCctIds = [];
+
+            $insCct = $pdo->prepare(
+                "INSERT INTO `client_contacts` (`id`, `company_client_id`, `name`, `first_name`, `last_name`, `email`, `phone`, `contact_role`, `contact_tags`, `notes`, `archived`, `created_at`) "
+                . "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                . "ON DUPLICATE KEY UPDATE `company_client_id` = VALUES(`company_client_id`), `name` = VALUES(`name`), `first_name` = VALUES(`first_name`), `last_name` = VALUES(`last_name`), `email` = VALUES(`email`), `phone` = VALUES(`phone`), `contact_role` = VALUES(`contact_role`), `contact_tags` = VALUES(`contact_tags`), `notes` = VALUES(`notes`), `archived` = VALUES(`archived`)"
+            );
+
+            foreach ($payload['clientContacts'] as $ct) {
+                if (!is_array($ct) || empty($ct['id'])) {
+                    continue;
+                }
+                $cleanTags = is_array($ct['contactTags'] ?? null)
+                    ? array_values(array_unique(array_filter(array_map(fn($x) => trim((string)$x), $ct['contactTags']))))
+                    : [];
+                $roleSummary = ($ct['contactRole'] ?? '') !== ''
+                    ? trim((string)$ct['contactRole'])
+                    : ($cleanTags ? mb_substr(implode(', ', $cleanTags), 0, 120, 'UTF-8') : null);
+                $insCct->execute([
+                    (string)$ct['id'],
+                    ($ct['companyClientId'] ?? '') !== '' ? trim((string)$ct['companyClientId']) : null,
+                    trim((string)($ct['name'] ?? '')),
+                    ($ct['firstName'] ?? '') !== '' ? trim((string)$ct['firstName']) : null,
+                    ($ct['lastName'] ?? '') !== '' ? trim((string)$ct['lastName']) : null,
+                    ($ct['email'] ?? '') !== '' ? trim((string)$ct['email']) : null,
+                    ($ct['phone'] ?? '') !== '' ? trim((string)$ct['phone']) : null,
+                    $roleSummary,
+                    $cleanTags ? json_encode($cleanTags, JSON_UNESCAPED_UNICODE) : null,
+                    ($ct['notes'] ?? '') !== '' ? (string)$ct['notes'] : null,
+                    !empty($ct['archived']) ? 1 : 0,
+                    ccrm_date_only($ct['createdAt'] ?? null) ?: date('Y-m-d'),
+                ]);
+                $processedCctIds[] = (string)$ct['id'];
+            }
+
+            $cctToDelete = $isDeltaSync ? $deletionsFor('clientContacts', $existingCctIds) : array_diff($existingCctIds, $processedCctIds);
+            if (!empty($cctToDelete) && !$ccrm_skip_deletes('clients', 'clientContacts')) {
+                ccrm_delete_omitted($pdo, 'client_contacts', $cctToDelete, null, [], false, $isDeltaSync);
             }
         }
 

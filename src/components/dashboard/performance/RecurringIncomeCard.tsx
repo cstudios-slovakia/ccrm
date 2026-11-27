@@ -9,12 +9,14 @@ export const RecurringIncomeCard = ({
   language,
   currencyCode,
   className = "",
+  onInfo,
 }: {
   data: RecurringIncomeData;
   labels: PeriodLabels;
   language: Language;
   currencyCode?: string | null;
   className?: string;
+  onInfo?: () => void;
 }) => {
   const t = makeT(language);
   return (
@@ -26,6 +28,7 @@ export const RecurringIncomeCard = ({
           "Opakované príjmy z Finančného prehľadu",
           "Ismétlődő bevételek a Pénzügyi áttekintésből",
         )}
+        onInfo={onInfo}
       />
       <HeadlineValue value={money(data.monthly, currencyCode, language)} unit={t("/ month", "/ mesiac", "/ hónap")} />
       <SubLine>

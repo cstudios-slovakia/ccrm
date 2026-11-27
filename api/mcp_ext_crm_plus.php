@@ -42,6 +42,7 @@ function mcp_ext_crm_plus_tool_definitions(): array {
                     'email' => ['type' => 'string', 'description' => 'Email address'],
                     'phone' => ['type' => 'string', 'description' => 'Phone number'],
                     'role' => ['type' => 'string', 'description' => 'Position / contact role at the company'],
+                    'function_tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Function / category tags (e.g. ["CEO", "Billing"])'],
                     'company_client_id' => ['type' => 'string', 'description' => 'Linked company client ID'],
                     'notes' => ['type' => 'string', 'description' => 'Notes'],
                     'archived' => ['type' => 'boolean', 'description' => 'true archives the contact, false restores it'],
@@ -449,40 +450,35 @@ function mcp_crm_plus_bump_locking_projects(\PDO $pdo, string $taskId): void {
 // ---------------------------------------------------------------------------
 
 function mcp_crm_plus_update_contact(\PDO $pdo, array $user, array $args): array {
+    mcp_ensure_contact_tags_column($pdo);
     $id = mcp_require_string($args, 'id');
-    $stmt = $pdo->prepare("SELECT * FROM `leads` WHERE `id` = ? LIMIT 1");
+    $stmt = $pdo->prepare("SELECT * FROM `client_contacts` WHERE `id` = ? LIMIT 1");
     $stmt->execute([$id]);
     $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-    if (!$row || ($row['client_type'] ?? '') !== 'person') {
-        throw new \Exception("Contact person not found with ID: {$id}");
-    }
-    if (!mcp_lead_module_visible($row)) {
+    if (!$row) {
         throw new \Exception("Contact person not found with ID: {$id}");
     }
 
     $sets = [];
     $params = [];
-    $first = array_key_exists('first_name', $args) ? trim((string)$args['first_name']) : (string)($row['contact_first_name'] ?? '');
-    $last = array_key_exists('last_name', $args) ? trim((string)$args['last_name']) : (string)($row['contact_last_name'] ?? '');
-    if (array_key_exists('first_name', $args)) { $sets[] = '`contact_first_name` = ?'; $params[] = $first === '' ? null : $first; }
-    if (array_key_exists('last_name', $args)) { $sets[] = '`contact_last_name` = ?'; $params[] = $last === '' ? null : $last; }
+    $first = array_key_exists('first_name', $args) ? trim((string)$args['first_name']) : (string)($row['first_name'] ?? '');
+    $last = array_key_exists('last_name', $args) ? trim((string)$args['last_name']) : (string)($row['last_name'] ?? '');
+    if (array_key_exists('first_name', $args)) { $sets[] = '`first_name` = ?'; $params[] = $first === '' ? null : $first; }
+    if (array_key_exists('last_name', $args)) { $sets[] = '`last_name` = ?'; $params[] = $last === '' ? null : $last; }
     if (array_key_exists('name', $args)) {
         $n = mcp_require_string($args, 'name');
         $sets[] = '`name` = ?'; $params[] = $n;
-        $sets[] = '`contact_person` = ?'; $params[] = $n;
     } elseif (array_key_exists('first_name', $args) || array_key_exists('last_name', $args)) {
         $full = trim($first . ' ' . $last);
         if ($full !== '') {
             $sets[] = '`name` = ?'; $params[] = $full;
-            $sets[] = '`contact_person` = ?'; $params[] = $full;
         }
     }
     $map = [
         'email' => 'email',
         'phone' => 'phone',
-        'role' => 'contact_role',
         'company_client_id' => 'company_client_id',
-        'notes' => 'interest_note',
+        'notes' => 'notes',
     ];
     foreach ($map as $argKey => $col) {
         if (array_key_exists($argKey, $args)) {
@@ -494,15 +490,30 @@ function mcp_crm_plus_update_contact(\PDO $pdo, array $user, array $args): array
             $params[] = ($v === '' ? null : $v);
         }
     }
+    $updatedTags = null;
+    if (array_key_exists('function_tags', $args)) {
+        $enc = mcp_encode_contact_tags($args['function_tags'], array_key_exists('role', $args) ? (string)$args['role'] : null);
+        $sets[] = '`contact_tags` = ?'; $params[] = $enc['json'];
+        $sets[] = '`contact_role` = ?'; $params[] = $enc['summary'];
+        $updatedTags = $enc['tags'];
+    } elseif (array_key_exists('role', $args)) {
+        $v = $args['role'] === null ? null : trim((string)$args['role']);
+        $enc = mcp_encode_contact_tags(null, $v);
+        $sets[] = '`contact_role` = ?'; $params[] = ($v === '' ? null : $v);
+        $sets[] = '`contact_tags` = ?'; $params[] = $enc['json'];
+        $updatedTags = $enc['tags'];
+    }
     if (array_key_exists('archived', $args)) {
         $sets[] = '`archived` = ?';
         $params[] = !empty($args['archived']) ? 1 : 0;
     }
     if (!$sets) return ['success' => true, 'id' => $id, 'message' => 'No fields updated'];
     $params[] = $id;
-    $pdo->prepare("UPDATE `leads` SET " . implode(', ', $sets) . " WHERE `id` = ?")->execute($params);
+    $pdo->prepare("UPDATE `client_contacts` SET " . implode(', ', $sets) . " WHERE `id` = ?")->execute($params);
     mcp_audit($pdo, $user, 'contact_update', "Updated contact $id");
-    return ['success' => true, 'id' => $id];
+    $out = ['success' => true, 'id' => $id];
+    if ($updatedTags !== null) $out['function_tags'] = $updatedTags;
+    return $out;
 }
 
 function mcp_crm_plus_create_client_category(\PDO $pdo, array $user, array $args): array {
@@ -956,6 +967,7 @@ function mcp_crm_plus_convert_lead(\PDO $pdo, array $user, array $args): array {
 }
 
 function mcp_crm_plus_get_client(\PDO $pdo, array $args): array {
+    mcp_ensure_contact_tags_column($pdo);
     $id = mcp_require_string($args, 'id');
     $scope = mcp_client_scope($pdo, $id);
     if (!$scope || !mcp_lead_module_visible($scope['record'])) throw new \Exception("Client not found with ID: " . $id);
@@ -963,7 +975,32 @@ function mcp_crm_plus_get_client(\PDO $pdo, array $args): array {
     $client['kind'] = $scope['is_client'] ? 'client' : 'lead';
     $client['url'] = mcp_scope_url($pdo, $scope);
     $client['record_ids'] = $scope['ids'];
+    $client['function_tags'] = mcp_contact_tags_from_row($scope['record']);
     $client = array_merge($client, mcp_moments_of($pdo, 'leads', (string)$client['id'], ['updated_at']));
+    if (($client['client_type'] ?? '') !== 'person' && !empty($scope['ids'])) {
+        $in = implode(',', array_fill(0, count($scope['ids']), '?'));
+        $cStmt = $pdo->prepare(
+            "SELECT id, company_client_id, name, first_name, last_name, contact_role, contact_tags, email, phone, notes "
+            . "FROM `client_contacts` WHERE company_client_id IN ({$in}) AND archived = 0 ORDER BY name ASC, id ASC"
+        );
+        $cStmt->execute($scope['ids']);
+        $contacts = [];
+        foreach ($cStmt->fetchAll(\PDO::FETCH_ASSOC) as $c) {
+            $tags = mcp_contact_tags_from_row($c);
+            $contacts[] = [
+                'id' => $c['id'],
+                'name' => $c['name'],
+                'first_name' => $c['first_name'],
+                'last_name' => $c['last_name'],
+                'email' => $c['email'],
+                'phone' => $c['phone'],
+                'role' => $c['contact_role'] ?: ($tags ? implode(', ', $tags) : 'Contact'),
+                'function_tags' => $tags,
+                'notes' => $c['notes'],
+            ];
+        }
+        $client['contacts'] = $contacts;
+    }
     if (mcp_can('projects')) {
         $ctx = mcp_projects_ctx();
         $groups = mcp_project_status_groups($pdo);
@@ -1027,34 +1064,54 @@ function mcp_crm_plus_update_client(\PDO $pdo, array $user, array $args): array 
 }
 
 function mcp_crm_plus_create_contact(\PDO $pdo, array $user, array $args): array {
-    $clientId = mcp_require_string($args, 'client_id');
-    mcp_row_exists($pdo, 'leads', $clientId, 'Client/lead');
+    mcp_ensure_contact_tags_column($pdo);
+    $clientId = trim((string)($args['client_id'] ?? ''));
+    if ($clientId !== '') {
+        mcp_row_exists($pdo, 'leads', $clientId, 'Client/lead');
+    }
     $first = array_key_exists('first_name', $args) ? (trim((string)$args['first_name']) ?: null) : null;
     $last = array_key_exists('last_name', $args) ? (trim((string)$args['last_name']) ?: null) : null;
     $contactName = isset($args['name']) && trim((string)$args['name']) !== ''
         ? trim((string)$args['name'])
         : trim(($first ?? '') . ' ' . ($last ?? ''));
     if ($contactName === '') throw new \InvalidArgumentException("'name' (or 'first_name'/'last_name') is required.");
+    if ($first === null && $last === null && strpos($contactName, ' ') !== false) {
+        $parts = preg_split('/\s+/', $contactName, 2);
+        $first = $parts[0] ?? null;
+        $last = $parts[1] ?? null;
+    }
     $email = trim((string)($args['email'] ?? '')) ?: null;
     $phone = trim((string)($args['phone'] ?? '')) ?: null;
-    $role = trim((string)($args['role'] ?? 'Contact')) ?: 'Contact';
+    $notes = trim((string)($args['notes'] ?? '')) ?: null;
+    $enc = mcp_encode_contact_tags($args['function_tags'] ?? null, array_key_exists('role', $args) ? (string)$args['role'] : null);
+    $role = $enc['summary'];
+    $tagsJson = $enc['json'];
 
-    $contactId = 'client-' . (int)round(microtime(true) * 1000) . bin2hex(random_bytes(2));
-    $won = mcp_won_lead_state($pdo);
-    mcp_tx($pdo, function () use ($pdo, $user, $clientId, $contactId, $contactName, $first, $last, $email, $phone, $role, $won) {
+    $contactId = 'cc_' . bin2hex(random_bytes(8));
+    $companyIdOrNull = $clientId !== '' ? $clientId : null;
+    mcp_tx($pdo, function () use ($pdo, $user, $companyIdOrNull, $contactId, $contactName, $first, $last, $email, $phone, $role, $tagsJson, $notes) {
         $pdo->prepare(
-            "INSERT INTO leads (id, name, contact_person, contact_first_name, contact_last_name, email, phone, company_client_id, contact_role, client_type, status, source, owner, value, adjustment, rating, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'person', ?, 'ai_assistant', ?, 0, 0, 5, ?)"
-        )->execute([$contactId, $contactName, $contactName, $first, $last, $email, $phone, $clientId, $role, $won, $user['name'], date('Y-m-d')]);
-        if ($first === null && $last === null) ccrm_set_contact_parts_from_person($pdo, $contactId);
-        $content = "Added contact: $contactName ($role)" . ($email ? " - $email" : "") . ($phone ? " - $phone" : "");
-        $pdo->prepare(
-            "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author)
-             VALUES (?, ?, 'note', ?, 'Contact Person Added', ?, ?)"
-        )->execute([mcp_new_id('ev_'), $clientId, mcp_now_local(), $content, $user['name']]);
+            "INSERT INTO `client_contacts` (`id`, `company_client_id`, `name`, `first_name`, `last_name`, `email`, `phone`, `contact_role`, `contact_tags`, `notes`, `archived`, `created_at`)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)"
+        )->execute([$contactId, $companyIdOrNull, $contactName, $first, $last, $email, $phone, $role, $tagsJson, $notes, date('Y-m-d')]);
+        if ($companyIdOrNull !== null) {
+            $roleLabel = $role ?: 'Contact';
+            $content = "Added contact: $contactName ($roleLabel)" . ($email ? " - $email" : "") . ($phone ? " - $phone" : "");
+            $pdo->prepare(
+                "INSERT INTO timeline_events (id, lead_id, type, timestamp, title, content, author)
+                 VALUES (?, ?, 'note', ?, 'Contact Person Added', ?, ?)"
+            )->execute([mcp_new_id('ev_'), $companyIdOrNull, mcp_now_local(), $content, $user['name']]);
+        }
     });
-    mcp_audit($pdo, $user, 'contact_create', "Added contact '$contactName' ($contactId) to client $clientId");
-    return ['success' => true, 'id' => $contactId, 'client_id' => $clientId, 'contact_name' => $contactName];
+    mcp_audit($pdo, $user, 'contact_create', "Added contact '$contactName' ($contactId)" . ($companyIdOrNull ? " to client $companyIdOrNull" : ''));
+    return [
+        'success' => true,
+        'id' => $contactId,
+        'client_id' => $companyIdOrNull,
+        'contact_name' => $contactName,
+        'role' => $role ?: 'Contact',
+        'function_tags' => $enc['tags'],
+    ];
 }
 
 function mcp_crm_plus_add_task_comment(\PDO $pdo, array $user, array $args): array {

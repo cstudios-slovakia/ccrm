@@ -99,6 +99,7 @@ export interface PerformanceOverviewInput {
   projectTypes: readonly ProjectType[];
   projectStatuses: readonly ProjectStatusDef[];
   defaultCurrency: string;
+  netMode?: boolean;
 
   tasks: readonly Task[];
   taskStates: string[];
@@ -124,7 +125,7 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
     invoicesOffers,
     financeInput, financialRecords, uncategorizedLabel,
     invoicingGroups, excludedStatusKeys,
-    projects, projectTypes, projectStatuses, defaultCurrency,
+    projects, projectTypes, projectStatuses, defaultCurrency, netMode,
     tasks, taskStates, employees,
     tickets, ticketStatuses, ticketSettings,
   } = input;
@@ -168,8 +169,8 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
     [canSeeFinancials, financeInput, period, today, uncategorizedLabel],
   );
   const dso = useMemo(
-    () => (canSeeFinancials ? computeDso({ invoices: invoicesOffers, financialRecords, leads, invoiceStatuses, period }) : EMPTY_DSO),
-    [canSeeFinancials, invoicesOffers, financialRecords, leads, invoiceStatuses, period],
+    () => (canSeeFinancials ? computeDso({ invoices: invoicesOffers, financialRecords, leads, projects, invoiceStatuses, period }) : EMPTY_DSO),
+    [canSeeFinancials, invoicesOffers, financialRecords, leads, projects, invoiceStatuses, period],
   );
 
   const leadById = useMemo(() => new Map(leads.map((lead) => [lead.id, lead])), [leads]);
@@ -221,6 +222,9 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
           financialRecords,
           invoicesOffers,
           invoiceStatuses,
+          siblingProjects: projects,
+          projectTypes,
+          netMode,
         }),
       );
       costsByProject.set(project.id, projectExpenseCosts(own, project.id, "real") + (labourByProject?.[project.id]?.cost ?? 0));
@@ -229,7 +233,7 @@ export const usePerformanceOverview = (input: PerformanceOverviewInput): Perform
     return { ...data, labourCostHidden: isLabourCostHidden(data.rows.map((row) => row.projectId), labourByProject) };
   }, [
     canSeeFinancials, projects, projectTypes, isActive, financialRecords, invoicesOffers, invoiceStatuses,
-    defaultCurrency, leadById, clientNameOf, nameOf, labourByProject, recentLabourProjectIds, today,
+    defaultCurrency, netMode, leadById, clientNameOf, nameOf, labourByProject, recentLabourProjectIds, today,
   ]);
 
   const deadlines = useMemo(

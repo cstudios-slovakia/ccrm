@@ -8,11 +8,13 @@ export const ThroughputCard = ({
   labels,
   language,
   className = "",
+  onInfo,
 }: {
   data: ThroughputData;
   labels: PeriodLabels;
   language: Language;
   className?: string;
+  onInfo?: () => void;
 }) => {
   const t = makeT(language);
   return (
@@ -24,6 +26,7 @@ export const ThroughputCard = ({
           "Priemerný čas od zadania úlohy po dokončenie",
           "Átlagos idő a feladat kiadásától a befejezéséig",
         )}
+        onInfo={onInfo}
       />
       <HeadlineValue value={days(data.averageDays, language)} unit={t("per task", "na úlohu", "feladatonként")} />
       <SubLine>

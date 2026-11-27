@@ -2,6 +2,7 @@ import type { Language } from "../../../utils/translations";
 import type { CashflowData, CashflowMonth, PeriodLabels } from "./types";
 import { makeT, monthShort, monthYear, signedMoney, thousands, money } from "./format";
 import { Card, CardTitle, LegendItem, ratioPct } from "./shared";
+import { InfoTrigger } from "./MetricBreakdownDrawer";
 
 const COLUMN = "relative flex h-full items-end justify-center gap-0.5";
 
@@ -24,12 +25,14 @@ export const CashflowCard = ({
   language,
   currencyCode,
   className = "",
+  onInspect,
 }: {
   data: CashflowData;
   labels: PeriodLabels;
   language: Language;
   currencyCode?: string | null;
   className?: string;
+  onInspect?: (key: "finance:cashflow" | "finance:income" | "finance:expenses") => void;
 }) => {
   const t = makeT(language);
   const net = data.periodIncome - data.periodExpenses;
@@ -50,14 +53,21 @@ export const CashflowCard = ({
           "Príjmy a výdavky po mesiacoch z Finančného prehľadu",
           "Bevételek és kiadások havonta a Pénzügyi áttekintésből",
         )}
+        onInfo={onInspect ? () => onInspect("finance:cashflow") : undefined}
       />
       <div className="mt-5 flex flex-wrap gap-x-10 gap-y-3">
         <div>
-          <LegendItem swatch="bg-emerald-500" label={named(t("Income", "Príjmy", "Bevétel"))} />
+          <div className="flex items-center gap-1">
+            <LegendItem swatch="bg-emerald-500" label={named(t("Income", "Príjmy", "Bevétel"))} />
+            {onInspect && <InfoTrigger onClick={() => onInspect("finance:income")} label={t("Income", "Príjmy", "Bevétel")} />}
+          </div>
           <div className="type-metric mt-0.5 text-gray-900">{money(data.periodIncome, currencyCode, language)}</div>
         </div>
         <div>
-          <LegendItem swatch="bg-rose-500" label={named(t("Expenses", "Výdavky", "Kiadások"))} />
+          <div className="flex items-center gap-1">
+            <LegendItem swatch="bg-rose-500" label={named(t("Expenses", "Výdavky", "Kiadások"))} />
+            {onInspect && <InfoTrigger onClick={() => onInspect("finance:expenses")} label={t("Expenses", "Výdavky", "Kiadások")} />}
+          </div>
           <div className="type-metric mt-0.5 text-gray-900">{money(data.periodExpenses, currencyCode, language)}</div>
         </div>
         <div>

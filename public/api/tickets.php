@@ -379,9 +379,9 @@ function ccrm_poll_ticket_imap(PDO $pdo, bool $force = false): array {
         if (!empty($header->from[0])) {
             $f = $header->from[0];
             $fromEmail = strtolower(trim(($f->mailbox ?? '') . '@' . ($f->host ?? '')));
-            $fromName = isset($f->personal) ? imap_utf8((string)$f->personal) : $fromEmail;
+            $fromName = isset($f->personal) ? ccrm_decode_mime_header((string)$f->personal) : $fromEmail;
         }
-        $subject = isset($header->subject) ? imap_utf8((string)$header->subject) : '(No Subject)';
+        $subject = isset($header->subject) ? ccrm_decode_mime_header((string)$header->subject) : '(No Subject)';
         $messageId = isset($header->message_id) ? trim((string)$header->message_id) : ('<uid-' . $uid . '@' . ($settings['imapHost'] ?? 'local') . '>');
         $inReplyTo = isset($header->in_reply_to) ? trim((string)$header->in_reply_to) : '';
 
@@ -393,13 +393,55 @@ function ccrm_poll_ticket_imap(PDO $pdo, bool $force = false): array {
             continue;
         }
 
-        // Fetch body using mail_broker helper
+        // Fetch body and save any safe email attachments to uploads/tickets/
         $structure = @imap_fetchstructure($inbox, (int)$uid, FT_UID);
         $bodies = ['html' => '', 'plain' => ''];
         $attachments = [];
+        $savedAttachments = [];
         if ($structure) {
-            parse_email_structure($inbox, (int)$uid, $structure, '', $bodies, $attachments);
+            if (function_exists('parse_email_structure')) {
+                parse_email_structure($inbox, (int)$uid, $structure, '', $bodies, $attachments);
+            }
+            if (function_exists('get_attachments_from_structure')) {
+                $imapAtts = get_attachments_from_structure($structure);
+                $uploadDir = dirname(__DIR__) . '/uploads/tickets';
+                if (!empty($imapAtts) && !is_dir($uploadDir)) {
+                    @mkdir($uploadDir, 0755, true);
+                }
+                foreach (array_slice($imapAtts, 0, 5) as $att) {
+                    $partNum = (string)($att['part_num'] ?? '');
+                    $origName = trim((string)($att['name'] ?? ''));
+                    if ($partNum === '' || $origName === '') continue;
+                    $ext = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
+                    $allowedExt = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'txt', 'csv', 'doc', 'docx', 'xls', 'xlsx'];
+                    if (!in_array($ext, $allowedExt, true)) continue;
+                    $rawPart = @imap_fetchbody($inbox, (int)$uid, $partNum, FT_UID | FT_PEEK);
+                    if ($rawPart === false || $rawPart === '') continue;
+                    $enc = (int)($att['encoding'] ?? 0);
+                    if ($enc === 3) $rawPart = base64_decode($rawPart);
+                    elseif ($enc === 4) $rawPart = quoted_printable_decode($rawPart);
+                    if (!is_string($rawPart) || $rawPart === '' || strlen($rawPart) > 5 * 1024 * 1024) continue;
+                    $safeBase = preg_replace('/[^A-Za-z0-9_\-.]/', '_', pathinfo($origName, PATHINFO_FILENAME)) ?: 'attachment';
+                    $storedName = 'tck_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '_' . substr($safeBase, 0, 60) . '.' . $ext;
+                    if (@file_put_contents($uploadDir . '/' . $storedName, $rawPart) !== false) {
+                        $relPath = 'uploads/tickets/' . $storedName;
+                        $mime = (string)($att['type'] ?? '');
+                        if ($mime === '' && in_array($ext, ['png', 'jpg', 'jpeg', 'gif', 'webp'], true)) {
+                            $mime = 'image/' . ($ext === 'jpg' ? 'jpeg' : $ext);
+                        }
+                        $savedAttachments[] = [
+                            'id' => 'att-' . bin2hex(random_bytes(4)),
+                            'name' => substr($origName, 0, 255),
+                            'type' => $mime,
+                            'size' => round(strlen($rawPart) / 1024) . ' KB',
+                            'path' => $relPath,
+                            'url' => $relPath,
+                        ];
+                    }
+                }
+            }
         }
+        $savedAttsJson = json_encode($savedAttachments, JSON_UNESCAPED_UNICODE);
         $bodyText = trim($bodies['plain'] !== '' ? $bodies['plain'] : strip_tags($bodies['html']));
         if ($bodyText === '') {
             $rawBody = @imap_body($inbox, (int)$uid, FT_UID | FT_PEEK);
@@ -423,13 +465,21 @@ function ccrm_poll_ticket_imap(PDO $pdo, bool $force = false): array {
             $msgId = 'tmsg-' . bin2hex(random_bytes(6));
             $pdo->prepare("
                 INSERT INTO `ticket_messages` (`id`, `ticket_id`, `author_type`, `author_name`, `author_email`, `is_internal`, `body`, `attachments_json`, `email_message_id`, `created_at`)
-                VALUES (?, ?, 'client', ?, ?, 0, ?, '[]', ?, NOW())
-            ")->execute([$msgId, $existingTicket['id'], $fromName ?: $fromEmail, $fromEmail, $bodyText, $messageId]);
+                VALUES (?, ?, 'client', ?, ?, 0, ?, ?, ?, NOW())
+            ")->execute([$msgId, $existingTicket['id'], $fromName ?: $fromEmail, $fromEmail, $bodyText, $savedAttsJson, $messageId]);
 
-            // Reopen ticket if waiting or resolved
+            // Reopen ticket if waiting or resolved, and attach any new email attachments to the ticket
             $newStatus = in_array($existingTicket['status'], ['waiting', 'waiting_client', 'resolved'], true) ? 'open' : $existingTicket['status'];
             $reopenInc = in_array($existingTicket['status'], ['resolved', 'closed'], true) ? 1 : 0;
-            $pdo->prepare("UPDATE `tickets` SET `status` = ?, `reopened_count` = `reopened_count` + ?, `updated_at` = NOW() WHERE `id` = ?")->execute([$newStatus, $reopenInc, $existingTicket['id']]);
+            if (!empty($savedAttachments)) {
+                $existingAtts = json_decode((string)($existingTicket['attachments_json'] ?? '[]'), true);
+                if (!is_array($existingAtts)) $existingAtts = [];
+                $mergedAtts = array_merge($existingAtts, $savedAttachments);
+                $pdo->prepare("UPDATE `tickets` SET `status` = ?, `reopened_count` = `reopened_count` + ?, `attachments_json` = ?, `updated_at` = NOW() WHERE `id` = ?")
+                    ->execute([$newStatus, $reopenInc, json_encode($mergedAtts, JSON_UNESCAPED_UNICODE), $existingTicket['id']]);
+            } else {
+                $pdo->prepare("UPDATE `tickets` SET `status` = ?, `reopened_count` = `reopened_count` + ?, `updated_at` = NOW() WHERE `id` = ?")->execute([$newStatus, $reopenInc, $existingTicket['id']]);
+            }
             @imap_setflag_full($inbox, (string)$uid, "\\Seen", ST_UID);
             $repliedCount++;
             continue;
@@ -524,8 +574,8 @@ function ccrm_poll_ticket_imap(PDO $pdo, bool $force = false): array {
             INSERT INTO `tickets` (
                 `id`, `ticket_number`, `title`, `description`, `status`, `priority`, `type`, `source`,
                 `project_id`, `client_id`, `reporter_name`, `reporter_email`,
-                `first_response_due_at`, `resolve_due_at`, `email_message_id`, `archived`, `created_at`, `updated_at`
-            ) VALUES (?, ?, ?, ?, 'new', ?, ?, 'email', ?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())
+                `first_response_due_at`, `resolve_due_at`, `email_message_id`, `attachments_json`, `archived`, `created_at`, `updated_at`
+            ) VALUES (?, ?, ?, ?, 'new', ?, ?, 'email', ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())
         ")->execute([
             $tckId,
             $tckNumber,
@@ -540,13 +590,14 @@ function ccrm_poll_ticket_imap(PDO $pdo, bool $force = false): array {
             $sla['firstResponseDueAt'],
             $sla['resolutionDueAt'],
             $messageId,
+            $savedAttsJson,
         ]);
 
         $msgId = 'tmsg-' . bin2hex(random_bytes(6));
         $pdo->prepare("
             INSERT INTO `ticket_messages` (`id`, `ticket_id`, `author_type`, `author_name`, `author_email`, `is_internal`, `body`, `attachments_json`, `email_message_id`, `created_at`)
-            VALUES (?, ?, 'client', ?, ?, 0, ?, '[]', ?, NOW())
-        ")->execute([$msgId, $tckId, $fromName ?: $fromEmail, $fromEmail, $bodyText, $messageId]);
+            VALUES (?, ?, 'client', ?, ?, 0, ?, ?, ?, NOW())
+        ")->execute([$msgId, $tckId, $fromName ?: $fromEmail, $fromEmail, $bodyText, $savedAttsJson, $messageId]);
 
         @imap_setflag_full($inbox, (string)$uid, "\\Seen", ST_UID);
         $createdCount++;

@@ -9,6 +9,7 @@ import { EmptyState } from "../../layout/EmptyState";
 import { Surface } from "../../layout/Surface";
 import type { Language } from "../../../utils/translations";
 import { initials, makeT } from "./format";
+import { InfoTrigger } from "./MetricBreakdownDrawer";
 
 export type Tone = "good" | "bad" | "warn" | "neutral";
 
@@ -87,11 +88,26 @@ export const LegendItem = ({ swatch, label, dot = false }: { swatch: string; lab
   </span>
 );
 
-/** Card title and caption, with an optional legend on the right. */
-export const CardTitle = ({ title, caption, legend }: { title: string; caption: string; legend?: ReactNode }) => (
+/** Card title and caption, with an optional circled info trigger and legend on the right. */
+export const CardTitle = ({
+  title,
+  caption,
+  legend,
+  onInfo,
+  infoLabel,
+}: {
+  title: string;
+  caption: string;
+  legend?: ReactNode;
+  onInfo?: () => void;
+  infoLabel?: string;
+}) => (
   <div className="flex flex-wrap items-start justify-between gap-3">
     <div className="min-w-0">
-      <h3 className="type-card-title text-gray-900">{title}</h3>
+      <div className="flex items-center gap-1.5">
+        <h3 className="type-card-title text-gray-900">{title}</h3>
+        {onInfo && <InfoTrigger onClick={onInfo} label={infoLabel ?? title} />}
+      </div>
       <p className="type-meta mt-0.5 text-gray-500">{caption}</p>
     </div>
     {legend && <div className="flex flex-wrap items-center gap-3.5">{legend}</div>}

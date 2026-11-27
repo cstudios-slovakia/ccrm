@@ -16,10 +16,12 @@ export const TicketsCard = ({
   data,
   language,
   className = "",
+  onInfo,
 }: {
   data: TicketsByStatusData;
   language: Language;
   className?: string;
+  onInfo?: () => void;
 }) => {
   const t = makeT(language);
   const names: Record<TicketCategoryKey, string> = {
@@ -38,6 +40,7 @@ export const TicketsCard = ({
           "Všetky tickety prijaté v období",
           "Az időszakban beérkezett összes jegy",
         )}
+        onInfo={onInfo}
       />
       <HeadlineValue value={countNoun("ticket", data.total, language)} unit={ofWhichOpen(data.open, language)} />
       <SegmentedBar

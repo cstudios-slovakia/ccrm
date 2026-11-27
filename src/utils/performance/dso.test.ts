@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { FinancialRecord, InvoiceOffer, Lead } from "../../types/index.ts";
+import type { FinancialRecord, InvoiceOffer, Lead, Project } from "../../types/index.ts";
 import { DEFAULT_INVOICE_STATUS_DEFS } from "../offerStatuses.ts";
 import { buildPeriod } from "./period.ts";
 import { computeDso, type DsoInput } from "./dso.ts";
@@ -126,4 +126,150 @@ test("payment term: none without a due date, the mean otherwise, never below 0, 
     ledgerRow("late", "2026-12-01"),
   ];
   assert.equal(computeDso(input(invoices, rows)).paymentTermDays, 7); // (14 + 7 + 0) / 3
+});
+
+test("includes standalone project and imported ledger invoices, avoids double-counting, excludes non-invoice income", () => {
+  const projects: Project[] = [
+    { id: "proj-1", name: "Alfa Web", clientId: "client-a", leadId: null, status: "active" } as unknown as Project,
+    { id: "proj-2", name: "Gama Redesign", clientId: null, leadId: "lead-c", status: "active" } as unknown as Project,
+  ];
+  const invoices = [
+    invoice("inv-1", "2026-11-01", { clientId: "client-a", dueDate: "2026-11-15" }), // 10 days, term 14
+  ];
+  const rows: FinancialRecord[] = [
+    // Already linked to inv-1: must NOT be counted twice even with subtype=invoice & issueDate set.
+    {
+      id: "fr-inv-inv-1",
+      type: "income",
+      subtype: "invoice",
+      title: "FA-2026-001",
+      invoiceNumber: "FA-2026-001",
+      clientId: "client-a",
+      status: "paid",
+      issueDate: "2026-11-01",
+      dueDate: "2026-11-15",
+      paidDate: "2026-11-11",
+      isRecurring: false,
+    } as unknown as FinancialRecord,
+    // Project invoice created directly from ProjectDetailsView (client via project.clientId -> Alfa)
+    {
+      id: "fr-179000-abc",
+      type: "income",
+      subtype: "invoice",
+      title: "Milestone 1",
+      projectId: "proj-1",
+      status: "paid",
+      issueDate: "2026-11-01",
+      dueDate: "2026-11-21", // term 20
+      paidDate: "2026-11-19", // 18 days
+      isRecurring: false,
+    } as unknown as FinancialRecord,
+    // External SuperFaktura import (client via project.leadId -> lead-c -> Gama)
+    {
+      id: "fr-sf-999",
+      type: "income",
+      subtype: "invoice",
+      title: "SF #2026099",
+      invoiceNumber: "2026099",
+      projectId: "proj-2",
+      status: "paid",
+      issueDate: "2026-11-05",
+      dueDate: "2026-11-15", // term 10
+      paidDate: "2026-11-09", // 4 days
+      isRecurring: false,
+    } as unknown as FinancialRecord,
+    // External invoice with no client/project link -> falls back to record title
+    {
+      id: "fr-sf-1000",
+      type: "income",
+      subtype: "invoice",
+      title: "Delta s.r.o.",
+      invoiceNumber: "2026100",
+      status: "paid",
+      issueDate: "2026-11-02",
+      dueDate: "2026-11-10", // term 8
+      paidDate: "2026-11-10", // 8 days
+      isRecurring: false,
+    } as unknown as FinancialRecord,
+    // Previous-period standalone invoice (paid Oct 10, 6 days)
+    {
+      id: "fr-sf-prev",
+      type: "income",
+      subtype: "invoice",
+      title: "Prev SF",
+      clientId: "client-b",
+      status: "paid",
+      issueDate: "2026-10-04",
+      paidDate: "2026-10-10", // 6 days
+      isRecurring: false,
+    } as unknown as FinancialRecord,
+    // Non-invoice utility refund (no subtype=invoice, no invoiceNumber, no projectId) -> excluded
+    {
+      id: "fr-refund-1",
+      type: "income",
+      subtype: "other",
+      title: "Electricity refund",
+      status: "paid",
+      issueDate: "2026-10-01",
+      paidDate: "2026-11-20", // 50 days if wrongly included
+      isRecurring: false,
+    } as unknown as FinancialRecord,
+    // Recurring rule row -> excluded
+    {
+      id: "fr-rec-1",
+      type: "income",
+      subtype: "invoice",
+      title: "Retainer rule",
+      projectId: "proj-1",
+      status: "paid",
+      issueDate: "2026-10-01",
+      paidDate: "2026-11-20",
+      isRecurring: true,
+    } as unknown as FinancialRecord,
+    // Expense row -> excluded
+    {
+      id: "fr-exp-1",
+      type: "expense",
+      subtype: "invoice",
+      title: "Vendor bill",
+      projectId: "proj-1",
+      status: "paid",
+      issueDate: "2026-10-01",
+      paidDate: "2026-11-20",
+      isRecurring: false,
+    } as unknown as FinancialRecord,
+  ];
+
+  const d = computeDso({
+    invoices,
+    financialRecords: rows,
+    leads,
+    projects,
+    invoiceStatuses: DEFAULT_INVOICE_STATUS_DEFS,
+    period,
+  });
+
+  // Counted: inv-1 (10), fr-179000-abc (18), fr-sf-999 (4), fr-sf-1000 (8) -> mean = 40 / 4 = 10
+  assert.equal(d.averageDays, 10);
+  // Previous period: fr-sf-prev (6) -> delta = 10 - 6 = +4
+  assert.equal(d.deltaDays, 4);
+  // Agreed terms: (14 + 20 + 10 + 8) / 4 = 13
+  assert.equal(d.paymentTermDays, 13);
+  // Client ranking: Alfa = (10 + 18)/2 = 14, Delta s.r.o. = 8, Gama = 4
+  assert.deepEqual(
+    d.worst.map((r) => [r.clientId, r.name, r.days]),
+    [
+      ["client-a", "Alfa", 14],
+      ["name:Delta s.r.o.", "Delta s.r.o.", 8],
+      ["client-c", "Gama", 4],
+    ],
+  );
+  assert.deepEqual(
+    d.best.map((r) => [r.clientId, r.name, r.days]),
+    [
+      ["client-c", "Gama", 4],
+      ["name:Delta s.r.o.", "Delta s.r.o.", 8],
+      ["client-a", "Alfa", 14],
+    ],
+  );
 });

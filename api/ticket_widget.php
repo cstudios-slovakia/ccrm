@@ -423,7 +423,7 @@ if ($action === 'followup') {
         exit;
     }
 
-    $tStmt = $pdo->prepare("SELECT `id`, `status` FROM `tickets` WHERE `id` = ? AND `project_id` = ? AND `archived` = 0 LIMIT 1");
+    $tStmt = $pdo->prepare("SELECT `id`, `status`, `attachments_json` FROM `tickets` WHERE `id` = ? AND `project_id` = ? AND `archived` = 0 LIMIT 1");
     $tStmt->execute([$ticketId, $projectId]);
     $ticketRow = $tStmt->fetch(PDO::FETCH_ASSOC);
     if (!$ticketRow) {
@@ -449,7 +449,26 @@ if ($action === 'followup') {
 
     $newStatus = in_array($ticketRow['status'], ['waiting', 'waiting_client', 'resolved'], true) ? 'open' : $ticketRow['status'];
     $reopenInc = in_array($ticketRow['status'], ['resolved', 'closed'], true) ? 1 : 0;
-    $pdo->prepare("UPDATE `tickets` SET `status` = ?, `reopened_count` = `reopened_count` + ?, `updated_at` = NOW() WHERE `id` = ?")->execute([$newStatus, $reopenInc, $ticketId]);
+    if (!empty($attachments)) {
+        $existingAtts = json_decode((string)($ticketRow['attachments_json'] ?? '[]'), true);
+        if (!is_array($existingAtts)) $existingAtts = [];
+        $seen = [];
+        foreach ($existingAtts as $ea) {
+            $k = (string)($ea['path'] ?? $ea['url'] ?? $ea['dataUrl'] ?? $ea['id'] ?? $ea['name'] ?? '');
+            if ($k !== '') $seen[$k] = true;
+        }
+        foreach ($attachments as $na) {
+            $k = (string)($na['path'] ?? $na['url'] ?? $na['dataUrl'] ?? $na['id'] ?? $na['name'] ?? '');
+            if ($k !== '' && !isset($seen[$k])) {
+                $existingAtts[] = $na;
+                $seen[$k] = true;
+            }
+        }
+        $pdo->prepare("UPDATE `tickets` SET `status` = ?, `reopened_count` = `reopened_count` + ?, `attachments_json` = ?, `updated_at` = NOW() WHERE `id` = ?")
+            ->execute([$newStatus, $reopenInc, json_encode($existingAtts, JSON_UNESCAPED_UNICODE), $ticketId]);
+    } else {
+        $pdo->prepare("UPDATE `tickets` SET `status` = ?, `reopened_count` = `reopened_count` + ?, `updated_at` = NOW() WHERE `id` = ?")->execute([$newStatus, $reopenInc, $ticketId]);
+    }
 
     echo json_encode([
         'success' => true,

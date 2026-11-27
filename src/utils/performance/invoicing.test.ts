@@ -70,3 +70,75 @@ test("only one group present", () => {
   assert.equal(d.pipelineSharePct, 0);
   assert.equal(d.projectsSharePct, 100);
 });
+
+test("preserves invoicedOpen and itemized drill-down rows for Completed unsettled transparency", () => {
+  const detailedGroups = [
+    {
+      id: "projects",
+      name: "Projects",
+      items: [
+        {
+          key: "completed_not_paid_yet",
+          name: "Completed unsettled",
+          value: 0,
+          invoicedOpen: 2500,
+          count: 1,
+          color: "#f59e0b",
+          rows: [
+            {
+              id: "p-1",
+              name: "Alpha Website",
+              clientName: "Acme Corp",
+              totalBudget: 5000,
+              invoiced: 5000,
+              invoicedOpen: 2500,
+              invoicable: 0,
+              type: "project",
+              url: "#projects/p-1",
+            },
+          ],
+        },
+        {
+          key: "active",
+          name: "Active",
+          value: 4000,
+          count: 1,
+          color: "#3b82f6",
+          rows: [
+            {
+              id: "p-2",
+              name: "Beta App",
+              totalBudget: 6000,
+              invoiced: 2000,
+              invoicedOpen: 1000,
+              invoicable: 4000,
+              type: "project",
+              url: "#projects/p-2",
+            },
+          ],
+        },
+      ],
+    },
+  ] as unknown as StatusStatGroup[];
+
+  const d = buildInvoicingData(detailedGroups, []);
+  const unsettled = d.projects.rows.find((r) => r.id === "projects:completed_not_paid_yet")!;
+  assert.equal(unsettled.value, 0);
+  assert.equal(unsettled.invoicedOpen, 2500);
+  assert.equal(unsettled.items.length, 1);
+  assert.deepEqual(unsettled.items[0], {
+    id: "p-1",
+    name: "Alpha Website",
+    clientName: "Acme Corp",
+    totalBudget: 5000,
+    invoiced: 5000,
+    invoicedOpen: 2500,
+    invoicable: 0,
+    type: "project",
+    url: "#projects/p-1",
+  });
+
+  // When item.invoicedOpen is omitted, it is summed from its detail rows.
+  const active = d.projects.rows.find((r) => r.id === "projects:active")!;
+  assert.equal(active.invoicedOpen, 1000);
+});

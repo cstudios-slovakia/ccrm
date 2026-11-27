@@ -3,6 +3,7 @@ import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
+import { TaskDetailView } from "./components/TaskDetailView";
 import type { TaskHubData } from "./components/tasks/MultiCalendarPanel";
 import { TimeTrackingProvider } from "./hooks/useTimeTracking";
 import { TimeTrackingView } from "./components/timeTracking/TimeTrackingView";
@@ -17,7 +18,7 @@ import type { TimeDeps } from "./components/timeTracking/shared";
 import { canEditTask as userMayEditTask } from "./utils/taskSelectors";
 import { QuickTaskModal, composerOriginFrom, type ComposerOrigin } from "./components/QuickTaskModal";
 import { TableFullscreenEnhancer } from "./components/ui/TableFullscreenEnhancer";
-import type { Lead, UserProfile, RolePermission, Task, RecurringTaskTemplate, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, ProjectAttribute, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, OfferCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order, Ticket, SupportContract, TicketStatusDef, TicketSystemSettings } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, RecurringTaskTemplate, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, TaskSettings, ProjectType, ProjectAttribute, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, ClientContact, OfferCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings, Order, Ticket, SupportContract, TicketStatusDef, TicketSystemSettings } from "./types";
 import { clearedSecretKeys } from "./utils/secretClears";
 import { findSelf, isDifferentSessionUser } from "./utils/sessionIdentity";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
@@ -32,7 +33,7 @@ import { normalizeOrderStatusDefs, type OrderStatusDef } from "./utils/orders";
 import { OrderStatusesProvider } from "./hooks/useOrderStatuses";
 import { TaskSettingsProvider } from "./hooks/useTaskSettings";
 import { RecurringTemplatesProvider } from "./hooks/useRecurringTemplates";
-import { normalizeTicketStatuses, normalizeTicketSettings } from "./utils/tickets";
+import { normalizeTicketStatuses, normalizeTicketSettings, isClosedTicketStatus } from "./utils/tickets";
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
 import { isSystemMailConfigured } from "./utils/taskReminders";
 import {
@@ -284,6 +285,7 @@ function App() {
   const invoicesOffersRef = useRef<InvoiceOffer[]>([]);
   const aiCustomTemplatesRef = useRef<AiCustomTemplate[]>([]);
   const clientCategoriesRef = useRef<ClientCategory[]>([]);
+  const clientContactsRef = useRef<ClientContact[]>([]);
   const offerCategoriesRef = useRef<OfferCategory[]>([]);
   const financialTrendRef = useRef<FinancialTrendSettings>(EMPTY_FINANCIAL_TREND);
   const financialModeRef = useRef<FinancialOperatingMode>("connected");
@@ -408,7 +410,7 @@ function App() {
 
     const resolvedBase = aliasMap[hashLower] || hashLower;
 
-    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("project-") || resolvedBase.startsWith("employee-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("orders") || resolvedBase.startsWith("order-") || resolvedBase.startsWith("tickets") || resolvedBase.startsWith("ticket-") || resolvedBase.startsWith("public-tickets") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation") || resolvedBase.startsWith("employees") || resolvedBase.startsWith("agency")) {
+    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("project-") || resolvedBase.startsWith("task-") || resolvedBase.startsWith("employee-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("orders") || resolvedBase.startsWith("order-") || resolvedBase.startsWith("tickets") || resolvedBase.startsWith("ticket-") || resolvedBase.startsWith("public-tickets") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation") || resolvedBase.startsWith("employees") || resolvedBase.startsWith("agency")) {
       // An alias maps to its canonical tab; anything else keeps its original case.
       const route = (aliasMap[hashLower] || baseRaw) + subPath;
       return queryRaw ? `${route}?${queryRaw}` : route;
@@ -716,6 +718,7 @@ function App() {
   const [invoicesOffers, setInvoicesOffers] = useState<InvoiceOffer[]>([]);
   const [aiCustomTemplates, setAiCustomTemplates] = useState<AiCustomTemplate[]>([]);
   const [clientCategories, setClientCategories] = useState<ClientCategory[]>([]);
+  const [clientContacts, setClientContacts] = useState<ClientContact[]>([]);
   const [offerCategories, setOfferCategories] = useState<OfferCategory[]>([]);
   /**
    * Manual weekly bank-balance anchors behind the finance trend chart. Shared
@@ -1296,6 +1299,7 @@ ${log.payload || ''}
   invoicesOffersRef.current = invoicesOffers;
   aiCustomTemplatesRef.current = aiCustomTemplates;
   clientCategoriesRef.current = clientCategories;
+  clientContactsRef.current = clientContacts;
   offerCategoriesRef.current = offerCategories;
   financialTrendRef.current = financialTrend;
   financialModeRef.current = financialMode;
@@ -1378,6 +1382,7 @@ ${log.payload || ''}
     const liveInvoicesOffers = nextInvoicesOffers ?? invoicesOffersRef.current;
     const liveAiCustomTemplates = nextAiCustomTemplates ?? aiCustomTemplatesRef.current;
     const liveClientCategories = nextClientCategories ?? clientCategoriesRef.current;
+    const liveClientContacts = clientContactsRef.current;
     const liveOfferCategories = nextOfferCategories ?? offerCategoriesRef.current;
     const liveEmployees = employeesRef.current;
     const liveEmployeeSalaries = employeeSalariesRef.current;
@@ -1411,6 +1416,7 @@ ${log.payload || ''}
       invoicesOffers: liveInvoicesOffers,
       aiCustomTemplates: liveAiCustomTemplates,
       clientCategories: liveClientCategories,
+      clientContacts: liveClientContacts,
       offerCategories: liveOfferCategories,
       employees: liveEmployees,
       employeeSalaries: liveEmployeeSalaries,
@@ -1523,6 +1529,7 @@ ${log.payload || ''}
       narrow("invoicesOffers", liveInvoicesOffers);
       narrow("aiCustomTemplates", liveAiCustomTemplates);
       narrow("clientCategories", liveClientCategories);
+      narrow("clientContacts", liveClientContacts);
       narrow("offerCategories", liveOfferCategories);
       narrow("employees", liveEmployees);
       narrow("employeeSalaries", liveEmployeeSalaries);
@@ -1641,7 +1648,7 @@ ${log.payload || ''}
               custom_dashboards: "customDashboards", warehouses: "warehouses",
               suppliers: "suppliers", warehouse_items: "warehouseItems",
               warehouse_batches: "warehouseBatches", warehouse_movements: "warehouseMovements",
-              financial_categories: "financialCategories", client_categories: "clientCategories", offer_categories: "offerCategories",
+              financial_categories: "financialCategories", client_categories: "clientCategories", client_contacts: "clientContacts", offer_categories: "offerCategories",
               financial_records: "financialRecords", invoices_offers: "invoicesOffers",
               ai_custom_templates: "aiCustomTemplates",
               employees: "employees", employee_salaries: "employeeSalaries",
@@ -1916,7 +1923,7 @@ ${log.payload || ''}
 
   useEffect(() => {
     const onTaskMetaPatch = (e: Event) => {
-      const detail = (e as CustomEvent<{ taskId?: string; commentCount?: number; reactions?: Record<string, string[]> | null }>).detail;
+      const detail = (e as CustomEvent<{ taskId?: string; commentCount?: number; reactions?: Record<string, string[]> | null; fileCount?: number }>).detail;
       if (!detail?.taskId) return;
       setTasks(prev => {
         const next = prev.map(tk =>
@@ -1925,6 +1932,7 @@ ${log.payload || ''}
                 ...tk,
                 ...(detail.commentCount !== undefined ? { commentCount: detail.commentCount } : {}),
                 ...(detail.reactions !== undefined ? { reactions: detail.reactions } : {}),
+                ...(detail.fileCount !== undefined ? { fileCount: detail.fileCount } : {}),
               }
             : tk
         );
@@ -2081,7 +2089,14 @@ ${log.payload || ''}
     const heldInvoices = (pendingDeletionRecords("invoicesOffers") as InvoiceOffer[])
       .filter((inv) => !next.some((o) => o.id === inv.id));
     ledgerStaleRef.current = heldInvoices.length > 0;
-    const nextRecords = reconcileInvoiceMovements(prev, heldInvoices.length ? [...next, ...heldInvoices] : next, prevRecords, undefined, invoiceStatusesRef.current);
+    const nextRecords = reconcileInvoiceMovements(
+      prev,
+      heldInvoices.length ? [...next, ...heldInvoices] : next,
+      prevRecords,
+      undefined,
+      invoiceStatusesRef.current,
+      { netMode: Boolean(companyBillingSettingsRef.current?.financeNetMode) },
+    );
     if (nextRecords !== prevRecords) {
       financialRecordsRef.current = nextRecords;
       setFinancialRecords(nextRecords);
@@ -2094,6 +2109,15 @@ ${log.payload || ''}
       const next = typeof newCats === "function" ? newCats(prev) : newCats;
       clientCategoriesRef.current = next;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateClientContactsAndSync = (newContacts: ClientContact[] | ((prev: ClientContact[]) => ClientContact[])) => {
+    setClientContacts(prev => {
+      const next = typeof newContacts === "function" ? newContacts(prev) : newContacts;
+      clientContactsRef.current = next;
+      pushStateToServer();
       return next;
     });
   };
@@ -3013,6 +3037,9 @@ ${log.payload || ''}
       if (data.clientCategories && Array.isArray(data.clientCategories)) {
         setClientCategories(sameOr(data.clientCategories));
       }
+      if (data.clientContacts && Array.isArray(data.clientContacts)) {
+        setClientContacts(sameOr(data.clientContacts));
+      }
       if (data.offerCategories && Array.isArray(data.offerCategories)) {
         setOfferCategories(sameOr(data.offerCategories));
       }
@@ -3185,6 +3212,7 @@ ${log.payload || ''}
         invoicesOffers: baselineOf(rawData.invoicesOffers ?? invoicesOffersRef.current),
         aiCustomTemplates: baselineOf(rawData.aiCustomTemplates ?? aiCustomTemplatesRef.current),
         clientCategories: baselineOf(rawData.clientCategories ?? clientCategoriesRef.current),
+        clientContacts: baselineOf(rawData.clientContacts ?? clientContactsRef.current),
         offerCategories: baselineOf(rawData.offerCategories ?? offerCategoriesRef.current),
         employees: baselineOf(rawData.employees ?? employeesRef.current),
         employeeSalaries: baselineOf(rawData.employeeSalaries ?? employeeSalariesRef.current),
@@ -3226,6 +3254,7 @@ ${log.payload || ''}
         invoicesOffers: data.invoicesOffers ?? invoicesOffersRef.current,
         aiCustomTemplates: data.aiCustomTemplates ?? aiCustomTemplatesRef.current,
         clientCategories: data.clientCategories ?? clientCategoriesRef.current,
+        clientContacts: data.clientContacts ?? clientContactsRef.current,
         offerCategories: data.offerCategories ?? offerCategoriesRef.current,
         employees: data.employees ?? employeesRef.current,
         employeeSalaries: data.employeeSalaries ?? employeeSalariesRef.current,
@@ -3692,6 +3721,7 @@ ${log.payload || ''}
             invoiceStatuses={invoiceStatuses}
             leadStageGroups={leadStageGroups}
             leadStateParents={leadStateParents}
+            companyBillingSettings={companyBillingSettings}
           />
         );
       }
@@ -3776,6 +3806,8 @@ ${log.payload || ''}
           taskAccess={taskAccess}
           clientCategories={clientCategories}
           setClientCategories={updateClientCategoriesAndSync}
+          clientContacts={clientContacts}
+          setClientContacts={updateClientContactsAndSync}
           systemLanguage={userLanguage}
           tasks={tasks}
           setTasks={updateTasksAndSync}
@@ -3962,7 +3994,7 @@ ${log.payload || ''}
     }
 
     const rawBaseTab = activeRoute.split("/")[0];
-    const sectionTab = rawBaseTab.startsWith("project-") ? "projects" : rawBaseTab.startsWith("ticket-") ? "tickets" : (rawBaseTab === "social_media" && !SOCIAL_MEDIA_ENABLED ? "dashboard" : rawBaseTab);
+    const sectionTab = rawBaseTab.startsWith("project-") ? "projects" : rawBaseTab.startsWith("ticket-") ? "tickets" : rawBaseTab.startsWith("task-") ? "tasks" : (rawBaseTab === "social_media" && !SOCIAL_MEDIA_ENABLED ? "dashboard" : rawBaseTab);
     // The Performance Dashboard (case "overview") took the widget board's place; see utils/dashboardSection.ts.
     const baseTab = sectionTab === "dashboard" && !LEGACY_WIDGET_DASHBOARD ? "overview" : sectionTab;
     switch (baseTab) {
@@ -4138,6 +4170,8 @@ ${log.payload || ''}
             setFinancialCategories={updateFinancialCategoriesAndSync}
             clientCategories={clientCategories}
             setClientCategories={updateClientCategoriesAndSync}
+            clientContacts={clientContacts}
+            setClientContacts={updateClientContactsAndSync}
             currentUser={currentUser}
             users={users}
             projects={projects}
@@ -4359,6 +4393,7 @@ ${log.payload || ''}
             setTasks={updateTasksAndSync}
             users={users}
             taskStates={taskStates}
+            tickets={tickets} setTickets={updateTicketsAndSync} ticketStatuses={ticketStatuses}
           />
         );
 
@@ -4393,6 +4428,7 @@ ${log.payload || ''}
             invoiceStatuses={invoiceStatuses}
             leadStageGroups={leadStageGroups}
             leadStateParents={leadStateParents}
+            companyBillingSettings={companyBillingSettings}
           />
         );
       case "whatsapp":
@@ -4472,6 +4508,7 @@ ${log.payload || ''}
             financialCategories={financialCategories} financialMode={financialMode} financialSimplifiedTable={financialSimplifiedTable}
             invoicesOffers={invoicesOffers}
             invoiceStatuses={invoiceStatuses}
+            companyBillingSettings={companyBillingSettings}
             tasks={tasks} taskStates={taskStates} employees={employees} tickets={tickets} ticketStatuses={ticketStatuses} ticketSettings={ticketSettings} offerStatuses={offerStatuses} canSeeFinancials={access.module("financial").view}
           />
         );
@@ -4641,30 +4678,22 @@ ${log.payload || ''}
             }}
           />
         );
-      default:
-        return (
-          <TaskDashboardView 
-            tasks={tasks}
-            setTasks={updateTasksAndSync}
-            recurringTasks={recurringTasks}
-            setRecurringTasks={updateRecurringTasksAndSync}
-            leads={leads}
-            projects={projects}
-            tickets={tickets}
-            employees={employees}
-            users={users}
-            systemLanguage={userLanguage}
-            currentUser={activeUser}
-            taskStates={taskStates}
-            taskStateColors={taskStateColors}
-            taskAccess={taskAccess}
-            mailConfigured={isSystemMailConfigured(integrationsConfig)}
-            agencyEnabled={agencyEnabled}
-            leadStageGroups={leadStageGroups}
-            leadStateParents={leadStateParents}
-            hubData={taskHubData}
-          />
+      default: {
+        const sharedTaskProps = {
+          tasks, setTasks: updateTasksAndSync, leads, projects, tickets, users,
+          taskStates, taskStateColors, systemLanguage: userLanguage, currentUser: activeUser,
+          taskAccess, mailConfigured: isSystemMailConfigured(integrationsConfig),
+          agencyEnabled, leadStageGroups, leadStateParents,
+        };
+        const routeTaskId = activeRoute.startsWith("tasks/")
+          ? decodeURIComponent(activeRoute.slice("tasks/".length))
+          : activeRoute.startsWith("task-") ? decodeURIComponent(activeRoute.slice("task-".length)) : "";
+        return routeTaskId ? (
+          <TaskDetailView {...sharedTaskProps} taskId={routeTaskId} onBackToTasks={() => { setActiveTab("tasks"); window.location.hash = "tasks"; }} />
+        ) : (
+          <TaskDashboardView {...sharedTaskProps} recurringTasks={recurringTasks} setRecurringTasks={updateRecurringTasksAndSync} employees={employees} hubData={taskHubData} />
         );
+      }
     }
   };
 
@@ -4978,7 +5007,7 @@ ${log.payload || ''}
               defaultPage={getDefaultPageForUser(currentUser) || "dashboard"}
               onSaveDefaultPage={handleSaveDefaultPage}
               disabledModules={integrationsConfig?.disabledModules || []}
-              badges={{ whatsapp: whatsappUnread }}
+              badges={{ whatsapp: whatsappUnread, tickets: tickets.filter((t) => !isClosedTicketStatus(t.status, ticketStatuses)).length, tasks: tasks.filter((t) => !t.archived && !isDoneTaskState(t.status, taskStates) && !!t.deadline && t.deadline.slice(0, 10) <= todayLocal()).length }}
             />
         
         {/* Workspace Area - Add pb-20 on mobile viewports so that the bottom navigation bar never overlaps content */}

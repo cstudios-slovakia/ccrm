@@ -8,10 +8,12 @@ export const ScopeCreepCard = ({
   data,
   language,
   className = "",
+  onInfo,
 }: {
   data: ScopeCreepData | null;
   language: Language;
   className?: string;
+  onInfo?: () => void;
 }) => {
   const t = makeT(language);
   const title = "Scope creep";
@@ -38,7 +40,7 @@ export const ScopeCreepCard = ({
   }
   return (
     <Card className={className}>
-      <CardTitle title={title} caption={caption} />
+      <CardTitle title={title} caption={caption} onInfo={onInfo} />
       <HeadlineValue value={signedCountNoun("criterion", data.addedInPeriod, language)} />
       <SubLine>
         {data.sharePct !== null && <Figure tone="warn">{signedPercent(data.sharePct, language)}</Figure>}

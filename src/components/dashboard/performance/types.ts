@@ -55,6 +55,18 @@ export interface KpiStripData {
 
 /* ------------------------------------------------------------ Na fakturovanie */
 
+export interface InvoicingDetailItem {
+  id: string;
+  name: string;
+  clientName?: string;
+  totalBudget: number;
+  invoiced: number;
+  invoicedOpen: number;
+  invoicable: number;
+  type: "lead" | "project";
+  url?: string;
+}
+
 export interface InvoicingStatusRow {
   /** Status id used by the per-user exclusion list. */
   id: string;
@@ -63,6 +75,10 @@ export interface InvoicingStatusRow {
   color: string;
   count: number;
   value: number;
+  /** Issued/planned invoices that are not paid yet (projects). */
+  invoicedOpen: number;
+  /** Individual leads or projects that contribute to this status row. */
+  items: InvoicingDetailItem[];
   /** false when the user unticked the status: it stays listed but leaves every sum. */
   included: boolean;
 }

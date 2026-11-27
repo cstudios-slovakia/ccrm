@@ -32,6 +32,7 @@ import { EntityBadge } from "./tremor/EntityBadge";
 import { isClientRecord } from "../utils/clientRecord";
 import { PageHeader, StatGrid, StatTile } from "./layout";
 import { getAvailableVatRates } from "../utils/vat";
+import { effectiveDocumentAmount } from "../utils/invoiceFinanceBridge";
 import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { deleteRecordsWithUndo } from "../utils/recordActions";
 import { duplicateOffer, num } from "../utils/offerDraft";
@@ -612,17 +613,18 @@ export const PriceOffersView: React.FC<PriceOffersViewProps> = ({
     // A brand-new document is announced on the lead's timeline. Edits are not —
     // re-saving a draft should not spam the timeline with duplicates.
     if (!isEdit) {
+      const offerAmount = effectiveDocumentAmount(doc, Boolean(companyBillingSettings?.financeNetMode));
       const timelineEvent: TimelineEvent = {
         id: "ev-" + Math.random().toString(36).slice(2, 11),
         type: "offer",
         timestamp: nowLocalStamp(),
         title: `${doc.title} (${doc.documentNumber})`,
         content: t(
-          `Price offer issued for ${money(doc.totalPrice)}. Subject: ${doc.subject || "—"}`,
-          `Vystavená cenová ponuka v hodnote ${money(doc.totalPrice)}. Predmet: ${doc.subject || "—"}`,
-          `Kiállított árajánlat ${money(doc.totalPrice)} értékben. Tárgy: ${doc.subject || "—"}`
+          `Price offer issued for ${money(offerAmount)}. Subject: ${doc.subject || "—"}`,
+          `Vystavená cenová ponuka v hodnote ${money(offerAmount)}. Predmet: ${doc.subject || "—"}`,
+          `Kiállított árajánlat ${money(offerAmount)} értékben. Tárgy: ${doc.subject || "—"}`
         ),
-        amount: doc.totalPrice,
+        amount: offerAmount,
         author: currentUser?.name || getSystemTitle()
       };
 

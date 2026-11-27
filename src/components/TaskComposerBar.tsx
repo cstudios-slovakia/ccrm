@@ -30,6 +30,8 @@ interface TaskComposerBarProps {
     onArmHandled?: () => void;
     /** The composer was just closed: the mic fades back in (motion board). */
     returned?: boolean;
+    /** Tighter sizing for embedded entity panels (tickets, clients, projects). */
+    compact?: boolean;
 }
 
 /**
@@ -45,6 +47,7 @@ export const TaskComposerBar: React.FC<TaskComposerBarProps> = ({
     armRequest = 0,
     onArmHandled,
     returned = false,
+    compact = false,
 }) => {
     const t = (en: string, sk: string, hu: string) => (systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en);
     const micRef = useRef<HTMLButtonElement | null>(null);
@@ -78,15 +81,17 @@ export const TaskComposerBar: React.FC<TaskComposerBarProps> = ({
 
     return (
         <div className="w-full flex flex-col gap-1.5">
-            <div className="w-full flex items-center gap-3">
+            <div className={`w-full flex items-center ${compact ? "gap-2" : "gap-3"}`}>
                 <button
                     type="button"
                     disabled={!canCreate}
                     onClick={(e) => onCreate(composerOriginFrom(e, "create"))}
                     title={t("Create New Task", "Vytvoriť novú úlohu", "Új feladat")}
-                    className="nt-press flex-grow min-w-0 h-13 border-0 rounded-2xl bg-[#ff5d00] hover:bg-[#e05200] text-white text-body font-bold flex items-center justify-center gap-2.5 shadow-[0_4px_6px_-1px_rgba(255,93,0,0.25)] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff5d00]"
+                    className={`nt-press flex-grow min-w-0 border-0 bg-[#ff5d00] hover:bg-[#e05200] text-white font-bold flex items-center justify-center shadow-[0_4px_6px_-1px_rgba(255,93,0,0.25)] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff5d00] ${
+                        compact ? "h-9.5 rounded-lg text-ui gap-1.5" : "h-13 rounded-2xl text-body gap-2.5"
+                    }`}
                 >
-                    <Plus aria-hidden="true" className="h-4.5 w-4.5 shrink-0" strokeWidth={2.25} />
+                    <Plus aria-hidden="true" className={compact ? "h-4 w-4 shrink-0" : "h-4.5 w-4.5 shrink-0"} strokeWidth={2.25} />
                     <span className="truncate">{t("Create New Task", "Vytvoriť novú úlohu", "Új feladat")}</span>
                 </button>
                 <button
@@ -100,11 +105,11 @@ export const TaskComposerBar: React.FC<TaskComposerBarProps> = ({
                         onDictate(composerOriginFrom(e, "mic"));
                     }}
                     title={t("Dictate a task", "Nadiktovať úlohu", "Feladat diktálása")}
-                    className={`nt-press w-33 shrink-0 h-13 p-0 border-0 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-body font-semibold flex items-center justify-center gap-2 shadow-[0_4px_6px_-1px_rgba(225,29,72,0.25)] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-4 focus-visible:ring-rose-300/70 ${
-                        returned ? "nt-fade-in" : ""
-                    } ${armed ? "ring-4 ring-rose-300/70 animate-pulse" : ""}`}
+                    className={`nt-press shrink-0 p-0 border-0 bg-rose-600 hover:bg-rose-700 text-white font-semibold flex items-center justify-center shadow-[0_4px_6px_-1px_rgba(225,29,72,0.25)] cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-4 focus-visible:ring-rose-300/70 ${
+                        compact ? "w-28 h-9.5 rounded-lg text-ui gap-1.5" : "w-33 h-13 rounded-2xl text-body gap-2"
+                    } ${returned ? "nt-fade-in" : ""} ${armed ? "ring-4 ring-rose-300/70 animate-pulse" : ""}`}
                 >
-                    <Mic aria-hidden="true" className="h-4.5 w-4.5 shrink-0" />
+                    <Mic aria-hidden="true" className={compact ? "h-4 w-4 shrink-0" : "h-4.5 w-4.5 shrink-0"} />
                     <span>{t("Dictate", "Diktovať", "Diktálás")}</span>
                 </button>
             </div>

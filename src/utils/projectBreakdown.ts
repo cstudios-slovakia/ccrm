@@ -702,7 +702,10 @@ export function buildProjectBreakdown(input: BuildProjectBreakdownInput): {
   for (const p of projects) {
     const pType = typesById.get(p.projectTypeId);
     const pairedLead = (p.leadId && leadsById.get(p.leadId)) || (p.clientId && leadsById.get(p.clientId)) || undefined;
-    const contract = resolveProjectValue(p, pType, pairedLead, defaultCurrency);
+    const contract = resolveProjectValue(p, pType, pairedLead, defaultCurrency, {
+      siblingProjects: projects,
+      projectTypes,
+    });
     const billing = projectBilling(contract.value, financialRecords as FinancialRecord[], p.id);
     const directExpenses = expensesByProject.get(p.id) ?? 0;
 

@@ -270,6 +270,11 @@ function mcp_get_module_tool_definitions(): array {
                     'body' => ['type' => 'string', 'description' => 'Message text'],
                     'is_internal' => ['type' => 'boolean', 'description' => 'True for internal team note, false for client-visible reply (default true)'],
                     'status' => ['type' => 'string', 'description' => 'Optional new ticket status key after posting'],
+                    'attachments' => [
+                        'type' => 'array',
+                        'description' => 'Optional image/file attachments ({ name, url?, path?, dataUrl?, base64?, type? }) attached to both the timeline message and the ticket',
+                        'items' => ['type' => 'object'],
+                    ],
                 ],
                 'required' => ['ticket_id', 'body'],
             ],
@@ -1278,14 +1283,64 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             $internal = array_key_exists('is_internal', $args) ? ($args['is_internal'] ? 1 : 0) : 1;
             $msgId = mcp_new_id('tmsg_');
 
-            mcp_tx($pdo, function () use ($pdo, $msgId, $cur, $user, $internal, $body, $args) {
+            // Normalize optional attachments (and save base64/dataUrl images under uploads/tickets/)
+            $savedAtts = [];
+            if (!empty($args['attachments']) && is_array($args['attachments'])) {
+                $uploadDir = dirname(__DIR__) . '/uploads/tickets';
+                foreach (array_slice($args['attachments'], 0, 10) as $rawAtt) {
+                    if (!is_array($rawAtt)) continue;
+                    $name = trim((string)($rawAtt['name'] ?? 'attachment.png')) ?: 'attachment.png';
+                    $type = trim((string)($rawAtt['type'] ?? ''));
+                    $url = trim((string)($rawAtt['url'] ?? ($rawAtt['path'] ?? '')));
+                    $b64 = trim((string)($rawAtt['base64'] ?? ''));
+                    $dataUrl = trim((string)($rawAtt['dataUrl'] ?? ''));
+                    if ($url === '' && $dataUrl !== '' && preg_match('~^data:([^;]+);base64,(.+)$~s', $dataUrl, $dm)) {
+                        $type = $type ?: strtolower(trim($dm[1]));
+                        $b64 = $dm[2];
+                    }
+                    if ($url === '' && $b64 !== '') {
+                        $bin = base64_decode($b64, true);
+                        if ($bin !== false && $bin !== '' && strlen($bin) <= 5 * 1024 * 1024) {
+                            if (!is_dir($uploadDir)) @mkdir($uploadDir, 0755, true);
+                            $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+                            if ($ext === '' && preg_match('~image/(png|jpe?g|webp|gif)~i', $type, $em)) {
+                                $ext = strtolower($em[1] === 'jpeg' ? 'jpg' : $em[1]);
+                            }
+                            if (!in_array($ext, ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'txt', 'csv'], true)) $ext = 'png';
+                            $safeBase = preg_replace('/[^A-Za-z0-9_\-.]/', '_', pathinfo($name, PATHINFO_FILENAME)) ?: 'image';
+                            $stored = 'tck_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '_' . substr($safeBase, 0, 60) . '.' . $ext;
+                            if (@file_put_contents($uploadDir . '/' . $stored, $bin) !== false) {
+                                $url = 'uploads/tickets/' . $stored;
+                            }
+                        }
+                    }
+                    if ($url === '' && $dataUrl === '') continue;
+                    $savedAtts[] = [
+                        'id' => 'att-' . bin2hex(random_bytes(4)),
+                        'name' => substr($name, 0, 255),
+                        'type' => $type,
+                        'path' => $url !== '' ? $url : null,
+                        'url' => $url !== '' ? $url : null,
+                        'dataUrl' => $url === '' ? $dataUrl : null,
+                    ];
+                }
+            }
+
+            mcp_tx($pdo, function () use ($pdo, $msgId, $cur, $user, $internal, $body, $args, $savedAtts) {
                 $pdo->prepare(
                     "INSERT INTO ticket_messages (id, ticket_id, author_type, author_name, author_email, is_internal, body, attachments_json, created_at)
-                     VALUES (?, ?, 'agent', ?, ?, ?, ?, '[]', NOW())"
-                )->execute([$msgId, $cur['id'], $user['name'], $user['email'], $internal, $body]);
+                     VALUES (?, ?, 'agent', ?, ?, ?, ?, ?, NOW())"
+                )->execute([$msgId, $cur['id'], $user['name'], $user['email'], $internal, $body, json_encode($savedAtts, JSON_UNESCAPED_UNICODE)]);
 
                 $sets = ['updated_at = NOW()'];
                 $params = [];
+                if (!empty($savedAtts)) {
+                    $existingAtts = json_decode((string)($cur['attachments_json'] ?? '[]'), true);
+                    if (!is_array($existingAtts)) $existingAtts = [];
+                    $mergedAtts = array_merge($existingAtts, $savedAtts);
+                    $sets[] = 'attachments_json = ?';
+                    $params[] = json_encode($mergedAtts, JSON_UNESCAPED_UNICODE);
+                }
                 if (!$internal && empty($cur['first_responded_at'])) {
                     $sets[] = 'first_responded_at = NOW()';
                 }
@@ -1305,7 +1360,7 @@ function mcp_ext_modules_execute(\PDO $pdo, array $user, string $tool, array $ar
             });
 
             mcp_audit($pdo, $user, 'ticket_message', "Added " . ($internal ? 'internal' : 'public') . " message {$msgId} to ticket {$cur['ticket_number']}");
-            return ['success' => true, 'id' => $msgId, 'ticket_id' => $cur['id'], 'is_internal' => (bool)$internal];
+            return ['success' => true, 'id' => $msgId, 'ticket_id' => $cur['id'], 'is_internal' => (bool)$internal, 'attachments_count' => count($savedAtts)];
         }
 
         case 'list_support_contracts': {

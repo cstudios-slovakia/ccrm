@@ -1,0 +1,2 @@
+- **MCP editable acceptance criteria & email-to-ticket linking** (`public/api/mcp_ext_writes.php`, `public/api/mcp_lists_crm.php`, `EmailTicketLinker.tsx`, `useEmailTicketLinks.ts`): made project acceptance criteria editable via MCP with scope creep tracking, and added email-to-ticket linking across the email view and ticket timelines.
+- **Tests**: `ticketAttachments.test.ts`, `ticketEmailLinks.test.ts`, `contactTags.test.ts`.
