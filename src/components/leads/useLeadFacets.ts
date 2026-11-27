@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo } from "react";
-import type { Lead, ProjectAttribute } from "../../types";
+import type { Lead, ProjectAttribute, UserProfile } from "../../types";
+import { projectEmployeeUserNames, projectManagerUserNames } from "../../utils/projectEmployees";
 import { useListMultiFilter, usePinnedFilterOptions } from "../../hooks/useListFilter";
 import { applyFacets, withCounts, type FacetOption } from "../../utils/facetedFilters";
 import { leadMatchesCustomFieldQuery } from "../../utils/leadAttributes";
@@ -7,8 +8,8 @@ import { parseAppHash } from "../../utils/hash";
 import { ratingFacetValues, ratingFilterOptions } from "../../utils/rating";
 import { getTranslation } from "../../utils/translations";
 
-export type LeadFacetId = "state" | "owner" | "source" | "division" | "type" | "city" | "rating";
-const FACET_IDS: LeadFacetId[] = ["state", "owner", "source", "division", "type", "city", "rating"];
+export type LeadFacetId = "state" | "owner" | "employees" | "source" | "division" | "type" | "city" | "rating";
+const FACET_IDS: LeadFacetId[] = ["state", "owner", "employees", "source", "division", "type", "city", "rating"];
 
 type Translate = (en: string, sk: string, hu: string) => string;
 
@@ -20,7 +21,8 @@ interface Input {
   stateColor: (state: string) => string;
   leadSources: string[];
   divisions: string[];
-  projectManagers: string[];
+  /** Users: the manager filter offers the Project Managers, the employees filter everyone else (plus names already on leads). */
+  users: UserProfile[];
   leadAttributes: ProjectAttribute[];
   resolveContactName: (id: string) => string | null | undefined;
   searchQuery: string;
@@ -65,15 +67,16 @@ export function useLeadFacets(input: Input) {
   const { leads, leadStates, leadStateParents, t, systemLanguage } = input;
   const [state, setState] = useListMultiFilter("leads.state");
   const [owner, setOwner] = useListMultiFilter("leads.owner");
+  const [employees, setEmployees] = useListMultiFilter("leads.employees");
   const [source, setSource] = useListMultiFilter("leads.source");
   const [division, setDivision] = useListMultiFilter("leads.division");
   const [type, setType] = useListMultiFilter("leads.type");
   const [city, setCity] = useListMultiFilter("leads.city");
   const [rating, setRating] = useListMultiFilter("leads.rating");
   const [pinnedStates, togglePinnedState] = usePinnedFilterOptions("leads.state");
-  const selection = { state, owner, source, division, type, city, rating };
+  const selection = { state, owner, employees, source, division, type, city, rating };
   const setters: Record<LeadFacetId, (v: string[]) => void> = {
-    state: setState, owner: setOwner, source: setSource, division: setDivision, type: setType, city: setCity, rating: setRating,
+    state: setState, owner: setOwner, employees: setEmployees, source: setSource, division: setDivision, type: setType, city: setCity, rating: setRating,
   };
 
   // A link from the dashboard (`#leads?status=new`) wins over the remembered stage; a
@@ -114,6 +117,7 @@ export function useLeadFacets(input: Input) {
         (lead.name || "").toLowerCase().includes(q) ||
         (lead.city || "").toLowerCase().includes(q) ||
         (lead.owner || "").toLowerCase().includes(q) ||
+        (lead.assignedEmployees || []).some((n) => n.toLowerCase().includes(q)) ||
         (lead.email || "").toLowerCase().includes(q) ||
         (lead.phone || "").toLowerCase().includes(q) ||
         leadMatchesCustomFieldQuery(lead, input.leadAttributes, q, (id) => input.resolveContactName(id) || "")
@@ -134,6 +138,7 @@ export function useLeadFacets(input: Input) {
           return parent ? [s, lower(parent)] : [s];
         }),
         one("owner", (l) => [lower(l.owner)].filter(Boolean)),
+        one("employees", (l) => (l.assignedEmployees || []).map(lower).filter(Boolean)),
         one("source", (l) => [lower(l.source)].filter(Boolean)),
         one("division", (l) => [lower(l.division) || "none"]),
         one("type", (l) => [lower(l.clientType)].filter(Boolean)),
@@ -143,7 +148,7 @@ export function useLeadFacets(input: Input) {
       base,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leads, leadStateParents, base, state, owner, source, division, type, city, rating]);
+  }, [leads, leadStateParents, base, state, owner, employees, source, division, type, city, rating]);
 
   const options = useMemo(() => {
     const counts = result.counts;
@@ -171,7 +176,8 @@ export function useLeadFacets(input: Input) {
     leadStates.filter((s) => !placed.has(s)).forEach((s) => place(s, 1));
     const out: Record<LeadFacetId, FacetOption[]> = {
       state: withCounts(stateRows, counts.state),
-      owner: withCounts(named(input.projectManagers), counts.owner),
+      owner: withCounts(named([...projectManagerUserNames(input.users), ...leads.map((l) => l.owner || "")]), counts.owner),
+      employees: withCounts(named([...projectEmployeeUserNames(input.users), ...leads.flatMap((l) => l.assignedEmployees || [])]), counts.employees),
       source: withCounts(named(input.leadSources), counts.source),
       division: withCounts(
         [{ value: "none", label: getTranslation(systemLanguage, "filters.no_division") }, ...named(input.divisions)],
@@ -190,7 +196,7 @@ export function useLeadFacets(input: Input) {
     };
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result, leads, leadStates, leadStateParents, input.projectManagers, input.leadSources, input.divisions, input.stateColor, systemLanguage]);
+  }, [result, leads, leadStates, leadStateParents, input.users, input.leadSources, input.divisions, input.stateColor, systemLanguage]);
 
   /** Stages the kanban columns / list groups show: the selected ones (with their parent), else every main stage. */
   const resolvedVisibleStates = useMemo(() => {
@@ -221,6 +227,7 @@ export function useLeadFacets(input: Input) {
     allLabels: {
       state: t("All Stages", "Všetky fázy", "Minden fázis"),
       owner: getTranslation(systemLanguage, "leads.filter.manager"),
+      employees: t("All employees", "Všetci zamestnanci", "Minden munkatárs"),
       source: getTranslation(systemLanguage, "leads.filter.source"),
       division: getTranslation(systemLanguage, "filters.all_divisions"),
       type: getTranslation(systemLanguage, "leads.filter.type"),

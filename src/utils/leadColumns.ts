@@ -16,6 +16,7 @@ export type BuiltinLeadColumnKey =
   | "type"
   | "source"
   | "pm"
+  | "employees"
   | "value"
   | "state"
   | "division";
@@ -27,6 +28,7 @@ export const BUILTIN_LEAD_COLUMNS: readonly BuiltinLeadColumnKey[] = [
   "type",
   "source",
   "pm",
+  "employees",
   "value",
   "state",
   "division",
@@ -49,6 +51,7 @@ export const BUILTIN_LEAD_COLUMN_LABELS: Record<BuiltinLeadColumnKey, [string, s
   type: ["Client Type", "Typ klienta", "Ügyfél típusa"],
   source: ["Source", "Zdroj", "Forrás"],
   pm: ["Project Manager", "Projektový Manažér", "Projektmenedzser"],
+  employees: ["Employees", "Zamestnanci", "Munkatársak"],
   value: ["Value", "Hodnota", "Érték"],
   state: ["State", "Stav", "Állapot"],
   division: ["Division", "Divízia", "Divízió"],

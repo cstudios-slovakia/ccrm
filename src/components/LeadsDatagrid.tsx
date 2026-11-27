@@ -13,6 +13,7 @@ import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
 import { needsConclusionToFinish } from "../utils/taskConclusion";
 import { projectManagerPickerNames } from "../utils/projectEmployees";
 import { ProjectEmployeesField } from "./projects/ProjectEmployeesField";
+import { LeadEmployeeChips } from "./leads/LeadEmployeeChips";
 import { isDoneTaskState } from "../utils/projectTasks";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { hasTranscriptionKey } from "../utils/aiConfig";
@@ -1087,7 +1088,7 @@ function LeadFilterToolbarControls({
 }
 
 /** Filters that sit on the first row while they fit, then drop to the expanded row. Time, then type, then the rest in their previous order. */
-const LEAD_OVERFLOW_FILTERS = ["time", "type", "division", "rating", "archive", "city", "source", "favoritesFirst"] as const;
+const LEAD_OVERFLOW_FILTERS = ["employees", "time", "type", "division", "rating", "archive", "city", "source", "favoritesFirst"] as const;
 type LeadOverflowFilter = (typeof LEAD_OVERFLOW_FILTERS)[number];
 
 export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
@@ -1909,7 +1910,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         stateColor: getSafeStateColor,
         leadSources,
         divisions,
-        projectManagers,
+        users: _users || [],
         leadAttributes,
         resolveContactName,
         searchQuery,
@@ -2016,6 +2017,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         switch (key) {
             case "time":
                 return offerPresetName !== "All Time";
+            case "employees":
             case "type":
             case "division":
             case "rating":
@@ -9286,6 +9288,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         )}
                     </td>
                 );
+            case "employees":
+                return (
+                    <td key="employees" className={`hidden ws-lg:table-cell px-0 ws-lg:px-4 ${cellPy}`}>
+                        <LeadEmployeeChips names={lead.assignedEmployees || []} colorOf={getSafePMColor} />
+                    </td>
+                );
             case "division":
                 return (
                     <td
@@ -9424,6 +9432,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const renderLeadFilter = (key: LeadOverflowFilter, interactive: boolean) => {
         switch (key) {
+            case "employees":
             case "city":
             case "source":
             case "division":
@@ -10289,6 +10298,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 return (
                                                     <ResizableTh key={col.key} listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
                                                         {getTranslation(systemLanguage, "leads.table.pm")}
+                                                    </ResizableTh>
+                                                );
+                                            case "employees":
+                                                return (
+                                                    <ResizableTh key={col.key} listKey="leads" colKey={col.key} className="sticky bg-white z-10 py-4 px-4 border-b-2 border-slate-100">
+                                                        {t("Employees", "Zamestnanci", "Munkatársak")}
                                                     </ResizableTh>
                                                 );
                                             case "division":
