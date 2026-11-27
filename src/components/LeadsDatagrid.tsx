@@ -11,6 +11,8 @@ import { useStickyTableHead } from "../hooks/useStickyTableHead";
 import { leadHoverVars, markLeadHover } from "../utils/leadRowHover";
 import { useTaskConclusionPrompt } from "./TaskConclusionDialog";
 import { needsConclusionToFinish } from "../utils/taskConclusion";
+import { projectManagerPickerNames } from "../utils/projectEmployees";
+import { ProjectEmployeesField } from "./projects/ProjectEmployeesField";
 import { isDoneTaskState } from "../utils/projectTasks";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { hasTranscriptionKey } from "../utils/aiConfig";
@@ -2066,6 +2068,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [newLeadSource, setNewLeadSource] = useState("");
     const [newLeadDivision, setNewLeadDivision] = useState("");
     const [newLeadOwner, setNewLeadOwner] = useState("");
+    const [newLeadEmployees, setNewLeadEmployees] = useState<string[]>([]);
     const [newLeadRating, setNewLeadRating] = useState(3);
     const [newLeadCategories, setNewLeadCategories] = useState<string[]>([]);
     const [newLeadReferralId, setNewLeadReferralId] = useState("");
@@ -2267,6 +2270,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [leadName, setLeadName] = useState("");
     const [leadValue, setLeadValue] = useState("");
     const [leadOwner, setLeadOwner] = useState("");
+    const [leadEmployees, setLeadEmployees] = useState<string[]>([]);
     const [leadStatus, setLeadStatus] = useState("");
     const [leadSource, setLeadSource] = useState("");
     const [leadDivision, setLeadDivision] = useState("");
@@ -2426,6 +2430,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             setLeadName(activeLead.name);
             setLeadValue(activeLead.value.toString());
             setLeadOwner(activeLead.owner);
+            setLeadEmployees(activeLead.assignedEmployees || []);
             setLeadStatus(activeLead.status);
             setLeadSource(activeLead.source);
             setLeadDivision(activeLead.division || "");
@@ -3342,6 +3347,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         clientType: leadClientType,
                         value: valNum,
                         owner: leadOwner,
+                        assignedEmployees: leadEmployees.filter((n) => n !== leadOwner),
                         status: nextStatus,
                         // Verbatim, like the create path: sources are settings
                         // names, and lower-casing one with capitals on every edit
@@ -4303,6 +4309,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             source: newLeadSource || leadSources[0] || "website",
             division: newLeadDivision || undefined,
             owner: newLeadOwner || "",
+            ...(newLeadEmployees.length ? { assignedEmployees: newLeadEmployees.filter((n) => n !== newLeadOwner) } : {}),
             value: valNum,
             // Date-only and in LOCAL time: `leads.created_at` is a DATE column, and a
             // UTC-derived date files leads created after midnight under the previous day.
@@ -4346,6 +4353,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setNewLeadSource("");
         setNewLeadDivision("");
         setNewLeadOwner("");
+        setNewLeadEmployees([]);
         setNewLeadRating(3);
         setNewLeadCategories([]);
         setNewLeadReferralId("");
@@ -4563,7 +4571,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 <div className="px-2 py-1 type-overline text-slate-400">
                                     {t("Assign Owner", "Priradiť manažéra", "Menedzser kijelölése")}
                                 </div>
-                                {projectManagers.map(pm => (
+                                {projectManagerPickerNames(_users).map(pm => (
                                     <button
                                         key={pm}
                                         type="button"
@@ -5548,6 +5556,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 activeLead.value.toString(),
                                             );
                                             setLeadOwner(activeLead.owner);
+                                            setLeadEmployees(activeLead.assignedEmployees || []);
                                             setLeadStatus(activeLead.status);
                                             setLeadSource(activeLead.source);
                                             setLeadDivision(activeLead.division || "");
@@ -5875,7 +5884,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                   ? "Nincs kijelölve"
                                                                   : "Unassigned",
                                                     },
-                                                    ...projectManagers.map(
+                                                    ...projectManagerPickerNames(_users, leadOwner).map(
                                                         (pm) => ({
                                                             value: pm,
                                                             label: pm,
@@ -5915,6 +5924,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             </div>
                                         )}
                                     </div>
+                                    {/* Assigned employees besides the one Project Manager */}
+                                    <ProjectEmployeesField userLanguage={systemLanguage} users={_users || []} value={leadEmployees} managers={leadOwner ? [leadOwner] : []} canEdit={isEditingLead} onChange={setLeadEmployees} />
                                     {/* Division */}
                                     <div className="space-y-1">
                                         <label className="type-overline text-slate-500">
@@ -9238,7 +9249,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     value={inlineOwner}
                                     onChange={(v) => setInlineOwner(v)}
                                     size="sm"
-                                    options={projectManagers.map((pm) => ({
+                                    options={projectManagerPickerNames(_users, inlineOwner).map((pm) => ({
                                         value: pm,
                                         label: pm,
                                     }))}
@@ -10023,7 +10034,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         setNewLeadStatus(leadStates[0] || "");
                         setNewLeadSource(leadSources[0] || "");
                         setNewLeadDivision("");
-                        setNewLeadOwner(autoAssignActive ? "" : projectManagers[0] || "");
+                        setNewLeadOwner(autoAssignActive ? "" : projectManagerPickerNames(_users)[0] || "");
                         setIsModalOpen(true);
                       }}
                       className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-entity-solid text-white font-semibold text-ui hover:bg-entity-solid-hover shadow-2xs cursor-pointer transition-colors"
@@ -10611,7 +10622,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                     value={inlineOwner}
                                                                                                     onChange={(v) => setInlineOwner(v)}
                                                                                                     size="sm"
-                                                                                                    options={projectManagers.map((pm) => ({ value: pm, label: pm }))}
+                                                                                                    options={projectManagerPickerNames(_users, inlineOwner).map((pm) => ({ value: pm, label: pm }))}
                                                                                                 />
                                                                                             </div>
                                                                                         </div>
@@ -11982,7 +11993,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                       },
                                                   ]
                                                 : []),
-                                            ...projectManagers.map((pm) => ({
+                                            ...projectManagerPickerNames(_users, newLeadOwner).map((pm) => ({
                                                 value: pm,
                                                 label: pm,
                                             })),
@@ -11998,6 +12009,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         </p>
                                     )}
                                 </div>
+                                <ProjectEmployeesField userLanguage={systemLanguage} users={_users || []} value={newLeadEmployees} managers={newLeadOwner ? [newLeadOwner] : []} canEdit onChange={setNewLeadEmployees} />
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -12419,7 +12431,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 <CustomSelect
                                     value={editClientOwner}
                                     onChange={(v) => setEditClientOwner(v)}
-                                    options={projectManagers.map((pm) => ({
+                                    options={projectManagerPickerNames(_users, editClientOwner).map((pm) => ({
                                         value: pm,
                                         label: pm,
                                     }))}

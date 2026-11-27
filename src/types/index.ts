@@ -165,6 +165,7 @@ export interface Lead {
   status: string;           // Lead state
   source: string;           // Lead source
   owner: string;            // Project manager
+  assignedEmployees?: string[]; // People working on it besides the project manager (user names)
   division?: string | null; // Assigned business division (e.g. Head office, Branch Budapest)
   value: number;            // Lead value
   adjustment?: number;      // Client value adjustment (independent from deals/pipeline)

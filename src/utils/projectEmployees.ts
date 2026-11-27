@@ -12,6 +12,16 @@ export const projectManagerUserNames = (users: ReadonlyArray<UserProfile> | null
   uniqueNames((users ?? []).filter((u) => isProjectManagerRole(u.role)));
 
 /**
+ * Options for a Project Manager picker: the users with the role, plus the saved name when it is not one
+ * (data from before the rule, or a user whose role changed), so it never silently disappears.
+ */
+export const projectManagerPickerNames = (users: ReadonlyArray<UserProfile> | null | undefined, current?: string | null): string[] => {
+  const names = projectManagerUserNames(users);
+  const saved = (current || "").trim();
+  return saved && saved.toLowerCase() !== "unassigned" && !names.includes(saved) ? [...names, saved] : names;
+};
+
+/**
  * Everyone who is not a Project Manager counts as an employee for a project's "Employees" (an employee,
  * a contractor or an admin alike): the project detail's picker and the projects list's Employees filter.
  * Stored by user name, the same kind of id as `Project.managers`.

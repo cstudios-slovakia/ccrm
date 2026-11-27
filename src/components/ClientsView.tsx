@@ -104,6 +104,8 @@ import { FacetedMultiSelect } from "./ui/FacetedMultiSelect";
 import { PRODUCT_NAME } from "../utils/brand";
 
 import { ResizableTh } from "./ui/ResizableTh";
+import { projectManagerPickerNames } from "../utils/projectEmployees";
+import { ProjectEmployeesField } from "./projects/ProjectEmployeesField";
 export type ClientSortKey = "name" | "phone" | "email" | "city" | "clientType" | "owner" | "leadsCount" | "totalValue";
 export type ClientSortDirection = "asc" | "desc";
 
@@ -349,7 +351,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [newClientDissolutionDate, setNewClientDissolutionDate] = useState("");
   const [newClientRegion, setNewClientRegion] = useState("");
   const [newClientDistrict, setNewClientDistrict] = useState("");
-  const [newClientOwner, setNewClientOwner] = useState(projectManagers[0] || "");
+  const [newClientOwner, setNewClientOwner] = useState(projectManagerPickerNames(users)[0] || "");
+  const [newClientEmployees, setNewClientEmployees] = useState<string[]>([]);
   const [newClientValue, setNewClientValue] = useState("");
   const [newClientAdjustment, setNewClientAdjustment] = useState("");
   const [newClientCategories, setNewClientCategories] = useState<string[]>([]);
@@ -625,10 +628,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   };
 
   useEffect(() => {
-    if (projectManagers.length > 0 && !newClientOwner) {
-      setNewClientOwner(projectManagers[0]);
+    const pms = projectManagerPickerNames(users);
+    if (pms.length > 0 && !newClientOwner) {
+      setNewClientOwner(pms[0]);
     }
-  }, [projectManagers]);
+  }, [users]);
 
   const closeRegisterDrawer = () => {
     setIsClosingRegisterDrawer(true);
@@ -653,7 +657,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       clientType: newClientType,
       status: "accepted", // Won client status
       source: "website",
-      owner: newClientOwner || projectManagers[0] || currentUser?.name || "",
+      owner: newClientOwner || projectManagerPickerNames(users)[0] || "",
+      ...(newClientEmployees.length ? { assignedEmployees: newClientEmployees.filter((n) => n !== newClientOwner) } : {}),
       value: parseFloat(newClientValue) || 0,
       adjustment: parseFloat(newClientAdjustment) || 0,
       // `leads.created_at` is a DATE column: a full ISO timestamp makes MySQL
@@ -793,6 +798,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       companyClientId: string | null;
       contactRole: string | null;
       contactTags: string[];
+      assignedEmployees: string[];
       archived: boolean;
       aiSummary?: string;
       aiSummaryFingerprint?: string;
@@ -865,6 +871,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           companyClientId: anchor.companyClientId || null,
           contactRole: anchor.contactRole || null,
           contactTags: resolveContactTags(anchor.contactTags, anchor.contactRole),
+          assignedEmployees: anchor.assignedEmployees || [],
           archived: !!anchor.archived,
           aiSummary: anchor.aiSummary || "",
           aiSummaryFingerprint: anchor.aiSummaryFingerprint || "",
@@ -1316,6 +1323,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [profileEmail, setProfileEmail] = useState("");
   const [profileType, setProfileType] = useState<"person" | "business" | "partner">("person");
   const [profileOwner, setProfileOwner] = useState("");
+  const [profileEmployees, setProfileEmployees] = useState<string[]>([]);
   const [profileCompanyId, setProfileCompanyId] = useState("");
   const [profileTaxId, setProfileTaxId] = useState("");
   const [profileVatId, setProfileVatId] = useState("");
@@ -2584,6 +2592,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         setProfileEmail(activeClient.email);
         setProfileType(activeClient.clientType);
         setProfileOwner(activeClient.owner);
+        setProfileEmployees(activeClient.assignedEmployees || []);
         setProfileCompanyId(activeClient.companyId);
         setProfileTaxId(activeClient.taxId);
         setProfileVatId(activeClient.vatId);
@@ -2728,6 +2737,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       contactRole: profileType === "person" ? contactTagsSummary(profileContactTags) : null,
       contactTags: profileType === "person" ? normalizeContactTags(profileContactTags) : []
     }));
+    // Employees belong to the client record itself; its leads keep their own.
+    const nextEmployees = profileEmployees.filter((n) => n !== profileOwner);
+    setLeads(prev => prev.map(l => (l.id === activeClient.primaryId ? { ...l, assignedEmployees: nextEmployees } : l)));
 
     setIsEditingProfile(false); // Toggle back to read-only
     // Update dynamic URL to reflect new client profile name
@@ -3440,6 +3452,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     setProfileEmail(activeClient.email);
                     setProfileType(activeClient.clientType);
                     setProfileOwner(activeClient.owner);
+                    setProfileEmployees(activeClient.assignedEmployees || []);
                     setProfileCompanyId(activeClient.companyId);
                     setProfileTaxId(activeClient.taxId);
                     setProfileVatId(activeClient.vatId);
@@ -4029,13 +4042,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <CustomSelect
                     value={profileOwner}
                     onChange={(v) => setProfileOwner(v)}
-                    options={projectManagers.map(pm => ({ value: pm, label: pm }))}
+                    options={projectManagerPickerNames(users, profileOwner).map(pm => ({ value: pm, label: pm }))}
                   />
                 ) : (
                   <div className="pl-0 text-slate-900 font-bold cursor-default select-all">
                     👤 {profileOwner}
                   </div>
                 )}
+              </div>
+              <div className="pt-1">
+                <ProjectEmployeesField userLanguage={systemLanguage} users={users} value={profileEmployees} managers={profileOwner ? [profileOwner] : []} canEdit={isEditingProfile} onChange={setProfileEmployees} />
               </div>
 
               {/* Customer category (Clients → Categories) */}
@@ -6884,9 +6900,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <CustomSelect
                       value={newClientOwner}
                       onChange={(v) => setNewClientOwner(v)}
-                      options={projectManagers.map(pm => ({ value: pm, label: pm }))}
+                      options={projectManagerPickerNames(users, newClientOwner).map(pm => ({ value: pm, label: pm }))}
                     />
                   </div>
+                  <ProjectEmployeesField userLanguage={systemLanguage} users={users} value={newClientEmployees} managers={newClientOwner ? [newClientOwner] : []} canEdit onChange={setNewClientEmployees} />
                 </div>
               </div>
 
