@@ -5,7 +5,10 @@ import {
   Link2, Palette, Trash, Heading1, Heading2, Heading3, Type, CheckSquare,
   List, ListOrdered, ChevronRight, Info, AlertTriangle, CheckCircle2,
   XCircle, Terminal, Quote, FileText, Highlighter, Copy, Check, Download,
+  Paperclip, Image as ImageIcon, Maximize2, Loader2,
 } from "lucide-react";
+import type { TaskFile } from "../types";
+import { TaskInlineFileBlock } from "./tasks/TaskInlineFileBlock";
 import { cn } from "../utils/cn";
 import { getTranslation } from "../utils/translations";
 import { sanitizeRichHtml, htmlToText, escapeHtml } from "../utils/safeHtml";
@@ -41,6 +44,18 @@ interface BlockEditorProps {
   showMarkdownExport?: boolean;
   /** Optional title used to derive the `.md` filename when downloading. */
   exportTitle?: string;
+  /** Async handler invoked when files are attached via /file, /image, paste, drop, or toolbar button. */
+  onUploadFile?: (file: File) => Promise<TaskFile | null>;
+  /** Handler invoked when an inline file block is clicked to preview. */
+  onPreviewFile?: (file: TaskFile) => void;
+  /** Incrementing signal to insert an existing TaskFile into the description blocks. */
+  insertFileSignal?: { nonce: number; file: TaskFile } | null;
+  /** Called once `insertFileSignal` has been consumed so remounts never replay it. */
+  onInsertFileHandled?: (nonce: number) => void;
+  /** Optional callback to open fullscreen editor mode. */
+  onOpenFullscreen?: () => void;
+  /** Optional tooltip / label for fullscreen button. */
+  fullscreenLabel?: string;
 }
 
 const DEFAULT_BLOCKS: EditorBlock[] = [
@@ -144,6 +159,8 @@ const BLOCK_OPTIONS = [
   { id: "code", type: "code", label: "Code Block", group: "advanced", icon: Terminal },
   { id: "quote", type: "quote", label: "Block Quote", group: "advanced", icon: Quote },
   { id: "pullquote", type: "pullquote", label: "Pull Quote", group: "advanced", icon: FileText },
+  { id: "file", type: "file", label: "File Attachment", group: "advanced", icon: Paperclip },
+  { id: "image", type: "file", label: "Image Attachment", group: "advanced", icon: ImageIcon, extra: { imageOnly: true } },
   { id: "delete", type: "delete" as any, label: "Delete Block", group: "advanced", icon: Trash }
 ];
 
@@ -166,6 +183,8 @@ const BLOCK_LABELS: Record<string, [string, string, string]> = {
   code: ["Code Block", "Blok kódu", "Kódblokk"],
   quote: ["Block Quote", "Citát", "Idézet"],
   pullquote: ["Pull Quote", "Zvýraznený citát", "Kiemelt idézet"],
+  file: ["File Attachment (/file)", "Priložiť súbor (/file)", "Fájl csatolása (/file)"],
+  image: ["Image Attachment (/image)", "Priložiť obrázok (/image)", "Kép csatolása (/image)"],
   delete: ["Delete Block", "Odstrániť blok", "Blokk törlése"],
 };
 
@@ -201,6 +220,12 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
   placeholder,
   showMarkdownExport = true,
   exportTitle,
+  onUploadFile,
+  onPreviewFile,
+  insertFileSignal,
+  onInsertFileHandled,
+  onOpenFullscreen,
+  fullscreenLabel,
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const [blocks, setBlocks] = useState<EditorBlock[]>(() => {
@@ -209,6 +234,85 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
   });
   const [copiedMarkdown, setCopiedMarkdown] = useState(false);
   const copiedTimerRef = useRef<number | null>(null);
+  const fileUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingTargetBlockIdRef = useRef<string | null>(null);
+  const lastInsertNonceRef = useRef<number | null>(null);
+  const [uploadingCount, setUploadingCount] = useState(0);
+  const [editorDragOver, setEditorDragOver] = useState(false);
+
+  const makeFileBlock = (id: string, uploaded: TaskFile): EditorBlock => ({
+    id,
+    type: "file",
+    content: "",
+    fileId: uploaded.id,
+    fileName: uploaded.fileName,
+    fileUrl: uploaded.url,
+    fileMime: uploaded.mimeType,
+    fileSize: uploaded.sizeBytes,
+    fileIsImage: uploaded.isImage,
+  });
+
+  const makeEmptyParagraph = (): EditorBlock => ({
+    id: `b-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type: "paragraph",
+    content: "",
+  });
+
+  const isBlockEmptyParagraph = (b: EditorBlock | undefined): boolean =>
+    Boolean(
+      b &&
+        b.type === "paragraph" &&
+        !b.content.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim(),
+    );
+
+  const appendOrReplaceFileBlock = (uploaded: TaskFile, replaceBlockId?: string | null) => {
+    setBlocks((prev) => {
+      if (replaceBlockId && prev.some((b) => b.id === replaceBlockId)) {
+        const replaced = prev.map((b) => (b.id === replaceBlockId ? makeFileBlock(b.id, uploaded) : b));
+        const idx = replaced.findIndex((b) => b.id === replaceBlockId);
+        if (idx === replaced.length - 1) {
+          return [...replaced, makeEmptyParagraph()];
+        }
+        return replaced;
+      }
+      const nextBlock = makeFileBlock(
+        `b-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        uploaded,
+      );
+      if (prev.length > 0 && isBlockEmptyParagraph(prev[prev.length - 1])) {
+        const copy = [...prev];
+        copy.splice(copy.length - 1, 0, nextBlock);
+        return copy;
+      }
+      return [...prev, nextBlock, makeEmptyParagraph()];
+    });
+  };
+
+  const handleUploadFiles = async (incoming: FileList | File[], replaceBlockId?: string | null) => {
+    if (readOnly || !onUploadFile) return;
+    const files = Array.from(incoming);
+    if (files.length === 0) return;
+    let targetId = replaceBlockId ?? null;
+    setUploadingCount((c) => c + files.length);
+    try {
+      for (const file of files) {
+        const uploaded = await onUploadFile(file);
+        if (uploaded) {
+          appendOrReplaceFileBlock(uploaded, targetId);
+          targetId = null;
+        }
+      }
+    } finally {
+      setUploadingCount((c) => Math.max(0, c - files.length));
+    }
+  };
+
+  useEffect(() => {
+    if (!insertFileSignal || insertFileSignal.nonce === lastInsertNonceRef.current) return;
+    lastInsertNonceRef.current = insertFileSignal.nonce;
+    appendOrReplaceFileBlock(insertFileSignal.file);
+    onInsertFileHandled?.(insertFileSignal.nonce);
+  }, [insertFileSignal?.nonce]);
   useEffect(() => () => {
     if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
   }, []);
@@ -281,11 +385,15 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
   const didMountRef = useRef(false);
 
   const filteredOptions = BLOCK_OPTIONS
+    .filter(opt => (opt.id !== "file" && opt.id !== "image") || Boolean(onUploadFile))
     .map(opt => {
       const label = BLOCK_LABELS[opt.id];
       return label ? { ...opt, label: t(label[0], label[1], label[2]) } : opt;
     })
-    .filter(opt => opt.label.toLowerCase().includes(slashQuery.toLowerCase()));
+    .filter(opt => {
+      const q = slashQuery.toLowerCase();
+      return opt.label.toLowerCase().includes(q) || opt.id.toLowerCase().includes(q);
+    });
 
   const basicFiltered = filteredOptions.filter(o => o.group === "basic");
   const advancedFiltered = filteredOptions.filter(o => o.group === "advanced");
@@ -507,6 +615,32 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
       return;
     }
 
+    if (type === "file") {
+      setBlocks(prev => prev.map(b => {
+        if (b.id === id) {
+          let cleanContent = b.content;
+          let text = htmlToText(cleanContent);
+          const match = text.match(/\/([^\/\s]*)$/);
+          if (match) {
+            const index = text.lastIndexOf(match[0]);
+            if (index !== -1) text = text.slice(0, index);
+            cleanContent = escapeHtml(text).replace(/\n/g, "<br>");
+          }
+          return { ...b, content: cleanContent };
+        }
+        return b;
+      }));
+      setActiveMenuBlockId(null);
+      setSlashQuery("");
+      setSelectedMenuIndex(0);
+      if (!readOnly && onUploadFile && fileUploadInputRef.current) {
+        pendingTargetBlockIdRef.current = id;
+        fileUploadInputRef.current.accept = (extra as any)?.imageOnly ? "image/*" : "*/*";
+        fileUploadInputRef.current.click();
+      }
+      return;
+    }
+
     setBlocks(prev => prev.map(b => {
       if (b.id === id) {
         // Strip out the '/' character and query that triggered the menu (e.g. "/heading")
@@ -677,11 +811,53 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
     return (
     <div
       ref={containerRef}
+      onDragOver={(e) => {
+        if (!readOnly && onUploadFile && Array.from(e.dataTransfer.types).includes("Files")) {
+          e.preventDefault();
+          setEditorDragOver(true);
+        }
+      }}
+      onDragLeave={() => setEditorDragOver(false)}
+      onDrop={(e) => {
+        if (!readOnly && onUploadFile && e.dataTransfer.files?.length) {
+          e.preventDefault();
+          e.stopPropagation();
+          setEditorDragOver(false);
+          void handleUploadFiles(e.dataTransfer.files);
+        }
+      }}
+      onPasteCapture={(e) => {
+        if (readOnly || !onUploadFile) return;
+        const files = e.clipboardData?.files;
+        if (files && files.length > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          void handleUploadFiles(files);
+        }
+      }}
       className={cn(
-        "relative w-full select-text bg-transparent border-none shadow-none p-0 m-0",
+        "relative w-full select-text bg-transparent border-none shadow-none p-0 m-0 rounded-xl transition-shadow",
+        editorDragOver && "ring-2 ring-entity-solid/60 bg-entity-subtle/20",
         fillHeight && "flex flex-col grow"
       )}
     >
+      {!readOnly && onUploadFile && (
+        <input
+          ref={fileUploadInputRef}
+          type="file"
+          multiple
+          data-testid="block-editor-file-input"
+          className="hidden"
+          onChange={(e) => {
+            const targetId = pendingTargetBlockIdRef.current;
+            pendingTargetBlockIdRef.current = null;
+            if (e.target.files?.length) {
+              void handleUploadFiles(e.target.files, targetId);
+            }
+            e.target.value = "";
+          }}
+        />
+      )}
       
       {/* FLOATING TEXT SELECTION FORMATTING BAR (portaled so overflow containers never clip) */}
       {showToolbar && !readOnly && typeof document !== "undefined" &&
@@ -797,8 +973,8 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
           document.body,
         )}
 
-      {/* MARKDOWN EXPORT BAR (available across every editor instance) */}
-      {showMarkdownExport && (
+      {/* MARKDOWN EXPORT & FILE / FULLSCREEN TOOLBAR */}
+      {(showMarkdownExport || (!readOnly && onUploadFile) || onOpenFullscreen) && (
         <div
           data-testid="block-editor-export-bar"
           className={cn(
@@ -806,36 +982,77 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
             compact ? "mb-1" : "mb-3",
           )}
         >
-          <button
-            type="button"
-            disabled={!markdownPreview}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={() => void handleCopyMarkdown()}
-            title={t("Copy content as Markdown", "Kopírovať obsah ako Markdown", "Tartalom másolása Markdownként")}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-slate-200 bg-white/95 hover:bg-slate-50 text-slate-600 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-micro font-semibold cursor-pointer shadow-2xs"
-          >
-            {copiedMarkdown ? (
-              <Check className="h-3 w-3 text-emerald-600 shrink-0" />
-            ) : (
-              <Copy className="h-3 w-3 shrink-0" />
-            )}
-            <span>
-              {copiedMarkdown
-                ? t("Copied", "Skopírované", "Másolva")
-                : t("Copy .md", "Kopírovať .md", "Másolás .md")}
-            </span>
-          </button>
-          <button
-            type="button"
-            disabled={!markdownPreview}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={handleDownloadMarkdown}
-            title={t("Download Markdown (.md)", "Stiahnuť ako Markdown (.md)", "Letöltés Markdownként (.md)")}
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-slate-200 bg-white/95 hover:bg-slate-50 text-slate-600 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-micro font-semibold cursor-pointer shadow-2xs"
-          >
-            <Download className="h-3 w-3 shrink-0" />
-            <span>{t("Export .md", "Export .md", "Export .md")}</span>
-          </button>
+          {!readOnly && onUploadFile && (
+            <button
+              type="button"
+              data-testid="block-editor-attach-btn"
+              disabled={uploadingCount > 0}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={() => {
+                pendingTargetBlockIdRef.current = null;
+                if (fileUploadInputRef.current) {
+                  fileUploadInputRef.current.accept = "*/*";
+                  fileUploadInputRef.current.click();
+                }
+              }}
+              title={t("Attach file (/file)", "Priložiť súbor (/file)", "Fájl csatolása (/file)")}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-slate-200 bg-white/95 hover:bg-slate-50 text-slate-600 hover:text-slate-900 disabled:opacity-50 transition-colors text-micro font-semibold cursor-pointer shadow-2xs"
+            >
+              {uploadingCount > 0 ? (
+                <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+              ) : (
+                <Paperclip className="h-3 w-3 shrink-0" />
+              )}
+              <span>{t("Attach file", "Priložiť", "Csatolás")}</span>
+            </button>
+          )}
+          {showMarkdownExport && (
+            <>
+              <button
+                type="button"
+                disabled={!markdownPreview}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => void handleCopyMarkdown()}
+                title={t("Copy content as Markdown", "Kopírovať obsah ako Markdown", "Tartalom másolása Markdownként")}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-slate-200 bg-white/95 hover:bg-slate-50 text-slate-600 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-micro font-semibold cursor-pointer shadow-2xs"
+              >
+                {copiedMarkdown ? (
+                  <Check className="h-3 w-3 text-emerald-600 shrink-0" />
+                ) : (
+                  <Copy className="h-3 w-3 shrink-0" />
+                )}
+                <span>
+                  {copiedMarkdown
+                    ? t("Copied", "Skopírované", "Másolva")
+                    : t("Copy .md", "Kopírovať .md", "Másolás .md")}
+                </span>
+              </button>
+              <button
+                type="button"
+                disabled={!markdownPreview}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={handleDownloadMarkdown}
+                title={t("Download Markdown (.md)", "Stiahnuť ako Markdown (.md)", "Letöltés Markdownként (.md)")}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-slate-200 bg-white/95 hover:bg-slate-50 text-slate-600 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-micro font-semibold cursor-pointer shadow-2xs"
+              >
+                <Download className="h-3 w-3 shrink-0" />
+                <span>{t("Export .md", "Export .md", "Export .md")}</span>
+              </button>
+            </>
+          )}
+          {onOpenFullscreen && (
+            <button
+              type="button"
+              data-testid="block-editor-fullscreen-btn"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={onOpenFullscreen}
+              title={fullscreenLabel || t("Fullscreen description", "Celá obrazovka", "Teljes képernyő")}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-slate-200 bg-white/95 hover:bg-slate-50 text-slate-600 hover:text-slate-900 transition-colors text-micro font-semibold cursor-pointer shadow-2xs"
+            >
+              <Maximize2 className="h-3 w-3 shrink-0" />
+              <span>{t("Fullscreen", "Celá obrazovka", "Teljes képernyő")}</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -954,6 +1171,17 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
 
                 {/* EDITABLE WRAPPER FRAME */}
                 <div className="flex-1 w-full min-w-0 relative group/banner">
+                  {block.type === "file" ? (
+                    <TaskInlineFileBlock
+                      block={block}
+                      readOnly={readOnly}
+                      compact={compact}
+                      systemLanguage={systemLanguage}
+                      onPreview={onPreviewFile}
+                      onRemove={() => deleteBlock(block.id)}
+                    />
+                  ) : (
+                  <>
                   <EditableBlock
                     innerRef={(el) => { blockRefs.current[block.id] = el; }}
                     content={block.content}
@@ -1008,6 +1236,8 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                       minHeight: block.type === "code" ? (compact ? "48px" : "60px") : "24px",
                     }}
                   />
+                  </>
+                  )}
 
                   {/* Banner color options popup on top right (visible on hover) */}
                   {block.type === "banner" && bannerInfo && !readOnly && (

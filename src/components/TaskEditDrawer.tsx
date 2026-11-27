@@ -3,11 +3,14 @@ import { createPortal } from "react-dom";
 import {
     Archive as ArchiveIcon,
     ArrowUpRight,
+    Check,
     CheckSquare,
+    Copy,
     Repeat,
     FolderKanban,
     Hash,
     Lock,
+    Maximize2,
     MessageSquare,
     PanelRightOpen,
     RotateCcw,
@@ -19,7 +22,10 @@ import {
 } from "lucide-react";
 import { useUserPref } from "../utils/userPrefs";
 import { TaskActivityPanel } from "./tasks/TaskActivityPanel";
-import type { Lead, Project, Task, Ticket, UserProfile, RecurringTaskTemplate, TaskRecurrence } from "../types";
+import { TaskDescriptionFullscreenModal } from "./tasks/TaskDescriptionFullscreenModal";
+import { TaskFilePreviewModal } from "./tasks/TaskFilePreviewModal";
+import { uploadTaskFile } from "../utils/taskFilesApi";
+import type { Lead, Project, Task, TaskFile, Ticket, UserProfile, RecurringTaskTemplate, TaskRecurrence } from "../types";
 import { AgencyWorkerSelect } from "./agency/AgencyWorkerSelect";
 import { TaskRecurrenceFields, createDefaultRecurrence } from "./TaskRecurrenceFields";
 import { RecurringOccurrenceDeleteDialog, type OccurrenceDeleteChoice } from "./RecurringOccurrenceDeleteDialog";
@@ -205,8 +211,8 @@ interface TaskEditDrawerProps {
     onToggleArchive?: (task: Task) => void;
     /** Resolves true once the task is really gone; the drawer only closes then. */
     onDelete?: (task: Task) => Promise<boolean>;
-    /** Called when task comment count or reaction counts change in the activity panel. */
-    onTaskMetaPatch?: (taskId: string, patch: { commentCount?: number; reactions?: Record<string, string[]> | null }) => void;
+    /** Called when task comment count, reaction counts, or file count change in the activity/files panel. */
+    onTaskMetaPatch?: (taskId: string, patch: { commentCount?: number; reactions?: Record<string, string[]> | null; fileCount?: number }) => void;
     /** Force the Activity & Chat pane open initially (e.g. clicking a board comment badge). */
     initialChatOpen?: boolean;
     /** Called after the closing animation has played. */
@@ -263,8 +269,13 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     const showChatPane = !isTemplate && Boolean(draft.id);
     const [chatOpen, setChatOpen] = useState<boolean>(() => !isTemplate && Boolean(initialChatOpen ?? chatExpandedPref));
     const [mobileTab, setMobileTab] = useState<"details" | "activity">(() => (initialChatOpen ? "activity" : "details"));
+    const [filesRefreshKey, setFilesRefreshKey] = useState(0);
+    const [insertFileSignal, setInsertFileSignal] = useState<{ nonce: number; file: TaskFile } | null>(null);
+    const [fullscreenDescOpen, setFullscreenDescOpen] = useState(false);
+    const [previewFile, setPreviewFile] = useState<TaskFile | null>(null);
+    const [copiedLink, setCopiedLink] = useState(false);
     const handleTaskMetaChange = useCallback(
-        (taskId: string, patch: { commentCount?: number; reactions?: Record<string, string[]> | null }) => {
+        (taskId: string, patch: { commentCount?: number; reactions?: Record<string, string[]> | null; fileCount?: number }) => {
             setDraft((prev) => (prev.id === taskId ? { ...prev, ...patch } : prev));
             if (typeof window !== "undefined") {
                 window.dispatchEvent(new CustomEvent("ccrm-task-meta-patch", { detail: { taskId, ...patch } }));
@@ -273,6 +284,30 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
         },
         [onTaskMetaPatch],
     );
+    const handleDescriptionFileUpload = useCallback(
+        async (file: File): Promise<TaskFile | null> => {
+            if (!draft.id || isTemplate || !canEdit) return null;
+            try {
+                const res = await uploadTaskFile(draft.id, file);
+                setFilesRefreshKey((k) => k + 1);
+                handleTaskMetaChange(draft.id, { fileCount: res.fileCount });
+                return res.file;
+            } catch (err) {
+                (window as any).showToast?.(
+                    err instanceof Error ? err.message : t("File upload failed.", "Nahrávanie súboru zlyhalo.", "Fájlfeltöltés sikertelen."),
+                    "error",
+                );
+                return null;
+            }
+        },
+        [draft.id, isTemplate, canEdit, handleTaskMetaChange],
+    );
+    const handleInsertFileIntoDescription = useCallback((file: TaskFile) => {
+        setInsertFileSignal({ nonce: Date.now() + Math.random(), file });
+    }, []);
+    const handleInsertFileHandled = useCallback((nonce: number) => {
+        setInsertFileSignal((prev) => (prev?.nonce === nonce ? null : prev));
+    }, []);
     const [descVersion, setDescVersion] = useState(0);
     const [templateRecurrence, setTemplateRecurrence] = useState<TaskRecurrence>(() =>
         (task as any).recurrence ? (task as any).recurrence : createDefaultRecurrence((task as Task).deadline)
@@ -323,14 +358,14 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
             if (e.defaultPrevented) return;
-            if (e.key === "Escape" && !occurrenceDeleteDialogOpen) {
+            if (e.key === "Escape" && !occurrenceDeleteDialogOpen && !fullscreenDescOpen && !previewFile) {
                 e.stopPropagation();
                 requestClose();
             }
         };
         document.addEventListener("keydown", onKeyDown);
         return () => document.removeEventListener("keydown", onKeyDown);
-    }, [occurrenceDeleteDialogOpen]);
+    }, [occurrenceDeleteDialogOpen, fullscreenDescOpen, previewFile]);
 
     const update = (patch: Partial<Task>) => setDraft((prev) => ({ ...prev, ...patch }));
 
@@ -520,6 +555,70 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                             )}
                         </span>
                         <div className="flex items-center gap-1.5">
+                            {!isTemplate && Boolean(draft.id) && (
+                                <>
+                                    <button
+                                        type="button"
+                                        data-testid="task-drawer-copy-link-btn"
+                                        onClick={async () => {
+                                            const hash = `#task-${encodeURIComponent(draft.id)}`;
+                                            const fullUrl =
+                                                typeof window !== "undefined"
+                                                    ? `${window.location.origin}${window.location.pathname}${hash}`
+                                                    : hash;
+                                            try {
+                                                await navigator.clipboard.writeText(fullUrl);
+                                                setCopiedLink(true);
+                                                window.setTimeout(() => setCopiedLink(false), 1800);
+                                            } catch {
+                                                // ignore clipboard error
+                                            }
+                                        }}
+                                        title={t("Copy link to task", "Kopírovať odkaz na úlohu", "Feladat linkjének másolása")}
+                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-900 text-micro font-bold transition-colors cursor-pointer"
+                                    >
+                                        {copiedLink ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                                        <span className="hidden sm:inline">
+                                            {copiedLink ? t("Copied", "Skopírované", "Másolva") : t("Copy link", "Odkaz", "Link")}
+                                        </span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        data-testid="task-drawer-open-page-btn"
+                                        onClick={() => {
+                                            if (
+                                                !isTemplate &&
+                                                canEdit &&
+                                                draft.title.trim() &&
+                                                !finishingWithoutConclusion &&
+                                                JSON.stringify(draft) !== JSON.stringify(task)
+                                            ) {
+                                                const sanitizedRequiresConclusion =
+                                                    (!canUntick && task.requiresConclusion)
+                                                        ? true
+                                                        : (draft.requiresConclusion ? true : undefined);
+                                                onSave(withDeadlineHistory({
+                                                    ...draft,
+                                                    requiresConclusion: sanitizedRequiresConclusion,
+                                                    conclusion: cleanConclusion(draft.conclusion ?? ""),
+                                                    tags: combinedTags,
+                                                }));
+                                            }
+                                            if (typeof window !== "undefined") {
+                                                window.location.hash = `task-${encodeURIComponent(draft.id)}`;
+                                            }
+                                            requestClose();
+                                        }}
+                                        title={t("Open full page view", "Otvoriť celú stránku úlohy", "Megnyitás teljes oldalon")}
+                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-900 text-micro font-bold transition-colors cursor-pointer"
+                                    >
+                                        <Maximize2 className="h-3.5 w-3.5" />
+                                        <span className="hidden sm:inline">
+                                            {t("Full page", "Celá stránka", "Teljes oldal")}
+                                        </span>
+                                    </button>
+                                </>
+                            )}
                             {showChatPane && (
                                 <button
                                     type="button"
@@ -737,6 +836,14 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                     onChange={(blocks) => update({ description: serializeTaskDescription(blocks) })}
                                     systemLanguage={systemLanguage}
                                     exportTitle={draft.title}
+                                    onUploadFile={canEdit && !isTemplate && draft.id ? handleDescriptionFileUpload : undefined}
+                                    onPreviewFile={setPreviewFile}
+                                    insertFileSignal={!fullscreenDescOpen ? insertFileSignal : null}
+                                    onInsertFileHandled={handleInsertFileHandled}
+                                    onOpenFullscreen={() => {
+                                        setInsertFileSignal(null);
+                                        setFullscreenDescOpen(true);
+                                    }}
                                     placeholder={t(
                                         "Write task description... (type '/' for blocks, headings, checklists)",
                                         "Napíšte popis úlohy... (napíšte '/' pre bloky, nadpisy, zoznam úloh)",
@@ -1351,6 +1458,10 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                             mentionEntities={mentionEntities}
                             onTagClick={onTagClick}
                             onTaskMetaChange={handleTaskMetaChange}
+                            canEdit={canEdit && !isTemplate}
+                            filesRefreshKey={filesRefreshKey}
+                            onInsertFileIntoDescription={canEdit && !isTemplate ? handleInsertFileIntoDescription : undefined}
+                            onPreviewFile={setPreviewFile}
                             onCollapse={() => {
                                 setChatOpen(false);
                                 setChatExpandedPref(false);
@@ -1359,6 +1470,37 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                     </div>
                 )}
             </div>
+            <TaskDescriptionFullscreenModal
+                open={fullscreenDescOpen}
+                title={draft.title}
+                taskId={isTemplate ? "" : draft.id}
+                description={draft.description}
+                systemLanguage={systemLanguage}
+                currentUserName={currentUserName}
+                currentUserRole={effectiveUser.role}
+                canEdit={canEdit}
+                filesRefreshKey={filesRefreshKey}
+                insertFileSignal={fullscreenDescOpen ? insertFileSignal : null}
+                onInsertFileHandled={handleInsertFileHandled}
+                onChangeDescription={(blocks) => update({ description: serializeTaskDescription(blocks) })}
+                onUploadFile={canEdit && !isTemplate && draft.id ? handleDescriptionFileUpload : undefined}
+                onPreviewFile={setPreviewFile}
+                onInsertIntoDescription={canEdit && !isTemplate ? handleInsertFileIntoDescription : undefined}
+                onFilesChanged={({ fileCount }) => {
+                    if (draft.id && !isTemplate) {
+                        handleTaskMetaChange(draft.id, { fileCount });
+                    }
+                }}
+                onClose={() => {
+                    setFullscreenDescOpen(false);
+                    setDescVersion((v) => v + 1);
+                }}
+            />
+            <TaskFilePreviewModal
+                file={previewFile}
+                systemLanguage={systemLanguage}
+                onClose={() => setPreviewFile(null)}
+            />
         </div>,
         document.body,
     );

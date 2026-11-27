@@ -5,6 +5,7 @@ require_once __DIR__ . '/schema.php';
 require_once __DIR__ . '/read_scope.php';
 require_once __DIR__ . '/deleted_records.php';
 require_once __DIR__ . '/task_activity_lib.php';
+require_once __DIR__ . '/task_files_lib.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
@@ -129,6 +130,7 @@ try {
     // Tombstone for "what was deleted since X" (MCP list_deleted_records); fail-soft.
     ccrm_record_deleted($pdo, 'tasks', $taskId, $tomb, (string)$task['session_user_name']);
     ccrm_delete_task_activities($pdo, [$taskId]);
+    ccrm_delete_task_files($pdo, $taskId);
     $pdo->commit();
     echo json_encode(['success' => true, 'id' => $taskId]);
 } catch (\Throwable $e) {

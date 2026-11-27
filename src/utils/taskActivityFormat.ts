@@ -209,6 +209,24 @@ export function formatStateChange(
     };
   }
 
+  if (eventType === "file_uploaded") {
+    const fileName = String(meta.fileName ?? meta.name ?? "").trim();
+    return {
+      eventType: "file_uploaded",
+      label: t("uploaded file", "nahral(a) súbor", "feltöltött egy fájlt"),
+      singleText: fileName || undefined,
+    };
+  }
+
+  if (eventType === "file_deleted") {
+    const fileName = String(meta.fileName ?? meta.name ?? "").trim();
+    return {
+      eventType: "file_deleted",
+      label: t("deleted file", "odstránil(a) súbor", "törölt egy fájlt"),
+      singleText: fileName || undefined,
+    };
+  }
+
   return {
     eventType: "created",
     label: t("updated task", "upravil(a) úlohu", "módosította a feladatot"),

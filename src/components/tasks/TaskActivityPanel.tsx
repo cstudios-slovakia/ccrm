@@ -20,6 +20,7 @@ import type {
   TaskActivityFilter,
   TaskActivityItem,
   TaskChatImage,
+  TaskFile,
   UserProfile,
 } from "../../types";
 import type { Language } from "../../utils/translations";
@@ -27,6 +28,7 @@ import { taskPriorityLabel, taskStateLabel, type Translate } from "../../utils/t
 import { EmojiPicker } from "../whatsapp/chats/composer/EmojiPicker";
 import { TaskPillText, type MentionEntity } from "../TaskPillText";
 import { compressTaskChatImage } from "../../utils/taskChatImage";
+import { TaskFilesPanel } from "./TaskFilesPanel";
 import {
   deleteTaskComment,
   editTaskComment,
@@ -56,7 +58,7 @@ interface PendingUpload {
 }
 
 interface TaskActivityPanelProps {
-  task: Pick<Task, "id" | "commentCount" | "reactions">;
+  task: Pick<Task, "id" | "commentCount" | "reactions" | "fileCount">;
   users: UserProfile[];
   currentUserName: string;
   currentUserRole?: string;
@@ -67,8 +69,12 @@ interface TaskActivityPanelProps {
   onTagClick?: (tag: string) => void;
   onTaskMetaChange?: (
     taskId: string,
-    patch: { commentCount?: number; reactions?: Record<string, string[]> | null }
+    patch: { commentCount?: number; reactions?: Record<string, string[]> | null; fileCount?: number }
   ) => void;
+  canEdit?: boolean;
+  filesRefreshKey?: number;
+  onInsertFileIntoDescription?: (file: TaskFile) => void;
+  onPreviewFile?: (file: TaskFile) => void;
   onCollapse?: () => void;
   hideCollapseButton?: boolean;
 }
@@ -85,6 +91,10 @@ export const TaskActivityPanel: React.FC<TaskActivityPanelProps> = ({
   mentionEntities = [],
   onTagClick,
   onTaskMetaChange,
+  canEdit = true,
+  filesRefreshKey = 0,
+  onInsertFileIntoDescription,
+  onPreviewFile,
   onCollapse,
   hideCollapseButton = false,
 }) => {
@@ -103,6 +113,11 @@ export const TaskActivityPanel: React.FC<TaskActivityPanelProps> = ({
     normalizeReactionRecord(task.reactions)
   );
   const [commentCount, setCommentCount] = useState<number>(Number(task.commentCount ?? 0));
+  const [fileCount, setFileCount] = useState<number>(Number(task.fileCount ?? 0));
+
+  useEffect(() => {
+    setFileCount(Number(task.fileCount ?? 0));
+  }, [task.id, task.fileCount]);
 
   const [draftBody, setDraftBody] = useState("");
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
@@ -561,13 +576,14 @@ export const TaskActivityPanel: React.FC<TaskActivityPanelProps> = ({
           )}
         </div>
 
-        {/* All | Comments | History Segmented Filter */}
-        <div className="grid grid-cols-3 gap-1 bg-gray-100 p-0.5 rounded-lg border border-gray-200">
+        {/* All | Comments | History | Files Segmented Filter */}
+        <div className="grid grid-cols-4 gap-1 bg-gray-100 p-0.5 rounded-lg border border-gray-200">
           {(
             [
               ["all", t("All", "Všetko", "Összes"), items.length],
               ["comments", t("Comments", "Komentáre", "Hozzászólások"), commentCount],
               ["history", t("History", "História", "Előzmények"), historyCount],
+              ["files", t("Files", "Súbory", "Fájlok"), fileCount],
             ] as const
           ).map(([key, label, count]) => (
             <button
@@ -575,19 +591,37 @@ export const TaskActivityPanel: React.FC<TaskActivityPanelProps> = ({
               type="button"
               data-testid={`task-activity-filter-${key}`}
               onClick={() => setFilter(key)}
-              className={`py-1 px-2 rounded-md text-micro font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+              className={`py-1 px-1.5 rounded-md text-micro font-bold transition-all cursor-pointer flex items-center justify-center gap-0.5 min-w-0 ${
                 filter === key
                   ? "bg-white text-gray-900 shadow-2xs"
                   : "text-gray-500 hover:text-gray-800"
               }`}
             >
-              <span>{label}</span>
-              {count > 0 && <span className="opacity-65 tabular-nums">({count})</span>}
+              <span className="truncate">{label}</span>
+              {count > 0 && <span className="opacity-65 tabular-nums shrink-0">({count})</span>}
             </button>
           ))}
         </div>
       </div>
 
+      {filter === "files" ? (
+        <TaskFilesPanel
+          taskId={task.id}
+          systemLanguage={systemLanguage}
+          currentUserName={currentUserName}
+          currentUserRole={currentUserRole}
+          canEdit={canEdit}
+          refreshKey={filesRefreshKey}
+          compact
+          onFilesChanged={({ fileCount: nextCount }) => {
+            setFileCount(nextCount);
+            onTaskMetaChangeRef.current?.(task.id, { fileCount: nextCount });
+          }}
+          onInsertIntoDescription={onInsertFileIntoDescription}
+          onPreviewFile={onPreviewFile}
+        />
+      ) : (
+        <>
       {/* Activity & Chat Stream */}
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3">
         {hasMore && (
@@ -1064,6 +1098,8 @@ export const TaskActivityPanel: React.FC<TaskActivityPanelProps> = ({
           </div>
         </div>
       </div>
+        </>
+      )}
 
       {/* Full-resolution image lightbox */}
       {lightboxImage &&

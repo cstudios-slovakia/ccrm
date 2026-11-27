@@ -15,7 +15,8 @@ export interface EditorBlock {
     | "banner"
     | "code"
     | "quote"
-    | "pullquote";
+    | "pullquote"
+    | "file";
   content: string;
   checked?: boolean;
   toggled?: boolean;
@@ -25,6 +26,12 @@ export interface EditorBlock {
   bannerVariant?: "light" | "saturated";
   codeLanguage?: string;
   align?: "left" | "center" | "right" | "justify";
+  fileId?: string;
+  fileName?: string;
+  fileUrl?: string;
+  fileMime?: string;
+  fileSize?: number;
+  fileIsImage?: boolean;
 }
 
 export const BANNER_COLORS = [
@@ -120,6 +127,7 @@ const VALID_BLOCK_TYPES = new Set<string>([
   "code",
   "quote",
   "pullquote",
+  "file",
 ]);
 
 /**
@@ -194,6 +202,9 @@ export const serializeBlocksToPlainText = (blocks: EditorBlock[]): string => {
   if (!Array.isArray(blocks) || blocks.length === 0) return "";
   return blocks
     .map((b) => {
+      if (b.type === "file") {
+        return (b.fileName || b.content || "").trim();
+      }
       const main = plainBlockText(b.content || "");
       const sub = b.type === "toggle" && b.toggleContent ? plainBlockText(b.toggleContent) : "";
       if (main && sub) return `${main}\n${sub}`;
@@ -550,6 +561,17 @@ export const blocksToMarkdown = (blocks: EditorBlock[]): string => {
           });
         }
         break;
+      case "file": {
+        const name = (block.fileName || mdText || "file").trim();
+        const url = (block.fileUrl || "").trim();
+        if (name) {
+          const text = url
+            ? (block.fileIsImage ? `![${name}](${url})` : `[${name}](${url})`)
+            : name;
+          rendered.push({ type: block.type, text });
+        }
+        break;
+      }
       default:
         if (mdText) rendered.push({ type: block.type, text: mdText });
         break;
