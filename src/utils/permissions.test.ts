@@ -180,6 +180,8 @@ test("routes map to their guarding key", () => {
   assert.equal(permissionKeyForRoute("projects?id=1"), "projects");
   assert.equal(permissionKeyForRoute("projects/123"), "projects");
   assert.equal(permissionKeyForRoute("project-123"), "projects");
+  assert.equal(permissionKeyForRoute("task-123"), "tasks");
+  assert.equal(permissionKeyForRoute("tasks/t-1"), "tasks");
   assert.equal(permissionKeyForRoute("my-employment"), "people");
   assert.equal(permissionKeyForRoute("employees/me"), "people");
   assert.equal(permissionKeyForRoute("employees"), "people");

@@ -158,3 +158,45 @@ test("exportMarkdownFilename generates sanitized .md slugs", () => {
   assert.equal(exportMarkdownFilename(null, "meeting-notes"), "meeting-notes.md");
 });
 
+test("serializeTaskDescription and blocksToMarkdown handle inline file blocks", () => {
+  const blocks: EditorBlock[] = [
+    { id: "1", type: "paragraph", content: "Attached assets" },
+    {
+      id: "2",
+      type: "file",
+      content: "",
+      fileId: "f-img",
+      fileName: "mockup.png",
+      fileUrl: "api/task_files.php?action=download&id=f-img",
+      fileMime: "image/png",
+      fileSize: 2048,
+      fileIsImage: true,
+    },
+    {
+      id: "3",
+      type: "file",
+      content: "",
+      fileId: "f-sql",
+      fileName: "schema.sql",
+      fileUrl: "api/task_files.php?action=download&id=f-sql",
+      fileMime: "text/plain",
+      fileSize: 512,
+      fileIsImage: false,
+    },
+  ];
+
+  const serialized = serializeTaskDescription(blocks);
+  assert.equal(isSerializedBlockArray(serialized), true);
+  assert.equal(serializeBlocksToPlainText(blocks), "Attached assets\nmockup.png\nschema.sql");
+  assert.equal(
+    blocksToMarkdown(blocks),
+    [
+      "Attached assets",
+      "",
+      "![mockup.png](api/task_files.php?action=download&id=f-img)",
+      "",
+      "[schema.sql](api/task_files.php?action=download&id=f-sql)",
+    ].join("\n"),
+  );
+});
+

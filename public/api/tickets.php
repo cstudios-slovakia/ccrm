@@ -379,9 +379,9 @@ function ccrm_poll_ticket_imap(PDO $pdo, bool $force = false): array {
         if (!empty($header->from[0])) {
             $f = $header->from[0];
             $fromEmail = strtolower(trim(($f->mailbox ?? '') . '@' . ($f->host ?? '')));
-            $fromName = isset($f->personal) ? imap_utf8((string)$f->personal) : $fromEmail;
+            $fromName = isset($f->personal) ? ccrm_decode_mime_header((string)$f->personal) : $fromEmail;
         }
-        $subject = isset($header->subject) ? imap_utf8((string)$header->subject) : '(No Subject)';
+        $subject = isset($header->subject) ? ccrm_decode_mime_header((string)$header->subject) : '(No Subject)';
         $messageId = isset($header->message_id) ? trim((string)$header->message_id) : ('<uid-' . $uid . '@' . ($settings['imapHost'] ?? 'local') . '>');
         $inReplyTo = isset($header->in_reply_to) ? trim((string)$header->in_reply_to) : '';
 

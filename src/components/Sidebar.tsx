@@ -269,6 +269,12 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
     </span>
   );
 
+  const badgeStyle =
+    item.id !== "whatsapp" && (item.color || item.customColor)
+      ? { backgroundColor: item.color || item.customColor }
+      : undefined;
+  const badgeText = badge ? (badge > 99 ? "99+" : badge) : null;
+
   return (
     <motion.button
       type="button"
@@ -302,16 +308,26 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
           )}
           style={{ color: item.color || item.customColor }}
         />
-        {badge ? (
+        {badgeText && !isExpanded ? (
           <span
             aria-label={String(badge)}
-            className="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 rounded-full bg-emerald-600 text-white text-micro font-bold leading-4 text-center shadow-sm"
+            style={badgeStyle}
+            className="absolute -top-1.5 -right-2 min-w-4 h-4 px-1 rounded-full bg-emerald-600 text-white text-micro font-bold leading-4 text-center shadow-sm tabular-nums"
           >
-            {badge > 99 ? "99+" : badge}
+            {badgeText}
           </span>
         ) : null}
       </span>
       {innerLabel}
+      {badgeText && isExpanded ? (
+        <span
+          aria-label={String(badge)}
+          style={badgeStyle}
+          className="ml-auto shrink-0 min-w-5 h-5 px-1.5 rounded-full bg-emerald-600 text-white text-micro font-bold leading-5 text-center shadow-2xs tabular-nums"
+        >
+          {badgeText}
+        </span>
+      ) : null}
     </motion.button>
   );
 };
@@ -1142,7 +1158,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               activeTab === item.id ||
               activeTab.startsWith(item.id + "/") ||
               activeTab.startsWith(item.id + "?") ||
-              (item.id === "clients" && activeTab.startsWith("client-"));
+              (item.id === "clients" && activeTab.startsWith("client-")) ||
+              (item.id === "tasks" && activeTab.startsWith("task-"));
 
             return (
               <SidebarDockButton
@@ -1340,7 +1357,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 activeTab === item.id ||
                 activeTab.startsWith(item.id + "/") ||
                 activeTab.startsWith(item.id + "?") ||
-                (item.id === "clients" && activeTab.startsWith("client-"));
+                (item.id === "clients" && activeTab.startsWith("client-")) ||
+                (item.id === "tasks" && activeTab.startsWith("task-"));
 
               const colorInfo = getSidebarItemColors(item, isActive);
 

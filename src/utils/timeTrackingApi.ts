@@ -326,9 +326,20 @@ export const startTimer = async (input: EntryInput, mode?: StartMode): Promise<S
   };
 };
 
+export type TeamRunningEntry = TimeEntry & { userName?: string };
+
+/** Every currently running timer across the team (requires `time_tracking_team`). */
+export const fetchTeamRunning = async (): Promise<{ running: TeamRunningEntry[]; serverNow: string }> => {
+  const body = await get({ action: "team_running" });
+  return {
+    running: Array.isArray(body.running) ? (body.running as TeamRunningEntry[]) : [],
+    serverNow: typeof body.serverNow === "string" ? body.serverNow : new Date().toISOString(),
+  };
+};
+
 /** Stops one entry; without `id` the single running one (409 `ambiguous` while several run). */
 /** `reason: 'status'`: fired by a task status change (D10.2), the entry records end_reason 'status'. */
-export const stopTimer = async (opts: { id?: string; projectId?: string | null; reason?: "status" } = {}): Promise<TimeEntry> =>
+export const stopTimer = async (opts: { id?: string; projectId?: string | null; reason?: "status"; note?: string | null } = {}): Promise<TimeEntry> =>
   (await post("stop", opts)).entry as TimeEntry;
 
 /** Stops every running entry of the caller; resolves the stopped ones (empty when nothing ran). */

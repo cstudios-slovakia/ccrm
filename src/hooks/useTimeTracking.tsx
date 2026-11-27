@@ -64,6 +64,8 @@ export interface StartOptions {
 /** Options of a stop or pause; `reason: 'status'` = fired by a task status change (D10.2). */
 export interface EndOptions {
   reason?: "status";
+  /** Optional basic-Markdown work report saved to `time_entries.note` when stopping. */
+  note?: string | null;
 }
 
 /**
@@ -707,16 +709,17 @@ export function TimeTrackingProvider({
       if (!id && !current.length) return null;
       const targetId = id ?? (current.length === 1 ? current[0].id : undefined);
       const reason = opts.reason ? { reason: opts.reason } : {};
+      const note = opts.note !== undefined ? { note: opts.note } : {};
       try {
         let stopped: TimeEntry;
         try {
-          stopped = await stopTimer({ ...(targetId ? { id: targetId } : {}), ...reason });
+          stopped = await stopTimer({ ...(targetId ? { id: targetId } : {}), ...reason, ...note });
         } catch (e) {
           if (e instanceof TimeApiError && e.code === "project_required") {
             // "Require a project before Stop": open the picker instead of failing.
             const projectId = await askProject();
             if (!projectId) return null;
-            stopped = await stopTimer({ ...(targetId ? { id: targetId } : {}), projectId, ...reason });
+            stopped = await stopTimer({ ...(targetId ? { id: targetId } : {}), projectId, ...reason, ...note });
           } else {
             throw e;
           }

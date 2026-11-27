@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 import { buildAccess } from '../../../src/utils/permissions';
 import { builtinHolidays, builtinWorkingDays, resolveWorkCountry, type HolidayCountry } from '../../../src/utils/holidays';
 import { allocateWorkedMs, workedMsForHoursOnly, type AllocationEntry } from '../../../src/utils/timeAllocation';
-import { computeCostRate, computeWorkedCost, DEFAULT_COST_SETTINGS } from '../../../src/utils/timeCost';
+import { computeCostRate, computeDayAllocatedCost, computeWorkedCost, DEFAULT_COST_SETTINGS } from '../../../src/utils/timeCost';
 import { DEFAULT_TIME_TRACKING_SETTINGS, type TimeTrackingSettings } from '../../../src/utils/timeTracking';
 
 /**
@@ -60,6 +60,7 @@ export function timeTrackingSeed(users: { erik: string; maria: string; free: str
 
 export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
   const entries: Json[] = ctx.seed.map((e) => ({ ...e }));
+  const exclusions = new Set<string>();
   let settings: TimeTrackingSettings = JSON.parse(JSON.stringify(DEFAULT_TIME_TRACKING_SETTINGS));
   let idSeq = 100;
   let startWhileRunning: 'ask' | 'switch' | 'parallel' = 'ask';
@@ -100,6 +101,17 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
     for (const list of byUser.values()) {
       const shares = allocateWorkedMs(list);
       for (const e of list) entries.find((x) => x.id === e.id)!.workedMs = shares.get(e.id) ?? 0;
+    }
+    const dayTotals = new Map<string, number>();
+    for (const e of entries) {
+      if (e.deletedAt || e.workedMs == null) continue;
+      const key = `${e.userId}|${e.entryDate}`;
+      dayTotals.set(key, (dayTotals.get(key) ?? 0) + e.workedMs);
+    }
+    for (const e of entries) {
+      if (e.deletedAt || e.workedMs == null) continue;
+      const dayTotal = dayTotals.get(`${e.userId}|${e.entryDate}`) ?? e.workedMs;
+      e.cost = computeDayAllocatedCost(e.workedMs, dayTotal, e.costRate ?? null, e.costRateSource ?? null, settings.hoursPerDay);
     }
   };
   settleWorked();
@@ -309,6 +321,13 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
         return route.fulfill(ok({ settings, defaultCountry: 'SK', me: { userId: caller, employeeId: ctx.employees[caller]?.id ?? null, workCountry: country(caller), startWhileRunning, presenceSound }, viewer: { canEdit, canTeam, canCosts }, ...(canEdit ? { cron: { lastRunAt: new Date().toISOString(), stale: false } } : {}) }));
       }
       if (url.searchParams.get('action') === 'prefs') return route.fulfill(ok({ startWhileRunning, presenceSound }));
+      if (url.searchParams.get('action') === 'team_running') {
+        if (!canTeam) return route.fulfill(fail('forbidden', 403));
+        const live = entries
+          .filter((e) => !e.deletedAt && e.startAt && !e.endAt)
+          .map((e) => ({ ...view(e), userName: ctx.users.find((u) => u.id === e.userId)?.name ?? '' }));
+        return route.fulfill(ok({ running: live, serverNow: new Date().toISOString() }));
+      }
       if (url.searchParams.has('running')) {
         await readPresenceOverride();
         const p = presence();
@@ -331,8 +350,11 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
             const row = byProject[effPid] ?? { seconds: 0, workedMs: 0, cost: 0, billableValue: canCosts ? 0 : null, billableComplete: canCosts };
             row.seconds += e.durationSec;
             row.workedMs += e.workedMs ?? e.durationSec * 1000;
-            if (e.userId === caller || canCosts) row.cost = (row.cost ?? 0) + (e.cost ?? 0);
-            else row.cost = null;
+            const excluded = exclusions.has(`${effPid}|${e.userId}|${String(e.entryDate).slice(0, 7)}`);
+            if (!excluded) {
+              if (e.userId === caller || canCosts) row.cost = (row.cost ?? 0) + (e.cost ?? 0);
+              else row.cost = null;
+            }
             if (canCosts && e.billable) {
               const rate = (e as { billableRate?: number | null }).billableRate;
               if (rate == null) row.billableComplete = false;
@@ -344,8 +366,11 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
             const crow = byClient[effCid] ?? { seconds: 0, workedMs: 0, cost: 0 };
             crow.seconds += e.durationSec;
             crow.workedMs += e.workedMs ?? e.durationSec * 1000;
-            if (e.userId === caller || canCosts) crow.cost = (crow.cost ?? 0) + (e.cost ?? 0);
-            else crow.cost = null;
+            const excluded = effPid ? exclusions.has(`${effPid}|${e.userId}|${String(e.entryDate).slice(0, 7)}`) : false;
+            if (!excluded) {
+              if (e.userId === caller || canCosts) crow.cost = (crow.cost ?? 0) + (e.cost ?? 0);
+              else crow.cost = null;
+            }
             byClient[effCid] = crow;
           }
         }
@@ -364,6 +389,39 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       }
       if (url.searchParams.get('action') === 'overlaps') {
         return route.fulfill(ok({ months: [] }));
+      }
+      if (url.searchParams.get('action') === 'projectCosts') {
+        if (!access.can('projects')) return route.fulfill(fail('forbidden', 403));
+        const projectId = url.searchParams.get('projectId') ?? '';
+        const grouped = new Map<string, Json>();
+        for (const e of entries) {
+          if (e.deletedAt || !e.durationSec || effProjectOf(e) !== projectId) continue;
+          const month = String(e.entryDate ?? '').slice(0, 7);
+          const key = `${month}|${e.userId}`;
+          const canSee = e.userId === caller || canCosts;
+          const emp = ctx.employees[e.userId];
+          const cur = grouped.get(key) ?? {
+            month,
+            userId: e.userId,
+            userName: ctx.users.find((u) => u.id === e.userId)?.name ?? e.userId,
+            salaryType: emp?.salaryType ?? null,
+            seconds: 0,
+            workedMs: 0,
+            cost: canSee ? 0 : null,
+            canSeeCost: canSee,
+            complete: canSee,
+            excluded: exclusions.has(`${projectId}|${e.userId}|${month}`),
+          };
+          cur.seconds += e.durationSec;
+          cur.workedMs += e.workedMs ?? e.durationSec * 1000;
+          if (canSee) {
+            if (e.cost == null) cur.complete = false;
+            else cur.cost = Math.round(((cur.cost ?? 0) + e.cost) * 100) / 100;
+          }
+          grouped.set(key, cur);
+        }
+        for (const item of grouped.values()) if (!item.complete) item.cost = null;
+        return route.fulfill(ok({ items: [...grouped.values()] }));
       }
       if (url.searchParams.get('action') === 'usage') {
         if (!access.can('tickets.time')) return route.fulfill(fail('forbidden', 403));
@@ -387,10 +445,19 @@ export async function installTimeTrackingMock(page: Page, ctx: MockContext) {
       return route.fulfill(ok({ entries: list.map(view), viewer: { userId: caller, canEdit, canTeam, canCosts } }));
     }
 
-    if (!canEdit) return route.fulfill(fail('forbidden', 403));
     const body = (req.postDataJSON() ?? {}) as Json;
-    settlePresence(); // D7.3 runs before every call: a stop after the deadline finds the timers paused
     const action = body.action as string;
+    if (action === 'setProjectCostExclusion') {
+      if (ctx.user.role !== 'admin' && !(access.canEdit('financial') && canCosts)) {
+        return route.fulfill(fail('forbidden', 403));
+      }
+      const key = `${body.projectId}|${body.userId}|${body.month}`;
+      if (body.excluded) exclusions.add(key);
+      else exclusions.delete(key);
+      return route.fulfill(ok({ excluded: !!body.excluded }));
+    }
+    if (!canEdit) return route.fulfill(fail('forbidden', 403));
+    settlePresence(); // D7.3 runs before every call: a stop after the deadline finds the timers paused
 
     if (action === 'prefs') {
       if ('startWhileRunning' in body) {

@@ -1,51 +1,38 @@
 import React, { useState } from "react";
-import { Users, User, Phone, Mail, Plus, X, Link2, ExternalLink, PencilLine, Check } from "lucide-react";
-import type { Lead } from "../../types";
+import { Users, User, Phone, Mail, Plus, X, Link2, PencilLine, Check, Trash2 } from "lucide-react";
+import type { ClientContact, Lead } from "../../types";
 import { CustomSelect } from "../ui/CustomSelect";
 import { ContactTagInput } from "./ContactTagInput";
 import { contactTagsSummary, normalizeContactTags, resolveContactTags } from "../../utils/contactTags";
-import { contactNamePatch, contactNameShown } from "../../utils/contactName";
-import { todayLocal, nowLocalStamp } from "../../utils/localTime";
+import { contactNameShown } from "../../utils/contactName";
+import { todayLocal } from "../../utils/localTime";
 
-interface ContactProfile {
+interface CompanyProfileLike {
   primaryId: string;
   name: string;
-  clientType: "person" | "business" | "partner";
-  companyClientId: string | null;
-  contactRole: string | null;
-  contactTags: string[];
-  archived: boolean;
-  phone: string;
-  email: string;
   associatedLeads: Lead[];
 }
 
 interface ClientCompanyContactsProps {
-  activeClient: ContactProfile;
-  clientProfiles: ContactProfile[];
+  activeClient: CompanyProfileLike;
+  companyClients: CompanyProfileLike[];
+  clientContacts: ClientContact[];
+  setClientContacts?: (updater: ClientContact[] | ((prev: ClientContact[]) => ClientContact[])) => void;
   allContactTags: string[];
-  defaultOwner: string;
-  setLeads: React.Dispatch<React.SetStateAction<Lead[]>>;
   canEdit: boolean;
+  canDelete?: boolean;
   t: (en: string, sk: string, hu: string) => string;
-  attachExistingPersonId: string;
-  setAttachExistingPersonId: (value: string) => void;
-  attachExistingTags: string[];
-  setAttachExistingTags: (value: string[]) => void;
 }
 
 export const ClientCompanyContacts: React.FC<ClientCompanyContactsProps> = ({
   activeClient,
-  clientProfiles,
+  companyClients,
+  clientContacts,
+  setClientContacts,
   allContactTags,
-  defaultOwner,
-  setLeads,
   canEdit,
+  canDelete = false,
   t,
-  attachExistingPersonId,
-  setAttachExistingPersonId,
-  attachExistingTags,
-  setAttachExistingTags,
 }) => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showAttachForm, setShowAttachForm] = useState(false);
@@ -54,86 +41,56 @@ export const ClientCompanyContacts: React.FC<ClientCompanyContactsProps> = ({
   const [addEmail, setAddEmail] = useState("");
   const [addTags, setAddTags] = useState<string[]>([]);
 
-  const [editingPersonKey, setEditingPersonKey] = useState<string | null>(null);
+  const [attachExistingId, setAttachExistingId] = useState("");
+  const [attachExistingTags, setAttachExistingTags] = useState<string[]>([]);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editTags, setEditTags] = useState<string[]>([]);
 
-  const companyIdSet = new Set(activeClient.associatedLeads.map((l: Lead) => l.id));
+  const companyIdSet = new Set([activeClient.primaryId, ...activeClient.associatedLeads.map((l) => l.id)]);
   const companyNameById = new Map<string, string>();
-  for (const c of clientProfiles) {
-    if (c.clientType === "person") continue;
+  for (const c of companyClients) {
     companyNameById.set(c.primaryId, c.name);
     for (const l of c.associatedLeads) {
       if (l.id) companyNameById.set(l.id, c.name);
     }
   }
-  const attachedContacts = clientProfiles.filter(
-    (c) => c.clientType === "person" && !!c.companyClientId && companyIdSet.has(c.companyClientId)
-  );
-  const attachablePersons = clientProfiles.filter(
-    (c) => c.clientType === "person" && !c.archived && (!c.companyClientId || !companyIdSet.has(c.companyClientId))
-  );
 
-  const linkPersonToCompany = (personName: string, companyId: string | null, tags?: string[]) => {
-    const cleanTags = tags !== undefined ? normalizeContactTags(tags) : undefined;
-    setLeads((prev) =>
-      prev.map((l) => {
-        if (l.name.trim().toLowerCase() !== personName.trim().toLowerCase()) return l;
-        const nextTags = companyId ? (cleanTags ?? resolveContactTags(l.contactTags, l.contactRole)) : [];
-        return {
-          ...l,
-          companyClientId: companyId,
-          contactTags: nextTags,
-          contactRole: companyId ? contactTagsSummary(nextTags) : null,
-        };
-      })
-    );
-  };
+  const attachedContacts = clientContacts.filter(
+    (c) => !c.archived && !!c.companyClientId && companyIdSet.has(c.companyClientId)
+  );
+  const attachableContacts = clientContacts.filter(
+    (c) => !c.archived && (!c.companyClientId || !companyIdSet.has(c.companyClientId))
+  );
 
   const handleQuickAdd = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!setClientContacts) return;
     const cleanName = addName.trim();
     if (!cleanName) {
       (window as any).showToast?.(t("Contact name is required", "Meno kontaktu je povinné", "A kapcsolattartó neve kötelező"), "error");
       return;
     }
     const cleanTags = normalizeContactTags(addTags);
-    const nameParts = contactNameShown({ firstName: "", lastName: "" }, cleanName, true);
-    const newLead: Lead = {
-      id: `client-${Date.now()}`,
-      name: cleanName,
-      city: "",
-      clientType: "person",
-      status: "accepted",
-      source: "website",
-      owner: defaultOwner,
-      value: 0,
-      adjustment: 0,
-      createdAt: todayLocal(),
-      rating: 5,
-      phone: addPhone.trim() || undefined,
-      email: addEmail.trim() || undefined,
+    const parts = contactNameShown({ firstName: "", lastName: "" }, cleanName, true);
+    const created: ClientContact = {
+      id: `cc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       companyClientId: activeClient.primaryId,
+      name: cleanName,
+      firstName: parts.firstName || null,
+      lastName: parts.lastName || null,
+      phone: addPhone.trim(),
+      email: addEmail.trim(),
       contactTags: cleanTags,
       contactRole: contactTagsSummary(cleanTags),
-      ...contactNamePatch(null, nameParts, true),
-      timeline: [
-        {
-          id: `ev-${Date.now()}`,
-          type: "note",
-          timestamp: nowLocalStamp(),
-          title: t("Contact Added", "Kontakt pridaný", "Kapcsolattartó hozzáadva"),
-          content: t(
-            `Added as contact for ${activeClient.name}.`,
-            `Pridaný ako kontakt pre ${activeClient.name}.`,
-            `Hozzáadva kapcsolattartóként ehhez a céghez: ${activeClient.name}.`
-          ),
-        },
-      ],
+      notes: "",
+      archived: false,
+      createdAt: todayLocal(),
     };
-    setLeads((prev) => [newLead, ...prev]);
+    setClientContacts((prev) => [created, ...prev]);
     setAddName("");
     setAddPhone("");
     setAddEmail("");
@@ -142,37 +99,79 @@ export const ClientCompanyContacts: React.FC<ClientCompanyContactsProps> = ({
     (window as any).showToast?.(t("Contact added to company", "Kontakt pridaný k firme", "Kapcsolattartó hozzáadva a céghez"));
   };
 
-  const startEdit = (person: ContactProfile) => {
-    setEditingPersonKey(person.primaryId);
-    setEditName(person.name);
-    setEditPhone(person.phone || "");
-    setEditEmail(person.email || "");
-    setEditTags(resolveContactTags(person.contactTags, person.contactRole));
+  const handleAttachExisting = () => {
+    if (!attachExistingId || !setClientContacts) return;
+    const incomingTags = normalizeContactTags(attachExistingTags);
+    setClientContacts((prev) =>
+      prev.map((c) => {
+        if (c.id !== attachExistingId) return c;
+        const nextTags = incomingTags.length > 0 ? incomingTags : resolveContactTags(c.contactTags, c.contactRole);
+        return {
+          ...c,
+          companyClientId: activeClient.primaryId,
+          contactTags: nextTags,
+          contactRole: contactTagsSummary(nextTags),
+        };
+      })
+    );
+    setAttachExistingId("");
+    setAttachExistingTags([]);
+    setShowAttachForm(false);
+    (window as any).showToast?.(t("Contact attached to company", "Kontakt priradený k firme", "Kapcsolattartó hozzárendelve"));
   };
 
-  const saveEdit = (person: ContactProfile) => {
+  const handleUnlink = (contactId: string) => {
+    if (!setClientContacts) return;
+    setClientContacts((prev) =>
+      prev.map((c) => (c.id === contactId ? { ...c, companyClientId: null } : c))
+    );
+    (window as any).showToast?.(t("Contact unlinked from company", "Kontakt odobratý z firmy", "Kapcsolattartó leválasztva a cégről"));
+  };
+
+  const handleDelete = (contactId: string) => {
+    if (!setClientContacts) return;
+    setClientContacts((prev) => prev.filter((c) => c.id !== contactId));
+    (window as any).showToast?.(t("Contact removed", "Kontakt odstránený", "Kapcsolattartó törölve"));
+  };
+
+  const startEdit = (contact: ClientContact) => {
+    setEditingId(contact.id);
+    setEditName(contact.name);
+    setEditPhone(contact.phone || "");
+    setEditEmail(contact.email || "");
+    setEditTags(resolveContactTags(contact.contactTags, contact.contactRole));
+  };
+
+  const saveEdit = (contact: ClientContact) => {
+    if (!setClientContacts) return;
     const cleanName = editName.trim();
     if (!cleanName) {
       (window as any).showToast?.(t("Contact name is required", "Meno kontaktu je povinné", "A kapcsolattartó neve kötelező"), "error");
       return;
     }
     const cleanTags = normalizeContactTags(editTags);
-    const idSet = new Set(person.associatedLeads.map((l) => l.id));
-    setLeads((prev) =>
-      prev.map((l) => {
-        if (!idSet.has(l.id)) return l;
-        return {
-          ...l,
-          name: cleanName,
-          phone: editPhone.trim() || undefined,
-          email: editEmail.trim() || undefined,
-          contactTags: cleanTags,
-          contactRole: contactTagsSummary(cleanTags),
-          ...contactNamePatch(l, { firstName: l.contactFirstName || "", lastName: l.contactLastName || "" }, true, cleanName),
-        };
-      })
+    const parts = contactNameShown(
+      { firstName: contact.firstName || "", lastName: contact.lastName || "" },
+      cleanName,
+      true
     );
-    setEditingPersonKey(null);
+    setClientContacts((prev) =>
+      prev.map((c) =>
+        c.id !== contact.id
+          ? c
+          : {
+              ...c,
+              name: cleanName,
+              firstName: cleanName !== contact.name ? (parts.firstName || null) : c.firstName,
+              lastName: cleanName !== contact.name ? (parts.lastName || null) : c.lastName,
+              phone: editPhone.trim(),
+              email: editEmail.trim(),
+              contactTags: cleanTags,
+              contactRole: contactTagsSummary(cleanTags),
+            }
+      )
+    );
+    setEditingId(null);
     (window as any).showToast?.(t("Contact updated", "Kontakt aktualizovaný", "Kapcsolattartó frissítve"));
   };
 
@@ -192,9 +191,9 @@ export const ClientCompanyContacts: React.FC<ClientCompanyContactsProps> = ({
             )}
           </p>
         </div>
-        {canEdit && (
+        {canEdit && setClientContacts && (
           <div className="flex flex-wrap items-center gap-2">
-            {attachablePersons.length > 0 && (
+            {attachableContacts.length > 0 && (
               <button
                 type="button"
                 onClick={() => {
@@ -222,7 +221,7 @@ export const ClientCompanyContacts: React.FC<ClientCompanyContactsProps> = ({
         )}
       </div>
 
-      {canEdit && showAddForm && (
+      {canEdit && showAddForm && setClientContacts && (
         <form onSubmit={handleQuickAdd} className="p-4 rounded-lg bg-sky-50/50 border border-sky-200 space-y-3">
           <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-2.5">
             <div className="space-y-1">
@@ -278,22 +277,26 @@ export const ClientCompanyContacts: React.FC<ClientCompanyContactsProps> = ({
         </form>
       )}
 
-      {canEdit && showAttachForm && attachablePersons.length > 0 && (
+      {canEdit && showAttachForm && attachableContacts.length > 0 && setClientContacts && (
         <div className="p-3.5 rounded-lg bg-gray-50 border border-gray-200 grid grid-cols-1 ws-md:grid-cols-12 gap-2.5 items-end">
           <div className="ws-md:col-span-4 space-y-1">
             <label className="type-overline text-gray-500">
-              {t("Attach existing person contact", "Priradiť existujúcu osobu", "Meglévő személy hozzárendelése")}
+              {t("Attach existing contact", "Priradiť existujúci kontakt", "Meglévő kapcsolattartó hozzárendelése")}
             </label>
             <CustomSelect
-              value={attachExistingPersonId}
-              onChange={setAttachExistingPersonId}
+              value={attachExistingId}
+              onChange={(val) => {
+                setAttachExistingId(val);
+                const picked = attachableContacts.find((c) => c.id === val);
+                setAttachExistingTags(picked ? resolveContactTags(picked.contactTags, picked.contactRole) : []);
+              }}
               options={[
-                { value: "", label: t("Select person...", "Vyberte osobu...", "Válasszon személyt...") },
-                ...attachablePersons.map((p) => {
+                { value: "", label: t("Select contact...", "Vyberte kontakt...", "Válasszon kapcsolattartót...") },
+                ...attachableContacts.map((p) => {
                   const compName = p.companyClientId ? companyNameById.get(p.companyClientId) : undefined;
                   return {
-                    value: p.name,
-                    searchText: compName ? `${p.name} ${compName}` : p.name,
+                    value: p.id,
+                    searchText: compName ? `${p.name} ${compName} ${p.email || ""}` : `${p.name} ${p.email || ""}`,
                     label: (
                       <span className="flex items-center justify-between gap-2 min-w-0 w-full">
                         <span className="truncate">{p.name}</span>
@@ -323,15 +326,8 @@ export const ClientCompanyContacts: React.FC<ClientCompanyContactsProps> = ({
           <div className="ws-md:col-span-3">
             <button
               type="button"
-              disabled={!attachExistingPersonId}
-              onClick={() => {
-                if (!attachExistingPersonId) return;
-                linkPersonToCompany(attachExistingPersonId, activeClient.primaryId, attachExistingTags);
-                setAttachExistingPersonId("");
-                setAttachExistingTags([]);
-                setShowAttachForm(false);
-                (window as any).showToast?.(t("Contact attached to company", "Kontakt priradený k firme", "Kapcsolattartó hozzárendelve"));
-              }}
+              disabled={!attachExistingId}
+              onClick={handleAttachExisting}
               className="w-full h-10 px-3 rounded-md bg-entity-solid hover:bg-entity-solid-hover disabled:bg-gray-300 text-white text-ui font-semibold flex items-center justify-center gap-1.5 shadow-xs cursor-pointer disabled:cursor-not-allowed transition-all"
             >
               <Link2 className="h-3.5 w-3.5" />
@@ -347,13 +343,13 @@ export const ClientCompanyContacts: React.FC<ClientCompanyContactsProps> = ({
         </div>
       ) : (
         <div className="space-y-2.5">
-          {attachedContacts.map((person) => {
-            const tags = resolveContactTags(person.contactTags, person.contactRole);
-            const isEditing = editingPersonKey === person.primaryId;
+          {attachedContacts.map((contact) => {
+            const tags = resolveContactTags(contact.contactTags, contact.contactRole);
+            const isEditing = editingId === contact.id;
 
-            if (isEditing && canEdit) {
+            if (isEditing && canEdit && setClientContacts) {
               return (
-                <div key={person.primaryId} className="p-4 rounded-lg border border-entity-border bg-entity-subtle/20 space-y-3 shadow-2xs">
+                <div key={contact.id} className="p-4 rounded-lg border border-entity-border bg-entity-subtle/20 space-y-3 shadow-2xs">
                   <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-2.5">
                     <div className="space-y-1">
                       <label className="type-overline text-gray-600">{t("Name", "Meno", "Név")} *</label>
@@ -395,14 +391,14 @@ export const ClientCompanyContacts: React.FC<ClientCompanyContactsProps> = ({
                   <div className="flex items-center justify-end gap-2">
                     <button
                       type="button"
-                      onClick={() => setEditingPersonKey(null)}
+                      onClick={() => setEditingId(null)}
                       className="h-8 px-3 rounded-md border border-gray-300 bg-white hover:bg-gray-50 text-ui font-semibold text-gray-700 cursor-pointer"
                     >
                       {t("Cancel", "Zrušiť", "Mégse")}
                     </button>
                     <button
                       type="button"
-                      onClick={() => saveEdit(person)}
+                      onClick={() => saveEdit(contact)}
                       className="h-8 px-3 rounded-md bg-entity-solid hover:bg-entity-solid-hover text-white text-ui font-semibold flex items-center gap-1 cursor-pointer"
                     >
                       <Check className="h-3.5 w-3.5" />
@@ -415,21 +411,15 @@ export const ClientCompanyContacts: React.FC<ClientCompanyContactsProps> = ({
 
             return (
               <div
-                key={person.primaryId}
+                key={contact.id}
                 className="p-4 rounded-lg border border-gray-200 bg-white hover:border-entity-border transition-all shadow-2xs flex flex-wrap items-center justify-between gap-3"
               >
                 <div className="min-w-0 space-y-1.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        window.location.hash = `client-${encodeURIComponent(person.name)}`;
-                      }}
-                      className="font-heading font-semibold text-ui text-gray-900 hover:text-entity-text cursor-pointer flex items-center gap-1 mr-1"
-                    >
+                    <span className="font-heading font-semibold text-ui text-gray-900 flex items-center gap-1 mr-1">
                       <User className="h-3.5 w-3.5 text-entity-text" />
-                      <span>{person.name}</span>
-                    </button>
+                      <span>{contact.name}</span>
+                    </span>
                     {tags.map((tag) => (
                       <span
                         key={tag}
@@ -440,51 +430,49 @@ export const ClientCompanyContacts: React.FC<ClientCompanyContactsProps> = ({
                     ))}
                   </div>
                   <div className="flex flex-wrap items-center gap-3 text-micro text-gray-500">
-                    {person.phone && (
-                      <a href={`tel:${person.phone}`} className="flex items-center gap-1 hover:text-gray-800">
-                        <Phone className="h-3 w-3 text-entity-text" /> {person.phone}
+                    {contact.phone && (
+                      <a href={`tel:${contact.phone}`} className="flex items-center gap-1 hover:text-gray-800">
+                        <Phone className="h-3 w-3 text-entity-text" /> {contact.phone}
                       </a>
                     )}
-                    {person.email && (
-                      <a href={`mailto:${person.email}`} className="flex items-center gap-1 hover:text-gray-800">
-                        <Mail className="h-3 w-3 text-entity-text" /> {person.email}
+                    {contact.email && (
+                      <a href={`mailto:${contact.email}`} className="flex items-center gap-1 hover:text-gray-800">
+                        <Mail className="h-3 w-3 text-entity-text" /> {contact.email}
                       </a>
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {canEdit && (
+                {canEdit && setClientContacts && (
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => startEdit(person)}
+                      onClick={() => startEdit(contact)}
                       className="h-8 px-2.5 rounded-md border border-gray-200 bg-white hover:bg-gray-50 text-ui font-semibold text-gray-700 shadow-2xs cursor-pointer flex items-center gap-1"
                       title={t("Edit contact", "Upraviť kontakt", "Kapcsolattartó szerkesztése")}
                     >
                       <PencilLine className="h-3.5 w-3.5" />
                       <span>{t("Edit", "Upraviť", "Szerkesztés")}</span>
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      window.location.hash = `client-${encodeURIComponent(person.name)}`;
-                    }}
-                    className="h-8 px-2.5 rounded-md border border-gray-200 bg-white hover:bg-gray-50 text-ui font-semibold text-gray-700 shadow-2xs cursor-pointer flex items-center gap-1"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    <span>{t("Open", "Otvoriť", "Megnyitás")}</span>
-                  </button>
-                  {canEdit && (
                     <button
                       type="button"
-                      onClick={() => linkPersonToCompany(person.name, null)}
-                      className="h-8 px-2.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-ui font-semibold text-rose-700 cursor-pointer"
+                      onClick={() => handleUnlink(contact.id)}
+                      className="h-8 px-2.5 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 text-ui font-semibold text-amber-700 cursor-pointer"
                       title={t("Unlink from company", "Odobrať z firmy", "Leválasztás a cégről")}
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
-                  )}
-                </div>
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(contact.id)}
+                        className="h-8 px-2.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-ui font-semibold text-rose-700 cursor-pointer"
+                        title={t("Delete contact", "Odstrániť kontakt", "Kapcsolattartó törlése")}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}

@@ -1,5 +1,5 @@
 import React from "react";
-import { CheckSquare, ChevronRight, Square, Terminal } from "lucide-react";
+import { CheckSquare, ChevronRight, Paperclip, Square, Terminal } from "lucide-react";
 import { cn } from "../utils/cn";
 import { sanitizeRichHtml } from "../utils/safeHtml";
 import { getBannerStyles, type EditorBlock } from "../utils/blockNotes";
@@ -74,6 +74,24 @@ export const BlockNotesPreview: React.FC<BlockNotesPreviewProps> = ({ blocks, cl
             )}
 
             <div className="flex-1 min-w-0">
+              {block.type === "file" ? (
+                block.fileIsImage && block.fileUrl ? (
+                  <div className="inline-flex flex-col gap-1 rounded-lg border border-slate-200 bg-white p-1.5 max-w-full">
+                    <img
+                      src={block.fileUrl}
+                      alt={block.fileName || "attachment"}
+                      className="max-h-40 rounded object-contain bg-slate-50"
+                      loading="lazy"
+                    />
+                    <span className="text-micro font-medium text-slate-600 truncate px-1">{block.fileName || block.content}</span>
+                  </div>
+                ) : (
+                  <div className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-caption font-semibold text-slate-700 max-w-full">
+                    <Paperclip className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                    <span className="truncate">{block.fileName || block.content || "File"}</span>
+                  </div>
+                )
+              ) : (
               <div
                 className={cn(
                   "break-words leading-snug",
@@ -93,6 +111,7 @@ export const BlockNotesPreview: React.FC<BlockNotesPreviewProps> = ({ blocks, cl
                 )}
                 dangerouslySetInnerHTML={{ __html: html || "&nbsp;" }}
               />
+              )}
               {block.type === "toggle" && block.toggled && toggleHtml && (
                 <div
                   className="pl-2.5 border-l border-slate-200 mt-1 text-caption text-slate-600 break-words"

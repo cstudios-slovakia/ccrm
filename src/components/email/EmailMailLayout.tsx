@@ -1,8 +1,9 @@
 import { CircleAlert, Search, Type, MessagesSquare, Loader2, Inbox, ArrowUpRight, ArrowDownLeft, Reply, Trash2, ChevronUp, ChevronDown } from "lucide-react";
 import { PRODUCT_NAME } from "../../utils/brand";
 import { HoldToConfirmButton } from "../ui/HoldToConfirm";
+import { EmailTicketLinker } from "./EmailTicketLinker";
 import React from "react";
-import type { Lead } from "../../types";
+import type { Lead, Ticket, TicketStatusDef } from "../../types";
 
 interface EmailMailLayoutProps {
   mailboxNeedsReconnect: boolean;
@@ -24,7 +25,7 @@ interface EmailMailLayoutProps {
   isLoadingEmails: boolean;
   shownCount: number;
   visibleThreads: { id: string; subject: string; latestEmail: any; emails: any[]; seen: boolean; date: any; }[];
-  renderListRow: (opts: { key: string; email: any; subject: string; unread: boolean; selected: boolean; count?: number; digestKey: string; onOpen: () => void; }) => React.JSX.Element;
+  renderListRow: (opts: { key: string; email: any; threadEmails?: any[]; subject: string; unread: boolean; selected: boolean; count?: number; digestKey: string; onOpen: () => void; }) => React.JSX.Element;
   selectedThreadId: string | null;
   toggleEmailExpand: (email: any) => Promise<void>;
   visibleIndividualEmails: any[];
@@ -62,6 +63,11 @@ interface EmailMailLayoutProps {
   renderPartyMeta: (email: any, lead: Lead | null) => React.JSX.Element;
   setSeenFlag: (email: any, seen: boolean) => Promise<boolean>;
   activeFolder: "INBOX";
+  tickets?: Ticket[];
+  ticketStatuses?: TicketStatusDef[];
+  getLinkedTickets?: (emails: any[]) => Ticket[];
+  onLinkEmailToTicket?: (ticketId: string, email: any) => void;
+  onUnlinkEmailFromTicket?: (ticketId: string, emails: any[]) => void;
 }
 
 export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
@@ -73,7 +79,8 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
   renderInlineAiSummaryBanner, threadBodies, stripHtml, fetchSummary, emailThreadScrollRef, expandedEmailUids,
   counterpartOf, formatFullDate, canEdit, openNewComposer, canDelete, systemLanguage, handleDeleteEmail,
   isLoadingDetail, renderMailFrame, renderAttachments, primaryButtonClass, renderCrmActions, emptyPane,
-  emails, renderPartyMeta, setSeenFlag, activeFolder,
+  emails, renderPartyMeta, setSeenFlag, activeFolder, tickets = [], ticketStatuses, getLinkedTickets,
+  onLinkEmailToTicket, onUnlinkEmailFromTicket,
 }) => {
   return (
         <div
@@ -193,6 +200,7 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
               renderListRow({
                 key: thread.id,
                 email: thread.latestEmail,
+                threadEmails: thread.emails,
                 subject: thread.subject,
                 unread: !thread.seen,
                 selected: selectedThreadId === thread.id,
@@ -262,6 +270,17 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold border bg-white text-gray-500 border-gray-200">
                           👤 {t(`Not in ${PRODUCT_NAME}`, `Nie je v ${PRODUCT_NAME}`, `Nincs a ${PRODUCT_NAME}-ben`)}
                         </span>
+                      )}
+                      {onLinkEmailToTicket && onUnlinkEmailFromTicket && (
+                        <EmailTicketLinker
+                          tickets={tickets}
+                          ticketStatuses={ticketStatuses}
+                          linkedTickets={getLinkedTickets ? getLinkedTickets(activeThread.emails) : []}
+                          canEdit={canEdit}
+                          onLinkTicket={(ticketId) => onLinkEmailToTicket(ticketId, activeThread.latestEmail)}
+                          onUnlinkTicket={(ticketId) => onUnlinkEmailFromTicket(ticketId, activeThread.emails)}
+                          t={t}
+                        />
                       )}
                     </div>
                   </div>
@@ -424,6 +443,19 @@ export const EmailMailLayout: React.FC<EmailMailLayoutProps> = ({
                       {selectedEmail.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)")}
                     </h3>
                     {renderPartyMeta(selectedEmail, lead)}
+                    {onLinkEmailToTicket && onUnlinkEmailFromTicket && (
+                      <div className="mt-2">
+                        <EmailTicketLinker
+                          tickets={tickets}
+                          ticketStatuses={ticketStatuses}
+                          linkedTickets={getLinkedTickets ? getLinkedTickets([selectedEmail]) : []}
+                          canEdit={canEdit}
+                          onLinkTicket={(ticketId) => onLinkEmailToTicket(ticketId, selectedEmail)}
+                          onUnlinkTicket={(ticketId) => onUnlinkEmailFromTicket(ticketId, [selectedEmail])}
+                          t={t}
+                        />
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     {bodyObj && renderDigestButton(selectedEmail.uid, lead)}

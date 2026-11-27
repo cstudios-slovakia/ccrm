@@ -550,7 +550,7 @@ export const permissionKeyForRoute = (routeId: string): string | null => {
   if (base.startsWith("client-")) return "clients";
   if (base.startsWith("project-")) return "projects";
   if (base.startsWith("ticket-")) return "tickets";
-  if (base === "" || base === "tasks") return "tasks";
+  if (base.startsWith("task-") || base === "" || base === "tasks") return "tasks";
   if (PERMISSION_DEFS[base]) return base;
   return "tasks";
 };

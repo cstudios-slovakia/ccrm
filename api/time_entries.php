@@ -327,6 +327,37 @@ if ($method === 'GET') {
         ]);
     }
 
+    if ($action === 'team_running') {
+        if (!$canTeam) {
+            ccrm_te_fail('forbidden', 403);
+        }
+        $stmt = $pdo->query(
+            "SELECT `id`, `user_id` FROM `time_entries` WHERE `deleted_at` IS NULL AND `start_at` IS NOT NULL AND `end_at` IS NULL ORDER BY `start_at` ASC LIMIT 100"
+        );
+        $rawRows = $stmt ? ($stmt->fetchAll(\PDO::FETCH_ASSOC) ?: []) : [];
+        $ids = array_column($rawRows, 'id');
+        $entries = $ids ? ccrm_te_json_list($pdo, $ids, $viewer) : [];
+        $userIds = array_values(array_unique(array_filter(array_column($entries, 'userId'))));
+        $namesById = [];
+        if ($userIds) {
+            $ph = implode(',', array_fill(0, count($userIds), '?'));
+            $uStmt = $pdo->prepare("SELECT `id`, `name` FROM `users` WHERE `id` IN ({$ph})");
+            $uStmt->execute($userIds);
+            foreach ($uStmt->fetchAll(\PDO::FETCH_ASSOC) ?: [] as $u) {
+                $namesById[(string)$u['id']] = (string)($u['name'] ?? '');
+            }
+        }
+        foreach ($entries as &$e) {
+            $uid = (string)($e['userId'] ?? '');
+            $e['userName'] = $namesById[$uid] ?? '';
+        }
+        unset($e);
+        ccrm_te_respond([
+            'running' => $entries,
+            'serverNow' => ccrm_tt_iso(ccrm_tt_now_utc()),
+        ]);
+    }
+
     // Aggregates for the task chip, the project Time tab and the labour line.
     // Hours of every user (a task's tracked time is not a private entry). Cost is
     // included only when every contributing row is one the caller may see — their
@@ -1410,6 +1441,10 @@ if ($action === 'stop') {
                     $pdo->beginTransaction();
                     ccrm_tt_lock_user($pdo, (string)$row['user_id']);
                     ccrm_tt_clear_pause($pdo, (string)$row['id'], $stopReason);
+                    if (array_key_exists('note', $body)) {
+                        $pdo->prepare("UPDATE `time_entries` SET `note` = ? WHERE `id` = ?")
+                            ->execute([ccrm_tt_clean_note($body['note']), (string)$row['id']]);
+                    }
                     $pdo->commit();
                 } catch (\Throwable $e) {
                     if ($pdo->inTransaction()) {
@@ -1524,6 +1559,10 @@ if ($action === 'stop') {
         }
         // end_reason 'user' ('status' from a status change); a row stopped meanwhile is left as it is; settled inside.
         ccrm_tt_end_entries($pdo, $owner, array_column($rows, 'id'), $endUtc, $stopReason, null, $projectId);
+        if (!$all && array_key_exists('note', $body) && !empty($rows[0]['id'])) {
+            $pdo->prepare("UPDATE `time_entries` SET `note` = ? WHERE `id` = ?")
+                ->execute([ccrm_tt_clean_note($body['note']), (string)$rows[0]['id']]);
+        }
         ccrm_tt_presence_touch($pdo, $owner, $nowUtc); // stopping one of several: anchor = now; the last one: NULL
         $pdo->commit();
     } catch (\Throwable $e) {

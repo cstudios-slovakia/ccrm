@@ -16,7 +16,7 @@ import {
   ChevronLeft, ChevronRight, Milestone, MessageCircle, Coins, Archive, ArchiveRestore, Settings,
   AlertTriangle, CheckSquare, FileCheck, ExternalLink, Ticket as TicketIcon, Tag, Building2
 } from "lucide-react";
-import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project, Order, WarehouseItem, Warehouse, WarehouseMovement, InvoiceOffer, InvoiceOfferItem, CompanyBillingSettings, Ticket, TicketStatusDefinition } from "../types";
+import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, ClientContact, UserProfile, Project, Order, WarehouseItem, Warehouse, WarehouseMovement, InvoiceOffer, InvoiceOfferItem, CompanyBillingSettings, Ticket, TicketStatusDefinition } from "../types";
 import { DEFAULT_TICKET_STATUSES, ticketStatusColor, ticketStatusLabel, ticketTypeColor, ticketTypeLabel, PRIORITY_COLORS } from "../utils/tickets";
 import { useOrderStatuses } from "../hooks/useOrderStatuses";
 import { orderStatusColor, orderStatusLabel, calculateOrderTotals } from "../utils/orders";
@@ -154,6 +154,9 @@ interface ClientsViewProps {
   /** Customer categories (the Categories panel of the client register). */
   clientCategories?: ClientCategory[];
   setClientCategories?: (updater: ClientCategory[] | ((prev: ClientCategory[]) => ClientCategory[])) => void;
+  /** Separate table of company contact persons and standalone personal contacts. */
+  clientContacts?: ClientContact[];
+  setClientContacts?: (updater: ClientContact[] | ((prev: ClientContact[]) => ClientContact[])) => void;
   /**
    * The user's access to the clients module. `edit` unlocks everything that
    * creates or changes a client and what is filed under it, `delete` the
@@ -219,6 +222,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   financialCategories = [],
   clientCategories = [],
   setClientCategories,
+  clientContacts = [],
+  setClientContacts,
   access = FULL_MODULE_ACCESS,
   financeAccess = FULL_MODULE_ACCESS,
   taskAccess,
@@ -970,9 +975,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   // A profile in the Clients registry must either have an explicit client record
   // (id starts with 'client-') or a confirmed positive adjustment. Un-won pipeline
-  // leads belong strictly to the Sales Pipeline (#leads).
+  // leads belong strictly to the Sales Pipeline (#leads). Legacy company-attached
+  // person contacts belong in `client_contacts`, never the Clients list.
   const clientProfiles = useMemo(() => {
     return allClientProfiles.filter(profile => {
+      if (profile.clientType === "person" && !!profile.companyClientId) return false;
       const hasClientRecord = profile.associatedLeads.some(l => (l.id || "").startsWith("client-"));
       const hasAdjustment = (Number(profile.adjustment) || 0) > 0;
       return hasClientRecord || hasAdjustment;
@@ -1012,7 +1019,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     return map;
   }, [clientProfiles]);
 
-  const allContactTags = useMemo(() => collectAllContactTags(leads), [leads]);
+  const allContactTags = useMemo(() => collectAllContactTags([...clientContacts, ...leads]), [clientContacts, leads]);
 
   // Find active client details based on URL deep routing (resilient matching across all client profiles)
   const activeClient = useMemo(() => {
@@ -1343,8 +1350,6 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [profilePriceLevelId, setProfilePriceLevelId] = useState("");
   const [profileCompanyClientId, setProfileCompanyClientId] = useState("");
   const [profileContactTags, setProfileContactTags] = useState<string[]>([]);
-  const [attachExistingPersonId, setAttachExistingPersonId] = useState("");
-  const [attachExistingTags, setAttachExistingTags] = useState<string[]>([]);
 
   // The same registry autofill as the register drawer, on the client profile.
   const profileLookup = useCompanyLookup<CompanyLookupField>({
@@ -4196,8 +4201,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     icon: <Users className="h-4.5 w-4.5" />,
                     label: t("Contacts", "Kontakty", "Kapcsolattartók"),
                     count: (() => {
-                      const ids = new Set(activeClient.associatedLeads.map((l: Lead) => l.id));
-                      return clientProfiles.filter(c => c.clientType === "person" && !!c.companyClientId && ids.has(c.companyClientId)).length;
+                      const ids = new Set([activeClient.primaryId, ...activeClient.associatedLeads.map((l: Lead) => l.id)]);
+                      return clientContacts.filter(c => !c.archived && !!c.companyClientId && ids.has(c.companyClientId)).length;
                     })(),
                   },
                   {
@@ -5180,16 +5185,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               {activeDetailTab === "contacts" && activeClient.clientType !== "person" && (
                 <ClientCompanyContacts
                   activeClient={activeClient}
-                  clientProfiles={clientProfiles}
+                  companyClients={companyClientProfiles}
+                  clientContacts={clientContacts}
+                  setClientContacts={setClientContacts}
                   allContactTags={allContactTags}
-                  defaultOwner={activeClient.owner || projectManagers[0] || currentUser?.name || ""}
-                  setLeads={setLeads}
                   canEdit={canEdit}
+                  canDelete={canDelete}
                   t={t}
-                  attachExistingPersonId={attachExistingPersonId}
-                  setAttachExistingPersonId={setAttachExistingPersonId}
-                  attachExistingTags={attachExistingTags}
-                  setAttachExistingTags={setAttachExistingTags}
                 />
               )}
 

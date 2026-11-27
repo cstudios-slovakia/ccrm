@@ -255,8 +255,8 @@ function ccrm_mail_process_uid(PDO $pdo, $stream, int $uid, array $ctx, ?int $ms
     );
     if ($leadId === null) return 'skipped';
 
-    $subject = isset($h->subject) ? safe_utf8(imap_utf8($h->subject)) : '(No Subject)';
-    $personal = fn($list) => isset($list[0]->personal) ? safe_utf8(imap_utf8($list[0]->personal)) : '';
+    $subject = isset($h->subject) ? ccrm_decode_mime_header($h->subject) : '(No Subject)';
+    $personal = fn($list) => isset($list[0]->personal) ? ccrm_decode_mime_header($list[0]->personal) : '';
     $fromName = $personal($h->from ?? []);
     $toName = $personal($h->to ?? []);
     $content = "From: " . $fromName . " <" . $fromAddress . ">\nTo: " . $toName . " <" . ($to[0] ?? '') . ">\nSubject: " . $subject;

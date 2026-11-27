@@ -157,6 +157,21 @@ export interface ProjectAutoCreateSettings {
   assignOwner: boolean;
 }
 
+export interface ClientContact {
+  id: string;
+  companyClientId?: string | null;
+  name: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string;
+  phone?: string;
+  contactRole?: string | null;
+  contactTags?: string[];
+  notes?: string;
+  archived?: boolean;
+  createdAt?: string;
+}
+
 export interface Lead {
   id: string;
   name: string;             // Client name
@@ -429,6 +444,8 @@ export interface Task {
   recurringOccurrenceDate?: string | null;
   /** Denormalized count of active comments in task_activities. */
   commentCount?: number;
+  /** Denormalized count of active attachments in task_files. */
+  fileCount?: number;
   /** Task-level emoji reactions map (`emoji -> userNames[]`). */
   reactions?: Record<string, string[]> | null;
 }
@@ -1783,12 +1800,27 @@ export interface TicketCapturedError {
   detail?: string;
 }
 
+export interface TicketLinkedEmail {
+  id: string;
+  uid: number | string;
+  folder: string;
+  mailboxId?: string;
+  eventId?: string;
+  messageId?: string;
+  subject: string;
+  fromName?: string;
+  fromAddress?: string;
+  date?: string;
+  linkedAt: string;
+}
+
 export interface TicketMetadata {
   url?: string;
   userAgent?: string;
   viewport?: string;
   errors?: TicketCapturedError[];
   consoleErrors?: string[];
+  linkedEmails?: TicketLinkedEmail[];
   [key: string]: any;
 }
 
@@ -2024,9 +2056,28 @@ export type TaskActivityEventType =
   | "deadline"
   | "assignees"
   | "archived"
-  | "conclusion";
+  | "conclusion"
+  | "file_uploaded"
+  | "file_deleted";
 
-export type TaskActivityFilter = "all" | "comments" | "history";
+export type TaskActivityFilter = "all" | "comments" | "history" | "files";
+
+export interface TaskFile {
+  id: string;
+  taskId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  isImage: boolean;
+  imageWidth?: number | null;
+  imageHeight?: number | null;
+  isCodePreviewable: boolean;
+  language?: string;
+  uploadedBy: string;
+  createdAt: string;
+  url: string;
+  downloadUrl: string;
+}
 
 export interface TaskActivityItem {
   id: number;

@@ -1042,6 +1042,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'recurringSourceId' => $row['recurring_source_id'] ?? null,
                 'recurringOccurrenceDate' => $row['recurring_occurrence_date'] ?? null,
                 'commentCount' => (int)($row['comment_count'] ?? 0),
+                'fileCount' => (int)($row['file_count'] ?? 0),
                 'reactions' => (!empty($row['reactions_json']) && is_array($rx = json_decode((string)$row['reactions_json'], true))) ? $rx : null,
                 'assignedUsers' => $assignedUsers,
                 'tags' => $tagsByTask[$taskId] ?? []
@@ -1836,6 +1837,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // 3.8. Fetch Financial Categories and Records, Invoices & Price Offers
     $financialCategories = [];
     $clientCategories = [];
+    $clientContacts = [];
     $offerCategories = [];
     $financialRecords = [];
     $invoicesOffers = [];
@@ -1876,6 +1878,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'updatedAt' => $row['updated_at'],
                 ];
             }
+        }
+
+        // Company & standalone personal contacts (separate from `leads`)
+        if (ccrm_can($scope, 'clients') || ccrm_can($scope, 'leads')) {
+            require_once __DIR__ . '/api/client_contacts_lib.php';
+            $clientContacts = ccrm_sync_fetch_client_contacts($pdo);
         }
 
         // Price-offer categories (Settings → Offers & invoicing): the same shape as
@@ -2478,6 +2486,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     if (!ccrm_can($scope, 'clients') && !ccrm_can($scope, 'leads')) {
         $restricted[] = 'clientCategories';
+        $restricted[] = 'clientContacts';
     }
 
     if (!ccrm_can($scope, 'invoices')) {
@@ -2716,6 +2725,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'warehouseMovements' => $warehouseMovements,
         'financialCategories' => $financialCategories,
         'clientCategories' => $clientCategories,
+        'clientContacts' => $clientContacts,
         'offerCategories' => $offerCategories,
         'financialRecords' => $financialRecords,
         'invoicesOffers' => $invoicesOffers,
@@ -2953,7 +2963,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'leads', 'meetingNotes', 'users', 'customDashboards', 'projects', 'projectTypes',
             'warehouses', 'suppliers', 'warehouseItems', 'warehouseStock', 'warehouseBatches',
             'warehouseMovements', 'financialCategories', 'financialRecords', 'invoicesOffers',
-            'aiCustomTemplates', 'clientCategories', 'offerCategories', 'employees', 'employeeSalaries', 'employeeVacations',
+            'aiCustomTemplates', 'clientCategories', 'clientContacts', 'offerCategories', 'employees', 'employeeSalaries', 'employeeVacations',
             'orders', 'supportContracts', 'tickets', 'recurringTasks',
         ] as $entity) {
             if (!isset($payload[$entity]) && ccrm_explicit_deleted_ids($explicitDeletes, $entity)) {
@@ -3149,6 +3159,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             require_once __DIR__ . '/api/task_activity_lib.php';
             ccrm_migrate_task_activities($pdo);
+            require_once __DIR__ . '/api/task_files_lib.php';
+            ccrm_migrate_task_files($pdo);
         }
         if ((isset($payload['tasks']) && is_array($payload['tasks'])) || (isset($payload['projects']) && is_array($payload['projects']))) {
             ccrm_heal_clickup_columns($pdo);
@@ -3307,6 +3319,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Tombstone table (deleted_records): same rule as a column heal. Outside the transaction (DDL
         // commits); ccrm_record_deleted() is fail-soft on top, so a push never 500s over it.
         if (!ccrm_table_exists($pdo, 'deleted_records')) ccrm_migrate_deleted_records($pdo);
+        if (!ccrm_table_exists($pdo, 'client_contacts')) { require_once __DIR__ . '/api/client_contacts_lib.php'; ccrm_migrate_client_contacts($pdo); }
 
         if (isset($payload['leads']) && is_array($payload['leads']) && !$ccrm_skip_writes('leads', 'leads')) {
             if (!ccrm_column_exists($pdo, 'leads', 'company_client_id')) {
@@ -6249,6 +6262,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!empty($ccToDelete) && !$ccrm_skip_deletes('clients', 'clientCategories')) {
                 ccrm_delete_omitted($pdo, 'client_categories', $ccToDelete, null, [], false, $isDeltaSync);
             }
+        }
+
+        // 4.13d. Synchronize Client Contacts (company contact persons + standalone personal contacts).
+        if (isset($payload['clientContacts']) && is_array($payload['clientContacts']) && !$ccrm_skip_writes('clients', 'clientContacts')) {
+            require_once __DIR__ . '/api/client_contacts_lib.php';
+            ccrm_sync_save_client_contacts($pdo, $payload['clientContacts'], $isDeltaSync, $deletionsFor, $ccrm_skip_deletes('clients', 'clientContacts'));
         }
 
         // 4.13c. Synchronize Offer Categories — the same rules again, gated like the

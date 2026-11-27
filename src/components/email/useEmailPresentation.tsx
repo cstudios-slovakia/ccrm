@@ -1,8 +1,9 @@
 import { GeometricIcon } from "./GeometricIcon";
 import { localeCodeFor } from "../../utils/localTime";
-import type { Lead, Task, UserProfile } from "../../types";
+import type { Lead, Task, Ticket, UserProfile } from "../../types";
 import { PRODUCT_NAME } from "../../utils/brand";
-import { History, ExternalLink, UserPlus, FileText, FileSpreadsheet, FileImage, Paperclip, Download, FolderPlus, Loader2, Brain, Sparkles, RefreshCw, CircleAlert, X, CheckCircle2, ArrowUpRight, MessagesSquare, Mail, MailOpen } from "lucide-react";
+import { buildTicketHash } from "../../utils/ticketEmailLinks";
+import { History, ExternalLink, UserPlus, FileText, FileSpreadsheet, FileImage, Paperclip, Download, FolderPlus, Loader2, Brain, Sparkles, RefreshCw, CircleAlert, X, CheckCircle2, ArrowUpRight, MessagesSquare, Mail, MailOpen, Ticket as TicketIcon } from "lucide-react";
 import { formatBytes } from "../../utils/formatBytes";
 import React from "react";
 
@@ -42,6 +43,7 @@ interface useEmailPresentationDeps {
   filteredIndividualEmails: any[];
   visibleThreads: { id: string; subject: string; latestEmail: any; emails: any[]; seen: boolean; date: any; }[];
   visibleIndividualEmails: any[];
+  getLinkedTickets?: (emails: any[]) => Ticket[];
 }
 
 /** Plain presentation helpers of EmailView; no hooks inside (pure move). */
@@ -51,7 +53,7 @@ export function useEmailPresentation({
   activeFolder, handleDownloadAttachment, handleAddAttachmentToDocs, isLargeFont, digestHideTimer, setDigest,
   setAssigningActionItem, isOpenAiKeySet, digest, problemsMap, loadingSummaries, summaries, actionItemsMap,
   tasks, users, handleAddEmailActionItemAsTask, currentUser, assigningActionItem, isThreadedMode,
-  threadedEmails, filteredIndividualEmails, visibleThreads, visibleIndividualEmails,
+  threadedEmails, filteredIndividualEmails, visibleThreads, visibleIndividualEmails, getLinkedTickets,
 }: useEmailPresentationDeps) {
   // --- Presentation helpers -------------------------------------------------
 
@@ -682,6 +684,7 @@ export function useEmailPresentation({
   const renderListRow = (opts: {
     key: string;
     email: any;
+    threadEmails?: any[];
     subject: string;
     unread: boolean;
     selected: boolean;
@@ -691,6 +694,7 @@ export function useEmailPresentation({
   }) => {
     const party = counterpartOf(opts.email);
     const lead = findLead(party.address);
+    const linkedTickets = getLinkedTickets ? getLinkedTickets(opts.threadEmails || [opts.email]) : [];
     return (
       <div
         key={opts.key}
@@ -746,6 +750,20 @@ export function useEmailPresentation({
               </span>
             )}
             {renderLeadChip(lead)}
+            {linkedTickets.slice(0, 2).map((tk) => (
+              <button
+                key={tk.id}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.location.hash = buildTicketHash(tk.id);
+                }}
+                title={`${tk.ticketNumber} · ${tk.subject}`}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-ui font-bold bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 cursor-pointer shrink-0"
+              >
+                <TicketIcon size={12} /> {tk.ticketNumber}
+              </button>
+            ))}
             <span className="flex-1" />
             {renderDigestButton(opts.digestKey, lead, "sm")}
             {opts.unread && <span className="h-2 w-2 rounded-full bg-entity-solid shrink-0" aria-label={t("Unread", "Neprečítané", "Olvasatlan")} />}

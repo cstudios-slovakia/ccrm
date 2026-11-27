@@ -14,7 +14,7 @@ import { EDIT_TIME_ENTRY_EVENT, NEW_TIME_ENTRY_EVENT, type NewTimeEntryRequest }
  */
 export function NewEntryHost({ deps }: { deps: TimeDeps }) {
   const tt = useTimeTracking();
-  const [draft, setDraft] = useState<(TimeEntry & { nonce: number; isNew: boolean }) | null>(null);
+  const [draft, setDraft] = useState<(TimeEntry & { nonce: number; isNew: boolean; taskRequired?: boolean }) | null>(null);
   useEffect(() => {
     const onNew = (e: Event) => {
       const req = ((e as CustomEvent<NewTimeEntryRequest>).detail ?? {}) as NewTimeEntryRequest;
@@ -57,6 +57,7 @@ export function NewEntryHost({ deps }: { deps: TimeDeps }) {
         originId: task?.id ?? null,
         approvalStatus: null,
         createdAt: new Date().toISOString(),
+        taskRequired: req.taskRequired === true,
       });
     };
     const onEdit = (e: Event) => {
@@ -77,13 +78,14 @@ export function NewEntryHost({ deps }: { deps: TimeDeps }) {
 }
 
 /** Inner component so the recent-projects fetch only runs while a draft is open. */
-function OpenDraft({ draft, deps, onClose }: { draft: TimeEntry & { nonce: number; isNew: boolean }; deps: TimeDeps; onClose: () => void }) {
+function OpenDraft({ draft, deps, onClose }: { draft: TimeEntry & { nonce: number; isNew: boolean; taskRequired?: boolean }; deps: TimeDeps; onClose: () => void }) {
   const tt = useTimeTracking();
   const { recentProjectIds, secondsByProject } = useRecentProjects();
   return (
     <EntryDrawer
       key={draft.nonce}
       isNew={draft.isNew}
+      taskRequired={draft.taskRequired}
       entry={draft}
       deps={deps}
       recentProjectIds={recentProjectIds}

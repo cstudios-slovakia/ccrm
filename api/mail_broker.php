@@ -616,6 +616,44 @@ function safe_utf8($str) {
     return mb_convert_encoding($str, 'UTF-8', 'UTF-8, ASCII, ISO-8859-1, ISO-8859-2, Windows-1252');
 }
 
+/**
+ * Decode RFC 2047 MIME encoded-words (=?charset?Q|B?...?=) reliably, including
+ * headers that mix encoded-words with raw UTF-8 text (where PHP's imap_utf8()
+ * returns the raw undecoded string).
+ */
+function ccrm_decode_mime_header($raw): string {
+    if (!is_string($raw) || $raw === '') {
+        return '';
+    }
+    if (strpos($raw, '=?') === false) {
+        return safe_utf8($raw);
+    }
+    $collapsed = preg_replace('/(\?=)\s+(=\?)/', '$1$2', $raw);
+    $decoded = preg_replace_callback(
+        '/=\?([^?]+)\?([BbQq])\?([^?]*)\?=/',
+        function ($m) {
+            $charset = strtoupper(trim($m[1]));
+            $enc = strtoupper($m[2]);
+            $payload = $m[3];
+            $bytes = ($enc === 'B')
+                ? base64_decode($payload)
+                : quoted_printable_decode(str_replace('_', ' ', $payload));
+            if ($bytes === false) {
+                return $m[0];
+            }
+            if ($charset !== '' && $charset !== 'UTF-8' && $charset !== 'UTF8') {
+                $conv = @mb_convert_encoding($bytes, 'UTF-8', $charset);
+                if ($conv !== false) {
+                    return $conv;
+                }
+            }
+            return $bytes;
+        },
+        $collapsed
+    );
+    return safe_utf8($decoded);
+}
+
 exit;
 
 function ccrm_ensure_mail_envelopes_table(PDO $pdo): void {
@@ -798,13 +836,13 @@ function ccrm_read_cached_envelopes(
         $item = [
             'uid' => (int)$r['uid'],
             'event_id' => (string)$r['event_id'],
-            'subject' => (string)$r['subject'],
+            'subject' => ccrm_decode_mime_header((string)$r['subject']),
             'from' => [
-                'name' => (string)$r['from_name'],
+                'name' => ccrm_decode_mime_header((string)$r['from_name']),
                 'address' => (string)$r['from_address'],
             ],
             'to' => [
-                'name' => (string)$r['to_name'],
+                'name' => ccrm_decode_mime_header((string)$r['to_name']),
                 'address' => (string)$r['to_address'],
             ],
             'date' => (string)($r['email_date'] ?? ''),
@@ -1325,13 +1363,13 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                 $emailsMap[$o->uid] = [
                     'uid' => $o->uid,
                     'event_id' => $mailEventId,
-                    'subject' => isset($o->subject) ? safe_utf8(imap_utf8($o->subject)) : '(No Subject)',
+                    'subject' => isset($o->subject) ? ccrm_decode_mime_header($o->subject) : '(No Subject)',
                     'from' => [
-                        'name' => safe_utf8($fromName),
+                        'name' => ccrm_decode_mime_header($fromName),
                         'address' => safe_utf8($fromAddress)
                     ],
                     'to' => [
-                        'name' => safe_utf8($toName),
+                        'name' => ccrm_decode_mime_header($toName),
                         'address' => safe_utf8($toAddress)
                     ],
                     'date' => isset($o->date) ? date('Y-m-d H:i:s', strtotime($o->date)) : '',
@@ -1366,7 +1404,7 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                     if ($matchedLeadId) {
                         $eventId = $mailEventId;
                         $timestamp = isset($o->date) ? date('Y-m-d H:i:s', strtotime($o->date)) : date('Y-m-d H:i:s');
-                        $title = isset($o->subject) ? safe_utf8(imap_utf8($o->subject)) : '(No Subject)';
+                        $title = isset($o->subject) ? ccrm_decode_mime_header($o->subject) : '(No Subject)';
                         $content = "From: " . $fromName . " <" . $fromAddress . ">\nTo: " . $toName . " <" . $toAddress . ">\nSubject: " . $title;
                         $eventAuthor = $isOutgoing ? $resolvedEventAuthor : null;
 
@@ -1950,7 +1988,7 @@ function get_part_attachment($part, $partNum) {
     if ($isAttachment) {
         return [
             'part_num' => $partNum,
-            'name' => safe_utf8(imap_utf8($finalName)),
+            'name' => ccrm_decode_mime_header($finalName),
             'size' => isset($part->bytes) ? $part->bytes : 0,
             'type' => isset($part->subtype) ? strtolower($part->subtype) : ''
         ];

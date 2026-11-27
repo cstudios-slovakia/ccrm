@@ -74,8 +74,9 @@ function mcp_money_tool_def(string $name): array {
         case 'list_projects':
             return [
                 'name' => 'list_projects',
-                'description' => 'List and filter delivery projects with contract value, budget, rating, invoice date (invoice_date), deadline (completion_deadline), delay reason and finish date, plus project_type (name and the has_invoice_date / has_deadline switches: a null date on a type without the switch is not applicable rather than missing) and status_group. '
+                'description' => 'List and filter delivery projects with contract value, budget, rating, invoice date (invoice_date), deadline (completion_deadline), delay reason, finish date, project_type, status_group, scope_approved_at/scope_approved_by, and a scope_creep summary (original vs added_after_approval acceptance criteria). '
                     . 'Date filters (inclusive): deadline_from/deadline_to, invoice_date_from/invoice_date_to. bucket works on the deadline: overdue = open and past it, today, tomorrow, upcoming (later than tomorrow), done; "open" means not archived and not in a completed or cancelled status group, the rule get_client_dossier uses for active projects. '
+                    . 'has_scope_creep=true filters to projects with acceptance criteria added after scope approval. '
                     . 'updated_at covers the project\'s own fields and the managers and milestones (Gantt rows) shown in its form; it does not move when a payment is booked or a task changes. '
                     . mcp_window_doc('projects', MCP_PROJECT_WINDOW) . ' sort_by=deadline lists the soonest deadline first and projects without one last.',
                 'inputSchema' => ['type' => 'object', 'properties' => [
@@ -84,6 +85,7 @@ function mcp_money_tool_def(string $name): array {
                     'division' => ['type' => 'string', 'description' => 'Filter by division'],
                     'client_id' => ['type' => 'string', 'description' => 'Filter by client ID'],
                     'search' => ['type' => 'string', 'description' => 'Search project names'],
+                    'has_scope_creep' => ['type' => 'boolean', 'description' => 'true = only projects with acceptance criteria added after scope approval; false = only without scope creep'],
                     'include_archived' => ['type' => 'boolean', 'description' => 'Include archived projects (default false)'],
                 ] + mcp_date_range_props('deadline', 'Deadline') + mcp_date_range_props('invoice_date', 'Invoice date')
                   + mcp_bucket_prop('deadline') + mcp_window_props(MCP_PROJECT_WINDOW)],
@@ -91,7 +93,7 @@ function mcp_money_tool_def(string $name): array {
         case 'get_project':
             return [
                 'name' => 'get_project',
-                'description' => 'Retrieve project details (incl. start_date, invoice_date, completion_deadline = the Deadline, delay_reason, finished_at; project_type tells whether its type uses the invoice date and the deadline) with its client (from client_id, else the paired lead, else the client the project is named for — see client.linked_by), contract value, a financials block (contract value, invoiced, paid, outstanding, remaining billable, and the installment schedule: every income movement with due date, amount, invoice number, payment status and updated_at), milestones, linked tasks and a url. created_at and updated_at are ISO 8601 moments with the ' . KOPERNIQ_PRODUCT_NAME . ' time-zone offset (' . mcp_zone() . ').',
+                'description' => 'Retrieve project details (incl. start_date, invoice_date, completion_deadline = the Deadline, delay_reason, finished_at, acceptance_criteria, scope_approved_at, scope_approved_by, and scope_creep metrics; project_type tells whether its type uses the invoice date and the deadline) with its client (from client_id, else the paired lead, else the client the project is named for — see client.linked_by), contract value, a financials block (contract value, invoiced, paid, outstanding, remaining billable, and the installment schedule: every income movement with due date, amount, invoice number, payment status and updated_at), milestones, linked tasks and a url. created_at and updated_at are ISO 8601 moments with the ' . KOPERNIQ_PRODUCT_NAME . ' time-zone offset (' . mcp_zone() . ').',
                 'inputSchema' => ['type' => 'object', 'properties' => ['id' => ['type' => 'string', 'description' => 'Project ID']], 'required' => ['id']],
             ];
         case 'list_milestones':
@@ -214,6 +216,53 @@ function mcp_project_open_sql(\PDO $pdo, string $alias = 'p'): array {
     return [$sql, $closed];
 }
 
+/**
+ * Compute acceptance criteria list and scope-creep summary for a project row.
+ * Uses the exact whole-second post-approval rule from src/utils/acceptanceCriteria.ts
+ * and public/api/project_scope.php.
+ */
+function mcp_project_scope_summary($criteriaJson, $approvedAtDb, $approvedBy): array {
+    require_once __DIR__ . '/project_scope.php';
+    $list = ccrm_scope_criteria_decode($criteriaJson);
+    $approvedIso = ccrm_scope_ts_from_db(is_string($approvedAtDb) ? $approvedAtDb : null);
+    $approvedByClean = ccrm_scope_name(is_string($approvedBy) ? $approvedBy : null);
+    $approvedTs = $approvedIso !== null ? strtotime($approvedIso) : false;
+
+    $criteriaOut = [];
+    $totalLive = 0;
+    $doneLive = 0;
+    $addedAfterApproval = 0;
+    $removedCount = 0;
+    foreach ($list as $c) {
+        $isRemoved = $c['removedAt'] !== null;
+        $createdTs = $c['createdAt'] !== null ? strtotime($c['createdAt']) : false;
+        $added = !$isRemoved && $approvedTs !== false && $createdTs !== false && $createdTs > $approvedTs;
+        if ($isRemoved) {
+            $removedCount++;
+        } else {
+            $totalLive++;
+            if (!empty($c['done'])) $doneLive++;
+            if ($added) $addedAfterApproval++;
+        }
+        $criteriaOut[] = $c + ['added_after_approval' => $added];
+    }
+    $originalCount = $totalLive - $addedAfterApproval;
+    return [
+        'acceptance_criteria' => $criteriaOut,
+        'scope_approved_at' => $approvedIso,
+        'scope_approved_by' => $approvedByClean,
+        'scope_creep' => [
+            'approved' => $approvedIso !== null,
+            'total_live' => $totalLive,
+            'done_live' => $doneLive,
+            'original_count' => $originalCount,
+            'added_after_approval_count' => $addedAfterApproval,
+            'removed_count' => $removedCount,
+            'creep_percent' => $approvedIso !== null && $originalCount > 0 ? round(($addedAfterApproval / $originalCount) * 100, 1) : null,
+        ],
+    ];
+}
+
 function mcp_list_projects(\PDO $pdo, array $user, array $args): array {
     $where = ['1=1'];
     $params = [];
@@ -244,7 +293,8 @@ function mcp_list_projects(\PDO $pdo, array $user, array $args): array {
 
     $stmt = $pdo->prepare(
         "SELECT p.id, p.name, p.status, p.division, p.rating, p.value, p.budget, p.invoice_date, p.completion_deadline, p.delay_reason, p.start_date, p.finished_at,
-                p.project_type_id, p.lead_id, p.client_id, l.name AS client_name, p.archived, "
+                p.project_type_id, p.lead_id, p.client_id, l.name AS client_name, p.archived,
+                p.acceptance_criteria_json, p.scope_approved_at, p.scope_approved_by, "
         . mcp_moment_select('p.created_at', 'created_at') . ', ' . mcp_moment_select('p.updated_at', 'updated_at') . "
          FROM projects p
          LEFT JOIN leads l ON l.id = COALESCE(p.lead_id, p.client_id)
@@ -252,11 +302,30 @@ function mcp_list_projects(\PDO $pdo, array $user, array $args): array {
     );
     $stmt->execute($params);
     $groups = mcp_project_status_groups($pdo);
-    return array_map(fn($p) => mcp_row_moments($p) + [
-        'status_group' => $groups[$p['status']] ?? null,
-        'project_type' => mcp_project_type_info($pdo, $p['project_type_id']),
-        'url' => mcp_project_url($pdo, (string)$p['id']),
-    ], $stmt->fetchAll(\PDO::FETCH_ASSOC));
+    $wantCreep = array_key_exists('has_scope_creep', $args)
+        ? filter_var($args['has_scope_creep'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE)
+        : null;
+    if (array_key_exists('has_scope_creep', $args) && $wantCreep === null) {
+        throw new \InvalidArgumentException("'has_scope_creep' must be true or false.");
+    }
+    $out = [];
+    foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $p) {
+        $scope = mcp_project_scope_summary($p['acceptance_criteria_json'] ?? null, $p['scope_approved_at'] ?? null, $p['scope_approved_by'] ?? null);
+        unset($p['acceptance_criteria_json']);
+        if ($wantCreep !== null) {
+            $hasCreep = $scope['scope_creep']['added_after_approval_count'] > 0;
+            if ($wantCreep !== $hasCreep) continue;
+        }
+        $out[] = mcp_row_moments($p) + [
+            'status_group' => $groups[$p['status']] ?? null,
+            'project_type' => mcp_project_type_info($pdo, $p['project_type_id']),
+            'scope_approved_at' => $scope['scope_approved_at'],
+            'scope_approved_by' => $scope['scope_approved_by'],
+            'scope_creep' => $scope['scope_creep'],
+            'url' => mcp_project_url($pdo, (string)$p['id']),
+        ];
+    }
+    return $out;
 }
 
 /** id => ISO moment of the last change of these ledger movements (financial_records.updated_at). */
@@ -278,6 +347,12 @@ function mcp_get_project(\PDO $pdo, array $user, array $args): array {
         throw new \Exception('Project not found with ID: ' . $args['id']);
     }
     $proj = mcp_row_moments($proj);
+    $scope = mcp_project_scope_summary($proj['acceptance_criteria_json'] ?? null, $proj['scope_approved_at'] ?? null, $proj['scope_approved_by'] ?? null);
+    unset($proj['acceptance_criteria_json']);
+    $proj['acceptance_criteria'] = $scope['acceptance_criteria'];
+    $proj['scope_approved_at'] = $scope['scope_approved_at'];
+    $proj['scope_approved_by'] = $scope['scope_approved_by'];
+    $proj['scope_creep'] = $scope['scope_creep'];
     $proj['url'] = mcp_project_url($pdo, (string)$proj['id']);
     $proj['project_type'] = mcp_project_type_info($pdo, $proj['project_type_id'] ?? null);
 

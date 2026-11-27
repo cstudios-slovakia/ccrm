@@ -23,6 +23,8 @@ export interface ExtensionPrefs {
   flashWindow: boolean;
   autoPopoutAlert: boolean;
   defaultStartMode: "ask" | "switch" | "parallel";
+  pinnedTab: "time" | "tasks" | null;
+  lastTab: "time" | "tasks";
 }
 
 export const DEFAULT_EXTENSION_PREFS: ExtensionPrefs = {
@@ -31,6 +33,8 @@ export const DEFAULT_EXTENSION_PREFS: ExtensionPrefs = {
   flashWindow: true,
   autoPopoutAlert: false,
   defaultStartMode: "switch",
+  pinnedTab: null,
+  lastTab: "time",
 };
 
 export interface TrackerLocal {

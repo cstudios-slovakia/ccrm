@@ -11,7 +11,8 @@ import { EmailMailLayout } from "./email/EmailMailLayout";
 import { EmailComposerDrawer } from "./email/EmailComposerDrawer";
 import { EmailTimelineSlideout } from "./email/EmailTimelineSlideout";
 import { EmailClientSlideout } from "./email/EmailClientSlideout";
-import type { Lead, Task, UserProfile } from "../types";
+import type { Lead, Task, Ticket, TicketStatusDef, UserProfile } from "../types";
+import { useEmailTicketLinks } from "./email/useEmailTicketLinks";
 import type { ModuleAccess } from "../utils/permissions";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import { formatBytes } from "../utils/formatBytes";
@@ -72,6 +73,9 @@ interface EmailViewProps {
   setTasks: (newTasks: Task[] | ((prev: Task[]) => Task[])) => void;
   users: UserProfile[];
   taskStates?: string[];
+  tickets?: Ticket[];
+  setTickets?: React.Dispatch<React.SetStateAction<Ticket[]>>;
+  ticketStatuses?: TicketStatusDef[];
   /** Role access for the email module. `edit: false` makes the client read-only:
       mail can be read, searched and attachments opened, but nothing is sent,
       created or written into the CRM. */
@@ -89,6 +93,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
   setTasks,
   users,
   taskStates = ["New", "In progress", "Blocked", "Done"],
+  tickets = [],
+  setTickets,
+  ticketStatuses,
   access = FULL_MODULE_ACCESS
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -2129,6 +2136,13 @@ export const EmailView: React.FC<EmailViewProps> = ({
     }
   }, [emails, isThreadedMode, isOpenAiKeySet, threadedEmails, filteredIndividualEmails]);
 
+  const { getLinkedTickets, handleLinkEmailToTicket, handleUnlinkEmailFromTicket } = useEmailTicketLinks({
+    tickets, setTickets, canEdit, selectedMailboxId, setSelectedMailboxId, availableAccounts,
+    isSelectedEmailChannel, isLoadingEmails, emails, lastSyncAt, isThreadedMode, setIsThreadedMode,
+    threadedEmails, setSelectedThreadId, setExpandedEmailUids, setSelectedEmail, setThreadBodies,
+    setIsLoadingDetail, expandThreadMessage, activeFolder, mbParam, userEmail: currentUser?.email || "", notify, t,
+  });
+
   const {
     locale, primaryButtonClass, initialsOf, formatListDate, emptyPane, renderCrmActions,
     renderInlineAiSummaryBanner, unreadCount, closeDigest, onListScroll, shownCount, renderListRow, plural,
@@ -2140,7 +2154,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
     activeFolder, handleDownloadAttachment, handleAddAttachmentToDocs, isLargeFont, digestHideTimer, setDigest,
     setAssigningActionItem, isOpenAiKeySet, digest, problemsMap, loadingSummaries, summaries, actionItemsMap,
     tasks, users, handleAddEmailActionItemAsTask, currentUser, assigningActionItem, isThreadedMode,
-    threadedEmails, filteredIndividualEmails, visibleThreads, visibleIndividualEmails,
+    threadedEmails, filteredIndividualEmails, visibleThreads, visibleIndividualEmails, getLinkedTickets,
   });
 
   return (
@@ -2352,6 +2366,8 @@ export const EmailView: React.FC<EmailViewProps> = ({
         renderAttachments={renderAttachments} primaryButtonClass={primaryButtonClass}
         renderCrmActions={renderCrmActions} emptyPane={emptyPane} emails={emails}
         renderPartyMeta={renderPartyMeta} setSeenFlag={setSeenFlag} activeFolder={activeFolder}
+        tickets={tickets} ticketStatuses={ticketStatuses} getLinkedTickets={getLinkedTickets}
+        onLinkEmailToTicket={handleLinkEmailToTicket} onUnlinkEmailFromTicket={handleUnlinkEmailFromTicket}
         />
       )}
 

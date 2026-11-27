@@ -167,7 +167,7 @@ function mcp_tool_permissions(): array {
         'create_task' => $e('tasks'), 'update_task' => $e('tasks'), 'complete_task' => $e('tasks'),
         'add_task_comment' => $e('tasks'),
         'list_projects' => $v('projects'), 'get_project' => $v('projects'),
-        'create_project' => $e('projects'), 'update_project' => $e('projects'),
+        'create_project' => $e('projects'), 'update_project' => $e('projects'), 'manage_project_acceptance_criteria' => $e('projects'),
         'create_milestone' => $e('projects', 'tasks'),
         'get_financial_summary' => $v('financial'), 'get_financial_mode' => $v('financial'),
         'get_financial_simplified_table' => $v('financial'),
@@ -726,20 +726,21 @@ function mcp_core_tool_definitions(): array {
         mcp_crm_defs()['list_contacts'],
         [
             'name' => 'create_contact',
-            'description' => 'Create and link an individual contact person record (client_type = person) under a company client.',
+            'description' => 'Create a contact person in the separate client_contacts table (linked under a company client via client_id, or standalone when client_id is omitted). Does not add a row to the Clients list.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
-                    'client_id' => ['type' => 'string', 'description' => 'Parent company client/lead ID'],
+                    'client_id' => ['type' => 'string', 'description' => 'Optional parent company client/lead ID (omit for a standalone personal contact)'],
                     'name' => ['type' => 'string', 'description' => 'Contact person full name'],
                     'first_name' => ['type' => 'string', 'description' => 'Contact first name'],
                     'last_name' => ['type' => 'string', 'description' => 'Contact last name'],
                     'email' => ['type' => 'string', 'description' => 'Email'],
                     'phone' => ['type' => 'string', 'description' => 'Phone'],
                     'role' => ['type' => 'string', 'description' => 'Position or role at the company (legacy summary fallback)'],
-                    'function_tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Function / category tags for the contact (e.g. ["CEO", "Billing"])']
+                    'function_tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Function / category tags for the contact (e.g. ["CEO", "Billing"])'],
+                    'notes' => ['type' => 'string', 'description' => 'Optional notes']
                 ],
-                'required' => ['client_id', 'name']
+                'required' => ['name']
             ]
         ],
 
@@ -883,9 +884,50 @@ function mcp_core_tool_definitions(): array {
                     'archived' => ['type' => 'boolean', 'description' => 'Archive / restore'],
                     'start_date' => ['type' => 'string', 'description' => 'Start date (YYYY-MM-DD)'],
                     'invoice_date' => ['type' => 'string', 'description' => 'Invoice date (YYYY-MM-DD) - the "Invoice date" field in the app'],
-                    'completion_deadline' => ['type' => 'string', 'description' => 'Deadline (YYYY-MM-DD) - the "Deadline" field in the app']
+                    'completion_deadline' => ['type' => 'string', 'description' => 'Deadline (YYYY-MM-DD) - the "Deadline" field in the app'],
+                    'acceptance_criteria' => [
+                        'type' => 'array',
+                        'description' => 'Merge acceptance criteria: items with an existing id update title/done (or pass remove=true for soft removal); items without an id are added with server timestamp & user (tracked as scope creep if scope is already approved).',
+                        'items' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'id' => ['type' => 'string', 'description' => 'Existing criterion ID (omit to create new)'],
+                                'title' => ['type' => 'string', 'description' => 'Criterion title (max 300 chars)'],
+                                'done' => ['type' => 'boolean', 'description' => 'Whether the criterion is met'],
+                                'remove' => ['type' => 'boolean', 'description' => 'true to soft-remove this criterion (keeps history)'],
+                            ],
+                        ],
+                    ],
+                    'scope_action' => ['type' => 'string', 'description' => 'Approve or withdraw baseline scope: "approve" stamps scope_approved_at/by (criteria added later count as scope creep); "withdraw" clears approval']
                 ],
                 'required' => ['id']
+            ]
+        ],
+        [
+            'name' => 'manage_project_acceptance_criteria',
+            'description' => 'Add, edit, check/uncheck, or soft-remove project acceptance criteria, and approve or withdraw baseline scope. Uses the same server-stamped audit trail as the app: criteria added after scope approval are automatically tracked as scope creep (returned in scope_creep).',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'project_id' => ['type' => 'string', 'description' => 'Project ID'],
+                    'add' => [
+                        'type' => 'array',
+                        'description' => 'New criteria to add (strings or {title, done?} objects). Added after scope approval = tracked as scope creep.',
+                        'items' => ['type' => 'object', 'properties' => ['title' => ['type' => 'string'], 'done' => ['type' => 'boolean']]]
+                    ],
+                    'update' => [
+                        'type' => 'array',
+                        'description' => 'Existing live criteria to rename or toggle done: [{id, title?, done?}]',
+                        'items' => ['type' => 'object', 'properties' => ['id' => ['type' => 'string'], 'title' => ['type' => 'string'], 'done' => ['type' => 'boolean']], 'required' => ['id']]
+                    ],
+                    'remove' => [
+                        'type' => 'array',
+                        'description' => 'Criterion IDs to soft-remove (history is preserved with removedAt/removedBy)',
+                        'items' => ['type' => 'string']
+                    ],
+                    'scope_action' => ['type' => 'string', 'description' => '"approve" stamps baseline scope approval (subsequent additions count as scope creep); "withdraw" clears approval']
+                ],
+                'required' => ['project_id']
             ]
         ],
         [
@@ -1640,6 +1682,9 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
         case 'update_project':
             return mcp_do_update_project($pdo, $user, $args);
+
+        case 'manage_project_acceptance_criteria':
+            return mcp_do_manage_project_acceptance_criteria($pdo, $user, $args);
 
         case 'create_milestone':
             return mcp_crm_plus_create_milestone($pdo, $user, $args);

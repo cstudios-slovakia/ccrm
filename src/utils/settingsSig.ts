@@ -68,7 +68,7 @@ export const computePushSig = (p: {
   warehouseStock?: unknown; warehouseBatches?: unknown; warehouseMovements?: unknown;
   financialCategories?: unknown; financialRecords?: unknown;
   financialMode?: unknown; financialSimplifiedTable?: unknown;
-  invoicesOffers?: unknown; aiCustomTemplates?: unknown; clientCategories?: unknown; offerCategories?: unknown;
+  invoicesOffers?: unknown; aiCustomTemplates?: unknown; clientCategories?: unknown; clientContacts?: unknown; offerCategories?: unknown;
   employees?: unknown; employeeSalaries?: unknown; employeeVacations?: unknown; employeeSettings?: unknown;
   orders?: unknown;
   tickets?: unknown; supportContracts?: unknown;
@@ -79,7 +79,7 @@ export const computePushSig = (p: {
   p.warehouses, p.suppliers, p.warehouseItems, p.warehouseStock, p.warehouseBatches, p.warehouseMovements,
   p.financialCategories, p.financialRecords,
   p.financialMode, p.financialSimplifiedTable,
-  p.invoicesOffers, p.aiCustomTemplates, p.clientCategories, p.offerCategories,
+  p.invoicesOffers, p.aiCustomTemplates, p.clientCategories, p.clientContacts, p.offerCategories,
   p.employees, p.employeeSalaries, p.employeeVacations, p.employeeSettings,
   p.orders,
   p.tickets, p.supportContracts,

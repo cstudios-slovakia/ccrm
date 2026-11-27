@@ -156,6 +156,8 @@
     "public/api/agent_utils.php unknown-column tasks.due_date in build_comprehensive_crm_rag_context()",
     "public/api/agent_utils.php unknown-column tasks.lead_id in build_comprehensive_crm_rag_context()",
     "public/api/agent_utils.php unknown-column tasks.project_id in build_comprehensive_crm_rag_context()",
+    "public/api/client_contacts_lib.php function ccrm_date_only in ccrm_sync_save_client_contacts() — defined in public/sync.php",
+    "public/api/client_contacts_lib.php function ccrm_delete_omitted in ccrm_sync_save_client_contacts() — defined in public/api/sync_write_guards.php",
     "public/api/passkeys_lib.php function ccrm_start_session in ccrm_pw_auth_recent() — defined in public/api/auth.php",
     "public/api/tickets.php function ccrm_decrypt_settings_secrets in ccrm_load_ticket_settings()",
     "scripts/import/villatesta/seed_config.php function ccrm_default_lists in vt_is_installer_default() — defined in public/api/schema.php",

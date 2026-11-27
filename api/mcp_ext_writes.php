@@ -138,7 +138,7 @@ function mcp_create_project_row(\PDO $pdo, array $a): string {
 
 function mcp_do_update_project(\PDO $pdo, array $user, array $args): array {
     $id = mcp_require_string($args, 'id');
-    $cur = $pdo->prepare("SELECT project_type_id, status, finished_at, start_date, completion_deadline FROM projects WHERE id = ?");
+    $cur = $pdo->prepare("SELECT project_type_id, status, finished_at, start_date, completion_deadline, acceptance_criteria_json, scope_approved_at, scope_approved_by FROM projects WHERE id = ?");
     $cur->execute([$id]);
     $row = $cur->fetch(\PDO::FETCH_ASSOC);
     if (!$row) throw new \Exception("Project not found with ID: {$id}");
@@ -184,6 +184,35 @@ function mcp_do_update_project(\PDO $pdo, array $user, array $args): array {
         $add('contact_email', $ce === '' ? null : mb_substr($ce, 0, 190));
     }
     if (array_key_exists('archived', $args)) $add('archived', !empty($args['archived']) ? 1 : 0);
+    if (array_key_exists('acceptance_criteria', $args)) {
+        if (!is_array($args['acceptance_criteria'])) {
+            throw new \InvalidArgumentException("'acceptance_criteria' must be an array.");
+        }
+        require_once __DIR__ . '/project_scope.php';
+        $nowIso = gmdate('Y-m-d\TH:i:s\Z');
+        $incoming = [];
+        foreach ($args['acceptance_criteria'] as $item) {
+            if (is_string($item)) {
+                $title = trim($item);
+                if ($title === '') continue;
+                $incoming[] = ['id' => mcp_new_id('ac_'), 'title' => $title, 'done' => false];
+                continue;
+            }
+            if (!is_array($item)) continue;
+            $cid = isset($item['id']) && trim((string)$item['id']) !== '' ? trim((string)$item['id']) : mcp_new_id('ac_');
+            $title = trim((string)($item['title'] ?? ''));
+            if ($title === '') continue;
+            $incoming[] = [
+                'id' => $cid,
+                'title' => $title,
+                'done' => !empty($item['done']),
+                'removedAt' => !empty($item['remove']) || !empty($item['removedAt']) ? $nowIso : null,
+            ];
+        }
+        $stored = ccrm_scope_criteria_decode($row['acceptance_criteria_json'] ?? null);
+        $merged = ccrm_scope_merge_criteria($stored, $incoming, $nowIso, (string)($user['name'] ?? ''));
+        $add('acceptance_criteria_json', $merged ? json_encode($merged, JSON_UNESCAPED_UNICODE) : null);
+    }
 
     $extraTouched = false;
     if (array_key_exists('managers', $args) && is_array($args['managers']) && function_exists('mcp_crm_plus_sync_project_managers')) {
@@ -194,16 +223,123 @@ function mcp_do_update_project(\PDO $pdo, array $user, array $args): array {
         mcp_crm_plus_upsert_project_data($pdo, (string)$row['project_type_id'], $id, $args['custom_fields']);
         $extraTouched = true;
     }
+    $scopeAction = array_key_exists('scope_action', $args) && $args['scope_action'] !== null && $args['scope_action'] !== ''
+        ? mcp_enum($args, 'scope_action', ['approve', 'withdraw'])
+        : null;
 
-    if (!$sets && !$extraTouched) return ['success' => true, 'message' => 'No fields updated'];
+    if (!$sets && !$extraTouched && $scopeAction === null) return ['success' => true, 'message' => 'No fields updated'];
     if ($sets) {
         $params[] = $id;
         $pdo->prepare("UPDATE projects SET " . implode(', ', $sets) . " WHERE id = ?")->execute($params);
     } elseif ($extraTouched) {
         $pdo->prepare("UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = ?")->execute([$id]);
     }
+    if ($scopeAction !== null) {
+        require_once __DIR__ . '/project_scope.php';
+        ccrm_scope_apply_action($pdo, $id, $scopeAction, (string)($user['name'] ?? ''));
+    }
     mcp_audit($pdo, $user, 'project_update', "Updated project $id");
-    return ['success' => true, 'id' => $id, 'updated_fields' => array_values(array_intersect(array_keys($args), ['name', 'status', 'budget', 'value', 'start_date', 'invoice_date', 'completion_deadline', 'delay_reason', 'rating', 'division', 'contact_phone', 'contact_email', 'archived', 'managers', 'custom_fields']))];
+    $out = ['success' => true, 'id' => $id, 'updated_fields' => array_values(array_intersect(array_keys($args), ['name', 'status', 'budget', 'value', 'start_date', 'invoice_date', 'completion_deadline', 'delay_reason', 'rating', 'division', 'contact_phone', 'contact_email', 'archived', 'managers', 'custom_fields', 'acceptance_criteria', 'scope_action']))];
+    if (array_key_exists('acceptance_criteria', $args) || $scopeAction !== null) {
+        $fresh = $pdo->prepare("SELECT acceptance_criteria_json, scope_approved_at, scope_approved_by FROM projects WHERE id = ?");
+        $fresh->execute([$id]);
+        $fRow = $fresh->fetch(\PDO::FETCH_ASSOC) ?: [];
+        $out += mcp_project_scope_summary($fRow['acceptance_criteria_json'] ?? null, $fRow['scope_approved_at'] ?? null, $fRow['scope_approved_by'] ?? null);
+    }
+    return $out;
+}
+
+function mcp_do_manage_project_acceptance_criteria(\PDO $pdo, array $user, array $args): array {
+    require_once __DIR__ . '/project_scope.php';
+    $projectId = mcp_require_string($args, 'project_id');
+    $cur = $pdo->prepare("SELECT id, acceptance_criteria_json, scope_approved_at, scope_approved_by FROM projects WHERE id = ? LIMIT 1");
+    $cur->execute([$projectId]);
+    $row = $cur->fetch(\PDO::FETCH_ASSOC);
+    if (!$row) throw new \Exception("Project not found with ID: {$projectId}");
+
+    $nowIso = gmdate('Y-m-d\TH:i:s\Z');
+    $actor = (string)($user['name'] ?? '');
+    $stored = ccrm_scope_criteria_decode($row['acceptance_criteria_json'] ?? null);
+    $working = $stored;
+    $touched = false;
+
+    if (!empty($args['update']) && is_array($args['update'])) {
+        $byId = [];
+        foreach ($working as $idx => $c) $byId[$c['id']] = $idx;
+        foreach ($args['update'] as $u) {
+            if (!is_array($u)) continue;
+            $cid = trim((string)($u['id'] ?? ''));
+            if ($cid === '' || !isset($byId[$cid])) {
+                throw new \InvalidArgumentException("Acceptance criterion not found: {$cid}");
+            }
+            $idx = $byId[$cid];
+            if ($working[$idx]['removedAt'] !== null) {
+                throw new \InvalidArgumentException("Removed acceptance criterion cannot be edited: {$cid}");
+            }
+            if (array_key_exists('title', $u)) {
+                $t = trim((string)$u['title']);
+                if ($t === '') throw new \InvalidArgumentException("Criterion title cannot be empty for {$cid}.");
+                $working[$idx]['title'] = mb_substr($t, 0, 300);
+                $touched = true;
+            }
+            if (array_key_exists('done', $u)) {
+                $working[$idx]['done'] = !empty($u['done']);
+                $touched = true;
+            }
+        }
+    }
+
+    if (!empty($args['remove']) && is_array($args['remove'])) {
+        $removeIds = array_flip(array_map('strval', $args['remove']));
+        foreach ($working as $idx => $c) {
+            if (isset($removeIds[$c['id']]) && $c['removedAt'] === null) {
+                $working[$idx]['removedAt'] = $nowIso;
+                $touched = true;
+            }
+        }
+    }
+
+    if (!empty($args['add']) && is_array($args['add'])) {
+        foreach ($args['add'] as $item) {
+            if (is_string($item)) {
+                $title = trim($item);
+                if ($title === '') continue;
+                $working[] = ['id' => mcp_new_id('ac_'), 'title' => mb_substr($title, 0, 300), 'done' => false, 'removedAt' => null];
+                $touched = true;
+            } elseif (is_array($item)) {
+                $title = trim((string)($item['title'] ?? ''));
+                if ($title === '') continue;
+                $working[] = ['id' => mcp_new_id('ac_'), 'title' => mb_substr($title, 0, 300), 'done' => !empty($item['done']), 'removedAt' => null];
+                $touched = true;
+            }
+        }
+    }
+
+    if ($touched) {
+        $merged = ccrm_scope_merge_criteria($stored, $working, $nowIso, $actor);
+        $pdo->prepare("UPDATE projects SET acceptance_criteria_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            ->execute([$merged ? json_encode($merged, JSON_UNESCAPED_UNICODE) : null, $projectId]);
+    }
+
+    $scopeAction = array_key_exists('scope_action', $args) && $args['scope_action'] !== null && $args['scope_action'] !== ''
+        ? mcp_enum($args, 'scope_action', ['approve', 'withdraw'])
+        : null;
+    if ($scopeAction !== null) {
+        ccrm_scope_apply_action($pdo, $projectId, $scopeAction, $actor);
+    }
+
+    if ($touched || $scopeAction !== null) {
+        mcp_audit($pdo, $user, 'project_scope_update', "Updated acceptance criteria / scope on project $projectId");
+    }
+
+    $fresh = $pdo->prepare("SELECT acceptance_criteria_json, scope_approved_at, scope_approved_by FROM projects WHERE id = ?");
+    $fresh->execute([$projectId]);
+    $fRow = $fresh->fetch(\PDO::FETCH_ASSOC) ?: [];
+    return ['success' => true, 'project_id' => $projectId] + mcp_project_scope_summary(
+        $fRow['acceptance_criteria_json'] ?? null,
+        $fRow['scope_approved_at'] ?? null,
+        $fRow['scope_approved_by'] ?? null
+    );
 }
 
 // ---------------------------------------------------------------------------
